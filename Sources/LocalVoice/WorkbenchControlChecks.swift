@@ -54,7 +54,7 @@ enum WorkbenchControlChecks {
             var live = WorkbenchControlState()
             try check(WorkbenchControlTool.allCases.allSatisfy { live.actionTitle($0) == $0.title }, "idle rows read their capability's name")
             live.phase = .recording
-            try check(live.actionTitle(.dictate) == "Stop", "Dictate reads Stop while recording")
+            try check(live.actionTitle(.dictate) == "Finish dictation", "Dictate names the shared Finish action while recording")
             live = WorkbenchControlState(); live.playing = true
             try check(live.actionTitle(.read) == "Stop reading", "Read reads Stop reading while playing (pause and resume stay on the Read page)")
             live = WorkbenchControlState(); live.snapBusy = true

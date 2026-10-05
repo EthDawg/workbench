@@ -12,6 +12,7 @@ final class MeetingModel: ObservableObject {
     @Published private(set) var isProcessing = false
     @Published private(set) var isStarting = false
     @Published private(set) var elapsed = 0.0
+    @Published private(set) var voiceSession = LiveVoiceSnapshot()
     @Published private(set) var notice = "Choose an app and microphone, then start. Recording is limited to two hours."
     @Published private(set) var error: String?
     /// Recordings that still hold audio without text, newest first. Each is retried, shown or
@@ -29,6 +30,16 @@ final class MeetingModel: ObservableObject {
     }
     /// Published only after the transcript and its completion journal both commit.
     @Published private(set) var completedTranscriptID: UUID?
+    @Published private(set) var completedTranscriptText: String?
+    @Published private(set) var autoFinishSeconds: Int?
+    @Published var automaticallyFinishCalls: Bool {
+        didSet {
+            defaults.set(automaticallyFinishCalls, forKey: "workbench.meeting.auto-finish.v1")
+            if !automaticallyFinishCalls { autoFinishSeconds = nil }
+        }
+    }
+    private var autoFinish = MeetingAutoFinish()
+    private var recordingApp: MeetingAudioApp?
     /// The history writer reads these during saveTranscript; originals stay unchanged.
     @Published private(set) var pendingTranscriptNotes: [String] = []
     @Published var detectionEnabled: Bool {
@@ -81,11 +92,14 @@ final class MeetingModel: ObservableObject {
     private var activeManifest: MeetingManifest?
     private var processingSessionID: UUID?
     private var shuttingDown = false
+    private var liveEngine: RecognitionEngine?
+    private var liveVoice: LiveVoiceService?
 
     convenience init(engine: RecognitionEngine, directory: URL, defaults: UserDefaults = .standard) {
         self.init(directory: directory, defaults: defaults, processSource: MeetingSystemProcessSource(),
                   transcribe: { try await engine.transcribe($0) },
                   microphonePermission: Self.requestMicrophone, captureFactory: { MeetingSystemCapture() })
+        liveEngine = engine
     }
 
     /// These seams exercise the actual controller with synthetic capture and
@@ -101,6 +115,7 @@ final class MeetingModel: ObservableObject {
         self.captureFactory = captureFactory
         self.startupNoticeDelayNanoseconds = startupNoticeDelayNanoseconds
         detectionEnabled = defaults.bool(forKey: Self.detectionKey)
+        automaticallyFinishCalls = defaults.object(forKey: "workbench.meeting.auto-finish.v1") as? Bool ?? true
         detector.disabledBundleIDs = Set(defaults.stringArray(forKey: Self.disabledAppsKey) ?? [])
         configureDetection()
         recoveryTask = Task { [weak self] in await self?.refreshRecovery() }
@@ -143,7 +158,7 @@ final class MeetingModel: ObservableObject {
     /// History calls this after its durable removal, including when the audio
     /// directory has already gone. Failed or cancelled removals never arrive here.
     func transcriptRemoved(_ id: UUID) {
-        if completedTranscriptID == id { completedTranscriptID = nil }
+        if completedTranscriptID == id { completedTranscriptID = nil; completedTranscriptText = nil }
     }
 
     /// Choosing microphone-only is the explicit source choice; it cannot leave
@@ -160,7 +175,7 @@ final class MeetingModel: ObservableObject {
         else if let issue = detector.lastError { error = issue }
     }
 
-    func start() async {
+    func start(expectedApp: MeetingAudioApp? = nil) async {
         guard !isBusy, !shuttingDown else { return }
         if let issue = mayStart?() { error = issue; return }
         let app: MeetingAudioApp?
@@ -170,14 +185,19 @@ final class MeetingModel: ObservableObject {
                 error = "The selected audio app is no longer available. Choose its current audio source before starting."
                 return
             }
+            if let expectedApp, chosen.id != expectedApp.id || chosen.bundleID != expectedApp.bundleID {
+                error = "That call offer has changed. Choose the current audio source to start."; return
+            }
             app = chosen
         } else { app = nil }
         guard app != nil || includeMicrophone else { error = "Choose an app, the microphone, or both."; return }
         let token = UUID(); generation = token
         let microphone = includeMicrophone, kind = purpose == "call" ? "call" : "meeting"
-        error = nil; offer = nil; elapsed = 0; pendingTranscriptNotes = []; completedTranscriptID = nil; keptWithoutSpeech = nil; receipt = nil
+        error = nil; offer = nil; elapsed = 0; pendingTranscriptNotes = []; completedTranscriptID = nil; completedTranscriptText = nil; keptWithoutSpeech = nil; receipt = nil
+        autoFinish = MeetingAutoFinish(); autoFinishSeconds = nil; recordingApp = app
         notice = microphone ? "Waiting for microphone access…" : "Starting app audio… macOS may ask for Audio Recording access."
         phase(starting: true)
+        voiceSession = LiveVoiceSnapshot(phase: .preparing)
         let delay = startupNoticeDelayNanoseconds
         startupNoticeTask = Task { [weak self] in
             do { try await Task.sleep(nanoseconds: delay) } catch { return }
@@ -197,6 +217,7 @@ final class MeetingModel: ObservableObject {
         var createdSession: URL?
         var initial: MeetingManifest?
         var capture: MeetingCapture?
+        var createdLive: LiveVoiceService?
         do {
             if microphone {
                 let allowed = await microphonePermission()
@@ -214,15 +235,43 @@ final class MeetingModel: ObservableObject {
             createdSession = session; initial = manifest
             try check(token)
             activeSession = session; activeManifest = manifest
+            // Hold admission through the model reservation too. Cancel waits for this exact
+            // startup owner instead of allowing its late completion into a newer capture.
             let recorder = captureFactory(); capture = recorder; activeCapture = recorder
+            var sources: [LiveVoiceSourceStatus] = []
+            if microphone { sources.append(.init(source: .microphone, name: "Microphone")) }
+            if let app { sources.append(.init(source: .app, name: app.name)) }
+            voiceSession = LiveVoiceSnapshot(sessionID: manifest.id, phase: .preparing, sources: sources)
+            if let engine = liveEngine, try await engine.beginLiveSession(manifest.id) {
+                try check(token)
+                liveVoice = LiveVoiceService(id: manifest.id, sources: sources,
+                    journal: session.appendingPathComponent("live-transcript.json"),
+                    recognize: { try await engine.transcribeLive($0, sessionID: manifest.id) },
+                    update: { [weak self] snapshot in
+                        Task { @MainActor in self?.receiveLiveSnapshot(snapshot) }
+                    })
+                createdLive = liveVoice
+            } else if liveEngine != nil {
+                voiceSession.message = "This model transcribes saved audio when you finish. Live words are available with Parakeet."
+            }
+            let input = liveVoice?.input
             try await recorder.start(MeetingCaptureRequest(tracksDirectory: session.appendingPathComponent(MeetingStore.tracksDirectory),
-                                                           app: app, includeMicrophone: microphone))
+                app: app, includeMicrophone: microphone, onAudio: { audio in
+                    input?.append(LiveVoiceAudio(source: audio.source == .local ? .microphone : .app,
+                        samples: audio.samples, sampleRate: audio.sampleRate, start: audio.startSeconds))
+                }))
             try check(token)
-            notice = "Recording. Stop to transcribe; the maximum is two hours."
+            notice = "Recording. Your original audio is being saved."
+            voiceSession.phase = .listening
             phase(recording: true)
             operation = nil
             watch(recorder, token: token)
         } catch {
+            if let initial {
+                _ = await createdLive?.cancel()
+                if liveVoice === createdLive { liveVoice = nil }
+                await liveEngine?.endLiveSession(initial.id)
+            }
             if let session = createdSession, let manifest = initial {
                 let report = await capture?.finish() ?? MeetingCaptureReport()
                 do {
@@ -241,6 +290,7 @@ final class MeetingModel: ObservableObject {
             activeCapture = nil; activeSession = nil; activeManifest = nil; operation = nil
             notice = error is CancellationError ? "Cancelled. Any recorded audio was kept for explicit retry." : "Recording stopped. Any saved audio is available for retry."
             phase()
+            voiceSession.phase = .recoverableFailure
             await refreshRecovery()
         }
     }
@@ -250,17 +300,68 @@ final class MeetingModel: ObservableObject {
         await finishCapture(process: true)
     }
 
+    func keepRecording() {
+        autoFinish.keepRecording(); autoFinishSeconds = nil
+    }
+
+    func pause() async {
+        guard isRecording, let capture = activeCapture, !capture.isPaused else { return }
+        let id = generation
+        do {
+            try await capture.pause()
+            guard generation == id, isRecording else { return }
+            voiceSession.phase = .paused
+            voiceSession.sources = voiceSession.sources.map { var value = $0; value.health = .paused; value.level = 0; return value }
+        } catch { self.error = error.localizedDescription }
+    }
+
+    func resume() async {
+        guard isRecording, let capture = activeCapture, capture.isPaused else { return }
+        let id = generation
+        voiceSession.phase = .reconnecting
+        do {
+            try await capture.resume()
+            guard generation == id, isRecording else { return }
+            voiceSession.phase = .listening
+        } catch { self.error = error.localizedDescription; voiceSession.phase = .paused }
+    }
+
+    private func receiveLiveSnapshot(_ snapshot: LiveVoiceSnapshot) {
+        guard voiceSession.sessionID == snapshot.sessionID, activeSession != nil else { return }
+        voiceSession = snapshot
+        voiceSession.elapsed = max(elapsed, snapshot.elapsed)
+        if isProcessing { voiceSession.phase = .finishing }
+        else if isRecording && voiceSession.phase == .recoverableFailure { voiceSession.phase = .listening }
+        else if activeCapture?.isPaused == true {
+            voiceSession.phase = .paused
+            voiceSession.sources = voiceSession.sources.map { var source = $0; source.health = .paused; source.level = 0; return source }
+        }
+        else if let message = activeCapture?.recoveryMessage {
+            voiceSession.phase = .reconnecting; voiceSession.message = message
+        }
+    }
+
     private func finishCapture(process: Bool, reason: String? = nil) async {
         guard let capture = activeCapture, let session = activeSession, let manifest = activeManifest else { return }
         watcher?.cancel(); watcher = nil
+        autoFinishSeconds = nil
         capture.requestStop()
         let token = UUID(); generation = token
         notice = "Saving the original audio…"
         phase(processing: true)
+        voiceSession.phase = .finishing
         let task = Task { [weak self] in
             guard let self else { return }
             let report = await capture.finish()
+            var checkpoint = process ? await self.liveVoice?.finish() : await self.liveVoice?.cancel()
+            if let checkpoint { self.voiceSession.segments = LiveVoiceTurns.group(checkpoint.orderedSegments) }
+            self.liveVoice = nil
+            await self.liveEngine?.endLiveSession(manifest.id)
             do {
+                if !report.liveAudioComplete, checkpoint != nil {
+                    checkpoint!.complete = false
+                    try LiveVoiceJournal.save(checkpoint!, to: session.appendingPathComponent("live-transcript.json"))
+                }
                 try await self.persistStopped(report, session: session, previous: manifest, reason: reason ?? report.failure)
                 self.activeCapture = nil; self.activeSession = nil; self.activeManifest = nil
                 self.elapsed = report.seconds
@@ -281,6 +382,7 @@ final class MeetingModel: ObservableObject {
             self.activeCapture = nil; self.activeSession = nil; self.activeManifest = nil
             await self.refreshRecovery()
             self.operation = nil; self.phase()
+            self.voiceSession.phase = self.completedTranscriptID == manifest.id ? .completed : .recoverableFailure
         }
         operation = task
         await task.value
@@ -292,6 +394,7 @@ final class MeetingModel: ObservableObject {
         next.state = .stopped; next.tracks = report.tracks; next.seconds = report.seconds
         next.failure = reason
         if let reason, !reason.isEmpty { next.gaps.append(reason) }
+        next.gaps += report.gaps
         // Cancellation never cancels the small atomic finalisation write.
         try await Task.detached(priority: .utility) { try MeetingStore.save(next, at: session, replacing: previous) }.value
     }
@@ -304,6 +407,7 @@ final class MeetingModel: ObservableObject {
         startupNoticeTask?.cancel(); startupNoticeTask = nil
         activeCapture?.requestStop()
         let current = operation
+        liveVoice?.requestCancel()
         current?.cancel()
         if isStarting, activeCapture == nil {
             // The pending microphone prompt owns no audio or session resources.
@@ -325,7 +429,7 @@ final class MeetingModel: ObservableObject {
         guard !isBusy, !shuttingDown else { return }
         if let issue = mayStart?() { error = issue; return }
         let token = UUID(); generation = token
-        error = nil; pendingTranscriptNotes = []; completedTranscriptID = nil; keptWithoutSpeech = nil; receipt = nil
+        error = nil; pendingTranscriptNotes = []; completedTranscriptID = nil; completedTranscriptText = nil; keptWithoutSpeech = nil; receipt = nil
         notice = "Opening the saved recording…"; phase(processing: true)
         let task = Task { [weak self] in
             guard let self else { return }
@@ -361,6 +465,7 @@ final class MeetingModel: ObservableObject {
             guard let save = self.saveTranscript else { throw MeetingError.message("History is not ready to save this recording. Its original audio was kept.") }
             self.pendingTranscriptNotes = notes
             try save(transcript, purpose)
+            self.completedTranscriptText = transcript.text
         }, isCurrent: { [weak self] in self?.generation == token })
         let result = try await processor.run()
         pendingTranscriptNotes = result.notes
@@ -378,9 +483,19 @@ final class MeetingModel: ObservableObject {
                 do { try await Task.sleep(nanoseconds: 500_000_000) } catch { return }
                 guard let self, self.generation == token, self.isRecording else { return }
                 self.elapsed = capture.elapsedSeconds
+                self.voiceSession.elapsed = self.elapsed
+                if capture.isPaused { self.voiceSession.phase = .paused }
+                else if let message = capture.recoveryMessage {
+                    self.voiceSession.phase = .reconnecting; self.voiceSession.message = message
+                } else if self.voiceSession.phase == .reconnecting { self.voiceSession.phase = .listening; self.voiceSession.message = nil }
                 var reason = capture.stopReason
                 if self.elapsed >= MeetingSegmentPlan.maximumMeetingSeconds { reason = "The two-hour recording limit was reached." }
                 ticks += 1
+                if ticks % 4 == 0, let app = self.recordingApp {
+                    self.autoFinishSeconds = self.autoFinish.observe(self.detector.activity(for: app),
+                        now: ProcessInfo.processInfo.systemUptime,
+                        suspended: !self.automaticallyFinishCalls || capture.isPaused || capture.recoveryMessage != nil)
+                }
                 if ticks % 10 == 0 {
                     let root = self.directory
                     let bytes = try? await MeetingFileWork.run { MeetingDiskBudget.availableBytes(at: root) }
@@ -388,6 +503,9 @@ final class MeetingModel: ObservableObject {
                     if let bytes, bytes < MeetingDiskBudget.stopFloorBytes { reason = "Recording stopped because disk space is running low." }
                 }
                 if let reason { await self.finishCapture(process: false, reason: reason); return }
+                if self.autoFinishSeconds == 0 {
+                    await self.finishCapture(process: true); return
+                }
             }
         }
     }
@@ -439,8 +557,21 @@ final class MeetingModel: ObservableObject {
 
     /// Chooses the offered source for review. A call on this Mac is saved as a Call.
     func useOffer(_ app: MeetingAudioApp) {
+        guard !isBusy else { return }
         selectedAppID = app.id
         if MeetingDetector.isCallService(app) { purpose = "call" }
+    }
+
+    /// The button acts on the offer it displayed. Never substitutes a new process/app.
+    func startOffered(_ app: MeetingAudioApp) async {
+        guard !isBusy, !shuttingDown else { return }
+        guard offer == app else { error = "That call offer has changed. Choose the current audio source to start."; return }
+        refreshApps()
+        guard apps.contains(where: { $0.id == app.id && $0.bundleID == app.bundleID }) else {
+            offer = nil; error = "That audio source is no longer available. Choose its current source to start."; return
+        }
+        useOffer(app)
+        await start(expectedApp: app)
     }
     /// Moves one kept recording's folder to the Trash, where Finder can put it back. Only a
     /// session this store lists, and never one being recorded or transcribed.

@@ -42,7 +42,7 @@ enum MeetingRecovery {
             }
             let timingURL = try MeetingStore.safeURL(session: session, relative: "\(MeetingStore.tracksDirectory)/\(source.rawValue).json")
             let timingSize = try timingURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
-            guard timingSize.isRegularFile == true, (timingSize.fileSize ?? Int.max) <= 1_024 else {
+            guard timingSize.isRegularFile == true, (timingSize.fileSize ?? Int.max) <= 128 * 1_024 else {
                 throw MeetingError.message("The source timing record could not be read safely.")
             }
             let timingData = try Data(contentsOf: timingURL)
@@ -51,6 +51,20 @@ enum MeetingRecovery {
                   timing.startSeconds + seconds <= MeetingSegmentPlan.maximumMeetingSeconds + 60,
                   timing.sampleRate == rate else {
                 throw MeetingError.message("The original track's timing record is invalid. Its folder was left unchanged.")
+            }
+            let gaps = timing.gaps ?? []
+            guard gaps.count <= 256, gaps.allSatisfy({ gap in
+                gap.startSeconds.isFinite && gap.seconds.isFinite && gap.startSeconds >= timing.startSeconds
+                    && gap.seconds > 0 && gap.startSeconds + gap.seconds <= MeetingSegmentPlan.maximumMeetingSeconds + 60
+                    && gap.reason.utf8.count <= 1_024
+            }) else {
+                throw MeetingError.message("The original track's interruption record is invalid. Its folder was left unchanged.")
+            }
+            for gap in gaps {
+                let end = min(timing.startSeconds + seconds, gap.startSeconds + gap.seconds)
+                guard end > gap.startSeconds else { continue }
+                let note = "\(source.rawValue): \(gap.reason) Gap at \(String(format: "%.2f", gap.startSeconds))s for \(String(format: "%.2f", end - gap.startSeconds))s; the saved timeline includes silence."
+                if !result.gaps.contains(note) { result.gaps.append(note) }
             }
             let previous = manifest.tracks.first { $0.source == source }
             tracks.append(MeetingTrack(source: source, file: relative, startSeconds: timing.startSeconds,
@@ -107,6 +121,32 @@ struct MeetingProcessor {
         }
         guard manifest.seconds > 0, !manifest.tracks.isEmpty else {
             throw MeetingError.message("No readable audio was recorded. Nothing was added to History; the session folder was kept.")
+        }
+        // Completed live checkpoints avoid replaying a whole meeting at Stop. An incomplete,
+        // stale or damaged checkpoint can never replace recognition of the saved originals.
+        let liveURL = try MeetingStore.safeURL(session: session, relative: "live-transcript.json")
+        if let live = try? LiveVoiceJournal.load(from: liveURL, sessionID: manifest.id), live.complete,
+           manifest.tracks.allSatisfy({ track in
+               let source: LiveVoiceSource = track.source == .local ? .microphone : .app
+               return abs((live.completedThrough[source.rawValue] ?? -1) - (track.startSeconds + track.seconds)) < 0.25
+           }) {
+            let text = live.text
+            if text.isEmpty {
+                var next = manifest; next.state = .recognized; next.formatVersion = 2; next.liveText = ""
+                next.failure = "No speech was recognised. Original audio was kept in the Meetings folder."
+                try await persist(next, replacing: manifest)
+                return Outcome(manifest: next, committed: false, notes: notes(next))
+            }
+            let hasBoth = manifest.includesMicrophone && manifest.includesRemote
+            let conversation = live.conversation
+            let transcript = Transcript(id: manifest.id, date: manifest.createdAt,
+                text: hasBoth && !conversation.isEmpty ? conversation : text, seconds: manifest.seconds,
+                rawText: text, cleanupMethod: hasBoth ? Self.speakersMethod : nil)
+            try check()
+            try await commit(transcript, manifest.purpose, notes(manifest))
+            var next = manifest; next.state = .committed; next.failure = nil; next.formatVersion = 2; next.liveText = text
+            try await persist(next, replacing: manifest, allowCancelled: true)
+            return Outcome(manifest: next, committed: true, notes: notes(next))
         }
         if manifest.segments.isEmpty {
             let tracks = manifest.tracks
@@ -195,8 +235,8 @@ struct MeetingProcessor {
             var utterances: [MeetingConversation.Utterance] = []
             for file in files {
                 try check()
-                // One unrecognisable clip should not cost the whole conversation.
-                guard let text = try? await transcribe(file.url) else { continue }
+                // A partial speaker pass must never silently replace the complete mixed text.
+                let text = try await transcribe(file.url)
                 utterances.append(.init(speaker: file.speaker, start: file.start, end: file.end, text: text))
             }
             let conversation = MeetingConversation.conversation(utterances)

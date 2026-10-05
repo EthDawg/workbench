@@ -1,6 +1,6 @@
 # Security and privacy reports
 
-Please [report a vulnerability privately](https://github.com/EthDawg/workbench/security/advisories/new) using GitHub's **Security → Report a vulnerability** flow. Do not open a public issue for a vulnerability or include personal audio, transcripts, clipboard contents, credentials, or saved boards.
+Please [report a vulnerability privately](https://github.com/Ship-Work/workbench/security/advisories/new) using GitHub's **Security → Report a vulnerability** flow. Do not open a public issue for a vulnerability or include personal audio, transcripts, clipboard contents, credentials, or saved boards.
 
 Include the affected commit/version, macOS version, steps using synthetic data, expected versus actual behavior, and likely impact. A small reproduction is ideal. If the private-report form is unavailable, use a public issue only to request a private reporting route, without disclosing the vulnerability.
 

@@ -239,7 +239,7 @@ public struct ToolbarNextAction: Equatable, Sendable {
         switch operation {
         case .stopInserting: return "Stop inserting"
         case .cancelDictationRequest: return "Cancel request"
-        case .stopDictation: return "Stop"
+        case .stopDictation: return "Finish dictation"
         case .finishNarration: return "Stop narration"
         case .finishDrawing: return "Stop drawing"
         case .cancelReading: return "Cancel"
@@ -254,7 +254,7 @@ public struct ToolbarNextAction: Equatable, Sendable {
         case .showPersonaCamera: return "Show camera again"
         case .retryPersonaCamera: return "Try again"
         case .captureNext: return "Capture next · \(live.captureCount ?? 0)"
-        case .stopMeetingTranscription: return "Stop & transcribe"
+        case .stopMeetingTranscription: return "Finish meeting"
         case .endPresentation: return "End presentation"
         case .wait: return live.dictation == .cancelling ? "Cancelling…" : live.dictation == .processing || live.dictation == .waitingForDrawing ? "Processing…" : "Capturing…"
         case .start(let mode):

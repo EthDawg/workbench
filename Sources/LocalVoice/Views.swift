@@ -147,6 +147,9 @@ struct ContentView: View {
                         captureControls
                         dictateEngine
                         Divider()
+                        if showsLiveDictation {
+                            LiveVoiceTranscriptView(snapshot: model.voiceSession)
+                        } else {
                         HStack {
                             WorkbenchSectionTitle("Transcript")
                             Spacer()
@@ -162,6 +165,7 @@ struct ContentView: View {
                         }
                         if let dictateResult { workspaceResult(dictateResult) { self.dictateResult = nil } }
                         else { DictateDeliveryReceipt(receipts: model.clipboardReceipt) }
+                        }
                     }
                     .padding(20)
                     .frame(maxWidth: .infinity, minHeight: max(360, proxy.size.height - (hasRecoverySection ? 102 : 48)), alignment: .topLeading)
@@ -173,6 +177,10 @@ struct ContentView: View {
             .onAppear { showRequestedSettings() }
             .onChange(of: model.focusRequest) { _, _ in showRequestedSettings() }
         }
+    }
+
+    private var showsLiveDictation: Bool {
+        model.voiceSession.sessionID != nil && model.phase != .idle && model.phase != .cancelling
     }
 
     private var dictateHeader: some View {
@@ -198,13 +206,19 @@ struct ContentView: View {
             }
             .buttonStyle(.plain)
             .disabled(!model.ready || ![.idle, .requesting, .recording].contains(model.phase) || model.rendering)
-            .accessibilityLabel(model.phase == .requesting ? "Cancel microphone request" : model.phase == .recording ? "Stop recording" : "Start recording")
+            .accessibilityLabel(model.phase == .requesting ? "Cancel microphone request" : model.phase == .recording ? "Finish dictation" : "Start recording")
             VStack(alignment: .leading, spacing: 5) {
                 Text(captureTitle).font(Workbench.sectionTitle)
                 if model.phase == .recording {
                     HStack(spacing: 10) {
-                        WaveBars(level: model.level).frame(width: 100, height: 20)
+                        WaveBars(level: model.voiceSession.phase == .paused || model.voiceSession.phase == .reconnecting ? 0 : model.level).frame(width: 70, height: 20)
                         Text(time(model.elapsed)).monospacedDigit()
+                        if model.voiceSession.phase == .paused {
+                            Button("Resume") { Task { await model.resume() } }.buttonStyle(.link)
+                        } else {
+                            Button("Pause") { Task { await model.pause() } }.buttonStyle(.link)
+                                .disabled(model.voiceSession.phase == .reconnecting)
+                        }
                         Button("Cancel") { model.cancelRecording() }.buttonStyle(.link).help("Stop and discard this recording")
                     }.font(.caption)
                 } else if model.phase == .requesting {
@@ -250,7 +264,7 @@ struct ContentView: View {
         switch model.phase {
         case .idle: return model.ready ? "Ready to dictate" : "Dictation unavailable"
         case .requesting: return "Waiting for microphone access"
-        case .recording: return "Recording"
+        case .recording: return model.voiceSession.recordingTitle
         case .transcribing: return "Transcribing…"
         case .cleaning: return "Cleaning text…"
         case .delivering: return "Delivering text…"

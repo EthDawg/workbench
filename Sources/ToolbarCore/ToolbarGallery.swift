@@ -153,7 +153,16 @@ public enum ToolbarGallery {
         live(ToolbarLiveState(mode: .read, reading: .playing), name: "reading-playing"),
         live(ToolbarLiveState(mode: .read, reading: .playing), name: "reading-playing-resting", tier: .resting),
         live(ToolbarLiveState(mode: .read, reading: .paused), name: "reading-paused")
-    ]
+    ] + [ToolbarActivity.Capture.dictation, .meeting].flatMap { capture in
+        [ToolbarActivity.CaptureTransport.paused, .reconnecting].flatMap { transport in
+            ToolbarTier.allCases.map { tier in
+                live(ToolbarLiveState(mode: .dictate, dictation: capture == .dictation ? .recording : .idle,
+                                     meetingRecording: capture == .meeting),
+                     name: "voice-\(capture.rawValue)-\(transport.rawValue)-\(tier.rawValue)", tier: tier,
+                     activity: ToolbarActivity(capture: capture, level: 0.6, captureTransport: transport))
+            }
+        }
+    }
 
     /// A result waiting for the person, revealed from the keyboard (#211 F1): the launcher row, not
     /// the result's own view, with the result's status as a badge on the launcher.

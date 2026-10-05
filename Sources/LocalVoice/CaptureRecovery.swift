@@ -111,8 +111,12 @@ final class CaptureRecoveryStore {
     /// Release the single recording slot without deleting failed audio. Moving
     /// the whole journal on the same volume preserves even unknown sibling files.
     /// Recognized, unsaved text must still go through the save-only retry.
-    @discardableResult func keepAudioForLater() throws -> URL {
-        guard canKeepAudioForLater, let pending else { throw CaptureRecoveryError.pending }
+    /// `committedCapture` is supplied only after this exact capture was durably added
+    /// to History and live field delivery needs review. Its audio remains recoverable.
+    @discardableResult func keepAudioForLater(committedCapture: UUID? = nil) throws -> URL {
+        guard let pending, canKeepAudioForLater || (committedCapture == pending.id && pending.capture?.id == pending.id) else {
+            throw CaptureRecoveryError.pending
+        }
         try checkDirectory()
         guard try readMetadata() == expectedData else { throw CaptureRecoveryError.changed }
         // A crash may leave the marker before the recorder creates its WAV.
@@ -138,6 +142,8 @@ final class CaptureRecoveryStore {
         let audio = try audioURL(for: pending, requireExists: false)
         // Remove the marker last: an interrupted cleanup remains discoverable.
         if let audio, FileManager.default.fileExists(atPath: audio.path) { try FileManager.default.removeItem(at: audio) }
+        let live = directory.appendingPathComponent("live-\(id.uuidString)", isDirectory: true)
+        if FileManager.default.fileExists(atPath: live.path) { try FileManager.default.removeItem(at: live) }
         if expectedData != nil { try FileManager.default.removeItem(at: metadataURL) }
         self.pending = nil; expectedData = nil; problem = nil
     }

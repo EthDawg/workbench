@@ -16,7 +16,7 @@ import xml.etree.ElementTree as ET
 import prepare_update
 
 ROOT = Path(__file__).resolve().parents[2]
-REPO = 'EthDawg/workbench'
+REPO = 'Ship-Work/workbench'
 
 
 def gh(*args):
@@ -64,8 +64,12 @@ def publish(directory, notes):
         raise RuntimeError('Prepared archive changed')
     feed = directory/(receipt['channel']+'.xml')
     config=json.loads((ROOT/'scripts/release/updates.json').read_text())
-    expected_url = f'https://github.com/{REPO}/releases/download/{tag}/{filename}'
-    if receipt['download_url'] != expected_url or receipt['feed_url'] != config['feed_base'] + '/' + feed.name:
+    # A prepared, signed feed may predate the repository transfer. Preserve its
+    # exact URL while all GitHub writes target the current repository.
+    expected_url = receipt['download_url']
+    allowed_urls = {f'https://github.com/{repo}/releases/download/{tag}/{filename}'
+                    for repo in (REPO, 'EthDawg/workbench')}
+    if expected_url not in allowed_urls or receipt['feed_url'] != config['feed_base'] + '/' + feed.name:
         raise RuntimeError('Prepared download or feed URL differs from the release identity')
     if (directory/'SHA256SUMS.txt').read_text() != f"{receipt['sha256']}  {filename}\n":
         raise RuntimeError('Prepared checksum record differs from the archive')

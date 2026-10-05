@@ -224,10 +224,12 @@ scheduled model wakeups for routine release waiting. A background script may pol
 at five-minute intervals without model involvement; stop on failure or changed
 source and retain a concise result for the next check-in.
 
-CI omits the native build only for pull requests whose complete diff contains
-production feed records, `docs/distribution.md` and/or Markdown release notes.
-The Site check still validates those records and builds the public website. The
-required Build and test check fails if classification fails or required native
-checks fail. All other changes, main pushes and manual runs retain full native CI.
-This avoids rebuilding the app for the metadata promotion after packaging; it
-does not waive signing, notarization, archive readback or installed acceptance.
+CI can omit native jobs for known documentation/site-only changes on pull
+requests, complete merge groups and pushes to main. Site always validates the
+surface registry, contracts and release records and builds the website. The
+required Build and test gate also requires Site and every selected native job
+to pass. Source, resources, scripts, workflows, unknown paths, missing history
+and manual runs retain full native CI. See the exact
+[selection and merge queue policy](../../docs/updating.md#ci-and-the-merge-queue).
+This avoids rebuilding the app for metadata promotion after packaging; it does
+not waive signing, notarization, archive readback or installed acceptance.

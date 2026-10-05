@@ -7,7 +7,7 @@ import XCTest
 final class ToolbarNextActionTests: XCTestCase {
     func testGlyphFollowsTheCommandWhenAnotherToolOwnsTheInput() {
         let recording = ToolbarNextAction.resolve(ToolbarLiveState(mode: .present, dictation: .recording))
-        XCTAssertEqual(recording.title, "Stop")
+        XCTAssertEqual(recording.title, "Finish dictation")
         XCTAssertEqual(recording.symbol, "stop.fill")
         let playing = ToolbarNextAction.resolve(ToolbarLiveState(mode: .dictate, reading: .playing))
         XCTAssertEqual(playing.symbol, "pause.fill")
@@ -239,7 +239,7 @@ final class ToolbarNextActionTests: XCTestCase {
             XCTAssertLessThanOrEqual(title.count, ToolbarNextAction.titleBudget, title)
             XCTAssertFalse(title.isEmpty)
         }
-        XCTAssertTrue(seen.contains("Stop"))
+        XCTAssertTrue(seen.contains("Finish dictation"))
         XCTAssertTrue(seen.contains("End presentation"))
         XCTAssertTrue(seen.contains("Capture next · 3"))
         XCTAssertTrue(seen.contains("Record again"))
@@ -252,7 +252,7 @@ final class ToolbarNextActionTests: XCTestCase {
                                           insertingPrompt: true, meetingRecording: true)
         XCTAssertEqual(ToolbarNextAction.resolve(everything).title, "Stop inserting")
         var next = everything; next.insertingPrompt = false
-        XCTAssertEqual(ToolbarNextAction.resolve(next).title, "Stop")
+        XCTAssertEqual(ToolbarNextAction.resolve(next).title, "Finish dictation")
         next.dictation = .idle
         XCTAssertEqual(ToolbarNextAction.resolve(next).title, "Stop narration")
         next.narrating = false
@@ -260,7 +260,7 @@ final class ToolbarNextActionTests: XCTestCase {
         next.drawing = false
         XCTAssertEqual(ToolbarNextAction.resolve(next).title, "Pause reading")
         next.reading = .idle
-        XCTAssertEqual(ToolbarNextAction.resolve(next).title, "Stop & transcribe", "Dictate owns the meeting")
+        XCTAssertEqual(ToolbarNextAction.resolve(next).title, "Finish meeting", "Dictate owns the meeting")
         next.meetingRecording = false
         XCTAssertEqual(ToolbarNextAction.resolve(next).title, "Dictate", "presenting and personas belong to other modes")
         next.mode = .present

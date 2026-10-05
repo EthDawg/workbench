@@ -656,3 +656,7 @@ The [earlier toolbar verification](verification/2026-09-23-durable-toolbar.md)
 remains historical evidence for its own source revision.
 
 Settings can change **Keep open** while the toolbar is hidden or suspended. The same preference is saved without revealing the toolbar or interrupting active work; the next normal return to the tools surface uses that choice.
+
+### Shared voice session transport
+
+Dictate and Meetings use Finish dictation / Finish meeting as their primary action. Their chooser offers Pause or Resume for the same capture identity. Paused and reconnecting states have truthful accessible text and a quiet meter; no transcript bubble or extra window is added. During a meeting auto-finish grace period the chooser shows the remaining seconds and Keep recording, while the compact status announces the grace period once. The [live voice contract](live-voice.md) owns automatic completion and in-field text behavior.

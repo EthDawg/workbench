@@ -2700,7 +2700,7 @@ enum SurfaceGallery {
             let stop = host.window?.contentView.map(buttons)?.first { $0.accessibilityIdentifier() == "toolbar.primary" }
             expect("Copying during an active meeting keeps Stop reachable", [
                 model.meetings.isRecording ? nil : "the meeting ended",
-                stop?.accessibilityLabel() == "Stop & transcribe" && stop?.isEnabled == true ? nil : "Stop & transcribe is not reachable"])
+                stop?.accessibilityLabel() == "Finish meeting" && stop?.isEnabled == true ? nil : "Stop & transcribe is not reachable"])
             collapse(); model.clipboardReceipt.clear()
             try drive(model.meetings, start: false); settle(.resting)
             receipt(); settle(.resting)
@@ -2711,7 +2711,7 @@ enum SurfaceGallery {
             reveal(); settle(.revealed)
             let nextStop = host.window?.contentView.map(buttons)?.first { $0.accessibilityIdentifier() == "toolbar.primary" }
             expect("Stop is reachable when a meeting supersedes a copied cue", [
-                nextStop?.accessibilityLabel() == "Stop & transcribe" && nextStop?.isEnabled == true ? nil : "the row did not return"])
+                nextStop?.accessibilityLabel() == "Finish meeting" && nextStop?.isEnabled == true ? nil : "the row did not return"])
             collapse(); model.clipboardReceipt.clear()
             try drive(model.meetings, start: false); settle(.resting)
         } catch { expect("Copy during an active meeting", [error.localizedDescription]) }

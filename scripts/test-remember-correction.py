@@ -62,6 +62,8 @@ enum TextDelivery {
     enum Phase: String { case idle, requesting, recording, transcribing, cleaning, delivering, cancelling }
     var loaded = false
     var destination: TextDelivery.Target?
+    // Corrections have no live dictation owner. Match the exact phase observer.
+    var liveDictation: TextDelivery.Observation?
     var draftRevision: UInt64 = 0
     var undelivered = UnresolvedDeliverySlot()
     var persistWork: DispatchWorkItem?

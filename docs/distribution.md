@@ -4,7 +4,7 @@ Workbench is a free, MIT-licensed native Mac app. Developer ID signing and Apple
 
 ## Production, Preview and earlier releases
 
-The [production release record](../site/updates/production.json) identifies the public package, its source revision, ZIP digest and signed update feed. [Workbench 2.4.0](https://github.com/EthDawg/workbench/releases/tag/v2.4.0) is published as build `20261001032329` from `d6b36af7122520c6a47bec157d1d55cc934f6e26`. The [2.4.0 release record](releases/2026-10-01-workbench-2.4.0.md) lists its verified packaging and regression results and remaining native-test limits.
+The [production release record](../site/updates/production.json) identifies the public package, its source revision, ZIP digest and signed update feed. [Workbench 2.4.0](https://github.com/Ship-Work/workbench/releases/tag/v2.4.0) is published as build `20261001032329` from `d6b36af7122520c6a47bec157d1d55cc934f6e26`. The [2.4.0 release record](releases/2026-10-01-workbench-2.4.0.md) lists its verified packaging and regression results and remaining native-test limits.
 
 Earlier Voice, StageMark and Workbench Preview releases retain their own package-specific evidence. The historical [Preview 2.0 record](preview-2.0.md) is not the current production or candidate acceptance record.
 
@@ -33,6 +33,10 @@ The notarization workflow must verify one clean source commit, channel identity,
 A signed, notarized Preview may be a GitHub **prerelease** for independent testing after packaging and local regressions pass, with remaining fresh-Mac and live-workflow checks stated in its notes. Production promotion requires those acceptance checks to be completed. [Native acceptance and publication](../scripts/release/README.md#native-acceptance-and-publication) is the single policy for both channels. A successful build or synthetic speech round-trip alone does not prove first-run usability, automatic paste, device video or an audience's screen share.
 
 For website changes, run `node --test site/tests/*.test.mjs` and `node site/build.mjs`. Check installation wording, version/ref agreement and local assets. Browser interaction and mobile layout need separate evidence when exercised. Preserve the existing Vercel project and `site` root; deploy the unified site only after the matching public download is verified. Never submit synthetic QA feedback as real issues.
+
+## Adoption evidence
+
+The only adoption evidence is public: GitHub's per-release download counts and the repository traffic page. [Adoption evidence](adoption.md) explains what each count means and records the baseline from 5 October 2026. `python3 scripts/release/adoption.py` prints the current counts.
 
 ## App Store scope
 

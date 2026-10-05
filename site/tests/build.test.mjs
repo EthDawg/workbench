@@ -15,10 +15,11 @@ async function fixture(t) {
     await cp(new URL(`../${name}`, import.meta.url), join(directory, name), { recursive: true });
   }
   await mkdir(join(directory, 'assets'));
+  await cp(new URL('../assets/share', import.meta.url), join(directory, 'assets/share'), { recursive: true });
   await mkdir(join(directory, 'updates'));
   await writeFile(join(directory, 'updates/preview.json'), JSON.stringify({
     version: '2.0.0', build: '4', tag: 'v2.0.0-preview.4', source: 'a'.repeat(40), sha256: 'b'.repeat(64),
-    download_url: 'https://github.com/EthDawg/workbench/releases/download/v2.0.0-preview.4/Workbench.Preview.zip'
+    download_url: 'https://github.com/Ship-Work/workbench/releases/download/v2.0.0-preview.4/Workbench.Preview.zip'
   }));
   await writeFile(join(directory, '.env.local'), 'SYNTHETIC_PRIVATE_FIXTURE=not-for-public-output');
   await writeFile(join(directory, 'updates/maintainer-notes.txt'), 'Synthetic non-public notes');
@@ -31,7 +32,7 @@ async function stageSyntheticProduction(directory, { feed = true } = {}) {
   const xml = '<!-- Synthetic test fixture; no signing or publication claim. -->';
   const receipt = {
     channel: 'production', version: '2.1.0', build: '10', tag: 'v2.1.0', source: 'a'.repeat(40), sha256: 'b'.repeat(64),
-    download_url: 'https://github.com/EthDawg/workbench/releases/download/v2.1.0/Workbench.zip',
+    download_url: 'https://github.com/Ship-Work/workbench/releases/download/v2.1.0/Workbench.zip',
     feed_url: 'https://workbench-mac.vercel.app/updates/production.xml',
     feed_sha256: createHash('sha256').update(xml).digest('hex')
   };
@@ -111,4 +112,31 @@ test('malformed, missing or changed production feed stops promotion before repla
   await writeFile(join(directory, 'updates/production.xml'), 'different synthetic bytes');
   assert.match(build(directory).stderr, /feed differs from the verified publication record/);
   assert.equal(await readFile(join(directory, 'public/index.html'), 'utf8'), existing);
+});
+
+test('every page carries a share card and canonical address, and robots points at the sitemap', async t => {
+  const directory = await fixture(t);
+  await stageSyntheticProduction(directory);
+  const result = build(directory, '--require-production');
+  assert.equal(result.status, 0, result.stderr);
+  const origin = 'https://workbench-mac.vercel.app';
+  const pages = { 'index.html': '/', 'guide/index.html': '/guide/', 'packs/index.html': '/packs/', 'contribute/index.html': '/contribute/', 'privacy.html': '/privacy.html', 'handbook/index.html': '/handbook/' };
+  for (const [name, path] of Object.entries(pages)) {
+    const html = await readFile(join(directory, 'public', name), 'utf8');
+    assert.ok(html.includes(`<link rel="canonical" href="${origin}${path}">`), name);
+    assert.ok(html.includes(`<meta property="og:url" content="${origin}${path}">`), name);
+    assert.match(html, /<meta property="og:title" content="[^"]+">/, name);
+    assert.match(html, /<meta name="twitter:card" content="summary_large_image">/, name);
+    const image = /<meta property="og:image" content="([^"]+)">/.exec(html)?.[1];
+    assert.ok(image?.startsWith(`${origin}/assets/share/`), name);
+    await access(join(directory, 'public', image.slice(origin.length + 1)));
+    assert.equal((html.match(/property="og:image"/g) ?? []).length, 1, name);
+    assert.ok(!html.includes('{{'), name);
+  }
+  const robots = await readFile(join(directory, 'public/robots.txt'), 'utf8');
+  assert.ok(robots.includes(`Sitemap: ${origin}/sitemap.xml`));
+  assert.ok(robots.includes('Disallow: /updates/'));
+  const sitemap = await readFile(join(directory, 'public/sitemap.xml'), 'utf8');
+  for (const path of Object.values(pages)) assert.ok(sitemap.includes(`<loc>${origin}${path}</loc>`), path);
+  assert.equal((sitemap.match(/<url>/g) ?? []).length, Object.keys(pages).length);
 });

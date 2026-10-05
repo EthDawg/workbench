@@ -1,8 +1,8 @@
 blank_issues_enabled: true
 contact_links:
   - name: Workbench questions and larger ideas
-    url: https://github.com/EthDawg/workbench/discussions
+    url: https://github.com/Ship-Work/workbench/discussions
     about: Ask for help or discuss ideas across Voice and StageMark.
   - name: Private security report
-    url: https://github.com/EthDawg/workbench/security/advisories/new
+    url: https://github.com/Ship-Work/workbench/security/advisories/new
     about: Report vulnerabilities without sharing them publicly.

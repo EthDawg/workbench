@@ -1,8 +1,8 @@
 # Working on Workbench
 
-The active project is `EthDawg/workbench`, with contributions branching from and returning to `main`. Voice and StageKit are modules here; the old StageMark repository is an archive. Use this repository's issues and PRs for all new work. Preserve historical names in module identifiers and data-migration paths.
+The active project is `Ship-Work/workbench`, with contributions branching from and returning to `main`. Voice and StageKit are modules here; the old StageMark repository is an archive. Use this repository's issues and PRs for all new work. Preserve historical names in module identifiers and data-migration paths.
 
-**Current scope is Mac desktop quality. iOS, iPadOS and the Chrome extension are paused until explicitly resumed after the [Mac release gate](https://github.com/EthDawg/workbench/issues/7).** Retain their source and history; do not treat older proposals as active requirements. The public product is Workbench; Workbench Preview is the internal development edition.
+**Current scope is Mac desktop quality. iOS, iPadOS and the Chrome extension are paused until explicitly resumed after the [Mac release gate](https://github.com/Ship-Work/workbench/issues/7).** Retain their source and history; do not treat older proposals as active requirements. The public product is Workbench; Workbench Preview is the internal development edition.
 
 Before adding or renaming anything a person can click, read the [Grammar](docs/workbench.md#grammar); CI's surface check compares every entry point with [the surface registry](docs/surfaces.json).
 

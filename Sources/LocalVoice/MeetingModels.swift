@@ -166,8 +166,9 @@ enum MeetingState: String, Codable, Sendable {
 }
 
 struct MeetingManifest: Codable, Equatable, Sendable {
-    static let currentFormat = 1
-    var formatVersion = currentFormat
+    static let currentFormat = 2
+    // Ordinary recordings retain format 1. Only a finalized live transcript needs format 2.
+    var formatVersion = 1
     /// Also the saved transcript's identifier, so a retry can never duplicate it.
     var id: UUID
     var createdAt: Date
@@ -184,14 +185,16 @@ struct MeetingManifest: Codable, Equatable, Sendable {
     /// Plain sentences about missing, quiet or interrupted audio.
     var gaps: [String] = []
     var failure: String?
+    var liveText: String? = nil
 
     var orderedSegments: [MeetingSegment] { segments.sorted { $0.index < $1.index } }
     var recognizedText: String {
-        orderedSegments.compactMap { $0.text?.trimmingCharacters(in: .whitespacesAndNewlines) }
+        if let liveText { return liveText }
+        return orderedSegments.compactMap { $0.text?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }.joined(separator: " ")
     }
     var isFullyRecognized: Bool {
-        !segments.isEmpty && segments.allSatisfy { $0.text != nil }
+        liveText != nil || (!segments.isEmpty && segments.allSatisfy { $0.text != nil })
     }
     /// Anything that still holds audio the person has not received text for. A recording that
     /// was recognised to the end without a word is finished, not unfinished: retrying it only
@@ -321,7 +324,7 @@ enum MeetingStore {
             throw MeetingError.message("The meeting record could not be read. Its folder and audio were left unchanged. \(error.localizedDescription)")
         }
         // A newer Workbench may have written this. Read nothing else from it.
-        guard manifest.formatVersion == MeetingManifest.currentFormat else {
+        guard (1...MeetingManifest.currentFormat).contains(manifest.formatVersion) else {
             throw MeetingError.futureFormat(manifest.formatVersion)
         }
         guard manifest.id.uuidString == session.lastPathComponent else {
@@ -335,7 +338,7 @@ enum MeetingStore {
     /// previous durable record intact rather than a truncated one.
     static func save(_ manifest: MeetingManifest, at session: URL, replacing previous: MeetingManifest? = nil) throws {
         try validate(manifest, at: session)
-        guard manifest.formatVersion == MeetingManifest.currentFormat else {
+        guard (1...MeetingManifest.currentFormat).contains(manifest.formatVersion) else {
             throw MeetingError.futureFormat(manifest.formatVersion)
         }
         let url = try safeURL(session: session, relative: manifestName)
@@ -347,6 +350,15 @@ enum MeetingStore {
             throw MeetingError.message("The meeting record was moved or removed. Its audio was left unchanged.")
         }
         let data = try encoded(manifest)
+        if let previous, previous.formatVersion == 1, manifest.formatVersion == 2 {
+            let backup = try safeURL(session: session, relative: "meeting-v1.json")
+            let original = try encoded(previous)
+            if FileManager.default.fileExists(atPath: backup.path) {
+                guard try Data(contentsOf: backup) == original else {
+                    throw MeetingError.message("The previous-format meeting backup changed. Original audio was kept.")
+                }
+            } else { try writePrivate(original, to: backup) }
+        }
         try writePrivate(data, to: url)
     }
 
@@ -362,6 +374,9 @@ enum MeetingStore {
     }
 
     private static func validate(_ manifest: MeetingManifest, at session: URL) throws {
+        guard manifest.liveText == nil || manifest.formatVersion == 2 else {
+            throw MeetingError.message("A live meeting transcript requires its matching record format.")
+        }
         guard manifest.id.uuidString == session.lastPathComponent,
               ["meeting", "call"].contains(manifest.purpose),
               manifest.seconds.isFinite, manifest.seconds >= 0,

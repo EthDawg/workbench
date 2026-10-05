@@ -2,8 +2,13 @@
 // record in a generated release.mjs, so its report and the HTML agree exactly.
 import preview from './updates/preview.json' with { type: 'json' };
 
-const releases = 'https://github.com/EthDawg/workbench/releases';
-const feeds = 'https://workbench-mac.vercel.app/updates';
+const releases = 'https://github.com/Ship-Work/workbench/releases';
+// Published receipts and signed feeds retain the URL used when they were issued.
+const legacyReleases = 'https://github.com/EthDawg/workbench/releases';
+// The site's public address. Every absolute link the pages carry (canonical, share
+// card, sitemap) comes from here, so a domain move is one edit plus the feed decision.
+export const siteOrigin = 'https://workbench-mac.vercel.app';
+const feeds = `${siteOrigin}/updates`;
 
 export function validateRelease(value, expectedChannel) {
   const match = /^v([0-9]+\.[0-9]+\.[0-9]+)(?:-preview\.([0-9]+)|\+([0-9]+(?:\.[0-9]+)*))?$/.exec(value?.tag);
@@ -14,7 +19,7 @@ export function validateRelease(value, expectedChannel) {
       (match?.[3] !== undefined && match[3] !== value.build) ||
       !/^[0-9]+(?:\.[0-9]+)*$/.test(value.build) ||
       !/^[0-9a-f]{40}$/.test(value.source) || !/^[0-9a-f]{64}$/.test(value.sha256) ||
-      value.download_url !== `${releases}/download/${value.tag}/${archive}` ||
+      ![releases, legacyReleases].some(base => value.download_url === `${base}/download/${value.tag}/${archive}`) ||
       (value.feed_url !== undefined && value.feed_url !== `${feeds}/${channel}.xml`) ||
       (value.feed_url !== undefined && !/^[0-9a-f]{64}$/.test(value.feed_sha256)) ||
       (channel === 'production' && (value.channel !== channel || !value.feed_url))) {
@@ -44,6 +49,7 @@ export function renderPublishedRelease(html, record = currentRelease) {
   const name = isPreview ? 'Workbench Preview' : 'Workbench';
   const version = isPreview ? `${value.version} Preview ${value.tag.split('.').at(-1)}` : value.version;
   const tokens = {
+    SITE_ORIGIN: siteOrigin,
     RELEASE_NAME: name,
     RELEASE_TAG: value.tag,
     RELEASE_VERSION: version,

@@ -134,7 +134,19 @@ struct FloatingToolbar: View {
     }
 
     /// What the owners say is going on, for the compact rest's indicator (#134).
-    var activity: ToolbarActivity { context.activity(snapAndTalkSequence: controls.snapAndTalkSequence) }
+    var activity: ToolbarActivity {
+        var activity = context.activity(snapAndTalkSequence: controls.snapAndTalkSequence)
+        let phase: LiveVoicePhase?
+        switch activity.capture {
+        case .dictation?: phase = model.voiceSession.phase
+        case .meeting?: phase = meetings.voiceSession.phase
+        default: phase = nil
+        }
+        if phase == .paused { activity.captureTransport = .paused }
+        else if phase == .reconnecting { activity.captureTransport = .reconnecting }
+        activity.meetingFinishesSoon = meetings.isRecording && meetings.autoFinishSeconds != nil
+        return activity
+    }
 
     var viewState: ToolbarViewState {
         let live = self.live
@@ -271,8 +283,14 @@ struct FloatingToolbar: View {
             }, perform: { _ in model.onShowEditor?("snap"); snapModel.reviewDraft() })
         }
         let personaIdentity = stage.personaSessionIdentity
+        let captureIdentity = model.toolbarCaptureIdentity
+        let meetingIdentity = meetings.recordingIdentity
         return controls.pressGate.press({ ToolbarNextAction.resolve(live) }, perform: { operation in
             guard operation.mode != .persona || stage.personaSessionIdentity == personaIdentity else { return }
+            // The operation can remain Stop while a session is replaced between redraws.
+            // The held click belongs only to the recording it actually showed.
+            if operation == .stopDictation, model.toolbarCaptureIdentity != captureIdentity { return }
+            if operation == .stopMeetingTranscription, meetings.recordingIdentity != meetingIdentity { return }
             perform(operation)
         })
     }

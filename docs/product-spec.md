@@ -1,6 +1,6 @@
 # Workbench: jobs, surfaces and interaction contract
 
-Specification updated: 30 September 2026. Maintained with the code. Source, synthetic checks, installed acceptance and publication are separate claims. The [desktop cohesion record](verification/2026-09-30-desktop-cohesion/README.md) records the current candidate; the public guide lives at /guide/. [Issue #134](https://github.com/EthDawg/workbench/issues/134) remains the desktop contract and review index.
+Specification updated: 30 September 2026. Maintained with the code. Source, synthetic checks, installed acceptance and publication are separate claims. The [desktop cohesion record](verification/2026-09-30-desktop-cohesion/README.md) records the current candidate; the public guide lives at /guide/. [Issue #134](https://github.com/Ship-Work/workbench/issues/134) remains the desktop contract and review index.
 
 ## Product outcome
 
@@ -146,7 +146,7 @@ For a thought without a Mac text field, explicitly choose Copy to clipboard befo
 
 ## Meeting and call states
 
-Detect Meetings & Calls is default-off and reversible. When enabled, supported Mac audio-activity metadata may produce a passive Review/Not now/Snooze offer. Detection itself has no capture or upload side effects, and app launch alone is insufficient evidence of a call. The same switch includes the exact Mac calling service only while both input and output persist through the confirmation streak; one direction alone, or combining an input-only process with a separate output-only process, cannot qualify. The title remains Possible call on this Mac, and Review selects that service with Call purpose. Other shared services remain manual, and supported app/browser offers take precedence. Review selects Mac app audio and optional current microphone; only Start records. A browser process may contain several audible tabs, so it is not a per-tab isolation promise.
+Detect Meetings & Calls is default-off and reversible. When enabled, supported Mac audio-activity metadata may produce a passive Start recording/Review/Not now/Snooze offer. Detection itself has no capture or upload side effects, and app launch alone is insufficient evidence of a call. The same switch includes the exact Mac calling service only while both input and output persist through the confirmation streak; one direction alone, or combining an input-only process with a separate output-only process, cannot qualify. The title remains Possible call on this Mac, and Review selects that service with Call purpose. Other shared services remain manual, and supported app/browser offers take precedence. Review selects Mac app audio and optional current microphone; Start recording uses the exact displayed offer in one click and refuses stale sources. Only that explicit Start records. A browser process may contain several audible tabs, so it is not a per-tab isolation promise.
 
 The source design supports up to two hours, local audio recovery, bounded recognition segments and retry through the selected speech engine. Permission denial, source disappearance, route changes, stop/cancel and shutdown must preserve recoverable work and identify unavailable channels. Meeting text is retained in existing history and defaults to reference material. Headphone capture and phone calls actually routed through the Mac require native evidence; phone-only/protected routes are not claimed. Detection must stay off and inert on a fresh install until explicitly enabled.
 
@@ -180,7 +180,7 @@ Public Workbench, internal Workbench Preview and a local source build are distin
 
 The subsequent [presenter increment](presenter-direction.md) adds Chrome profile/tab navigation to Library. It does not add a persistent notes HUD or change persona artwork, device capture or mobile input. The browser adapter and native picker share the same resource IDs and local app state. Its acceptance record distinguishes automated rules from real Chrome focus and installed release evidence.
 
-The current source includes contextual presentation controls, one persistent floating toolbar, independent Persona and Snap, shared selected history, optional bounded assistant tasks and explicit meeting recording. [Issue #112](https://github.com/EthDawg/workbench/issues/112) owns combined validation; earlier usability studies are historical evidence. Public downloads identify production Workbench. Preview is internal, and iOS/iPadOS/Chrome development remains paused.
+The current source includes contextual presentation controls, one persistent floating toolbar, independent Persona and Snap, shared selected history, optional bounded assistant tasks and explicit meeting recording. [Issue #112](https://github.com/Ship-Work/workbench/issues/112) owns combined validation; earlier usability studies are historical evidence. Public downloads identify production Workbench. Preview is internal, and iOS/iPadOS/Chrome development remains paused.
 
 ## Acceptance
 
@@ -228,3 +228,7 @@ Within Present, **Change backdrop…** previews a replacement in the existing co
 [Gentle motion](gentle-motion.md) adds a saved scene preference with off-by-default legacy behavior. Mac preparation stays still for accurate dragging; Mac presentation gets a Pause/Play background control. The iOS scene editor previews it with a separate transient Pause/Play button and still crop controls.
 
 The non-App-Store Mac **More → Use as animated desktop** action creates an independent applied snapshot after verifying its native still. **Pause**, **Resume** and **Stop motion** sit in the scene window while that desktop session exists. End presentation keeps it; Quit, Space changes and ownership loss stop it. This is an explicit reuse action, not the proposed independent wallpaper picker. The canonical [visual contract](../site/handbook/contract.json) owns exact lifecycle/evidence.
+
+### Live voice completion
+
+Meetings and Dictate share live words, Pause/Resume and route recovery in one session. Finish completes the current transcript. The floating pill stays compact; eligible external fields show the live Dictate text directly through verified span replacement. Meetings can finish after sustained source inactivity and a cancellable grace period, with no silence-based ending. Its saved result stays visible and Prepare follow-up opens an exact-transcript Hand off review for decisions, evidenced actions and a useful draft. The full state, recovery, receiver and acceptance contract is [live voice](live-voice.md).
