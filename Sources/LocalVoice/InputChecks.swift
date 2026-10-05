@@ -5,9 +5,17 @@ import Carbon
 enum InputChecks {
     static func run() throws {
         _ = NSApplication.shared
-        let preferences = VoicePreferences()
+        // The check registers its own keys, ⌃⌥⇧F13 to F20, one per shortcut, so it proves global
+        // registration, conflict reporting and release on the packaged app without depending on
+        // which Workbench edition is running and holding the person's shortcuts.
+        var preferences = VoicePreferences()
+        for (index, id) in VoicePreferences.shortcutIDs.enumerated() {
+            let keyCodes = [kVK_F13, kVK_F14, kVK_F15, kVK_F16, kVK_F17, kVK_F18, kVK_F19, kVK_F20]
+            preferences.setShortcut(VoiceShortcut(keyCode: UInt32(keyCodes[index % keyCodes.count]),
+                                                  modifiers: UInt32(controlKey | optionKey | shiftKey), enabled: true), for: id)
+        }
         let keys = VoiceHotkeys(); keys.register(preferences)
-        guard keys.failures.isEmpty else { throw VoiceError.message("Quit all Workbench editions before input checks: \(keys.failures)") }
+        guard keys.failures.isEmpty else { throw VoiceError.message("Another process holds the input check's keys (⌃⌥⇧F13 to F20): \(keys.failures)") }
         defer { keys.unregister() }
         var events: [String] = []
         var times: [TimeInterval] = []
