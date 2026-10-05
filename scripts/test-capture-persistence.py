@@ -24,7 +24,7 @@ methods = model.extract([
     'resumeWaitingDelivery', 'copyWaitingDelivery',
     # The Dictate shortcut's press and release, and the attempt it starts (#134 T5).
     'toggleRecording', 'recordAgain', 'shortcutChanged',
-    'cancelShortcut', 'stopRecording', 'completeStoppedRecording', 'cancelRecording', 'cancelCurrentCapture', 'importAudio(_:)', 'retryTranscription',
+    'cancelShortcut', 'stopRecording', 'completeStoppedRecording', 'cancelRecording', 'cancelCurrentCapture', 'cancelLiveDictation', 'importAudio(_:)', 'retryTranscription',
     # Transcription, its commit and the recovery it keeps.
     'transcribe', 'admitNewCapture', 'commitRecognizedCapture', 'savePendingCapture', 'restoreCaptureRecovery',
     'discardRecordingRecovery', 'discardCaptureRecovery', 'showCaptureRecoveryFiles', 'showSavedRecordings',
@@ -211,6 +211,22 @@ struct CaptureSettings {
     }
     static func release() { let c = continuation; continuation = nil; c?.resume() }
 }
+// The AppModel integration spy never touches AX. The actual owned-span algorithm
+// and native synthetic receiver are exercised by test-live-dictation.py.
+@MainActor final class LiveDictationDelivery {
+    static var next: LiveDictationDelivery?
+    var attempted = false
+    var finishCalls = 0, cancelCalls = 0, endCalls = 0
+    var cancellationProblem: String?
+    var outcome = TextDelivery.Outcome(message: "Inserted in fixture field.", clipboardChangeCount: nil, wasPasted: true, pasteWasAttempted: true)
+    var beforeFinish: (() -> Void)?
+    static func begin(target: TextDelivery.Target?, shortcut: FixtureShortcut) -> LiveDictationDelivery? {
+        defer { next = nil }; return next
+    }
+    func finish(_ text: String, restoreClipboard: Bool) -> TextDelivery.Outcome { finishCalls += 1; beforeFinish?(); return outcome }
+    func cancel() -> String? { cancelCalls += 1; return cancellationProblem }
+    func end() { endCalls += 1 }
+}
 @MainActor final class ReceiptSpy {
     final class Clock { var now = 0.0 }
     let clock: Clock
@@ -295,6 +311,7 @@ struct FixtureVoicePreferences { var capture = CaptureMode.hold; var dictationSh
     var preparing = false, modelMessage = "", modelFailure: String? = nil
     var recordURL: URL?, elapsed = 1.0, level = 0.0
     var liveCapture: FixtureLiveCapture?, meter: Timer?, recordingAttempt: UUID?
+    var liveDictation: LiveDictationDelivery?
     var voiceSession = LiveVoiceSnapshot()
     var peakPower: Float = -160, recordingSettings: CaptureSettings?
     var photoHandoffRefresh: Task<Void, Never>?, readingTask: Task<Void, Never>?
@@ -719,6 +736,45 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         try await waitUntil("live completion") { liveModel.phase == .idle }
         try check(liveModel.engine.calls == 0 && liveModel.history.count == 1 && liveModel.rawTranscript == "Live words", "Complete live capture skips batch inference and commits the same original words")
         try check(TextDelivery.calls == 1 && !liveModel.captureRecovery.hasRecovery, "Live capture preserves one final delivery and durable recovery cleanup")
+
+        let fieldModel = CaptureHarness(directory: folder("live-field-complete"))
+        let fieldURL = try recording(fieldModel, seconds: 1, peak: -20)
+        let fieldRecorder = FixtureLiveCapture(); fieldRecorder.checkpoint = liveRecorder.checkpoint
+        let fieldOwner = LiveDictationDelivery(); fieldOwner.attempted = true
+        fieldModel.liveCapture = fieldRecorder; fieldModel.liveDictation = fieldOwner
+        var fieldCommittedBeforeDelivery = false
+        fieldOwner.beforeFinish = {
+            fieldCommittedBeforeDelivery = fieldModel.store.saved?.history.count == 1 && FileManager.default.fileExists(atPath: fieldURL.path)
+        }
+        let pasteCallsBeforeField = TextDelivery.calls
+        fieldModel.stopRecording(); try await waitUntil("live field completion") { fieldModel.phase == .idle }
+        try check(fieldCommittedBeforeDelivery && fieldOwner.finishCalls == 1 && TextDelivery.calls == pasteCallsBeforeField,
+                  "Final live span replacement follows History commit and never calls final paste")
+        try check(!fieldModel.captureRecovery.hasRecovery && !FileManager.default.fileExists(atPath: fieldURL.path),
+                  "Confirmed live field insertion releases original audio after delivery")
+
+        let fieldFailed = CaptureHarness(directory: folder("live-field-uncertain"))
+        let fieldFailedURL = try recording(fieldFailed, seconds: 1, peak: -20)
+        let fieldFailedRecorder = FixtureLiveCapture(); fieldFailedRecorder.checkpoint = liveRecorder.checkpoint
+        let fieldFailedOwner = LiveDictationDelivery(); fieldFailedOwner.attempted = true
+        fieldFailedOwner.outcome = .init(message: "Review the field.", clipboardChangeCount: nil, failure: .pasteUnconfirmed, pasteWasAttempted: true)
+        fieldFailed.liveCapture = fieldFailedRecorder; fieldFailed.liveDictation = fieldFailedOwner
+        let failedFieldID = fieldFailed.captureRecovery.pending!.id
+        fieldFailed.stopRecording(); try await waitUntil("uncertain live field") { fieldFailed.phase == .idle }
+        let savedFieldAudio = fieldFailed.captureRecovery.savedRecordingsDirectory.appendingPathComponent(failedFieldID.uuidString).appendingPathComponent(fieldFailedURL.lastPathComponent)
+        try check(fieldFailed.history.count == 1 && fieldFailed.unresolvedDelivery?.kind == .pasteUnconfirmed && TextDelivery.calls == pasteCallsBeforeField,
+                  "Uncertain live write is saved as review outcome without duplicate paste")
+        try check((try Data(contentsOf: savedFieldAudio)) == wav && !fieldFailed.captureRecovery.hasRecovery,
+                  "Uncertain live insertion preserves its exact original audio in existing Saved recordings")
+
+        let fieldCancel = CaptureHarness(directory: folder("live-field-cancel-changed"))
+        let fieldCancelURL = try recording(fieldCancel, seconds: 1, peak: -20)
+        let fieldCancelOwner = LiveDictationDelivery(); fieldCancelOwner.attempted = true
+        fieldCancelOwner.cancellationProblem = "Field changed; live text left in place and recording kept."
+        fieldCancel.liveDictation = fieldCancelOwner
+        fieldCancel.cancelRecording()
+        try check(fieldCancelOwner.cancelCalls == 1 && fieldCancel.canRetry && fieldCancel.status == fieldCancelOwner.cancellationProblem
+                  && (try Data(contentsOf: fieldCancelURL)) == wav, "Cancel with changed field keeps audio and reports that text remains")
 
         let partialModel = CaptureHarness(directory: folder("live-partial"))
         _ = try recording(partialModel, seconds: 1, peak: -20)

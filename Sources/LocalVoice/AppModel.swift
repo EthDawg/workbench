@@ -98,7 +98,12 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     @Published var historyDoor: HistoryDoor?
     @Published var libraryFocusToken = UUID()
     @Published var phase: Phase = .idle {
-        didSet { if phase == .idle { destination?.opaqueEditor?.end() } }
+        didSet {
+            if phase == .idle {
+                destination?.opaqueEditor?.end()
+                liveDictation?.end(); liveDictation = nil
+            }
+        }
     }
     @Published var ready = false
     @Published var preparing = false
@@ -338,8 +343,9 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     private var voiceRefresh: Task<Void, Never>?
     private var peakPower: Float = -160
     private var destination: TextDelivery.Target? {
-        didSet { oldValue?.opaqueEditor?.end() }
+        didSet { oldValue?.opaqueEditor?.end(); liveDictation?.end(); liveDictation = nil }
     }
+    private var liveDictation: LiveDictationDelivery?
     private var recordingAttempt: UUID?
     private var recordingSettings: CaptureSettings?
     private var permissionRequest: Task<Bool, Never>?
@@ -652,6 +658,9 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         let attempt = UUID(); recordingAttempt = attempt
         destination = intendedTarget
         destination?.opaqueEditor?.begin(shortcut: preferences.dictationShortcut)
+        if recordingSettings?.preferences.delivery == .paste, shouldDeferDelivery?() != true {
+            liveDictation = LiveDictationDelivery.begin(target: intendedTarget, shortcut: preferences.dictationShortcut)
+        }
         phase = .requesting
         Task { await startRecording(attempt) }
     }
@@ -712,7 +721,9 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
             guard recordingAttempt == attempt else {
                 _ = await capture.finish(recognize: false)
                 if liveCapture === capture { liveCapture = nil }
-                _ = discardRecordingRecovery()
+                let deliveryProblem = cancelLiveDictation()
+                if deliveryProblem == nil { _ = discardRecordingRecovery() }
+                else { canRetry = true; status = deliveryProblem! }
                 if phase == .cancelling { phase = .idle; onPhaseChange?() }
                 return
             }
@@ -739,8 +750,9 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         } catch {
             liveCapture = nil
             if recordingAttempt != attempt {
-                _ = discardRecordingRecovery()
-                phase = .idle; voiceSession = LiveVoiceSnapshot(); status = "Recording cancelled."; onPhaseChange?(); return
+                let deliveryProblem = cancelLiveDictation()
+                if deliveryProblem == nil { _ = discardRecordingRecovery() } else { canRetry = true }
+                phase = .idle; voiceSession = LiveVoiceSnapshot(); status = deliveryProblem ?? "Recording cancelled."; onPhaseChange?(); return
             }
             voiceSession.phase = .recoverableFailure
             // Preserve even a partial start when macOS supplied audio before failing.
@@ -768,8 +780,10 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
                 self.liveCapture = nil; self.transcriptionTask = nil
                 if let checkpoint { self.voiceSession.segments = LiveVoiceTurns.group(checkpoint.orderedSegments) }
                 if Task.isCancelled || self.phase == .cancelling {
-                    _ = self.discardRecordingRecovery(); self.phase = .idle
-                    self.voiceSession.phase = .idle; self.status = "Recording cancelled."; self.onPhaseChange?(); return
+                    let deliveryProblem = self.cancelLiveDictation()
+                    if deliveryProblem == nil { _ = self.discardRecordingRecovery() } else { self.canRetry = true }
+                    self.phase = .idle
+                    self.voiceSession.phase = .idle; self.status = deliveryProblem ?? "Recording cancelled."; self.onPhaseChange?(); return
                 }
                 let recordedPeak = report.tracks.first?.peak ?? 0
                 self.peakPower = max(capture.peak, recordedPeak > 0 ? Float(20 * log10(recordedPeak)) : -160)
@@ -793,6 +807,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         let gesture = recordingAttempt.flatMap { attempt in holdGesture?.attempt == attempt ? holdGesture : nil }
         holdGesture = nil
         guard duration >= CaptureCue.shortestSpeech, peakPower > -55 else {
+            if let message = cancelLiveDictation() { canRetry = true; fail(message); return }
             discardRecordingRecovery()
             let reason: CaptureCue.Reason = duration < CaptureCue.shortestSpeech ? .tooShort : .tooQuiet
             endWithoutSpeech(reason, teachesHold: HoldLesson.teaches(gesture, outcome: reason)); return
@@ -805,6 +820,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         guard recordingAttempt == attempt, voiceSession.sessionID == snapshot.sessionID,
               [.requesting, .recording, .transcribing].contains(phase), liveCapture != nil else { return }
         voiceSession = snapshot
+        liveDictation?.preview(snapshot.text)
         voiceSession.elapsed = max(elapsed, snapshot.elapsed)
         if phase == .transcribing { voiceSession.phase = .finishing }
         else if phase == .recording && voiceSession.phase == .recoverableFailure { voiceSession.phase = .listening }
@@ -843,7 +859,8 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
                 shortcutRequest.cancel(); recordingAttempt = nil; phase = .cancelling
                 liveCapture?.requestStop(); status = "Cancelling…"; onPhaseChange?(); return
             }
-            shortcutRequest.cancel(); recordingAttempt = nil; phase = .idle; status = "Capture cancelled. Use the shortcut again when microphone permission is ready."; onPhaseChange?(); return
+            let deliveryProblem = cancelLiveDictation()
+            shortcutRequest.cancel(); recordingAttempt = nil; phase = .idle; status = deliveryProblem ?? "Capture cancelled. Use the shortcut again when microphone permission is ready."; onPhaseChange?(); return
         }
         guard phase == .recording else { return }
         if let capture = liveCapture {
@@ -854,9 +871,11 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
                 _ = await capture.finish(recognize: false)
                 guard let self, self.liveCapture === capture else { return }
                 self.liveCapture = nil
-                let discarded = self.discardRecordingRecovery()
+                let deliveryProblem = self.cancelLiveDictation()
+                let discarded = deliveryProblem == nil && self.discardRecordingRecovery()
+                if deliveryProblem != nil { self.canRetry = true }
                 self.phase = .idle; self.level = 0; self.voiceSession = LiveVoiceSnapshot()
-                self.status = discarded ? "Recording discarded." : "Recording stopped. Recovery files are kept for review."
+                self.status = deliveryProblem ?? (discarded ? "Recording discarded." : "Recording stopped. Recovery files are kept for review.")
                 self.onPhaseChange?()
             }
             return
@@ -864,9 +883,11 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         shortcutRequest.cancel()
         recordingAttempt = nil; holdGesture = nil
         meter?.invalidate(); meter = nil
-        let discarded = discardRecordingRecovery()
+        let deliveryProblem = cancelLiveDictation()
+        let discarded = deliveryProblem == nil && discardRecordingRecovery()
+        if deliveryProblem != nil { canRetry = true }
         phase = .idle; level = 0
-        status = discarded ? "Recording discarded." : "Recording stopped. Recovery files could not be discarded; open Workbench to review them."
+        status = deliveryProblem ?? (discarded ? "Recording discarded." : "Recording stopped. Recovery files could not be discarded; open Workbench to review them.")
         onPhaseChange?()
     }
 
@@ -879,6 +900,11 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         liveCapture?.cancelRecognition()
         transcriptionTask?.cancel()
         phase = .cancelling; status = "Cancelling…"; onPhaseChange?()
+    }
+
+    private func cancelLiveDictation() -> String? {
+        let owned = liveDictation; liveDictation = nil
+        return owned?.cancel()
     }
 
     func importAudio() {
@@ -963,6 +989,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
                 guard !result.isEmpty else {
                     // Silence, noise or a sound that is not speech came back as
                     // no words. Our own recording stays for Retry on Dictate.
+                    if let message = cancelLiveDictation() { canRetry = temporary && shortcutID == nil; fail(message); return }
                     canRetry = temporary && shortcutID == nil
                     endWithoutSpeech(.nothingRecognised(keptAudio: temporary)); return
                 }
@@ -978,7 +1005,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
                     phase = .delivering; status = "Delivering text…"; onPhaseChange?()
                     var delivery = settings.preferences.delivery
                     // Without Accessibility approval the text is copied, so there is no paste to wait for.
-                    if delivery == .paste, destination != nil, accessibilityGranted, shouldDeferDelivery?() == true {
+                    if liveDictation == nil, delivery == .paste, destination != nil, accessibilityGranted, shouldDeferDelivery?() == true {
                         waitingForDrawing = true
                         captureProcessingLabel = "Finish drawing to paste, or copy now."
                         status = "Text ready. Finish drawing to return to your Mac text field."
@@ -988,7 +1015,25 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
                     }
                     try Task.checkCancellation()
                     guard transcriptionID == invocation else { return }
-                    let outcome = await TextDelivery.deliver(result, target: destination, mode: delivery, restoreClipboard: settings.preferences.restoreClipboard)
+                    let outcome: TextDelivery.Outcome
+                    if let owned = liveDictation {
+                        outcome = owned.finish(result, restoreClipboard: settings.preferences.restoreClipboard)
+                        liveDictation = nil
+                        // History already owns the result. Only confirmed field delivery
+                        // releases its original; uncertainty keeps it in Saved recordings.
+                        if let pending = captureRecovery.pending, pending.id == captureID {
+                            do {
+                                if outcome.wasPasted { try captureRecovery.clear(captureID) }
+                                else { _ = try captureRecovery.keepAudioForLater(committedCapture: captureID) }
+                                recordURL = nil; canRetry = false
+                            } catch {
+                                canRetry = true
+                                report("The transcript is saved, but its recording could not be finalized. Recovery files are kept. \(error.localizedDescription)", on: .dictate)
+                            }
+                        }
+                    } else {
+                        outcome = await TextDelivery.deliver(result, target: destination, mode: delivery, restoreClipboard: settings.preferences.restoreClipboard)
+                    }
                     guard transcriptionID == invocation else { return }
                     status = outcome.message
                     clipboardReceipt.record(outcome: outcome, wordCount: TextRules.wordCount(result))
@@ -999,9 +1044,11 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
                 guard transcriptionID == invocation else { return }
                 if Task.isCancelled || error is CancellationError {
                     if let shortcutID { shortcutRequest.finish(id: shortcutID, result: .failure(error)) }
-                    let discarded = !temporary || discardRecordingRecovery()
+                    let deliveryProblem = cancelLiveDictation()
+                    let discarded = deliveryProblem == nil && (!temporary || discardRecordingRecovery())
+                    if deliveryProblem != nil { canRetry = temporary }
                     phase = .idle
-                    status = discarded ? "Transcription cancelled. No text was added." : "Transcription cancelled. Recovery files are still kept; open Workbench to review them."
+                    status = deliveryProblem ?? (discarded ? "Transcription cancelled. No text was added." : "Transcription cancelled. Recovery files are still kept; open Workbench to review them.")
                     onPhaseChange?(); return
                 }
                 canRetry = temporary && shortcutID == nil; fail("Transcription failed. \(error.localizedDescription)")
@@ -1063,14 +1110,21 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         } catch {
             canRetry = true
             let recovery = journalError == nil ? "The recovery copy is kept." : "Recovery text could not be written either. Copy or Save text before quitting. Your existing audio files are kept."
-            fail("Could not save this capture. \(recovery) Use Retry saving. No text was sent. \(error.localizedDescription)")
+            let delivery = liveDictation?.attempted == true ? "Live text may already be in your app; no final insertion was attempted." : "No text was sent."
+            fail("Could not save this capture. \(recovery) Use Retry saving. \(delivery) \(error.localizedDescription)")
             captureFailure = self.error; onPhaseChange?(); return false
         }
         history = nextHistory
+        if liveDictation != nil {
+            // Live preview can already exist in the field. Keep its original until
+            // final replacement is verified; an uncertain insertion retains audio.
+            canRetry = false; captureFailure = nil; attention = nil; onPhaseChange?(); return true
+        }
         do { try captureRecovery.clear(record.id) }
         catch {
             canRetry = true
-            fail("Text saved, but capture recovery could not be cleared. Use Retry saving; the saved capture will not be duplicated. No text was sent. \(error.localizedDescription)")
+            let delivery = liveDictation?.attempted == true ? "Live text may already be in your app; no final insertion was attempted." : "No text was sent."
+            fail("Text saved, but capture recovery could not be cleared. Use Retry saving; the saved capture will not be duplicated. \(delivery) \(error.localizedDescription)")
             captureFailure = self.error; onPhaseChange?(); return false
         }
         recordURL = nil; canRetry = false; captureFailure = nil; attention = nil
@@ -1816,7 +1870,8 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         dismissCaptureCue()
         if phase != .idle { captureFailure = text }
         if let id = shortcutRequest.id { shortcutRequest.finish(id: id, result: .failure(VoiceError.message(text))) }
-        report(text, on: .dictate); phase = .idle; status = "Needs attention"; onPhaseChange?()
+        let message = liveDictation?.attempted == true ? text + " Live text may remain in your app. Review it before copying the kept result." : text
+        report(message, on: .dictate); phase = .idle; status = "Needs attention"; onPhaseChange?()
     }
     /// A dictation that ended without words (#156). Routine outcomes are not
     /// failures: no recovery panel and no error, just a cue in place of the
@@ -1928,6 +1983,9 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
                           voice: voice, rate: rate, rawDraft: rawTranscript, undelivered: undelivered.saved(in: records))
     }
     func shutdown() {
+        // Quit never attempts another external write. Preserve provisional field text
+        // and the existing recovery audio; next launch cannot replay this target.
+        liveDictation?.end(); liveDictation = nil
         meetings.shutdown(); handoffJobs.shutdown()
         photoHandoffRefresh?.cancel(); photoHandoffActivation = nil; readingTask?.cancel()
         shortcutRequest.cancel(); transcriptionTask?.cancel(); transcriptionID = nil; recordingAttempt = nil
@@ -1940,6 +1998,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
 
     /// Quit waits for the original microphone file and model reservation before exiting.
     func prepareVoiceForShutdown() async {
+        liveDictation?.end(); liveDictation = nil
         recordingAttempt = nil
         if let capture = liveCapture {
             _ = await capture.finish(recognize: false)
