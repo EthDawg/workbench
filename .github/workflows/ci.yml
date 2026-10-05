@@ -15,7 +15,7 @@ concurrency:
 # and each gallery depends only on the source, so every job builds what it needs
 # itself and a pull request finishes in the time of the longest job (about 13
 # minutes) instead of one 34-minute chain. "Build and test" is the required check:
-# it passes only when the classifier ran and every native job it selected passed.
+# it passes only when the classifier, Site and every selected native job pass.
 jobs:
   scope:
     name: Classify changes
@@ -34,14 +34,10 @@ jobs:
         id: scope
         env:
           EVENT: ${{ github.event_name }}
-          BASE: ${{ github.event.pull_request.base.sha }}
-          HEAD: ${{ github.event.pull_request.head.sha }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.event.after }}
         run: |
-          if [[ "$EVENT" == pull_request ]]; then
-            python3 scripts/ci-scope.py --base "$BASE" --head "$HEAD" >> "$GITHUB_OUTPUT"
-          else
-            echo 'native=true' >> "$GITHUB_OUTPUT"
-          fi
+          python3 scripts/ci-scope.py --event "$EVENT" --base "$BASE" --head "$HEAD" >> "$GITHUB_OUTPUT"
   site:
     name: Site
     runs-on: ubuntu-latest
@@ -166,7 +162,7 @@ jobs:
           if-no-files-found: error
   build-and-test:
     name: Build and test
-    needs: [scope, package-tests, harnesses-and-stage, checks, toolbar-gallery-and-package, surface-gallery]
+    needs: [scope, site, package-tests, harnesses-and-stage, checks, toolbar-gallery-and-package, surface-gallery]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -174,6 +170,7 @@ jobs:
       - name: Require the selected checks to succeed
         env:
           SCOPE_RESULT: ${{ needs.scope.result }}
+          SITE_RESULT: ${{ needs.site.result }}
           NATIVE_REQUIRED: ${{ needs.scope.outputs.native }}
           NATIVE_RESULTS: >-
             ${{ needs.package-tests.result }}
@@ -183,11 +180,14 @@ jobs:
             ${{ needs.surface-gallery.result }}
         run: |
           [[ "$SCOPE_RESULT" == success ]] || exit 1
+          [[ "$SITE_RESULT" == success ]] || exit 1
+          read -r -a native_results <<< "$NATIVE_RESULTS"
+          [[ "${#native_results[@]}" -eq 5 ]] || exit 1
           if [[ "$NATIVE_REQUIRED" == true ]]; then
-            for result in $NATIVE_RESULTS; do [[ "$result" == success ]] || exit 1; done
+            for result in "${native_results[@]}"; do [[ "$result" == success ]] || exit 1; done
           elif [[ "$NATIVE_REQUIRED" == false ]]; then
-            for result in $NATIVE_RESULTS; do [[ "$result" == skipped ]] || exit 1; done
-            echo 'Release metadata only; Site validates the feed and website.'
+            for result in "${native_results[@]}"; do [[ "$result" == skipped ]] || exit 1; done
+            echo 'Documentation/site only; Site validates surfaces, contracts, release records and website.'
           else
             exit 1
           fi

@@ -2,10 +2,10 @@
 
 **Free everyday Mac tools for speaking, explaining and presenting.**
 
-[![CI](https://github.com/EthDawg/workbench/actions/workflows/ci.yml/badge.svg)](https://github.com/EthDawg/workbench/actions/workflows/ci.yml)
+[![CI](https://github.com/Ship-Work/workbench/actions/workflows/ci.yml/badge.svg)](https://github.com/Ship-Work/workbench/actions/workflows/ci.yml)
 [![MIT license](https://img.shields.io/badge/license-MIT-mintcream.svg)](LICENSE)
 
-[Download Workbench](https://workbench-mac.vercel.app/) · [Product guide](https://workbench-mac.vercel.app/guide/) · [Contribute](CONTRIBUTING.md) · [Mac release gate](https://github.com/EthDawg/workbench/issues/7)
+[Download Workbench](https://workbench-mac.vercel.app/) · [Product guide](https://workbench-mac.vercel.app/guide/) · [Contribute](CONTRIBUTING.md) · [Mac release gate](https://github.com/Ship-Work/workbench/issues/7)
 
 Workbench brings dictation, reading, narrated screen captures, drawing, presentation and saved prompts into one native Mac app.
 
@@ -13,7 +13,7 @@ Workbench brings dictation, reading, narrated screen captures, drawing, presenta
 
 **Mac desktop quality is the active priority. iPhone, iPad and the Chrome extension are paused.** Their existing code and research remain available, but we are not accepting platform expansion or preparing those releases while the Mac release gate is open. Resuming a platform requires an explicit new decision.
 
-The public app is **Workbench**. **Workbench Preview** is the separate development edition used by contributors. A Preview package is never the production download. The [release gate](https://github.com/EthDawg/workbench/issues/7) records current acceptance; the website reads the verified release receipt for its download and version. Historical preview notes describe their dated builds, not today's release status.
+The public app is **Workbench**. **Workbench Preview** is the separate development edition used by contributors. A Preview package is never the production download. The [release gate](https://github.com/Ship-Work/workbench/issues/7) records current acceptance; the website reads the verified release receipt for its download and version. Historical preview notes describe their dated builds, not today's release status.
 
 ## Three surfaces, one app
 
@@ -41,7 +41,7 @@ The [product guide](https://workbench-mac.vercel.app/guide/) explains dictation,
 
 ## Build and install Preview
 
-Develop on `main` in **EthDawg/workbench**. Branch from current `main` and return changes through a PR. Voice and StageKit are modules here; a separate legacy checkout is unnecessary.
+Develop on `main` in **Ship-Work/workbench**. Branch from current `main` and return changes through a PR. Voice and StageKit are modules here; a separate legacy checkout is unnecessary.
 
 Source development requires an Apple Silicon Mac, macOS 14+, Swift 6.2+ and the macOS 26 SDK. Full Xcode is required for distributable Shortcuts metadata. The deployment target is not evidence of testing every older OS or device.
 
@@ -68,7 +68,7 @@ Library holds prompts, links and local file references, not a password vault. Or
 
 ## Contribute and verify
 
-Use [GitHub issues](https://github.com/EthDawg/workbench/issues) as the work queue. Agree one Mac outcome and its owner before a substantial change. Prefer reliable existing workflows, accessible controls and clear recovery over additional features or parallel design specifications.
+Use [GitHub issues](https://github.com/Ship-Work/workbench/issues) as the work queue. Agree one Mac outcome and its owner before a substantial change. Prefer reliable existing workflows, accessible controls and clear recovery over additional features or parallel design specifications.
 
 [CONTRIBUTING](CONTRIBUTING.md) has setup, code entry points and review expectations. Automated checks use synthetic input. Microphone permissions, cross-app focus, physical devices, meeting receivers and first installation on another Mac require separate evidence. Report what was actually tested and its limits.
 
@@ -80,7 +80,7 @@ Use [GitHub issues](https://github.com/EthDawg/workbench/issues) as the work que
 - [Pocket TTS](https://huggingface.co/kyutai/pocket-tts) by Kyutai, in [FluidInference's Core ML conversion](https://huggingface.co/FluidInference/pocket-tts-coreml): CC BY 4.0. Downloaded only when someone chooses Neural voices.
 - Apple AppKit, SwiftUI, AVFoundation and installed macOS voices.
 - Workflow inspiration: [Pat Simmons's local Wispr Flow replacement](https://www.youtube.com/watch?v=IMQw3aHjf2Q&t=437s).
-- Matt ([@mattywhitenz](https://github.com/mattywhitenz)) proposed Apple Shortcuts dictation and optional Speko reading in [#10](https://github.com/EthDawg/workbench/issues/10) and [#11](https://github.com/EthDawg/workbench/issues/11).
-- Matt's [Snap & Talk crash fix](https://github.com/EthDawg/workbench/pull/103) ships in Workbench. His original [ServiceNow deck skill, artwork and generation helpers](https://github.com/EthDawg/workbench/pull/104) are preserved in the private company pack, alongside their public contribution history. Existing sessions retain their chosen complete version.
+- Matt ([@mattywhitenz](https://github.com/mattywhitenz)) proposed Apple Shortcuts dictation and optional Speko reading in [#10](https://github.com/Ship-Work/workbench/issues/10) and [#11](https://github.com/Ship-Work/workbench/issues/11).
+- Matt's [Snap & Talk crash fix](https://github.com/Ship-Work/workbench/pull/103) ships in Workbench. His original [ServiceNow deck skill, artwork and generation helpers](https://github.com/Ship-Work/workbench/pull/104) are preserved in the private company pack, alongside their public contribution history. Existing sessions retain their chosen complete version.
 
 The app code is [MIT licensed](LICENSE). Third-party components retain their own licenses. Contribution credit does not imply a GitHub permission level or approval of this branch.

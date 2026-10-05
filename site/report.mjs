@@ -1,7 +1,7 @@
 import { currentRelease } from './release.mjs';
 const version = currentRelease.tag.slice(1);
-const source = `https://github.com/EthDawg/workbench/tree/v${version}`;
-const documents = `https://github.com/EthDawg/workbench/blob/v${version}`;
+const source = `https://github.com/Ship-Work/workbench/tree/v${version}`;
+const documents = `https://github.com/Ship-Work/workbench/blob/v${version}`;
 const guide = `${documents}/CONTRIBUTING.md`;
 export const apps = Object.freeze({
   voice: { name: 'Workbench · Speech', repo: 'workbench', version, guide },
@@ -23,7 +23,7 @@ export function createReport(input) {
   const app = apps[data.app];
   const title = `[User experience] ${data.task.replace(/[\r\n]+/g, ' ').slice(0, 180)}`;
   const body = `## App and environment\n${app.name} ${data.version}\n${data.environment}\n\n## What I was trying to do\n${data.task}\n\n## What I expected\n${data.expected}\n\n## What I observed\n${data.observed}\n\n## Impact\n${data.impact || 'Not specified'}\n\n## How I can help\n${data.help || 'Not specified'}\n\n---\nReported through the Workbench guided trial. This is a user observation, not a confirmed diagnosis.\n`;
-  const url = new URL(`https://github.com/EthDawg/${app.repo}/issues/new`);
+  const url = new URL(`https://github.com/Ship-Work/${app.repo}/issues/new`);
   url.searchParams.set('title', title);
   url.searchParams.set('body', body);
   url.searchParams.set('labels', 'user feedback');
