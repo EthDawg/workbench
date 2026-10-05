@@ -9,6 +9,23 @@ enum SnapScreenshots {
     static let attribute = "com.apple.metadata:kMDItemIsScreenCapture"
     static let imageExtensions: Set<String> = ["png", "jpg", "jpeg", "heic", "tiff"]
 
+    /// Settling and retry checks read only file metadata. A replacement or a
+    /// same-size rewrite must not inherit an older screenshot's retry delay.
+    struct FileStamp: Equatable {
+        var size: Int
+        var modified: Date
+        var identity: UInt64
+
+        init?(_ file: URL) {
+            guard let attributes = try? FileManager.default.attributesOfItem(atPath: file.path),
+                  attributes[.type] as? FileAttributeType == .typeRegular,
+                  let size = attributes[.size] as? NSNumber,
+                  let modified = attributes[.modificationDate] as? Date,
+                  let identity = attributes[.systemFileNumber] as? NSNumber else { return nil }
+            self.size = size.intValue; self.modified = modified; self.identity = identity.uint64Value
+        }
+    }
+
     static func isScreenCapture(_ url: URL) -> Bool {
         let size = getxattr(url.path, attribute, nil, 0, 0, 0)
         guard size > 0, size < 1_024 else { return false }
@@ -41,27 +58,34 @@ enum SnapScreenshots {
 
     /// Adds one screenshot to Snap History with its original capture time, then
     /// moves the file to the Trash. A PNG keeps its exact bytes. `known` holds the
-    /// original digests already in history: a screenshot already there is only
-    /// cleared, so a retry after a failed Trash move never duplicates a Snap.
+    /// original digests and identities already in history: a screenshot already
+    /// there is cleared only after its saved original is verified again, so a
+    /// retry after a failed Trash move never duplicates or trusts damaged media.
     /// Returns nil when the image was already in Snap History.
     @discardableResult
-    static func adopt(_ file: URL, store: SnapStore, known: inout Set<String>, trash: (URL) throws -> Void) throws -> SnapItem? {
+    static func adopt(_ file: URL, store: SnapStore, known: inout [String: UUID], trash: (URL) throws -> Void) throws -> SnapItem? {
         let size = (try file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? .max
         guard size <= SnapStore.maximumImageBytes else { throw SnapError.message("\(file.lastPathComponent) is larger than 100 MB, so it was left in place.") }
         let bytes = try Data(contentsOf: file)
         let png = file.pathExtension.lowercased() == "png" ? bytes : try SnapRendering.png(bytes)
         let digest = SnapStore.digest(png)
-        if known.contains(digest) { try trash(file); return nil }
-        let dimensions = try SnapRendering.dimensions(png)
-        let item = try store.insert(originalPNG: png, width: dimensions.width, height: dimensions.height,
-                                    title: String(file.deletingPathExtension().lastPathComponent.prefix(240)),
-                                    source: .imported, createdAt: created(file) == .distantPast ? Date() : created(file))
-        guard (try? store.snapshot(item.id))?.originalPNG == png else {
+        let savedID: UUID, added: SnapItem?
+        if let id = known[digest] { savedID = id; added = nil }
+        else {
+            let dimensions = try SnapRendering.dimensions(png)
+            let item = try store.insert(originalPNG: png, width: dimensions.width, height: dimensions.height,
+                                        title: String(file.deletingPathExtension().lastPathComponent.prefix(240)),
+                                        source: .imported, createdAt: created(file) == .distantPast ? Date() : created(file))
+            savedID = item.id; added = item
+            // The identity exists even if readback or the later Trash move
+            // fails. Another file in this batch must reuse that same record.
+            known[digest] = item.id
+        }
+        guard (try? store.snapshot(savedID))?.originalPNG == png else {
             throw SnapError.message("\(file.lastPathComponent) could not be confirmed in History, so it was left in place.")
         }
-        known.insert(digest)
         try trash(file)
-        return item
+        return added
     }
 
     static func moveToTrash(_ url: URL) throws {
