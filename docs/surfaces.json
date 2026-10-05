@@ -409,6 +409,14 @@
     "belongsTo": "dictate"
   },
   {
+    "id": "LocalVoice.MeetingWorkspaceView.MeetingFinishSettings.Toggle.finish-when-call-audio-ends",
+    "surface": "meeting page",
+    "label": "Finish when call audio ends",
+    "kind": "option",
+    "belongsTo": "dictate",
+    "note": "Core meeting quality requested by Ethan: guarded automatic Finish after sustained call-audio inactivity, with a cancellable grace period. Never starts recording; microphone-only and unclassified apps remain manual."
+  },
+  {
     "id": "LocalVoice.MeetingWorkspaceView.MeetingOfferPanelController.Button.not-now",
     "surface": "proactive offer MeetingOfferPanelController",
     "label": "Not now",
@@ -432,6 +440,14 @@
     "belongsTo": "dictate"
   },
   {
+    "id": "LocalVoice.MeetingWorkspaceView.MeetingOfferPanelController.Button.start-recording",
+    "surface": "proactive offer MeetingOfferPanelController",
+    "label": "Start recording",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Quality: explicit one-click Start for the displayed source, with stale-offer and recording admission checks; source review remains available."
+  },
+  {
     "id": "LocalVoice.MeetingWorkspaceView.MeetingOfferPanelController.Label.runtime-ce4398117a5f",
     "surface": "proactive offer MeetingOfferPanelController",
     "label": null,
@@ -441,11 +457,19 @@
     "note": "The meeting offer title: \"Possible call in <app>\" or \"Possible call on this Mac\". Runtime label from MeetingDetector . offerTitle ( for : offer )."
   },
   {
-    "id": "LocalVoice.MeetingWorkspaceView.MeetingQuickStatus.Button.runtime-a49b2fc5da5d",
+    "id": "LocalVoice.MeetingWorkspaceView.MeetingQuickStatus.Button.finish-meeting",
+    "surface": "quick panel status rows",
+    "label": "Finish meeting",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Quality: shared voice session transport. Finish saves and completes; Pause and Resume keep the same recording. Commands revalidate the displayed session and state."
+  },
+  {
+    "id": "LocalVoice.MeetingWorkspaceView.MeetingQuickStatus.Button.runtime-c7b9c4bd1517",
     "surface": "quick panel status rows",
     "label": null,
-    "expression": "model . isRecording ? \"Meetings · recording\" : \"Meetings · transcribing\"",
-    "note": "Live state of Transcribe meeting or call; opens its page. Quality: names the Meetings page, and says transcribing rather than processing (1 Oct). Runtime label from model . isRecording ? \"Meetings · recording\" : \"Meetings · transcribing\".",
+    "expression": "model . isRecording ? \"Meetings · \" + model . voiceSession . recordingTitle . lowercased ( ) : \"Meetings · finishing\"",
+    "note": "Quality: opens the same Meetings page and names its actual paused, reconnecting or finishing state.",
     "kind": "action",
     "belongsTo": "dictate"
   },
@@ -456,14 +480,6 @@
     "kind": "action",
     "belongsTo": "dictate",
     "note": "Quality: was Cancel, which kept the audio. Stop processing is the page's own word for the same action (1 Oct)."
-  },
-  {
-    "id": "LocalVoice.MeetingWorkspaceView.MeetingQuickStatus.Button.stop-transcribe",
-    "surface": "quick panel status rows",
-    "label": "Stop & transcribe",
-    "kind": "action",
-    "belongsTo": "dictate",
-    "note": "Quality: was Stop. The same action and words as the page and the floating toolbar: it stops recording and transcribes (1 Oct)."
   },
   {
     "id": "LocalVoice.MeetingWorkspaceView.MeetingWorkspaceView.Button.history",
@@ -491,12 +507,28 @@
     "note": "Door to Settings › Models beside the engine Meetings uses, the one place an engine is chosen (Grammar rule 9; 1 Oct)."
   },
   {
+    "id": "LocalVoice.MeetingWorkspaceView.MeetingWorkspaceView.Button.prepare-follow-up",
+    "surface": "meeting page",
+    "label": "Prepare follow-up…",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Option of Hand off: opens the existing review with only this committed meeting as reference and a context-sensitive follow-up task; no send or automatic provider run."
+  },
+  {
     "id": "LocalVoice.MeetingWorkspaceView.MeetingWorkspaceView.Button.review-transcript",
     "surface": "meeting page",
     "label": "Review transcript",
     "kind": "action",
     "belongsTo": "history",
     "note": "Opens this committed meeting transcript in History without replacing the Dictate draft."
+  },
+  {
+    "id": "LocalVoice.MeetingWorkspaceView.MeetingWorkspaceView.Button.start-recording",
+    "surface": "meeting page",
+    "label": "Start recording",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Quality: explicit one-click Start for the displayed source, with stale-offer and recording admission checks; source review remains available."
   },
   {
     "id": "LocalVoice.ModelSettingsView.ModelSettingsView.Button.runtime-53b2ce09b5d8",
@@ -919,6 +951,30 @@
     "aliasOf": "present"
   },
   {
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.finish-dictation",
+    "surface": "floating toolbar activity chooser",
+    "label": "Finish dictation",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Quality: shared voice session transport. Finish saves and completes; Pause and Resume keep the same recording. Commands revalidate the displayed session and state."
+  },
+  {
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.finish-meeting",
+    "surface": "floating toolbar activity chooser",
+    "label": "Finish meeting",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Quality: shared voice session transport. Finish saves and completes; Pause and Resume keep the same recording. Commands revalidate the displayed session and state."
+  },
+  {
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.keep-recording",
+    "surface": "floating toolbar activity chooser",
+    "label": "Keep recording",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Quality: cancels automatic Finish for the same recording; never starts another capture. Available only during the call-end grace period."
+  },
+  {
     "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.open-meetings",
     "surface": "floating toolbar activity chooser",
     "label": "Open Meetings…",
@@ -926,6 +982,22 @@
     "belongsTo": "dictate",
     "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
     "aliasOf": "dictate"
+  },
+  {
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.pause-dictation",
+    "surface": "floating toolbar activity chooser",
+    "label": "Pause dictation",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Quality: shared voice session transport. Finish saves and completes; Pause and Resume keep the same recording. Commands revalidate the displayed session and state."
+  },
+  {
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.pause-meeting",
+    "surface": "floating toolbar activity chooser",
+    "label": "Pause meeting",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Quality: shared voice session transport. Finish saves and completes; Pause and Resume keep the same recording. Commands revalidate the displayed session and state."
   },
   {
     "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.pause-reading",
@@ -944,6 +1016,22 @@
     "belongsTo": "dictate",
     "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
     "aliasOf": "dictate"
+  },
+  {
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.resume-dictation",
+    "surface": "floating toolbar activity chooser",
+    "label": "Resume dictation",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Quality: shared voice session transport. Finish saves and completes; Pause and Resume keep the same recording. Commands revalidate the displayed session and state."
+  },
+  {
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.resume-meeting",
+    "surface": "floating toolbar activity chooser",
+    "label": "Resume meeting",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Quality: shared voice session transport. Finish saves and completes; Pause and Resume keep the same recording. Commands revalidate the displayed session and state."
   },
   {
     "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.resume-reading",
@@ -1046,15 +1134,6 @@
     "aliasOf": "timer"
   },
   {
-    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.stop-dictating",
-    "surface": "floating toolbar activity chooser",
-    "label": "Stop dictating",
-    "kind": "action",
-    "belongsTo": "dictate",
-    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
-    "aliasOf": "dictate"
-  },
-  {
     "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.stop-drawing",
     "surface": "floating toolbar activity chooser",
     "label": "Stop drawing",
@@ -1107,15 +1186,6 @@
     "belongsTo": "timer",
     "aliasOf": "timer",
     "note": "Quality (1 October, Ethan: the timer must not be an afterthought): one name, Timer, and one word set on every surface. Stop timer ends the countdown and closes its window, as the panel row and the Timer menu say; it replaces End timer."
-  },
-  {
-    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.stop-transcribe",
-    "surface": "floating toolbar activity chooser",
-    "label": "Stop & transcribe",
-    "kind": "action",
-    "belongsTo": "dictate",
-    "aliasOf": "dictate",
-    "note": "Quality: was Stop transcribing, which read as ending transcription while it stops recording and transcribes; the page's words (1 Oct). Approved #134 overflow removal: this existing action lives with its activity or live owner."
   },
   {
     "id": "LocalVoice.ToolbarPositionControl.ToolbarPositionControl.Button.reset-position",
@@ -3718,9 +3788,10 @@
   {
     "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.stopDictation",
     "surface": "floating toolbar next action",
-    "label": "Stop",
+    "label": "Finish dictation",
     "kind": "action",
-    "belongsTo": "dictate"
+    "belongsTo": "dictate",
+    "note": "Quality: shared voice session transport. Finish saves and completes; Pause and Resume keep the same recording. Commands revalidate the displayed session and state."
   },
   {
     "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.stopInserting",
@@ -3732,10 +3803,10 @@
   {
     "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.stopMeetingTranscription",
     "surface": "floating toolbar next action",
-    "label": "Stop & transcribe",
+    "label": "Finish meeting",
     "kind": "action",
     "belongsTo": "dictate",
-    "note": "Quality: was Stop transcribing; it stops recording and transcribes, so it says so, as the Meetings page does (1 Oct)."
+    "note": "Quality: shared voice session transport. Finish saves and completes; Pause and Resume keep the same recording. Commands revalidate the displayed session and state."
   },
   {
     "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.stopReading",

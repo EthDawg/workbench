@@ -88,6 +88,19 @@ final class MeetingDetector {
         return availableApps(in: read())
     }
 
+    /// During an explicitly started recording, monitor only its chosen app's
+    /// audio-use metadata. This is independent of proactive Start offers.
+    func activity(for app: MeetingAudioApp) -> MeetingAutoFinish.Activity {
+        guard source.isAvailable,
+              MeetingAppCatalogue.known(app.bundleID) != nil || Self.isCallService(app) else { return .unknown }
+        do {
+            let processes = try source.snapshot().filter {
+                $0.bundleID == app.bundleID || MeetingAppCatalogue.known($0.bundleID)?.bundleID == app.bundleID
+            }
+            return processes.contains { $0.isRunningInput || $0.isRunningOutput } ? .active : .inactive
+        } catch { return .unknown }
+    }
+
     private func availableApps(in processes: [MeetingProcessSnapshot]) -> [MeetingAudioApp] {
         var seen = Set<String>()
         var apps: [MeetingAudioApp] = []

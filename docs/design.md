@@ -253,3 +253,7 @@ saved-scene selection. `PresentWorkspaceView` reuses the existing prompt picker
 and browser-switch owner. `ToolbarSettingsView` observes `CaptureHUDControls` and
 its existing reducer for Keep open and placement; no parallel setting is stored.
 The actual layout and routing rules are in [the toolbar contract](floating-toolbar.md).
+
+## Shared live voice experience
+
+`LiveVoiceTranscriptView` renders `LiveVoiceSnapshot` with selectable native text, stable reading position and source health. Meetings and Dictate read their existing capture owners. `MeetingAutoFinish` consumes selected-process activity on the monotonic recording watcher; no speech/silence classifier ends a call. `MeetingFollowUp` prepares the existing `HandoffReviewRequest` for an exact committed transcript. `LiveDictationDelivery` owns a verified AX selected span and its bounded monitors; `AppModel` connects preview, durable finalization, cancellation and recovery. The toolbar retains its single host and adds truthful voice transport through its existing chooser. [Live voice](live-voice.md) owns behavior and native acceptance limits.

@@ -819,6 +819,15 @@ func runCLI(_ args: [String]) async -> Int32 {
         case "--check-meetings":
             try await MeetingChecks.run()
             try await LiveVoiceChecks.run()
+            try await MainActor.run { try LiveVoiceExperienceChecks.run() }
+        case "--check-live-dictation-delivery":
+            try await MainActor.run { try LiveDictationDeliveryChecks.run() }
+        case "--render-live-voice":
+            guard args.count == 2 else { throw VoiceError.message("Usage: --render-live-voice OUTPUT_DIRECTORY") }
+            try await MainActor.run {
+                _ = NSApplication.shared
+                try LiveVoiceExperienceChecks.render(to: URL(fileURLWithPath: args[1]))
+            }
         case "--check-live-voice-model":
             guard args.count == 2 || (args.count == 3 && args[2] == "--two-sources") else { throw VoiceError.message("Supply one synthetic audio fixture path and optionally --two-sources.") }
             try await LiveVoiceModelCheck.run(audio: URL(fileURLWithPath: args[1]), twoSources: args.count == 3)

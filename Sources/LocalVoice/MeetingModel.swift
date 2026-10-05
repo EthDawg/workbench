@@ -30,6 +30,16 @@ final class MeetingModel: ObservableObject {
     }
     /// Published only after the transcript and its completion journal both commit.
     @Published private(set) var completedTranscriptID: UUID?
+    @Published private(set) var completedTranscriptText: String?
+    @Published private(set) var autoFinishSeconds: Int?
+    @Published var automaticallyFinishCalls: Bool {
+        didSet {
+            defaults.set(automaticallyFinishCalls, forKey: "workbench.meeting.auto-finish.v1")
+            if !automaticallyFinishCalls { autoFinishSeconds = nil }
+        }
+    }
+    private var autoFinish = MeetingAutoFinish()
+    private var recordingApp: MeetingAudioApp?
     /// The history writer reads these during saveTranscript; originals stay unchanged.
     @Published private(set) var pendingTranscriptNotes: [String] = []
     @Published var detectionEnabled: Bool {
@@ -105,6 +115,7 @@ final class MeetingModel: ObservableObject {
         self.captureFactory = captureFactory
         self.startupNoticeDelayNanoseconds = startupNoticeDelayNanoseconds
         detectionEnabled = defaults.bool(forKey: Self.detectionKey)
+        automaticallyFinishCalls = defaults.object(forKey: "workbench.meeting.auto-finish.v1") as? Bool ?? true
         detector.disabledBundleIDs = Set(defaults.stringArray(forKey: Self.disabledAppsKey) ?? [])
         configureDetection()
         recoveryTask = Task { [weak self] in await self?.refreshRecovery() }
@@ -147,7 +158,7 @@ final class MeetingModel: ObservableObject {
     /// History calls this after its durable removal, including when the audio
     /// directory has already gone. Failed or cancelled removals never arrive here.
     func transcriptRemoved(_ id: UUID) {
-        if completedTranscriptID == id { completedTranscriptID = nil }
+        if completedTranscriptID == id { completedTranscriptID = nil; completedTranscriptText = nil }
     }
 
     /// Choosing microphone-only is the explicit source choice; it cannot leave
@@ -182,7 +193,8 @@ final class MeetingModel: ObservableObject {
         guard app != nil || includeMicrophone else { error = "Choose an app, the microphone, or both."; return }
         let token = UUID(); generation = token
         let microphone = includeMicrophone, kind = purpose == "call" ? "call" : "meeting"
-        error = nil; offer = nil; elapsed = 0; pendingTranscriptNotes = []; completedTranscriptID = nil; keptWithoutSpeech = nil; receipt = nil
+        error = nil; offer = nil; elapsed = 0; pendingTranscriptNotes = []; completedTranscriptID = nil; completedTranscriptText = nil; keptWithoutSpeech = nil; receipt = nil
+        autoFinish = MeetingAutoFinish(); autoFinishSeconds = nil; recordingApp = app
         notice = microphone ? "Waiting for microphone access…" : "Starting app audio… macOS may ask for Audio Recording access."
         phase(starting: true)
         voiceSession = LiveVoiceSnapshot(phase: .preparing)
@@ -288,6 +300,10 @@ final class MeetingModel: ObservableObject {
         await finishCapture(process: true)
     }
 
+    func keepRecording() {
+        autoFinish.keepRecording(); autoFinishSeconds = nil
+    }
+
     func pause() async {
         guard isRecording, let capture = activeCapture, !capture.isPaused else { return }
         let id = generation
@@ -328,6 +344,7 @@ final class MeetingModel: ObservableObject {
     private func finishCapture(process: Bool, reason: String? = nil) async {
         guard let capture = activeCapture, let session = activeSession, let manifest = activeManifest else { return }
         watcher?.cancel(); watcher = nil
+        autoFinishSeconds = nil
         capture.requestStop()
         let token = UUID(); generation = token
         notice = "Saving the original audio…"
@@ -412,7 +429,7 @@ final class MeetingModel: ObservableObject {
         guard !isBusy, !shuttingDown else { return }
         if let issue = mayStart?() { error = issue; return }
         let token = UUID(); generation = token
-        error = nil; pendingTranscriptNotes = []; completedTranscriptID = nil; keptWithoutSpeech = nil; receipt = nil
+        error = nil; pendingTranscriptNotes = []; completedTranscriptID = nil; completedTranscriptText = nil; keptWithoutSpeech = nil; receipt = nil
         notice = "Opening the saved recording…"; phase(processing: true)
         let task = Task { [weak self] in
             guard let self else { return }
@@ -448,6 +465,7 @@ final class MeetingModel: ObservableObject {
             guard let save = self.saveTranscript else { throw MeetingError.message("History is not ready to save this recording. Its original audio was kept.") }
             self.pendingTranscriptNotes = notes
             try save(transcript, purpose)
+            self.completedTranscriptText = transcript.text
         }, isCurrent: { [weak self] in self?.generation == token })
         let result = try await processor.run()
         pendingTranscriptNotes = result.notes
@@ -473,6 +491,11 @@ final class MeetingModel: ObservableObject {
                 var reason = capture.stopReason
                 if self.elapsed >= MeetingSegmentPlan.maximumMeetingSeconds { reason = "The two-hour recording limit was reached." }
                 ticks += 1
+                if ticks % 4 == 0, let app = self.recordingApp {
+                    self.autoFinishSeconds = self.autoFinish.observe(self.detector.activity(for: app),
+                        now: ProcessInfo.processInfo.systemUptime,
+                        suspended: !self.automaticallyFinishCalls || capture.isPaused || capture.recoveryMessage != nil)
+                }
                 if ticks % 10 == 0 {
                     let root = self.directory
                     let bytes = try? await MeetingFileWork.run { MeetingDiskBudget.availableBytes(at: root) }
@@ -480,6 +503,9 @@ final class MeetingModel: ObservableObject {
                     if let bytes, bytes < MeetingDiskBudget.stopFloorBytes { reason = "Recording stopped because disk space is running low." }
                 }
                 if let reason { await self.finishCapture(process: false, reason: reason); return }
+                if self.autoFinishSeconds == 0 {
+                    await self.finishCapture(process: true); return
+                }
             }
         }
     }

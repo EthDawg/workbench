@@ -8,11 +8,11 @@ struct MeetingQuickStatus: View {
     var body: some View {
         if model.isBusy {
             HStack {
-                Button(model.isRecording ? "Meetings · recording" : "Meetings · transcribing", action: review)
+                Button(model.isRecording ? "Meetings · " + model.voiceSession.recordingTitle.lowercased() : "Meetings · finishing", action: review)
                     .buttonStyle(.plain).font(.caption)
                 Spacer()
                 if model.isRecording {
-                    Button("Stop & transcribe") { Task { await model.stop() } }.font(.caption).foregroundStyle(.red)
+                    Button("Finish meeting") { Task { await model.stop() } }.font(.caption).foregroundStyle(.red)
                 } else {
                     Button("Stop processing") { Task { await model.cancel() } }.font(.caption)
                 }
@@ -36,6 +36,17 @@ struct MeetingDetectionSettings: View {
     }
 }
 
+struct MeetingFinishSettings: View {
+    @ObservedObject var model: MeetingModel
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Toggle("Finish when call audio ends", isOn: $model.automaticallyFinishCalls).toggleStyle(.switch)
+            Text("After the selected call app stops using audio, a short countdown lets you keep recording. Silence, Pause and reconnecting audio never finish a session. Microphone-only recordings finish manually.")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
 /// Meetings owns everything about recording a conversation: its sources, its offer to start
 /// when a call begins, and the recordings it kept. A recording kept for later or left without
 /// text is listed once with its own actions, so nothing waits behind an unexplained message.
@@ -47,43 +58,79 @@ struct MeetingWorkspaceView: View {
     var openModels: () -> Void = {}
     /// The door to the microphone's System Settings pane, from the host.
     var openMicrophoneSettings: () -> Void = {}
+    var prepareFollowUp: (UUID) -> Void = { _ in }
     @State private var showingOptions = false
+    @State private var showingSources = false
+    @State private var showingNewRecording = false
+
+    private var showsCompletedResult: Bool { !model.isBusy && model.completedTranscriptID != nil && !showingNewRecording }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
-                WorkbenchPageHeader("meeting", summary: "Transcribe a meeting or call.") {
+                WorkbenchPageHeader("meeting", summary: "Follow the conversation. Keep the words and what comes next.") {
                     Button("History") { openHistory(nil) }
-                }
-                if let offer = model.offer {
-                    HStack(spacing: 12) {
-                        Label(MeetingDetector.offerTitle(for: offer), systemImage: "phone")
-                        Spacer()
-                        Button("Use this source") { model.useOffer(offer); model.dismissOffer() }
-                        Button("Not now") { model.dismissOffer() }
-                        Button("Snooze") { model.snoozeOffers() }
-                    }.padding(14).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 12))
                 }
                 VStack(alignment: .leading, spacing: 20) {
                     HStack(spacing: 14) {
-                        Image(systemName: model.isRecording ? "record.circle.fill" : "person.2.wave.2")
-                            .font(.system(size: 26)).foregroundStyle(model.isRecording ? .red : Workbench.accent)
+                        Image(systemName: showsCompletedResult ? "checkmark.circle" : model.voiceSession.phase == .paused ? "pause.circle" : model.isRecording ? "record.circle.fill" : "person.2.wave.2")
+                            .font(.system(size: 26)).foregroundStyle(model.isRecording && model.voiceSession.phase != .paused ? .red : Workbench.accent)
                             .frame(width: 48, height: 48).accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(model.isRecording ? "Recording conversation" : model.isProcessing ? "Transcribing your recording" : model.isStarting ? "Starting recording" : "Choose what to record")
+                            Text(showsCompletedResult ? "Transcript saved" : model.isRecording ? model.voiceSession.recordingTitle : model.isProcessing ? "Finishing transcript" : model.isStarting ? "Starting recording" : "Ready to record")
                                 .font(.title3.weight(.semibold))
-                            Text(model.isRecording ? time(model.elapsed) : model.isProcessing ? "You can keep working while this finishes." : "App audio, your microphone, or both.")
+                            Text(showsCompletedResult ? "Review the conversation and prepare what comes next." : model.isRecording ? time(model.elapsed) : model.isProcessing ? "Your original audio is kept while this finishes." : "Start once. Follow the words as the conversation happens.")
                                 .font(.callout).foregroundStyle(.secondary).monospacedDigit()
                         }
                         Spacer()
                     }
-                    Divider()
-                    sources.disabled(model.isBusy)
-                    HStack(spacing: 12) {
-                        transport
-                        Spacer()
-                        Text("Up to 2 hours").font(.caption).foregroundStyle(.secondary)
-                    }.controlSize(.large)
+                    if showsCompletedResult, let id = model.completedTranscriptID {
+                        HStack(spacing: 12) {
+                            Button("Prepare follow-up…") { prepareFollowUp(id) }.buttonStyle(.borderedProminent)
+                            Button("Review transcript") { openHistory(id) }
+                            Spacer()
+                            Button("New recording…") { showingNewRecording = true }
+                        }
+                        ForEach(model.pendingTranscriptNotes, id: \.self) { note in
+                            Text(note).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        }
+                    } else {
+                        Divider()
+                        if model.isBusy {
+                            LiveVoiceSourcesView(sources: model.voiceSession.sources)
+                        } else if let offer = model.offer, !showingSources {
+                            HStack(spacing: 12) {
+                                VStack(alignment: .leading, spacing: 5) {
+                                    Label(MeetingDetector.offerTitle(for: offer), systemImage: "phone")
+                                    Text(offer.name + (model.includeMicrophone ? " + your microphone" : " · app audio only"))
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Button("Change source") {
+                                    model.useOffer(offer); model.dismissOffer(); showingSources = true
+                                }
+                            }
+                        } else { sources }
+                        HStack(spacing: 12) {
+                            transport
+                            Spacer()
+                            Text("Up to 2 hours").font(.caption).foregroundStyle(.secondary)
+                        }.controlSize(.large)
+                    }
+                    if let seconds = model.autoFinishSeconds {
+                        HStack {
+                            Label("Call audio ended · finishing in \(seconds)s", systemImage: "clock")
+                                .font(.callout).monospacedDigit()
+                            Spacer()
+                            Button("Keep recording") { model.keepRecording() }
+                        }.padding(12).background(Workbench.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+                            .accessibilityIdentifier("meeting.auto-finish")
+                    }
+                    if model.isBusy || model.completedTranscriptID != nil {
+                        Divider()
+                        LiveVoiceTranscriptView(snapshot: transcriptSnapshot, conversation: true,
+                                                completedText: model.completedTranscriptID != nil ? model.completedTranscriptText : nil)
+                    }
                     // Progress belongs beside the control that started it.
                     if model.isStarting || model.isProcessing {
                         Text(model.notice).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
@@ -93,8 +140,6 @@ struct MeetingWorkspaceView: View {
                         Label(engineName, systemImage: "waveform").font(.caption).foregroundStyle(.secondary)
                         Button("Models…", action: openModels).buttonStyle(.link).font(.caption)
                     }
-                    Divider()
-                    MeetingDetectionSettings(model: model)
                 }.padding(22).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 16))
                     .accessibilityIdentifier("meeting.recording")
 
@@ -112,20 +157,6 @@ struct MeetingWorkspaceView: View {
                         Button { model.dismissError() } label: { Image(systemName: "xmark") }
                             .buttonStyle(.plain).accessibilityLabel("Dismiss meeting problem")
                     }.padding(14).background(Color.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
-                }
-                if !model.isBusy, let id = model.completedTranscriptID {
-                    HStack(spacing: 12) {
-                        Image(systemName: "checkmark.circle").foregroundStyle(Workbench.accent)
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Transcript saved").font(Workbench.sectionTitle)
-                            Text("Review, copy or prepare follow-up notes in History.").font(.callout).foregroundStyle(.secondary)
-                            ForEach(model.pendingTranscriptNotes, id: \.self) { note in
-                                Text(note).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                            }
-                        }
-                        Spacer()
-                        Button("Review transcript") { openHistory(id) }
-                    }.padding(18).background(Workbench.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
                 }
                 if !model.isBusy, let kept = model.keptWithoutSpeech {
                     HStack(alignment: .top, spacing: 12) {
@@ -155,6 +186,8 @@ struct MeetingWorkspaceView: View {
                             Text("Meeting").tag("meeting")
                             Text("Call").tag("call")
                         }.pickerStyle(.segmented).fixedSize().disabled(model.isBusy)
+                        MeetingDetectionSettings(model: model)
+                        MeetingFinishSettings(model: model)
                         Button("Open Sound settings") { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Sound-Settings.extension")!) }
                         Text("Audio is kept on this Mac for recovery. Try a short sample before an important call. Calls that stay on your phone cannot be captured here.")
                             .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -163,6 +196,15 @@ struct MeetingWorkspaceView: View {
             }.padding(Workbench.pagePadding).frame(maxWidth: 960, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
         }.onAppear { if !model.isBusy { model.refreshApps() } }
+            .onChange(of: model.completedTranscriptID) { value in
+                if value != nil { showingNewRecording = false }
+            }
+    }
+
+    private var transcriptSnapshot: LiveVoiceSnapshot {
+        var value = model.voiceSession
+        if model.completedTranscriptID != nil { value.phase = .completed }
+        return value
     }
 
     /// One label column, so the source, its microphone choice and their note line up.
@@ -189,7 +231,9 @@ struct MeetingWorkspaceView: View {
                 Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
                 Text(model.selectedAppID == nil
                      ? "Microphone only records what this Mac can hear. Choose the call app to include people speaking through headphones."
-                     : "A browser source can include audio from its other tabs.")
+                     : model.apps.first(where: { $0.id == model.selectedAppID }).map { MeetingAppCatalogue.known($0.bundleID)?.kind == .browser } == true
+                        ? "A browser source can include audio from its other tabs."
+                        : "Records this app’s audio, including voices heard through headphones.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -236,24 +280,36 @@ struct MeetingWorkspaceView: View {
             ProgressView().controlSize(.small)
             Button("Cancel start") { Task { await model.cancel() } }
         } else if model.isRecording {
-            Button("Stop & transcribe") { Task { await model.stop() } }.buttonStyle(.borderedProminent)
-            Button("Stop & keep for later") { Task { await model.cancel() } }
+            Button("Finish meeting") { Task { await model.stop() } }.buttonStyle(.borderedProminent)
+            if model.voiceSession.phase == .paused {
+                Button("Resume") { Task { await model.resume() } }
+            } else {
+                Button("Pause") { Task { await model.pause() } }.disabled(model.voiceSession.phase == .reconnecting)
+            }
+            Menu("More") { Button("Stop & keep for later") { Task { await model.cancel() } } }
         } else if model.isProcessing {
             ProgressView().controlSize(.small)
             Button("Stop processing") { Task { await model.cancel() } }
         } else {
-            Button { Task { await model.start() } } label: { Label("Start recording", systemImage: "record.circle") }
-                .buttonStyle(.borderedProminent).disabled(!model.includeMicrophone && model.selectedAppID == nil)
+            Button {
+                let offered = showingSources ? nil : model.offer
+                Task {
+                    if let offered { await model.startOffered(offered) }
+                    else { await model.start() }
+                }
+            } label: { Label("Start recording", systemImage: "record.circle") }
+                .buttonStyle(.borderedProminent).disabled(!model.includeMicrophone && model.selectedAppID == nil && model.offer == nil)
                 .accessibilityIdentifier("meeting.start")
         }
     }
 }
 
-/// A passive offer never takes focus or opens a microphone. Its Review action
-/// returns to the explicit source/Start controls.
+/// A passive offer never takes focus or opens a microphone. Start is explicit
+/// and bound to the exact displayed source; Review still allows source changes.
 @MainActor
 final class MeetingOfferPanelController {
     struct Actions {
+        var start: () -> Void
         var review: () -> Void
         var dismiss: () -> Void
         var snooze: () -> Void
@@ -287,6 +343,13 @@ final class MeetingOfferPanelController {
             self.displayedOffer = offer
             let token = self.generation
             self.closePanel = present(offer, Actions(
+                start: { [weak model] in
+                    Task { [weak model] in
+                        guard let model else { return }
+                        await model.startOffered(offer)
+                        review()
+                    }
+                },
                 review: { [weak model] in
                     guard let model else { return }
                     model.useOffer(offer); model.dismissOffer(); review()
@@ -318,8 +381,9 @@ final class MeetingOfferPanelController {
         panel.title = "Workbench"; panel.level = .floating; panel.isReleasedWhenClosed = false
         panel.contentView = NSHostingView(rootView: VStack(alignment: .leading, spacing: 12) {
             Label(MeetingDetector.offerTitle(for: offer), systemImage: "phone").font(.headline)
-            Text("Would you like to transcribe? Nothing is recording.").font(.callout)
+            Text(offer.name + " · Review to adjust the microphone before starting.").font(.callout)
             HStack {
+                Button("Start recording", action: actions.start).buttonStyle(.borderedProminent)
                 Button("Review", action: actions.review)
                 Button("Not now", action: actions.dismiss)
                 Button("Snooze", action: actions.snooze)
