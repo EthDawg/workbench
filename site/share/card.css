@@ -1,0 +1,87 @@
+/* Share cards: the link preview people see in Teams, Slack, Messages and LinkedIn.
+   Drawn with the homepage's own tokens so the card and the page are the same thing. */
+@font-face{font-family:"Bricolage Grotesque";font-style:normal;font-weight:400 800;src:url(../assets/fonts/bricolage-grotesque-latin.woff2) format("woff2")}
+@font-face{font-family:"Caveat";font-style:normal;font-weight:700;src:url(../assets/fonts/caveat-bold-latin.woff2) format("woff2")}
+:root{
+  --wall-a:#1b4740; --wall-b:#0f252d; --wall-c:#3a301e; --wall-ink:#eef6f4; --wall-muted:#b3c6c8;
+  --mint:#9af0c6; --mint-ink:#86e6b9; --mark:#ff5446; --ink:#12282e;
+  --display:"Bricolage Grotesque",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+  --body:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;width:1200px;height:630px;overflow:hidden}
+body{font-family:var(--body);color:var(--wall-ink);-webkit-font-smoothing:antialiased;font-synthesis:none;position:relative;
+  background:radial-gradient(55% 70% at 12% 22%,var(--wall-a) 0,transparent 70%),radial-gradient(50% 60% at 92% 92%,var(--wall-c) 0,transparent 70%),var(--wall-b)}
+.brand{position:absolute;left:64px;top:52px;display:flex;align-items:center;gap:12px;font-weight:760;font-size:24px;letter-spacing:-.01em}
+.brand svg{width:34px;height:34px;border-radius:9px;box-shadow:0 0 0 1px rgba(238,246,244,.18)}
+.copy{position:absolute;left:64px;top:150px;width:560px}
+.eyebrow{margin:0 0 22px;font-size:15px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--mint-ink)}
+h1{margin:0;font-family:var(--display);font-weight:780;font-variation-settings:"opsz" 96;font-size:88px;line-height:.95;letter-spacing:-.045em}
+h1 .nb{white-space:nowrap;position:relative;display:inline-block}
+h1 .mark{position:absolute;left:-9%;top:-24%;width:118%;height:150%;overflow:visible;pointer-events:none}
+h1 .mark path{fill:none;stroke:var(--mark);stroke-width:5;stroke-linecap:round;stroke-linejoin:round}
+.lede{margin:26px 0 0;font-size:22px;line-height:1.45;color:var(--wall-muted);max-width:26em}
+.fine{position:absolute;left:64px;bottom:48px;margin:0;font-size:16px;color:var(--wall-muted);display:flex;gap:0}
+.fine span+span:before{content:"·";margin:0 9px}
+.cta{display:inline-flex;align-items:center;margin-top:30px;background:var(--wall-ink);color:#0f252d;border-radius:999px;padding:14px 26px;font-size:18px;font-weight:650}
+
+/* the window being worked on, like the hero */
+.stage{position:absolute;left:640px;top:96px;width:470px;height:352px}
+.win{position:absolute;inset:0;background:#fff;border-radius:10px;box-shadow:0 20px 50px rgba(0,0,0,.35),0 0 0 1px rgba(0,0,0,.06);overflow:hidden;color:var(--ink)}
+.win-bar{height:30px;display:flex;align-items:center;gap:6px;padding:0 11px;background:#f3f6f6;border-bottom:1px solid #e2e8e8;font-size:11px;color:#5b6b6e}
+.win-bar i{width:10px;height:10px;border-radius:50%;background:#ff5f57}.win-bar i:nth-child(2){background:#febc2e}.win-bar i:nth-child(3){background:#28c840}
+.win-bar span{flex:1;text-align:center;margin-right:36px}
+.slide{padding:30px 34px 0;display:grid;grid-template-columns:1fr 1fr;column-gap:30px;grid-template-rows:auto auto 1fr;height:326px}
+.slide-kicker{grid-column:1/-1;margin:0;font-size:10px;letter-spacing:.16em;text-transform:uppercase;font-weight:700;color:#17714f}
+.slide-title{grid-column:1/-1;margin:5px 0 22px;font-family:var(--display);font-weight:780;font-size:34px;line-height:1;letter-spacing:-.03em}
+.typed{margin:0;font-size:21px;line-height:1.4;align-self:start}
+.typed .w{display:inline-block;border-radius:.2em}
+.typed .on{background:#9af0c6;box-shadow:0 0 0 .18em #9af0c6;color:#0f2b25}
+.chart{display:flex;align-items:flex-end;gap:11px;border-bottom:2px solid #dbe3e3;height:168px;align-self:end;margin-bottom:46px}
+.chart .bar{flex:1;background:#cddcdc;border-radius:4px 4px 0 0;position:relative}
+.chart .bar.hot{background:#2fb47f}
+.chart .bar:after{content:attr(data-d);position:absolute;left:50%;top:100%;transform:translateX(-50%);margin-top:7px;font-size:10px;color:#6a7b7e}
+.chart>:nth-child(1){height:38%}.chart>:nth-child(2){height:54%}.chart>:nth-child(3){height:46%}.chart>:nth-child(4){height:90%}.chart>:nth-child(5){height:62%}
+
+/* the toolbar, recording */
+.capsule{position:absolute;left:50%;top:100%;transform:translate(-50%,-50%);height:40px;width:112px;border-radius:999px;background:rgba(22,24,26,.93);box-shadow:0 8px 24px rgba(0,0,0,.35),inset 0 0 0 1px rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;gap:9px;color:#fff}
+.capsule i{width:10px;height:10px;border-radius:50%;background:#ff453a}
+.capsule svg{width:54px;height:24px}
+.capsule line{stroke:#fff;stroke-width:2.6;stroke-linecap:round}
+.cap-hint{position:absolute;left:50%;top:100%;transform:translate(-50%,-54px);background:rgba(22,24,26,.93);color:#fff;font-size:12px;font-weight:600;border-radius:6px;padding:3px 8px}
+
+/* snaps that became a deck */
+.deck{position:absolute;right:0;top:-46px;width:142px;display:grid;justify-items:end;gap:5px}
+.deck-cards{position:relative;width:100%;aspect-ratio:16/10}
+.card{position:absolute;inset:0;background:#fff;border-radius:6px;box-shadow:0 6px 20px rgba(0,0,0,.28),0 0 0 1px rgba(0,0,0,.06)}
+.card.c3{transform:rotate(-7deg) translate(-16px,8px)}.card.c2{transform:rotate(-3deg) translate(-7px,4px)}
+.c1{display:flex;align-items:flex-end;gap:7%;padding:16% 9% 9%}
+.c1 span{flex:1;background:#cddcdc;border-radius:2px 2px 0 0}.c1 .hot{background:#2fb47f}
+.c1>:nth-child(1){height:38%}.c1>:nth-child(2){height:54%}.c1>:nth-child(3){height:46%}.c1>:nth-child(4){height:90%}.c1>:nth-child(5){height:62%}
+.c1 em{position:absolute;left:7%;top:9%;font-style:normal;font-size:9px;font-weight:800;letter-spacing:.06em;background:#12282e;color:#fff;border-radius:3px;padding:0 .45em}
+.deck-name{margin:0;display:flex;align-items:center;gap:6px;white-space:nowrap;font-size:12px;background:rgba(20,24,26,.88);color:#fff;border-radius:999px;padding:4px 10px;margin-top:14px}
+.deck-name span{color:rgba(255,255,255,.62)}
+.deck-hand{position:absolute;left:-64px;top:56%;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:650;white-space:nowrap;background:#fff;color:#12282e;border-radius:999px;padding:5px 11px 5px 7px;box-shadow:0 6px 18px rgba(0,0,0,.25)}
+.ai-mark{display:inline-block;width:1.15em;height:1.15em;background:center/contain no-repeat;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cg stroke='%23d97757' stroke-width='2.8' stroke-linecap='round'%3E%3Cpath d='M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6 5.6 18.4'/%3E%3C/g%3E%3C/svg%3E")}
+
+/* the persona bubble, with its voice ring */
+.persona{position:absolute;right:-40px;bottom:-66px;width:190px;height:190px}
+.persona img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.persona .ring{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.persona .ring line{stroke:#45d395;stroke-width:2;stroke-linecap:round}
+
+/* team pack card */
+.pack{position:absolute;left:700px;top:150px;width:400px;background:#fff;color:var(--ink);border-radius:18px;padding:22px 26px 10px;box-shadow:0 24px 60px rgba(0,0,0,.35),0 0 0 1px rgba(0,0,0,.06)}
+.pack-head{margin:0 0 10px;display:flex;justify-content:flex-start;gap:12px;align-items:center;font-size:19px}
+.pack-head span{font-size:12px;border:1px solid #d5e0df;border-radius:999px;padding:2px 10px;color:#4e656a;font-weight:500}
+.pack ul{list-style:none;margin:0;padding:0}
+.pack li{display:flex;justify-content:space-between;padding:13px 2px;border-top:1px solid #e3ebea;font-size:17px;color:#4e656a}
+.pack li b{color:var(--ink);font-variant-numeric:tabular-nums}
+.pack .open{display:flex;justify-content:center;align-items:center;margin:14px -8px 12px;background:#12282e;color:#fff;border-radius:999px;padding:13px;font-weight:650;font-size:16px}
+.pack-persona{position:absolute;right:-30px;top:-46px;width:118px;height:118px}
+.pack-persona img{width:100%;height:100%;object-fit:cover;border-radius:50%;box-shadow:0 10px 26px rgba(0,0,0,.3),0 0 0 4px #fff}
+
+/* pack card page */
+.packs .copy{top:132px}
+.packs h1{font-size:78px}
+.packs .lede{margin-top:22px}
