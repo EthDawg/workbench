@@ -355,7 +355,9 @@ final class ToolbarInteractionTests: XCTestCase {
                     trace.increaseContrast = false
                 }
                 setDrawingMode()
-                XCTAssertEqual(trace.amplitude, reduceMotion ? 1.5 : 0)
+                let dots = [CGFloat](repeating: VoiceTraceGeometry.barWidth, count: VoiceTraceGeometry.bars)
+                let still = VoiceTraceGeometry.heights(VoiceWave(), reduceMotion: true)
+                XCTAssertEqual(trace.heights, reduceMotion ? still : dots)
                 XCTAssertEqual(trace.stroke.opacity, 0.45, accuracy: 0.001)
                 state.status = .resolve(ToolbarActivity(capture: .dictation, level: 0.8))
                 view.rootView = ToolbarRow(state: state, accent: WorkbenchPalette.accent); view.layoutSubtreeIfNeeded()
@@ -363,10 +365,9 @@ final class ToolbarInteractionTests: XCTestCase {
                 trace.advance(to: CACurrentMediaTime() + 0.1)
                 XCTAssertGreaterThan(trace.stroke.opacity, 0.8, "the real sample visibly brightens the trace in \(tier)")
                 if reduceMotion {
-                    XCTAssertEqual(trace.amplitude, 1.5, "Reduce Motion keeps the shape still")
-                    XCTAssertEqual(trace.lineWidth, 1.5, "Reduce Motion keeps its weight still")
+                    XCTAssertEqual(trace.heights, still, "Reduce Motion keeps the shape still")
                 } else {
-                    XCTAssertGreaterThan(trace.amplitude, 1, "the real sample reaches the native drawing in \(tier)")
+                    XCTAssertGreaterThan(trace.heights.max() ?? 0, VoiceTraceGeometry.barWidth * 2, "the real sample reaches the native drawing in \(tier)")
                 }
                 try record(view, name: "recording-\(tier.rawValue)\(reduceMotion ? "-reduce-motion" : "")")
                 XCTAssertNil(trace.hitTest(.zero), "the recording trace never takes the launcher's clicks")
@@ -377,9 +378,9 @@ final class ToolbarInteractionTests: XCTestCase {
                 for tick in 1...12 { trace.advance(to: start + Double(tick) * 0.1) }
                 XCTAssertEqual(trace.stroke.opacity, 0.45, accuracy: 0.01, "silence returns the trace to its quiet brightness")
                 if reduceMotion {
-                    XCTAssertEqual(trace.amplitude, 1.5)
+                    XCTAssertEqual(trace.heights, still)
                 } else {
-                    XCTAssertLessThan(trace.amplitude, 0.1, "silence becomes still without an invented wiggle")
+                    XCTAssertEqual(trace.heights, dots, "silence becomes a row of dots without an invented wiggle")
                 }
             }
         }

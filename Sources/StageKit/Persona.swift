@@ -312,11 +312,13 @@ final class PersonaLibrary: NSObject, ObservableObject {
     /// Persona's local camera bubble: one session, its own temporary placement,
     /// and no saved artwork, photo or library file of its own.
     let camera: PersonaLiveCamera
-    /// React to my voice: a quiet outline around the shown persona that
-    /// brightens as the presenter speaks. Off by default and remembered. It
-    /// listens only while the persona it frames is showing, measures loudness
+    /// React to my voice: a ring of dots around the shown persona that rises
+    /// into bars as the presenter speaks. Off by default and remembered. It
+    /// listens only while the persona it frames is showing, measures the sound
     /// and records nothing.
     @Published private(set) var voiceRing = false
+    /// The ring's colour: mint until the presenter chooses another, and remembered.
+    @Published private(set) var voiceColor = PersonaVoiceRingLayer.usualColor
     /// The input the ring is listening to; nil whenever the microphone is closed.
     @Published private(set) var voiceDevice: String?
     @Published private(set) var voicePermissionPending = false
@@ -389,6 +391,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
         self.sessionHUDEnabled = sessionHUDEnabled
         self.voiceAccess = voice
         self.voiceRing = voice?.savedChoice() ?? false
+        self.voiceColor = voice?.savedColor() ?? PersonaVoiceRingLayer.usualColor
         // Creating the owner opens nothing: it has no session, window or camera
         // until Start camera, so visiting Persona costs no hardware.
         self.camera = camera ?? PersonaLiveCamera()
@@ -780,6 +783,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
         endOverlaySession()
         session = proposed
         proposed.onChange = { [weak self] in self?.refreshSessionState() }
+        proposed.setVoiceColor(voiceColor)
         proposed.setVoiceRing(voiceRing && voiceAccess != nil)
         notice = nil
         onShow?()
@@ -1088,6 +1092,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
             overlay = PersonaOverlayController(persistentLockedHandle: true)
             overlay?.onPlacementChange = { [weak self] state in self?.updateOverlay(state) }
         }
+        overlay?.setVoiceColor(voiceColor)
         overlay?.setVoiceRing(voiceRing && voiceAccess != nil)
         overlay?.setOutline(shownCard?.appearance.outline)
         let placed = overlay?.show(image: image, name: displayedLabel ?? "Floating persona", state: overlayState)
@@ -1338,6 +1343,16 @@ final class PersonaLibrary: NSObject, ObservableObject {
         }
         rememberVoiceRing(enabled)
     }
+    /// The ring's colour, remembered for next time. Changing it never opens
+    /// or closes the microphone.
+    func setVoiceColor(_ color: InkColor) {
+        guard voiceAccess != nil, color != voiceColor else { return }
+        voiceColor = color
+        voiceAccess?.saveColor(color)
+        overlay?.setVoiceColor(color); session?.setVoiceColor(color)
+    }
+    /// macOS's shared colour picker for a ring colour outside the presets.
+    private(set) lazy var voiceColourPicker = PersonaVoiceColourPicker(library: self)
     /// A short line under the switch and menu item while the ring is on.
     var voiceStatus: String? {
         guard voiceRing, voiceAccess != nil else { return nil }
@@ -1666,6 +1681,30 @@ final class PersonaLibrary: NSObject, ObservableObject {
             if #available(macOS 14.4, *), let status = voiceStatus { item.subtitle = status }
             return item
         }
+        // The ring's colour, chosen as Draw's ink colour is: the presets,
+        // black, and macOS's own picker for any other.
+        func voiceColour() -> NSMenuItem? {
+            guard voiceAccess != nil, voiceRing else { return nil }
+            func choice(_ title: String, _ color: InkColor) -> NSMenuItem {
+                let item = StageMenuAction(title, checked: voiceColor == color) { [weak self] in
+                    guard let self, self.overlayGeneration == generation else { return }; self.setVoiceColor(color)
+                }
+                item.image = color.menuSwatch
+                return item
+            }
+            var items = InkColor.presets.enumerated().map { choice(InkColor.presetName(at: $0.offset), $0.element) }
+            items.append(choice("Black", .black))
+            items.append(.separator())
+            let custom = !InkColor.presets.contains(voiceColor) && voiceColor != .black
+            items.append(StageMenuAction("Choose Colour…", checked: custom) { [weak self] in
+                guard let self, self.overlayGeneration == generation else { return }; self.voiceColourPicker.show()
+            })
+            let item = NSMenuItem(title: "Voice Colour", action: nil, keyEquivalent: "")
+            let menu = NSMenu(title: "Voice Colour"); menu.autoenablesItems = false
+            items.forEach { menu.addItem($0) }
+            item.submenu = menu
+            return item
+        }
         // The one floating card, shown or hidden: replace it with the preparation
         // selection, or bring it up to its persona's newer saved look. Public
         // labels only; the card keeps its size, place and lock.
@@ -1732,7 +1771,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
             menu.addSubmenu("Add Overlay", items: state.candidates.map { action($0.label, .add($0.id), enabled: state.instances.count < PersonaSessionController.maximumOverlays) })
             menu.addItem(.separator())
             menu.addItem(action(state.phase == .paused ? "Show Again" : "Hide All Temporarily", .pauseResume))
-            if let item = voiceSwitch() { menu.addItem(item) }
+            if let item = voiceSwitch() { menu.addItem(item) }; if let item = voiceColour() { menu.addItem(item) }
             menu.addItem(action("Save Layout for Next Time", .saveLayout, enabled: state.canSaveLayout && state.hasUnsavedLayout))
             menu.addItem(action("End Overlays", .end))
         } else if overlayVisible, let current = displayedID {
@@ -1766,7 +1805,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
                     }
                 })
             }
-            if let item = voiceSwitch() { menu.addItem(item) }
+            if let item = voiceSwitch() { menu.addItem(item) }; if let item = voiceColour() { menu.addItem(item) }
             menu.addItem(endCard())
         } else {
             if let card = shownCard {
@@ -1777,7 +1816,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
                     self.showAgain()
                 })
                 cardChanges().forEach(menu.addItem)
-                if let item = voiceSwitch() { menu.addItem(item) }
+                if let item = voiceSwitch() { menu.addItem(item) }; if let item = voiceColour() { menu.addItem(item) }
                 menu.addItem(endCard())
             } else {
                 menu.addItem(StageMenuAction("Show Selected Persona", enabled: !visibleItems.isEmpty) { [weak self] in

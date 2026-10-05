@@ -11,8 +11,14 @@ public struct VoiceSample: Equatable, Sendable {
     /// About 0.5 for the speaker's usual voice and 1 for a raised one; 0 when
     /// no voice is heard, including the held gaps between words.
     public var level: Double
+    /// How much sound this moment holds, 0...1, for the wave's height: quick
+    /// enough to fall between syllables and rise with each one, about 0.7 for
+    /// the speaker's usual voice. Sources that do not measure it give `level`.
+    public var energy: Double
 
-    public init(voiced: Bool, level: Double) { self.voiced = voiced; self.level = level }
+    public init(voiced: Bool, level: Double, energy: Double? = nil) {
+        self.voiced = voiced; self.level = level; self.energy = min(1, max(0, energy ?? (voiced ? level : 0)))
+    }
 
     public static let silent = VoiceSample(voiced: false, level: 0)
     /// Sources hold a voice through gaps this long, so words run together.
@@ -136,11 +142,19 @@ public struct VoiceMeter: Equatable, Sendable {
         if reading >= Self.voiceAt {
             heardAt = time
             let level = 0.5 + (reading - Self.usualAt) / (2 * (Self.raisedAt - Self.usualAt))
-            return VoiceSample(voiced: true, level: min(1, max(0, level)))
+            return VoiceSample(voiced: true, level: min(1, max(0, level)), energy: Self.energy(reading))
         }
-        if let heardAt, time - heardAt < VoiceSample.hold { return VoiceSample(voiced: true, level: 0) }
+        if let heardAt, time - heardAt < VoiceSample.hold { return VoiceSample(voiced: true, level: 0, energy: 0) }
         heardAt = nil
         return .silent
+    }
+
+    /// The waveform's height for a reading: nothing below where a voice
+    /// begins, a clear swell for the softest voice the recorder can keep, and
+    /// most of the height for a usual one.
+    public static func energy(_ reading: Double) -> Double {
+        guard reading >= voiceAt else { return 0 }
+        return 0.2 + 0.8 * min(1, (reading - voiceAt) / (raisedAt - voiceAt)).squareRoot()
     }
 
     /// When a held voice ends unless a louder reading arrives first.

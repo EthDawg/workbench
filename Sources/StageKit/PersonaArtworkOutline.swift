@@ -47,6 +47,78 @@ enum PersonaArtworkOutline: Equatable {
         }
     }
 
+    /// The outline moved outward by `distance`, walked once around from the
+    /// middle of its bottom edge: where each share of the way round is, and
+    /// which way is outward there. A wave drawn along it is displaced along
+    /// `outward`, so it keeps the artwork's own shape.
+    func perimeter(outset distance: CGFloat) -> Perimeter {
+        switch self {
+        case .circle(let center, let radius): return Perimeter(circle: center, radius: max(0, radius + distance))
+        case .roundedRect(let box, let radius):
+            let grown = box.insetBy(dx: -distance, dy: -distance)
+            guard grown.width > 0, grown.height > 0 else { return Perimeter(circle: CGPoint(x: box.midX, y: box.midY), radius: 0) }
+            return Perimeter(box: grown, corner: min(min(grown.width, grown.height) / 2, max(0, radius + distance)))
+        }
+    }
+
+    struct Perimeter {
+        /// The distance once around.
+        let length: CGFloat
+        private let box: CGRect, corner: CGFloat
+        private let circle: (center: CGPoint, radius: CGFloat)?
+
+        fileprivate init(circle center: CGPoint, radius: CGFloat) {
+            circle = (center, radius); box = .zero; corner = 0
+            length = 2 * .pi * radius
+        }
+        fileprivate init(box: CGRect, corner: CGFloat) {
+            circle = nil; self.box = box; self.corner = corner
+            length = 2 * (box.width - 2 * corner) + 2 * (box.height - 2 * corner) + 2 * .pi * corner
+        }
+
+        /// The point `share` of the way round, 0...1, from the bottom's middle
+        /// toward the right, the outward direction there, and how far into a
+        /// corner it is: 0 on a straight side or a circle, 1 at the middle of
+        /// a rounded corner, where outward directions spread apart.
+        func point(at share: CGFloat) -> (point: CGPoint, outward: CGVector, corner: CGFloat) {
+            let share = share - share.rounded(.down)
+            if let circle {
+                let angle = -.pi / 2 + 2 * .pi * share
+                let outward = CGVector(dx: cos(angle), dy: sin(angle))
+                return (CGPoint(x: circle.center.x + circle.radius * outward.dx, y: circle.center.y + circle.radius * outward.dy), outward, 0)
+            }
+            let width = box.width - 2 * corner, height = box.height - 2 * corner, arc = .pi / 2 * corner
+            var along = share * length
+            // Each straight run, then the corner it turns into: where the run starts, its direction, its length.
+            let runs: [(start: CGPoint, direction: CGVector, length: CGFloat)] = [
+                (CGPoint(x: box.midX, y: box.minY), CGVector(dx: 1, dy: 0), width / 2),
+                (CGPoint(x: box.maxX, y: box.minY + corner), CGVector(dx: 0, dy: 1), height),
+                (CGPoint(x: box.maxX - corner, y: box.maxY), CGVector(dx: -1, dy: 0), width),
+                (CGPoint(x: box.minX, y: box.maxY - corner), CGVector(dx: 0, dy: -1), height),
+                (CGPoint(x: box.minX + corner, y: box.minY), CGVector(dx: 1, dy: 0), width / 2)
+            ]
+            for (index, run) in runs.enumerated() {
+                // Outward is the run's direction turned a quarter clockwise.
+                let outward = CGVector(dx: run.direction.dy, dy: -run.direction.dx)
+                if along <= run.length || index == runs.count - 1 {
+                    let travelled = min(along, run.length)
+                    return (CGPoint(x: run.start.x + run.direction.dx * travelled, y: run.start.y + run.direction.dy * travelled), outward, 0)
+                }
+                along -= run.length
+                if along <= arc {
+                    // The corner's centre lies `corner` inward from the end of the run.
+                    let end = CGPoint(x: run.start.x + run.direction.dx * run.length, y: run.start.y + run.direction.dy * run.length)
+                    let center = CGPoint(x: end.x - outward.dx * corner, y: end.y - outward.dy * corner)
+                    let angle = atan2(outward.dy, outward.dx) + (corner > 0 ? along / corner : 0)
+                    let turned = CGVector(dx: cos(angle), dy: sin(angle))
+                    return (CGPoint(x: center.x + corner * turned.dx, y: center.y + corner * turned.dy), turned, arc > 0 ? sin(.pi * along / arc) : 0)
+                }
+                along -= arc
+            }
+            return (CGPoint(x: box.midX, y: box.minY), CGVector(dx: 0, dy: -1), 0)
+        }
+    }
+
     /// Whether a point lies on the visible artwork: inside the circle, or inside
     /// the rounded rectangle including its rounded corners.
     func contains(_ point: CGPoint) -> Bool {

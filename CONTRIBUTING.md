@@ -30,7 +30,7 @@ Use an Apple Silicon Mac, macOS 14+, Swift 6.2+ and the macOS 26 SDK. The deploy
 
 Clone the current source. Choose a short branch name for your contribution.
 
-Before running the tests, quit Workbench, Workbench Preview and earlier Voice/StageMark copies. The suite probes exclusive global shortcuts even in its CI mode; another running copy will cause a real registration conflict.
+You can run the tests with Workbench open. The suite probes exclusive global shortcuts even in its CI mode, so while Workbench, Workbench Preview or an earlier Voice/StageMark copy holds the defaults, the two checks that need them are reported as SKIP with that app's name instead of failing. Quit it to run them locally; GitHub CI, where nothing else runs, checks them in full.
 
 ```sh
 git clone https://github.com/EthDawg/workbench.git

@@ -344,8 +344,17 @@ struct PersonaLibraryView: View {
                     if let status = library.voiceStatus {
                         Text(status).font(.caption2).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
                     }
+                    if library.voiceRing {
+                        HStack(spacing: 8) {
+                            InkSwatches(selected: library.voiceColor, purpose: "voice colour") { library.setVoiceColor($0) }
+                            ColorPicker("Custom", selection: Binding(get: { Color(nsColor: library.voiceColor.nsColor) },
+                                                                     set: { library.setVoiceColor(InkColor(NSColor($0))) }), supportsOpacity: false)
+                                .labelsHidden().accessibilityLabel("Custom voice colour")
+                                .accessibilityValue(library.voiceColor.accessibilityDescription).help("Custom voice colour")
+                        }.padding(.top, 3)
+                    }
                 }
-                .help("A quiet outline around the shown persona brightens as you speak, so your audience sees who is talking. Workbench listens only while it shows, measures loudness and records nothing. In a prepared set, the outline follows the selected overlay.")
+                .help("A ring of dots around the shown persona rises into bars as you speak, so your audience sees who is talking. Workbench listens only while it shows, measures the sound and records nothing. In a prepared set, the ring follows the selected overlay.")
             }
         }
     }

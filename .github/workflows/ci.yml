@@ -3,6 +3,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  # The merge queue tests each queued group with main before it lands.
+  merge_group:
   workflow_dispatch:
 permissions:
   contents: read
@@ -10,6 +12,31 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  scope:
+    name: Classify changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      native: ${{ steps.scope.outputs.native }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Test the change classifier
+        run: python3 scripts/test-ci-scope.py
+      - name: Select checks
+        id: scope
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [[ "$EVENT" == pull_request ]]; then
+            python3 scripts/ci-scope.py --base "$BASE" --head "$HEAD" >> "$GITHUB_OUTPUT"
+          else
+            echo 'native=true' >> "$GITHUB_OUTPUT"
+          fi
   site:
     name: Site
     runs-on: ubuntu-latest
@@ -25,8 +52,10 @@ jobs:
         run: node --test site/tests/*.test.mjs
       - name: Build the public website
         run: node site/build.mjs --require-production
-  build-and-test:
-    name: Build and test
+  native:
+    name: Native build and test
+    needs: scope
+    if: needs.scope.outputs.native == 'true'
     runs-on: macos-26
     # The combined native suite and galleries take about 32 minutes on macos-26.
     # Allow final packaging to finish; the prior 35-minute limit expired at that step.
@@ -75,3 +104,25 @@ jobs:
           path: dist/Workbench Preview.zip
           retention-days: 7
           if-no-files-found: error
+  build-and-test:
+    name: Build and test
+    needs: [scope, native]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require the selected checks to succeed
+        env:
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          NATIVE_REQUIRED: ${{ needs.scope.outputs.native }}
+          NATIVE_RESULT: ${{ needs.native.result }}
+        run: |
+          [[ "$SCOPE_RESULT" == success ]] || exit 1
+          if [[ "$NATIVE_REQUIRED" == true ]]; then
+            [[ "$NATIVE_RESULT" == success ]]
+          elif [[ "$NATIVE_REQUIRED" == false ]]; then
+            [[ "$NATIVE_RESULT" == skipped ]] || exit 1
+            echo 'Release metadata only; Site validates the feed and website.'
+          else
+            exit 1
+          fi

@@ -24,7 +24,7 @@ The website cannot establish native microphone, Accessibility paste, shortcuts o
 
 ## Build, verify and promote
 
-Quit Workbench, Workbench Preview and legacy Voice/StageMark apps before running `bash scripts/test.sh`. The suite includes exclusive global-shortcut registration, so a running copy can cause an expected conflict even in StageKit's CI test mode.
+`bash scripts/test.sh` runs with Workbench open. StageKit's CI mode includes exclusive global-shortcut registration; while Workbench, Workbench Preview or a legacy Voice/StageMark app holds the defaults, the two checks that need them are reported as SKIP, naming that app, and the rest still counts. Quit it to run them locally; GitHub CI runs them in full.
 
 Follow [the release guide](../scripts/release/README.md) for the exact signed Preview build/install and notarization commands. The ordinary `bash scripts/build.sh` produces the disposable ad-hoc `dist/Workbench Preview.zip` without installing it. `python3 scripts/release/preview.py build` produces a Developer ID-signed `dist/Workbench Preview.zip`; this local build step does not notarize or publish it.
 
