@@ -34,6 +34,10 @@ A signed, notarized Preview may be a GitHub **prerelease** for independent testi
 
 For website changes, run `node --test site/tests/*.test.mjs` and `node site/build.mjs`. Check installation wording, version/ref agreement and local assets. Browser interaction and mobile layout need separate evidence when exercised. Preserve the existing Vercel project and `site` root; deploy the unified site only after the matching public download is verified. Never submit synthetic QA feedback as real issues.
 
+## Adoption evidence
+
+The only adoption evidence is public: GitHub's per-release download counts and the repository traffic page. [Adoption evidence](adoption.md) explains what each count means and records the baseline from 5 October 2026. `python3 scripts/release/adoption.py` prints the current counts.
+
 ## App Store scope
 
 This consolidation uses the Developer ID direct-download workflow. It does not change an App Store submission, listing or review. A future store edition has separate sandbox, entitlement, distribution and acceptance requirements; the direct-download Preview does not establish that compatibility.
