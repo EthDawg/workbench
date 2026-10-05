@@ -3,13 +3,45 @@ on:
   push:
     branches: [main]
   pull_request:
+  # The merge queue tests each queued group with main before it lands.
+  merge_group:
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+# The native work runs as five jobs on five runners. Each phase of scripts/test.sh
+# and each gallery depends only on the source, so every job builds what it needs
+# itself and a pull request finishes in the time of the longest job (about 13
+# minutes) instead of one 34-minute chain. "Build and test" is the required check:
+# it passes only when the classifier ran and every native job it selected passed.
 jobs:
+  scope:
+    name: Classify changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      native: ${{ steps.scope.outputs.native }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Test the change classifier
+        run: python3 scripts/test-ci-scope.py
+      - name: Select checks
+        id: scope
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [[ "$EVENT" == pull_request ]]; then
+            python3 scripts/ci-scope.py --base "$BASE" --head "$HEAD" >> "$GITHUB_OUTPUT"
+          else
+            echo 'native=true' >> "$GITHUB_OUTPUT"
+          fi
   site:
     name: Site
     runs-on: ubuntu-latest
@@ -25,12 +57,12 @@ jobs:
         run: node --test site/tests/*.test.mjs
       - name: Build the public website
         run: node site/build.mjs --require-production
-  build-and-test:
-    name: Build and test
+  package-tests:
+    name: Package tests
+    needs: scope
+    if: needs.scope.outputs.native == 'true'
     runs-on: macos-26
-    # The combined native suite and galleries take about 32 minutes on macos-26.
-    # Allow final packaging to finish; the prior 35-minute limit expired at that step.
-    timeout-minutes: 45
+    timeout-minutes: 20
     steps:
       - name: Check out source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -38,8 +70,51 @@ jobs:
           persist-credentials: false
       - name: Check development tools
         run: bash scripts/doctor.sh
-      - name: Run regression checks
-        run: bash scripts/test.sh
+      - name: Run swift test
+        run: bash scripts/test.sh package-tests
+  harnesses-and-stage:
+    name: Harnesses and StageKit
+    needs: scope
+    if: needs.scope.outputs.native == 'true'
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Check development tools
+        run: bash scripts/doctor.sh
+      - name: Run the Python harnesses and StageKit's runner
+        run: bash scripts/test.sh harnesses stage
+  checks:
+    name: Release checks
+    needs: scope
+    if: needs.scope.outputs.native == 'true'
+    runs-on: macos-26
+    timeout-minutes: 25
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Check development tools
+        run: bash scripts/doctor.sh
+      - name: Build the release app and run every check
+        run: bash scripts/test.sh checks
+  toolbar-gallery-and-package:
+    name: Toolbar gallery and package
+    needs: scope
+    if: needs.scope.outputs.native == 'true'
+    runs-on: macos-26
+    timeout-minutes: 25
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Check development tools
+        run: bash scripts/doctor.sh
       - name: Render the production toolbar gallery
         run: |
           swift run --disable-sandbox ToolbarGalleryRenderer test-results/toolbar
@@ -50,18 +125,6 @@ jobs:
         with:
           name: toolbar-native-gallery
           path: test-results/toolbar
-          retention-days: 7
-          if-no-files-found: error
-      - name: Render the menu-bar panel and every Home page
-        run: |
-          BIN_DIR="$(swift build -c release --disable-sandbox --show-bin-path)"
-          "$BIN_DIR/LocalVoice" --render-surfaces test-results/surfaces
-      - name: Retain surface visual evidence
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: surface-gallery
-          path: test-results/surfaces
           retention-days: 7
           if-no-files-found: error
       - name: Build and verify app package with native Shortcuts metadata
@@ -75,3 +138,56 @@ jobs:
           path: dist/Workbench Preview.zip
           retention-days: 7
           if-no-files-found: error
+  surface-gallery:
+    name: Surface gallery
+    needs: scope
+    if: needs.scope.outputs.native == 'true'
+    runs-on: macos-26
+    timeout-minutes: 25
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Check development tools
+        run: bash scripts/doctor.sh
+      - name: Render the menu-bar panel and every Home page
+        run: |
+          swift build -c release --disable-sandbox
+          BIN_DIR="$(swift build -c release --disable-sandbox --show-bin-path)"
+          "$BIN_DIR/LocalVoice" --render-surfaces test-results/surfaces
+      - name: Retain surface visual evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: surface-gallery
+          path: test-results/surfaces
+          retention-days: 7
+          if-no-files-found: error
+  build-and-test:
+    name: Build and test
+    needs: [scope, package-tests, harnesses-and-stage, checks, toolbar-gallery-and-package, surface-gallery]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require the selected checks to succeed
+        env:
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          NATIVE_REQUIRED: ${{ needs.scope.outputs.native }}
+          NATIVE_RESULTS: >-
+            ${{ needs.package-tests.result }}
+            ${{ needs.harnesses-and-stage.result }}
+            ${{ needs.checks.result }}
+            ${{ needs.toolbar-gallery-and-package.result }}
+            ${{ needs.surface-gallery.result }}
+        run: |
+          [[ "$SCOPE_RESULT" == success ]] || exit 1
+          if [[ "$NATIVE_REQUIRED" == true ]]; then
+            for result in $NATIVE_RESULTS; do [[ "$result" == success ]] || exit 1; done
+          elif [[ "$NATIVE_REQUIRED" == false ]]; then
+            for result in $NATIVE_RESULTS; do [[ "$result" == skipped ]] || exit 1; done
+            echo 'Release metadata only; Site validates the feed and website.'
+          else
+            exit 1
+          fi

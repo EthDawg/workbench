@@ -21,8 +21,8 @@ let package = Package(
         .target(name: "PrivatePackKit"),
         .testTarget(name: "PrivatePackKitTests", dependencies: ["PrivatePackKit"]),
         .target(name: "ToolbarCore"),
-        // One voice appearance for the toolbar's compact trace and the Persona outline:
-        // the shared envelope, stroke character and trace geometry.
+        // One voice appearance for the toolbar's compact trace and the Persona ring:
+        // the shared envelope, brightness, wave and spectrum, and the trace's geometry.
         .target(name: "VoiceAppearance"),
         .target(name: "ToolbarKit", dependencies: ["ToolbarCore", "VoiceAppearance"]),
         .executableTarget(name: "ToolbarGalleryRenderer", dependencies: ["ToolbarKit", "StageKit"]),

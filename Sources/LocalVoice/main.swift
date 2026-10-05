@@ -87,10 +87,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         model.library.showImages = { images, selected in CaptureImagePreview.shared.showLibrary(images, selected: selected) }
         CaptureImagePreview.shared.attach(to: snap, parent: { [weak self] in self?.window }) { [weak self] in self?.updateRecordingUI() }
         model.handoffJobs.onStateChange = { [weak self] in self?.updateRecordingUI() }
-        model.handoffJobs.currentReviewDigest = { [weak snap] key in
-            guard let snap else { return nil }
-            return (try? snap.store.readOrganization(key: key))?.digest
-        }
+        model.handoffJobs.currentReviewDigest = { [weak snap] key in snap?.store.organizationDigest(key: key) }
         model.handoffJobs.onOpenReview = { [weak snap] key in
             guard let snap, let current = try? snap.store.readOrganization(key: key) else { return }
             NSWorkspace.shared.open(current.url)

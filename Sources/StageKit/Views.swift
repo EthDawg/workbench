@@ -325,17 +325,7 @@ struct ControlCenter: View {
         }
     }
     private var swatches: some View {
-        HStack(spacing: 8) {
-            ForEach(Array(InkColor.presets.enumerated()), id: \.offset) { index, color in
-                Button { settings.value.color = color } label: {
-                    Circle().fill(Color(nsColor: color.nsColor)).frame(width: 18, height: 18)
-                        .padding(3).overlay(Circle().stroke(settings.value.color == color ? .white : .clear, lineWidth: 1.5))
-                }.buttonStyle(.plain)
-                    .accessibilityLabel("\(color.accessibilityDescription) ink colour")
-                    .accessibilityValue(settings.value.color == color ? "Selected" : "Not selected")
-                    .accessibilityAddTraits(settings.value.color == color ? .isSelected : [])
-            }
-        }
+        InkSwatches(selected: settings.value.color, purpose: "ink colour") { settings.value.color = $0 }
     }
     private func colorBinding(_ key: WritableKeyPath<Preferences, InkColor>) -> Binding<Color> {
         Binding(get: { Color(nsColor: settings.value[keyPath: key].nsColor) }, set: { settings.value[keyPath: key] = InkColor(NSColor($0)) })
@@ -515,6 +505,30 @@ struct BreakTimerView: View {
             }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color(nsColor: settings.value.timerBackground.nsColor))
                 .onHover { controlsVisible = $0 }
+        }
+    }
+}
+
+/// The preset colours as a row of swatches, the chosen one ringed: the one
+/// colour choice Draw's ink and Persona's voice ring share. `purpose` names
+/// what is being coloured, for VoiceOver.
+struct InkSwatches: View {
+    let selected: InkColor
+    let purpose: String
+    let choose: (InkColor) -> Void
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(Array(InkColor.presets.enumerated()), id: \.offset) { _, color in
+                Button { choose(color) } label: {
+                    // A hairline keeps White visible on a light page; the chosen one's ring reads on light and dark.
+                    Circle().fill(Color(nsColor: color.nsColor)).frame(width: 18, height: 18)
+                        .overlay(Circle().strokeBorder(Color.primary.opacity(0.18), lineWidth: 0.5))
+                        .padding(3).overlay(Circle().stroke(selected == color ? Color.primary.opacity(0.85) : .clear, lineWidth: 1.5))
+                }.buttonStyle(.plain)
+                    .accessibilityLabel("\(color.accessibilityDescription) \(purpose)")
+                    .accessibilityValue(selected == color ? "Selected" : "Not selected")
+                    .accessibilityAddTraits(selected == color ? .isSelected : [])
+            }
         }
     }
 }

@@ -321,11 +321,15 @@ keyboard focus or collapse deadline.
 
 | State | Collapsed appearance |
 | --- | --- |
-| Recording | Red recording dot and the recording owner's voice trace in the compact target. No warning or timer icons. |
+| Recording | Red recording dot and the recording owner's voice waveform in the compact target. No warning or timer icons. |
 | All other states | Neutral 48 × 8 handle, or 8 × 48 at a side edge. No tool, warning, clipboard, pause or processing icons. |
 
-The recording trace retains its input response, still line in silence, Reduce
-Motion and Increase Contrast behaviour. Expanded, it occupies a separate slot;
+The recording trace is a waveform of seven rounded bars, tallest in the middle and
+thinning out to each side (Ethan, 1 October 2026; it replaces the three still lobes
+of 28 September). A syllable swells from the middle outward, as tall as the
+recorder's level; in silence the bars rest as a row of dots and nothing moves on its
+own. It retains its input response and its Reduce Motion (one still waveform that
+only brightens) and Increase Contrast behaviour. Expanded, it occupies a separate slot;
 Switch tool remains the same four-tile icon. Accessible status can describe live
 recording, playback, processing and paused work. Recovery commands stay with their
 owners and in the chooser; preserving a failed recording never decorates another tool.

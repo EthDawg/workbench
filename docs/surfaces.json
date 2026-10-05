@@ -2837,6 +2837,23 @@
     "note": "Option of Persona: the existing click-through lock applies to the camera bubble, while its move and resize handles remain usable."
   },
   {
+    "id": "StageKit.Persona.PersonaLibrary.NSMenuItem.voice-colour",
+    "surface": "Persona menu",
+    "label": "Voice Colour",
+    "kind": "option",
+    "belongsTo": "persona",
+    "note": "Option within Persona's voice framing (Ethan, 1 Oct): the ring's colour, shown while React to my voice is on. The same presets, Black and picker as Draw's Ink Colour."
+  },
+  {
+    "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.choose-colour",
+    "surface": "Persona menu",
+    "label": "Choose Colour…",
+    "kind": "option",
+    "belongsTo": "persona",
+    "note": "Option: macOS's colour picker for a voice ring colour outside the presets, worded as Draw's Ink Colour menu words it (Ethan, 1 Oct: the same UI as Draw).",
+    "aliasOf": "draw"
+  },
+  {
     "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.react-to-my-voice-uses-microphone",
     "surface": "Persona menu",
     "label": "React to My Voice · Uses Microphone",
