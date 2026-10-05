@@ -905,12 +905,17 @@ struct TestRunner {
                 ("annotation menu rechecks admission", annotationMenu.testStaleMenuCannotBypassChangedAdmission)
             ])
         }
+        var skipped = 0
         for (name, test) in tests {
             let before = assertionFailures
-            do { try test() } catch { assertionFailures += 1; print("FAIL \(name): \(error)") }
+            do { try test() }
+            // A precondition this Mac cannot meet is reported, not failed; CI meets it.
+            catch let skip as TestSkipped { skipped += 1; print("SKIP \(name): \(skip)"); continue }
+            catch { assertionFailures += 1; print("FAIL \(name): \(error)") }
             if assertionFailures == before { print("PASS \(name)") }
         }
-        print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
+        if skipped > 0 { print("\(skipped) skipped") }
+        print("\(tests.count - skipped) tests · \(assertionCount) assertions · \(assertionFailures) failures")
         exit(assertionFailures == 0 ? 0 : 1)
     }
 }
