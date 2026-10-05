@@ -52,7 +52,7 @@ the signing/notarization gates in `release.py` or authorise a production release
 
 ## Official signed and notarized releases
 
-Run on an interactive release Mac after quitting the installed app so it releases global shortcuts. Ordinary contributors can build and test without a paid Apple account.
+Run on an interactive release Mac. The installed app may stay open: the suite reports its two exclusive-shortcut checks as skipped while an edition holds the defaults, and `--check-input` registers its own keys (⌃⌥⇧F13 to F20). Ordinary contributors can build and test without a paid Apple account.
 
 1. Have a Developer ID Application certificate and its private key available in Keychain.
 2. Reuse an existing authenticated notarytool Keychain profile. If none exists, create one using `xcrun notarytool store-credentials Workbench` and its secure prompts. Keep passwords, private keys and signing exports out of arguments, source control and public conversations.
