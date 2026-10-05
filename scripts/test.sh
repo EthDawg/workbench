@@ -48,6 +48,7 @@ harnesses() {
   PYTHONDONTWRITEBYTECODE=1 python3 scripts/release/test_release.py
   PYTHONDONTWRITEBYTECODE=1 python3 scripts/release/test_preview.py
   PYTHONDONTWRITEBYTECODE=1 python3 scripts/release/test_updates.py
+  PYTHONDONTWRITEBYTECODE=1 python3 scripts/release/test_adoption.py
   PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-photo-cloud.py
   PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-clean-draft.py
   PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-capture-persistence.py
