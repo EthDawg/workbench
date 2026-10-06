@@ -8,7 +8,8 @@ import Network
 //
 //   waiting / sending  --POST envelope, 200 without a feedback or attachment limit-->  sent
 //   sent  --verifier: received-->  received   (local copy dropped, receipt kept)
-//   sent  --verifier: mismatch or not_found for 15 minutes-->  unconfirmed  (Send again: new event ID)
+//   sent  --verifier: mismatch or not_found at the end of 15 minutes-->  unconfirmed  (Send again: new event ID)
+//   sent  --verifier unavailable (503, no answer) or still pending-->  stays sent: never downgraded
 //   400, 401, 403, 404, 413, TLS  -->  failed  (Retry is the person's choice; no loop)
 
 @MainActor
@@ -239,29 +240,51 @@ final class BugReportTransport: ObservableObject {
 
     // MARK: Verifier
 
+    /// The verifier's endpoint: a configured URL that already ends in /api/v1/verify is used as
+    /// is; a bare origin gets that path.
+    static func verifyEndpoint(_ url: URL) -> URL {
+        url.path.hasSuffix("/api/v1/verify") ? url : url.appendingPathComponent("api/v1/verify")
+    }
+
     private func verify(_ delivery: BugReportDelivery) async {
         guard let verifier = delivery.destination.verifier.flatMap({ BugReportConfiguration.verifierURL($0, allowLoopbackHTTP: delivery.destination.isOverride) }),
-              let until = delivery.verifyUntil else {
+              let until = delivery.verifyUntil, let sentAt = delivery.sentAt else {
             var stopped = delivery; stopped.nextAttemptAt = nil; try? store.save(stopped); return
         }
-        var request = URLRequest(url: verifier.appendingPathComponent("api/v1/verify"))
+        var request = URLRequest(url: Self.verifyEndpoint(verifier))
         request.httpMethod = "POST"
         request.timeoutInterval = 30
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         let files = (try? BugReportEnvelope.parse(try store.envelope(delivery.id)).items).map(BugReportEnvelope.verifierAttachments) ?? []
-        request.httpBody = try? JSONSerialization.data(withJSONObject: ["event_id": delivery.eventID, "report_id": delivery.id, "attachments": files],
+        // sent_at, when Sentry's 200 arrived, lets the verifier read a missing event as pending
+        // for its first 15 minutes rather than not_found.
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["event_id": delivery.eventID, "report_id": delivery.id, "attachments": files,
+                                                                        "sent_at": BugReportText.timestamp(sentAt)],
                                                        options: [.sortedKeys, .withoutEscapingSlashes])
         let outcome = await perform(request)
         guard var current = store.delivery(delivery.id), current.eventID == delivery.eventID, current.state == .sent else { return }
         current.verifyAttempts += 1
-        var answer: String?
-        if case .response(let response, let data) = outcome, response.statusCode == 200,
-           let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let state = object["state"] as? String, ["received", "pending", "mismatch", "not_found"].contains(state) {
-            answer = state
-        }
         let time = now()
+        var answer: String?
+        var wait: TimeInterval?
+        if case .response(let response, let data) = outcome {
+            switch response.statusCode {
+            case 200:
+                if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let state = object["state"] as? String, ["received", "pending", "mismatch", "not_found"].contains(state) { answer = state }
+            case 503:
+                // The verifier or Sentry is unavailable: keep Sent and ask again when told.
+                wait = BugReportEnvelope.rateLimit(status: 429, rateLimits: nil, retryAfter: response.value(forHTTPHeaderField: "Retry-After"), now: time)
+            case 405, 413, 422:
+                // A request this build should never make. Note it in the receipt file and stop; Sent stays true.
+                current.verifierState = "client_error_\(response.statusCode)"
+                current.nextAttemptAt = nil
+                try? store.save(current)
+                return
+            default: break
+            }
+        }
         if answer == "received" {
             current.state = .received; current.receivedAt = time; current.verifierState = "received"
             current.nextAttemptAt = nil; current.problem = nil
@@ -272,14 +295,14 @@ final class BugReportTransport: ObservableObject {
         if let answer { current.verifierState = answer }
         if time >= until {
             current.nextAttemptAt = nil
-            // Only the verifier's own answer can say a delivery is unconfirmed. An unreachable
-            // verifier or a pending answer leaves the truthful Sent.
-            if current.verifierState == "mismatch" || current.verifierState == "not_found" {
+            // Only the verifier's own answer at the end of the window can say a delivery is
+            // unconfirmed. An unavailable verifier or a pending answer leaves the truthful Sent.
+            if answer == "mismatch" || answer == "not_found" {
                 current.state = .unconfirmed
-                current.problem = current.verifierState == "mismatch" ? .mismatch : .notFound
+                current.problem = answer == "mismatch" ? .mismatch : .notFound
             }
         } else {
-            current.nextAttemptAt = min(until, time.addingTimeInterval(Self.backoff(current.verifyAttempts, random: random())))
+            current.nextAttemptAt = min(until, time.addingTimeInterval(wait ?? Self.backoff(current.verifyAttempts, random: random())))
         }
         try? store.save(current)
     }

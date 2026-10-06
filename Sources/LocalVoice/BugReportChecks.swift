@@ -253,11 +253,12 @@ enum BugReportChecks {
         let suite = root.appendingPathComponent("defaults-\(UUID().uuidString)").path
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(atPath: suite + ".plist") }
-        let stable = WorkbenchBuild(info: ["WorkbenchBuildKind": "release", BugReportConfiguration.dsnKey: real, BugReportConfiguration.verifierKey: verifier])
+        let realVerifier = "https://workbench-report-check.vercel.app/api/v1/verify"
+        let stable = WorkbenchBuild(info: ["WorkbenchBuildKind": "release", BugReportConfiguration.dsnKey: real, BugReportConfiguration.verifierKey: realVerifier])
         let stableNoVerifier = WorkbenchBuild(info: ["WorkbenchBuildKind": "release", BugReportConfiguration.dsnKey: real])
         let previewRelease = WorkbenchBuild(info: ["WorkbenchBuildKind": "release", "WorkbenchChannel": "preview", BugReportConfiguration.dsnKey: real])
         let local = WorkbenchBuild(info: ["WorkbenchBuildKind": "local"])
-        try expect(BugReportConfiguration.destination(build: stable, defaults: defaults) == .init(dsn: real, verifier: verifier, environment: "production", isOverride: false),
+        try expect(BugReportConfiguration.destination(build: stable, defaults: defaults) == .init(dsn: real, verifier: realVerifier, environment: "production", isOverride: false),
                    "Stable release: its DSN, verifier and the production environment")
         try expect(BugReportConfiguration.destination(build: stableNoVerifier, defaults: defaults)?.verifier == nil, "the verifier is optional")
         try expect(BugReportConfiguration.destination(build: previewRelease, defaults: defaults) == nil, "Preview carries no DSN, even if one were stamped")
@@ -465,12 +466,16 @@ enum BugReportChecks {
         let sentry = FakeSentry()
         var answers: [String?] = []
         var requests: [[String: Any]] = []
+        var paths: Set<String> = []
         BugReportStub.route = { request in
             if request.url.host == "verify.example.test" {
+                paths.insert(request.url.path)
                 requests.append((try? JSONSerialization.jsonObject(with: request.body) as? [String: Any]) ?? [:])
                 let answer = answers.isEmpty ? "pending" : answers.removeFirst()
                 guard let answer else { return .failure(.cannotConnectToHost) }
-                return .status(200, ["Content-Type": "application/json"], Data(#"{"state":"\#(answer)"}"#.utf8))
+                if answer == "503" { return .status(503, ["Retry-After": "120"], Data()) }
+                if answer == "422" { return .status(422, [:], Data(#"{"error":"invalid_request"}"#.utf8)) }
+                return .status(200, ["Content-Type": "application/json"], Data(#"{"state":"\#(answer)","checked_at":"2026-10-07T05:00:30Z"}"#.utf8))
             }
             return sentry.handle(request)
         }
@@ -500,6 +505,13 @@ enum BugReportChecks {
         try expect(body["event_id"] as? String == delivery.eventID && body["report_id"] as? String == id
                    && files?.map { $0["name"] as? String } == ["context.json", "screenshot.png", "voice.wav"]
                    && files?.allSatisfy({ ($0["size"] as? Int ?? 0) > 0 && ($0["sha256"] as? String)?.count == 64 }) == true, "the verifier request names every file")
+        try expect(body["sent_at"] as? String == BugReportText.timestamp(delivery.sentAt!) && Set(body.keys) == ["event_id", "report_id", "attachments", "sent_at"]
+                   && (try JSONSerialization.data(withJSONObject: body)).count <= 4_096, "the verifier request carries sent_at and nothing else, within 4 KiB")
+        try expect(paths == ["/api/v1/verify"], "the verifier endpoint path")
+        try expect(BugReportTransport.verifyEndpoint(URL(string: "https://workbench-report-check.vercel.app/api/v1/verify")!).absoluteString
+                   == "https://workbench-report-check.vercel.app/api/v1/verify"
+                   && BugReportTransport.verifyEndpoint(URL(string: "http://127.0.0.1:8787")!).absoluteString == "http://127.0.0.1:8787/api/v1/verify",
+                   "a full endpoint is used as is; an origin gets /api/v1/verify")
 
         // Mismatch for the whole window: Couldn't confirm delivery, then Send again under a new event ID.
         (h, id) = try await frozen("mismatch")
@@ -519,6 +531,23 @@ enum BugReportChecks {
                    "Send again uses a new event ID, once")
         try expect(again.items[1].payload == manifest && again.header["event_id"] as? String == delivery.eventID, "the same report ID and context.json")
 
+        // 503 keeps Sent and waits as told; a mismatch before it does not downgrade at the end.
+        (h, id) = try await frozen("unavailable")
+        answers = ["mismatch", "503"]
+        h.clock.advance(15); await h.transport.runDue()
+        h.clock.advance(15); await h.transport.runDue()
+        delivery = h.store.delivery(id)!
+        try expect(delivery.state == .sent && delivery.nextAttemptAt == h.clock.now + 120, "503 keeps Sent and honours Retry-After")
+        answers = Array(repeating: "503", count: 40)
+        for _ in 0..<40 where h.store.delivery(id)?.nextAttemptAt != nil { h.clock.advance(120); await h.transport.runDue() }
+        try expect(h.store.delivery(id)?.state == .sent, "an unavailable verifier never downgrades Sent")
+        // 422, 413 and 405 are this build's mistakes: stop checking and stay Sent.
+        (h, id) = try await frozen("client-error")
+        answers = ["422"]
+        h.clock.advance(15); await h.transport.runDue()
+        delivery = h.store.delivery(id)!
+        try expect(delivery.state == .sent && delivery.nextAttemptAt == nil && delivery.verifierState == "client_error_422", "422 stops checking and stays Sent")
+
         // not_found for the window is also unconfirmed; an unreachable verifier leaves Sent.
         (h, id) = try await frozen("not-found")
         answers = Array(repeating: "not_found", count: 40)
@@ -530,7 +559,7 @@ enum BugReportChecks {
         delivery = h.store.delivery(id)!
         try expect(delivery.state == .sent && delivery.nextAttemptAt == nil && !delivery.evidenceRemoved, "an unreachable verifier leaves a truthful Sent")
         try expect(h.model.receipts.first?.title == "Sent · \(BugReportText.shortID(id))", "receipt stays Sent")
-        return ["verifier: first check at 15 s, pending then received, mismatch and not_found become Couldn't confirm delivery, Send again with a new event ID, unreachable stays Sent"]
+        return ["verifier: first check at 15 s with sent_at, pending then received, mismatch and not_found become Couldn't confirm delivery, Send again with a new event ID, 503/422/unreachable stay Sent"]
     }
 
     // MARK: Outbox, draft and Save a copy

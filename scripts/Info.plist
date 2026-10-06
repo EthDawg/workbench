@@ -40,7 +40,7 @@
 	<key>NSDesktopFolderUsageDescription</key>
 	<string>Workbench reads your Desktop only when you choose Import Desktop screenshots, to save those screenshots in History.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Workbench records your microphone only when you start dictation, narration or a meeting, and your chosen speech engine processes the recording. A persona's voice ring, when you turn it on, measures loudness and records nothing.</string>
+	<string>Workbench records your microphone only when you start dictation, narration, a meeting or a voice note for a problem report. Your chosen speech engine processes dictation, narration and meetings; a voice note is sent as recorded only when you send the report. A persona's voice ring, when you turn it on, measures loudness and records nothing.</string>
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>Workbench captures audio from the Mac app you select only after you start meeting or call transcription.</string>
 	<key>NSPrincipalClass</key>

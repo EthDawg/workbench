@@ -24,8 +24,10 @@ struct BugReportDestination: Codable, Equatable {
 /// local builds have none unless a developer sets the override, which those builds alone honour:
 ///
 ///     defaults write com.ethdawg.workbench.preview WorkbenchReportDSNOverride 'https://KEY@HOST/PROJECT'
-///     defaults write com.ethdawg.workbench.preview WorkbenchReportVerifierOverride 'http://127.0.0.1:8787'
+///     defaults write com.ethdawg.workbench.preview WorkbenchReportVerifierOverride 'https://workbench-report-check.vercel.app/api/v1/verify'
 ///
+/// A verifier URL is its full `/api/v1/verify` endpoint, or an origin that path is added to
+/// (such as `http://127.0.0.1:8787` for a local verifier).
 /// or the same keys as launch arguments (`-WorkbenchReportDSNOverride …`). Override reports carry
 /// the `preview` environment, so they never mix with production triage.
 enum BugReportConfiguration {
