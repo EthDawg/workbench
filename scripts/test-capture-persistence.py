@@ -176,7 +176,7 @@ struct CaptureSettings {
     static var delayed = false
     static var continuation: CheckedContinuation<Void, Never>?
     static var beforeDelivery: (() -> Void)?
-    static var lastMode: DeliveryMode?, lastTarget: String?
+    static var lastMode: DeliveryMode?, lastTarget: String?, lastFit: InsertionBoundary.Context?
     enum FailureKind: String, Equatable {
         case copyFailed, accessibilityUnavailable, focusChanged, fieldUnreadable, pasteUnavailable
         case pasteUnconfirmed, clipboardChanged, clipboardRestoreFailed, cancelled
@@ -203,8 +203,9 @@ struct CaptureSettings {
     }
     static func capture() -> Target? { "Frontmost fixture field" }
     static func copy(_ text: String) -> Int? { copies.append(text); return copyFails ? nil : copies.count }
-    static func deliver(_ text: String, target: Target?, mode: DeliveryMode, restoreClipboard: Bool) async -> Outcome {
-        lastMode = mode; lastTarget = target?.name
+    static func deliver(_ text: String, target: Target?, mode: DeliveryMode, restoreClipboard: Bool,
+                        fit: InsertionBoundary.Context? = nil) async -> Outcome {
+        lastMode = mode; lastTarget = target?.name; lastFit = fit
         beforeDelivery?(); calls += 1
         if delayed { await withCheckedContinuation { continuation = $0 } }
         return nextOutcome
@@ -220,8 +221,9 @@ struct CaptureSettings {
     var cancellationProblem: String?
     var outcome = TextDelivery.Outcome(message: "Inserted in fixture field.", clipboardChangeCount: nil, wasPasted: true, pasteWasAttempted: true)
     var beforeFinish: (() -> Void)?
-    static func begin(target: TextDelivery.Target?, shortcut: FixtureShortcut) -> LiveDictationDelivery? {
-        defer { next = nil }; return next
+    var context: InsertionBoundary.Context?
+    static func begin(target: TextDelivery.Target?, shortcut: FixtureShortcut, context: InsertionBoundary.Context = .init()) -> LiveDictationDelivery? {
+        defer { next = nil }; next?.context = context; return next
     }
     func finish(_ text: String, restoreClipboard: Bool) -> TextDelivery.Outcome { finishCalls += 1; beforeFinish?(); return outcome }
     func cancel() -> String? { cancelCalls += 1; return cancellationProblem }
@@ -1179,7 +1181,7 @@ fixture = fixture.replace('__CLEAR_CALL_SITES__', '[' + ', '.join('"%s"' % site 
 fixture = fixture.replace('__UNDELIVERED_WRITERS__', '[' + ', '.join('"%s"' % site for site in sorted(writers)) + ']')
 fixture = fixture.replace('__STAGE_START__', stage_start)
 # Expose only the destination's access level to the fixture; keep its actual observer body.
-fixture = fixture.replace('__LIFECYCLE_PROPERTIES__', model.extract(['phase', 'destination']).replace('private var destination', 'var destination'))
+fixture = fixture.replace('__LIFECYCLE_PROPERTIES__', model.extract(['phase', 'destination', 'insertionContext']).replace('private var destination', 'var destination'))
 fixture = fixture.replace('__VALUES__', values).replace('__REQUEST__', request).replace('__LABELS__', labels).replace('__METHODS__', methods)
 with tempfile.TemporaryDirectory(prefix='workbench-capture-persistence-') as temporary:
     directory = Path(temporary)
@@ -1190,6 +1192,7 @@ with tempfile.TemporaryDirectory(prefix='workbench-capture-persistence-') as tem
                     str(PROJECT / 'Sources/LocalVoice/CaptureCue.swift'), str(PROJECT / 'Sources/LocalVoice/Attention.swift'), str(PROJECT / 'Sources/LocalVoice/LiveVoiceSession.swift'),
                     str(PROJECT / 'Sources/LocalVoice/NoticeLifetime.swift'), str(PROJECT / 'Sources/LocalVoice/FeedbackCoach.swift'),
                     str(PROJECT / 'Sources/LocalVoice/DeliveryOutcome.swift'), str(PROJECT / 'Sources/LocalVoice/ClipboardReceipt.swift'),
+                    str(PROJECT / 'Sources/LocalVoice/InsertionBoundary.swift'),
                     '-o', str(executable)], check=True)
     subprocess.run([str(executable), str(directory / 'data')], check=True)
 print('AppModel.swift SHA256:', hashlib.sha256(app_model.source.encode()).hexdigest())
