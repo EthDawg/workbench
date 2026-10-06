@@ -75,6 +75,7 @@ struct WorkbenchHome: View {
     /// still works and nothing lands without a highlighted item. A route nothing knows shows
     /// Dictate, as the page switch always has.
     static func destination(_ route: String) -> (page: String, section: String?) {
+        if route == "speak" { return ("library", "library") }
         if let section = sections.first(where: { $0.id == route }) { return (section.page, section.id) }
         if navItems.contains(where: { $0.id == route }) { return (route, nil) }
         return (subpages.first { $0.id == route }?.page ?? "dictate", nil)

@@ -44,6 +44,8 @@ enum WorkbenchPageChecks {
         }
         try check(WorkbenchHome.destination("surface-gallery-unknown-route").page == "dictate",
                   "an unknown route shows Dictate with Dictate highlighted, as the page switch does")
+        try check(WorkbenchHome.destination("speak").page == "library" && WorkbenchHome.destination("speak").section == "library",
+                  "the retired Read route opens Resources for preserved text, without a new tool route")
         for route in pages + WorkbenchHome.sections.map(\.id) + WorkbenchHome.subpages.map(\.id) {
             try check(pages.contains(WorkbenchHome.destination(route).page), "\(route) lands on a sidebar page")
         }

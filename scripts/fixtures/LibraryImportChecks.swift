@@ -143,8 +143,69 @@ import SwiftUI
         let externalBytes = try Data(contentsOf: store.url)
         try check(!model.applyImport() && Data(contentsOf: store.url) == externalBytes, "stale review cannot overwrite newer disk state")
         model.refreshImportReview()
-        try check(model.resources == external && model.importChoices.isEmpty && model.importReview?.baseline == external, "Review again reloads latest state and resets decisions")
+        try check(model.resources == external && model.importChoices.isEmpty && model.importReview?.baseline == external
+                  && !model.savingDisabled && model.storageFailure == nil,
+                  "Review again reloads latest state, resets decisions and releases a resolved storage hold")
         model.cancelImport()
+
+        // Import can discover a whole-store fault. Cancelling that review or
+        // successfully copying retained text must not conceal it on Resources.
+        for fault in ["changed", "corrupt", "unreadable"] {
+            let recoveryStore = DemoLibraryStore(directory: root.appendingPathComponent("Recovery-" + fault))
+            let recoveryBytes = try recoveryStore.save([first])
+            var copied: String?
+            let recovery = DemoLibraryModel(store: recoveryStore, copyText: { copied = $0; return 1 },
+                openURL: { _ in fatalError("Recovery cannot open a resource") })
+            try DemoLibraryStore.encoded([changed]).write(to: exchange)
+            recovery.prepareImport(from: exchange); recovery.importChoices = [first.id]
+            let keptReview = recovery.importReview!.id
+            if fault == "changed" { try recoveryStore.save([changed]) }
+            else if fault == "corrupt" { try Data("Unreadable synthetic Library".utf8).write(to: recoveryStore.url) }
+            else {
+                try FileManager.default.removeItem(at: recoveryStore.url)
+                try FileManager.default.createDirectory(at: recoveryStore.url, withIntermediateDirectories: false)
+            }
+            try check(!recovery.applyImport() && recovery.importReview?.id == keptReview,
+                      "\(fault) saved store prevents Apply and retains its reviewed incoming data")
+            if fault != "changed" {
+                recovery.refreshImportReview()
+                try check(recovery.importReview?.id == keptReview && recovery.importChoices == [first.id]
+                          && recovery.savingDisabled && recovery.storageFailure != nil && recovery.importError != nil,
+                          "\(fault) Review again retains the comparison, decisions and persistent recovery")
+            }
+            let persistent = recovery.storageFailure
+            recovery.cancelImport(); recovery.copy(first)
+            try check(recovery.importReview == nil && recovery.importError == nil && copied == first.content
+                      && persistent != nil && recovery.storageFailure == persistent && recovery.savingDisabled,
+                      "\(fault) Apply, Cancel and successful Copy leave the observed storage fault visible")
+            recovery.newPrompt("A held store must not become an editable empty Library")
+            try check(recovery.draft == nil && recovery.resources == [first], "\(fault) cancellation keeps retained resources and holds new writes")
+            if fault == "unreadable" { try FileManager.default.removeItem(at: recoveryStore.url) }
+            try recoveryBytes.write(to: recoveryStore.url)
+            let reloaded = DemoLibraryModel(store: recoveryStore, copyText: { _ in 1 }, openURL: { _ in false })
+            try check(!reloaded.savingDisabled && reloaded.storageFailure == nil && reloaded.resources == [first],
+                      "\(fault) resolved store can be reloaded without a permanent hold")
+        }
+
+        // A failed decode during Review again can also recover in that same
+        // open review, without forcing Cancel or discarding the incoming data.
+        let retryStore = DemoLibraryStore(directory: root.appendingPathComponent("Review-retry"))
+        let retryBytes = try retryStore.save([first])
+        let retry = DemoLibraryModel(store: retryStore, copyText: { _ in 1 }, openURL: { _ in false })
+        try DemoLibraryStore.encoded([changed]).write(to: exchange)
+        retry.prepareImport(from: exchange); retry.importChoices = [first.id]
+        try Data("Temporary corrupt saved Library".utf8).write(to: retryStore.url)
+        retry.refreshImportReview()
+        try check(retry.savingDisabled && retry.storageFailure != nil && retry.importReview != nil,
+                  "Review again itself records a saved-store decode fault")
+        try retryBytes.write(to: retryStore.url)
+        retry.refreshImportReview()
+        try check(!retry.savingDisabled && retry.storageFailure == nil && retry.importError == nil
+                  && retry.importChoices.isEmpty && retry.importReview?.entries.first?.incoming == changed
+                  && Data(contentsOf: retryStore.url) == retryBytes,
+                  "successful Review again clears the hold only after validated reload, without writing or losing incoming content")
+        retry.importChoices = [first.id]
+        try check(retry.applyImport() && retryStore.load() == [changed], "a repaired review can deliberately Apply its chosen edit")
 
         let beforeBad = try Data(contentsOf: store.url)
         let badInputs = [Data("malformed".utf8), try JSONEncoder().encode(DemoLibraryDocument(version: 99, resources: [])), Data(repeating: 32, count: DemoLibraryStore.byteLimit + 1), try JSONEncoder().encode(DemoLibraryDocument(resources: [first, first])), try JSONEncoder().encode(DemoLibraryDocument(resources: [DemoResource(title: "")]))]

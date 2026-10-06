@@ -92,7 +92,8 @@ enum PresenterChecks {
         var outside = library.resources[0]; outside.title = "Updated elsewhere"
         try library.store.save([outside])
         let newer = try Data(contentsOf: library.store.url)
-        try check(!library.save(library.resources[0]) && library.error?.contains("changed outside") == true, "observed external edit blocks a stale in-memory save")
+        try check(!library.save(library.resources[0]) && library.storageFailure?.contains("changed outside") == true
+                  && library.savingDisabled, "observed external edit holds writes and blocks a stale in-memory save")
         try check(try Data(contentsOf: library.store.url) == newer, "conflicting save preserves the newer file exactly")
         let preserved = try Data(contentsOf: library.store.url)
         try Data("future-or-broken-library".utf8).write(to: library.store.url)

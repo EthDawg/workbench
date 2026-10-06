@@ -518,6 +518,7 @@ private struct HistoryNativeAcceptanceView: View {
     }
 
     func render(to output: URL) throws -> SurfaceGallery.Pass {
+        if ProcessInfo.processInfo.environment["WORKBENCH_RESOURCES_GALLERY_ONLY"] == "1" { return try renderResources(to: output) }
         if ProcessInfo.processInfo.environment["WORKBENCH_FOUNDATION_OWNERSHIP_GALLERY_ONLY"] == "1" { return try renderFoundationOwnership(to: output) }
         if ProcessInfo.processInfo.environment["WORKBENCH_READ_RETIREMENT_GALLERY_ONLY"] == "1" { return try renderReadRetirement(to: output) }
         if SurfaceGallery.desktopOnly { return try renderDesktopOnly(to: output) }
@@ -908,7 +909,10 @@ private struct HistoryNativeAcceptanceView: View {
         let window = homeWindow(size: size)
         defer { window.contentViewController = nil; window.close(); model.phase = .idle; model.elapsed = 0 }
         var added: [DemoResource] = []
-        defer { for item in added { library.remove(item) }; library.notice = nil }
+        defer {
+            for item in added { if let current = library.resources.first(where: { $0.id == item.id }) { library.remove(current) } }
+            library.notice = nil
+        }
         for title in ["Quarterly pricing walkthrough for the regional partner review, with the revised numbers",
                       "Onboarding checklist for presenters joining the Thursday demo rotation",
                       "Follow-up prompt: summarise the objections from the procurement call and propose next steps"] {
@@ -1655,6 +1659,71 @@ private struct HistoryNativeAcceptanceView: View {
 
     /// A bounded pass for desktop Home changes. It uses the same isolated fixtures and actual
     /// SwiftUI views as the full gallery, including History's draft/selection preservation check.
+    func renderResources(to output: URL) throws -> SurfaceGallery.Pass {
+        let library = model.library
+        guard library.resources.isEmpty else { throw VoiceError.message("The Resources pass requires a fresh synthetic Library.") }
+        let window = homeWindow(size: SurfaceGallery.sizes[1].size)
+        defer { window.contentViewController = nil; window.close() }
+        var shots: [SurfaceGallery.Shot] = []
+        func shot(_ id: String, _ title: String, route: String = "library") throws {
+            let (image, _) = try renderPage(route, in: window)
+            shots.append(try save(image, id: id, title: title,
+                detail: "Production Resources at the minimum window size; synthetic local records only.",
+                file: "resources-\(id)-\(theme).png", to: output))
+        }
+        try shot("empty", "Fresh Library")
+        let examples = home.appendingPathComponent("Examples", isDirectory: true)
+        try FileManager.default.createDirectory(at: examples, withIntermediateDirectories: true)
+        let file = examples.appendingPathComponent("Workshop notes.txt")
+        try Data("Synthetic workshop notes. The original stays in its chosen folder.\n".utf8).write(to: file)
+        let prompt = DemoResource(title: "Prepare the next discussion", product: "Planning", persona: "Facilitator",
+            content: "Summarise the decisions, open questions and next steps.\nKeep owners and dates exactly as supplied.\nDo not invent missing information.", favorite: true)
+        let link = DemoResource(kind: .link, title: "Project reference", content: "https://example.com/reference")
+        let document = DemoResource(kind: .file, title: "Workshop notes", content: file.path)
+        let missing = DemoResource(kind: .file, title: "Notes on another drive", content: examples.appendingPathComponent("Moved notes.txt").path)
+        for item in [prompt, link, document, missing] {
+            guard library.save(item) else { throw VoiceError.message("Could not save the Resources fixture.") }
+        }
+        library.notice = nil
+        for (item, id) in [(prompt, "prompt"), (link, "link"), (document, "file"), (missing, "missing")] {
+            library.selection = item.id; try shot(id, "Selected \(id)")
+        }
+        library.selection = nil; try shot("no-selection", "No selection")
+        library.favoritesOnly = true; try shot("favourites", "Favourite resources")
+        library.query = "no matching synthetic resource"; try shot("no-match", "No matching resources")
+        library.query = ""; library.favoritesOnly = false; library.selection = document.id
+
+        // Resolve the actual old route with a real synthetic capture owner state.
+        // Navigation cannot change its draft, phase or available Finish action.
+        let kept = (phase: model.phase, ready: model.ready, text: model.transcript, page: model.page)
+        model.phase = .recording; model.ready = false
+        let control = WorkbenchControlContext(model: model, readback: readback, stage: stage, snap: snap)
+        let resourcesPixels = SurfacePass.contentPixels(try renderPage("library", in: window).0)
+        let retiredPixels = SurfacePass.contentPixels(try renderPage("speak", in: window).0)
+        guard resourcesPixels == retiredPixels else {
+            throw VoiceError.message("The retired Read route must render Resources, not only highlight Library.")
+        }
+        try shot("retired-route", "Old Read route reaches Resources while work continues", route: "speak")
+        guard WorkbenchHome.destination(model.page).section == "library", model.phase == .recording,
+              model.transcript == kept.text, control.state.enabled(.dictate), control.state.actionTitle(.dictate) == "Finish dictation" else {
+            throw VoiceError.message("The retired Read route changed capture work or hid its Finish action.")
+        }
+        model.phase = kept.phase; model.ready = kept.ready; model.page = kept.page
+        let sourceBytes = try Data(contentsOf: file)
+        let updated = try library.store.save(library.resources + [DemoResource(title: "Changed elsewhere", content: "Preserve the newer version.")])
+        guard !library.save(DemoResource(title: "Uncommitted edit", content: "Must not replace newer records.")),
+              library.storageFailure != nil, library.savingDisabled,
+              try Data(contentsOf: library.store.url) == updated, try Data(contentsOf: file) == sourceBytes else {
+            throw VoiceError.message("The Resources store-conflict fixture did not preserve its files.")
+        }
+        try shot("storage-held", "Saved Library changed outside this window")
+        let pages = [SurfaceGallery.Page(route: "library", title: "Library · Resources", fallsThrough: false, shots: shots)]
+        return SurfaceGallery.Pass(theme: theme, panels: [], toolbar: [], host: [], pickers: [], pickerHost: [], pages: pages,
+            entries: entries().filter { $0.route == "library" || $0.surface == "Library" }, menus: [],
+            checks: ["Old speak resolves to Resources without changing the synthetic recording or draft; Finish remains enabled while readiness is false.",
+                     "External replacement leaves the newer Library and original file byte-identical, pauses writes and retains readable resources."], scope: "resources")
+    }
+
     func renderFoundationOwnership(to output: URL) throws -> SurfaceGallery.Pass {
         var pass = try renderHomeOnly(to: output)
         pass.scope = "foundation-ownership"
