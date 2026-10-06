@@ -1,10 +1,10 @@
-# Shortcuts dictation and optional Speko reading
+# Shortcuts dictation and retired reading history
 
-**6 October 2026 product decision:** The [Read retirement contract](mac-foundation.md#read-retirement-is-a-narrow-removal-not-an-audio-rewrite) supersedes selected-text and Speko reading setup below. These describe existing source, not the target offer. Audio-to-text Shortcuts remain supported; do not remove recognition while retiring TTS.
+**6 October 2026:** Read retirement is implemented in source. Audio-to-text Shortcuts remain supported. The dated native evidence below describes the earlier Voice package; it does not validate the retirement upgrade.
 
 Matt ([@mattywhitenz](https://github.com/mattywhitenz)) proposed these workflows in [#10](https://github.com/Ship-Work/workbench/issues/10) and [#11](https://github.com/Ship-Work/workbench/issues/11). Credit is for the proposals; no unsubmitted contributor code has been attributed.
 
-These workflows are now part of the unified Workbench app. The 9 September validation below records the earlier Voice package; use [Workbench 2 Preview evidence](preview-2.0.md) for the current installed app and its remaining checks.
+The audio-to-text workflow is part of the unified Workbench app. The 9 September validation below records the earlier Voice package; use [Workbench 2 Preview evidence](preview-2.0.md) for the current installed app and its remaining checks.
 
 ## Dictate into Notes or another app
 
@@ -20,23 +20,9 @@ Apple owns the microphone and its cancellation controls in this workflow. Workbe
 
 **Why this composition:** native testing on macOS 26.5.1 confirmed the prototype’s direct recording action could return live text, but Shortcuts’ Stop did not reliably cancel an app-owned microphone capture, even with task/progress cancellation handlers. The shipped design reuses Apple’s Record Audio lifecycle. The direct recording action was removed; it is not a hidden microphone fallback. Cancellation during local processing may finish the current recognition work; it cannot keep recording audio.
 
-## Read a selection from another Mac app
+## Retired selected-text and online reading
 
-Select text in TextEdit or an app that supplies plain text to macOS Services, then choose **Services → Read Selection in Workbench**. Workbench opens Read aloud with the exact supplied selection. If a different reading already exists, review the incoming text and choose **Keep current** or **Replace reading**; neither choice starts audio.
-
-Preview builds name this action **Read Selection in Workbench Preview**. Open the installed app once; if the action is unavailable, check **System Settings → Keyboard → Keyboard Shortcuts → Services**. An installed-package pass from TextEdit and a supported browser, including VoiceOver, remains unverified on the development host.
-
-The Service declares plain-text input and no return type. With no usable selection it reports an error instead of reading the general clipboard, whole screen, focused window or Accessibility tree. A long selection is not truncated: the editor shows the selected provider's limit and keeps Listen/Save audio unavailable until the draft fits. Mac voices remain local. When Speko is selected, its online disclosure remains visible and text is sent only after the separate **Listen** or **Save audio** action.
-
-## Optional Speko reading
-
-Mac voices remain the default, offline and account-free. Choosing **Read aloud → Speko · online** explicitly enables online readings. Create a personal account at [Speko](https://platform.speko.ai), choose **Gateway + Router** during onboarding, create an API key and save it in Voice’s secure field. No gateway worker is needed.
-
-Only text you explicitly submit for a Speko reading goes to its Router and selected voice provider. Accepted text may be billed, including cancelled requests. Dictation/cleanup gain no cloud fallback. Keys are kept in this edition’s macOS Keychain, separate between Preview and production; never in app JSON, logs or the repository. Removing a key returns reading to Mac voices.
-
-Automatic uses balanced routing and the route’s default voice. After saving a key, Workbench can fetch Speko's English TTS catalogue and show voices that support a 5,000-character call. Choosing one stores its public catalogue metadata in app preferences and sends the compatible `provider`, `model` and `voice` tuple for later readings; choosing Automatic removes that pin. Catalogue lookup sends the API key and filters, but no draft text. Speko pace control remains absent; Mac voices retain pace and a 50,000-character limit.
-
-Reading requests have bounded duration/response size, unique idempotency keys, no Workbench retry, no cookies/cache and no redirects. Error bodies are not displayed/logged. Raw mono 24 kHz PCM is wrapped in WAV for playback and M4A export. Listen/Save reuse unchanged generated audio; key replacement/removal or a changed voice invalidates it. Speko also offers speech-to-text, but Workbench does not expose it as a recognition provider in this increment; Dictate and Snap & Talk continue using the separately selected provider in Models.
+Read/TTS and its selected-text macOS Service are removed from both Mac editions. There is no voice enumeration, reading Keychain lookup, catalogue request, TTS download or synthesis admission. Old provider credentials and caches are left untouched. Nonempty saved Read text becomes one exact UTF-8 Library file, with the original fields retained and contextual recovery on failure. Original audio playback and Apple Shortcuts transcription remain separate retained workflows.
 
 ## Build and validation
 
@@ -48,4 +34,4 @@ On 9 September 2026, Xcode 26.6 (17F113) generated native metadata and the Devel
 
 [Apple App Intents](https://developer.apple.com/documentation/appintents/creating-your-first-app-intent) supplies typed results to Shortcuts. A keyboard shortcut or URL that merely opens Voice cannot do that. Recording is delegated to Apple’s existing action after native cancellation testing exposed the lifecycle gap described above.
 
-[Speko’s speech API](https://docs.speko.ai/relay/tts/speech) supports one-shot raw PCM with automatic or explicit routing, and its [TTS voice catalogue](https://docs.speko.ai/api-reference/tts-voices) supplies compatible provider/model/voice identifiers. A small HTTPS client fits this reading feature. Its [MIT-licensed Gateway](https://github.com/SpekoAI/gateway) is an early-preview runtime for voice agents; no gateway code, telemetry, additional runtime or generic provider framework is bundled.
+The historical Speko implementation used its speech API and voice catalogue. That adapter is removed; it is not a supported setup or extension point.

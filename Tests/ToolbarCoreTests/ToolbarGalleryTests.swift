@@ -104,7 +104,7 @@ final class ToolbarGalleryTests: XCTestCase {
     /// Every compact indicator is reviewed, in both themes and at both text sizes.
     func testEveryCompactIndicatorHasAFixture() {
         let shown = Set(ToolbarGallery.statuses.map { "\($0.status.indicator)" })
-        for indicator in ["capture", "playback", "processing", "failure", "pendingDelivery", "unsavedCapture", "paused"] {
+        for indicator in ["capture", "processing", "failure", "pendingDelivery", "unsavedCapture", "paused"] {
             XCTAssertTrue(shown.contains(indicator), indicator)
         }
         XCTAssertTrue(ToolbarGallery.statuses.contains { $0.status.attentionBadge }, "recording with a job that needs attention")
@@ -121,17 +121,16 @@ final class ToolbarGalleryTests: XCTestCase {
         XCTAssertEqual(ToolbarGallery.activity(ToolbarLiveState(mode: .dictate, timer: .running)).live, [.timer])
     }
 
-    /// Dictation, narration and reading are the row's own work now (#134 T4): revealed, the row's
-    /// next action stops, pauses or resumes them, and at rest they are the compact mark.
-    func testRecordingAndReadingRenderInTheSameRow() {
+    /// Dictation and narration keep the same host and their own stop actions.
+    func testRecordingAndNarrationRenderInTheSameRow() {
         func state(_ name: String) -> ToolbarViewState? { ToolbarGallery.states.first { $0.name == name } }
         XCTAssertEqual(state("recording-dictation")?.actionTitle, "Finish dictation")
         XCTAssertEqual(state("recording-dictation")?.status.indicator, .capture)
         XCTAssertEqual(state("recording-dictation-in-present")?.actionTitle, "Finish dictation", "the recording claims the button in any tool")
         XCTAssertEqual(state("recording-processing")?.isActionEnabled, false)
         XCTAssertEqual(state("recording-narration")?.actionTitle, "Stop narration")
-        XCTAssertEqual(state("reading-playing")?.actionTitle, "Pause reading")
-        XCTAssertEqual(state("reading-paused")?.actionTitle, "Resume reading")
+        XCTAssertNil(state("reading-playing"))
+        XCTAssertNil(state("reading-paused"))
         XCTAssertEqual(state("recording-dictation-stops-soon")?.status.stopsSoonBadge, true)
         XCTAssertEqual(state("recording-dictation-stops-soon-attention")?.status.badges, [.stopsSoon, .attention], "both badges, in the launcher too")
         XCTAssertEqual(state("recording-waiting-for-drawing")?.actionTitle, "Stop drawing", "words waiting for drawing (#211 F5)")
@@ -172,13 +171,13 @@ final class ToolbarGalleryTests: XCTestCase {
         // Whatever is live elsewhere, a tool offers only its own accessory, and these three none.
         for mode in ToolbarMode.allCases {
             let states = [ToolbarLiveState(mode: mode), ToolbarLiveState(mode: mode, dictation: .recording),
-                          ToolbarLiveState(mode: mode, reading: .playing, narrating: true, captureCount: 2),
+                          ToolbarLiveState(mode: mode, narrating: true, captureCount: 2),
                           ToolbarLiveState(mode: mode, drawing: true, presenting: true, persona: .shown, timer: .running)]
             for live in states {
                 for copy in [false, true] {
                     let accessory = offered(live, copy: copy)
                     XCTAssertTrue(accessory == nil || accessory?.mode == mode, "\(mode): \(String(describing: accessory))")
-                    if [.dictate, .read, .snap].contains(mode) { XCTAssertNil(accessory, "\(mode) has no accessory") }
+                    if [.dictate, .snap].contains(mode) { XCTAssertNil(accessory, "\(mode) has no accessory") }
                 }
             }
         }
@@ -198,7 +197,7 @@ final class ToolbarGalleryTests: XCTestCase {
             if let accessory = state.accessory { XCTAssertEqual(accessory.mode, state.mode, state.name) }
         }
         let modes = Dictionary(uniqueKeysWithValues: ToolbarGallery.modes.filter { $0.tier == .revealed }.map { ($0.mode, $0.accessory) })
-        XCTAssertEqual(modes, [.dictate: nil, .read: nil, .snap: nil, .snapAndTalk: nil, .draw: .tools, .present: .prompts, .persona: .personaPicker],
+        XCTAssertEqual(modes, [.dictate: nil, .snap: nil, .snapAndTalk: nil, .draw: .tools, .present: .prompts, .persona: .personaPicker],
                        "idle, Draw and Present show theirs, Persona offers its cards and camera, and nothing else has one to show")
         let hidden = ToolbarGallery.states.first { $0.name == "accessory-persona-hidden" }
         XCTAssertEqual(hidden?.accessory, .personaPicker, "a kept card is chosen again from the picker")
@@ -225,7 +224,7 @@ final class ToolbarGalleryTests: XCTestCase {
         let symbols = ToolbarMode.allCases.map(\.symbol)
         XCTAssertEqual(Set(symbols).count, symbols.count)
         XCTAssertEqual(ToolbarMode.draw.page, "annotate")
-        XCTAssertEqual(ToolbarMode.read.page, "speak")
+        XCTAssertNil(ToolbarMode(rawValue: "read"), "an old Read preference cannot select a retired mode")
         XCTAssertEqual(ToolbarMode.snapAndTalk.page, "readback")
         XCTAssertEqual(ToolbarMode.persona.page, "personas")
     }

@@ -24,6 +24,7 @@ enum PresenterPauseChecks {
         for id in VoicePreferences.shortcutIDs { var key = preferences.shortcut(id); key.enabled = false; preferences.setShortcut(key, for: id) }
         let chosen = VoiceShortcut(keyCode: UInt32(kVK_ANSI_Y), modifiers: UInt32(optionKey))
         preferences.presenterShortcut = chosen
+        preferences.readingShortcut = chosen
         preferences.save(to: defaults); defaults.set(1, forKey: VoicePreferences.shortcutRevisionKey)
         var rawPreferences = try JSONSerialization.jsonObject(with: defaults.data(forKey: VoicePreferences.key)!) as! [String: Any]
         var rawShortcut = rawPreferences["presenterShortcut"] as! [String: Any]
@@ -59,11 +60,13 @@ enum PresenterPauseChecks {
                 && model.destinations.first?.connected == false, "paused status keeps the saved destination inspectable")
             let loaded = VoicePreferences.load(from: defaults)
             try check(loaded.presenterShortcut == chosen && !loaded.enabledCombinations.contains(chosen.combination), "stored shortcut survives without reserving its key")
-            try check(!AppDelegate.voiceShortcutCatalogue.contains { $0.0 == 4 } && VoicePreferences.shortcutIDs.contains(6), "catalogue excludes browser only; Read stays with H")
+            try check(!AppDelegate.voiceShortcutCatalogue.contains { [4, 6].contains($0.0) } && VoicePreferences.shortcutIDs.contains(5), "catalogue excludes paused browser and retired Read while keeping Snap & Talk")
+            try check(loaded.readingShortcut == chosen && !loaded.enabledCombinations.contains(chosen.combination), "retired Read keeps its saved key without reserving it")
             let hotkeys = VoiceHotkeys()
             hotkeys.onKey = { _, _, _ in switches += 1 }
-            hotkeys.register(loaded) // Only the saved, inactive browser key is enabled.
+            hotkeys.register(loaded) // Only the saved, inactive browser and Read keys are enabled.
             hotkeys.dispatch(4, down: true, at: 1); hotkeys.dispatch(4, down: false, at: 2)
+            hotkeys.dispatch(6, down: true, at: 3); hotkeys.dispatch(6, down: false, at: 4)
             hotkeys.unregister()
             library.selection = link.id
             library.copy(link)

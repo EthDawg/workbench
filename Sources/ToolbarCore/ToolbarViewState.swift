@@ -9,12 +9,11 @@
 /// journey: starting anything from any door makes it the mode, and ending leaves
 /// the mode where it was. Timer is not a mode; it stays a panel row.
 public enum ToolbarMode: String, CaseIterable, Sendable {
-    case dictate, read, snap, snapAndTalk, draw, present, persona
+    case dictate, snap, snapAndTalk, draw, present, persona
 
     public var title: String {
         switch self {
         case .dictate: return "Dictate"
-        case .read: return "Read"
         case .snap: return "Snap"
         case .snapAndTalk: return "Snap & Talk"
         case .draw: return "Draw"
@@ -27,7 +26,6 @@ public enum ToolbarMode: String, CaseIterable, Sendable {
     public var symbol: String {
         switch self {
         case .dictate: return "mic"
-        case .read: return "speaker.wave.2"
         case .snap: return "viewfinder"
         case .snapAndTalk: return "rectangle.dashed.badge.record"
         case .draw: return "pencil.tip"
@@ -39,7 +37,6 @@ public enum ToolbarMode: String, CaseIterable, Sendable {
     public var page: String {
         switch self {
         case .dictate: return "dictate"
-        case .read: return "speak"
         case .snap: return "snap"
         case .snapAndTalk: return "readback"
         case .draw: return "annotate"
@@ -183,7 +180,7 @@ public enum ToolbarAccessory: String, CaseIterable, Sendable {
             case .sessionHidden: return nil
             case .none, .shown, .cameraStarting, .cameraShown, .cameraHidden, .cameraFailed: return .personaPicker
             }
-        case .dictate, .read, .snap: return nil
+        case .dictate, .snap: return nil
         }
     }
 }

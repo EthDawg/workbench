@@ -349,16 +349,12 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         stage.objectWillChange.receive(on: RunLoop.main)
             .sink { [weak self, weak model] _ in if let model { self?.update(model: model) } }
             .store(in: &observations)
-        model.$rendering.combineLatest(model.$playing, model.$paused)
-            .receive(on: RunLoop.main)
-            .sink { [weak self, weak model] _ in if let model { self?.update(model: model) } }
-            .store(in: &observations)
         model.$phase.combineLatest(model.$captureFailure, model.$previewingPanel)
             .receive(on: RunLoop.main)
             .sink { [weak self, weak model] _ in if let model { self?.update(model: model) } }
             .store(in: &observations)
-        // A routine cue and a stopped reading keep their surfaces until they go.
-        model.$captureCue.combineLatest(model.$readingFailure)
+        // A routine cue keeps its surface until it goes.
+        model.$captureCue
             .receive(on: RunLoop.main)
             .sink { [weak self, weak model] _ in if let model { self?.update(model: model) } }
             .store(in: &observations)
@@ -385,9 +381,6 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         // which fires as it is about to be set, so the hold hears it on the next pass (#222).
         model.$captureFailure.receive(on: RunLoop.main)
             .sink { [weak self, weak model] _ in self?.heldSlotChanged(.dictationFailure, model: model) }
-            .store(in: &observations)
-        model.$readingFailure.receive(on: RunLoop.main)
-            .sink { [weak self, weak model] _ in self?.heldSlotChanged(.readingFailure, model: model) }
             .store(in: &observations)
         // The coaching card (#134 T5): this host says when one may show, shows a pending one above
         // its place and reports it presented, and takes it down when it goes. A narration
@@ -425,7 +418,6 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
             presenting: stage?.isPresenting == true, persona: stage?.hasActivePersona == true, inserting: model.promptInsertion.running,
             capturingScreen: capturingScreen,
             dictation: Self.showsDictation(model), narration: narrating,
-            reading: model.rendering || model.playing || model.paused || model.readingFailure != nil,
             cue: (Self.showsCue(model) || Self.showsDeliveryCue(model)) && !narrating)
         if surface != self.surface {
             self.surface = surface
@@ -514,7 +506,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
     /// Delivery feedback never replaces the revealed row or adds recovery badges.
     static func showsDeliveryCue(_ model: AppModel) -> Bool {
         model.phase == .idle && model.captureCue == nil && model.captureFailure == nil
-            && !model.promptInsertion.running && !model.meetings.isBusy && !model.rendering && !model.playing && !model.paused
+            && !model.promptInsertion.running && !model.meetings.isBusy
             && model.clipboardReceipt.isHUDVisible && model.clipboardReceipt.receipt != nil
     }
 

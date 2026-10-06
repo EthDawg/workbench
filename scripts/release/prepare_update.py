@@ -70,7 +70,7 @@ def verify_package(receipt, archive, config):
         extracted = Path(temporary)
         subprocess.run(['ditto', '-x', '-k', archive, extracted], check=True)
         app = extracted / package['bundle']
-        info = release.validate_identity(app, package)
+        info = release.validate_identity(app, package, incoming=True)
         validate_receipt(receipt, archive, info, config)
         release.check_signature(app, receipt['team'])
         subprocess.run(['xcrun', 'stapler', 'validate', app], check=True)

@@ -127,7 +127,7 @@ Production promotion requires the applicable native checks below to pass on the 
 
 - Download the final channel ZIP through a browser on another Mac or clean account. Verify its SHA-256, expected app identity, normal Gatekeeper opening and first-run permissions. Shell extraction alone is not this test.
 - Verify one app and one menu-bar icon; home-window reopen/close behavior; onboarding; shortcut recording, conflicts and practice; and safe switching between speech, drawing and presenting.
-- Voice: first model download, microphone start/stop/cancel, transcription, clipboard-only delivery, optional Accessibility paste into a harmless TextEdit document, focus protection, reading/export, and restart/history.
+- Voice: first model download, microphone start/stop/cancel, transcription, clipboard-only delivery, optional Accessibility paste into a harmless TextEdit document, focus protection, original recording review, exact legacy Read text preservation, and restart/history.
 - Annotation: draw/erase/undo, pointer effects, saved boards, timer, display changes and real screen sharing.
 - Present: scene and logo persistence, USB device selection/reconnection and actual video, full-screen start/end, and the separate QuickTime/iPhone Mirroring launch paths where supported.
 - Confirm Preview preserves existing production/legacy apps and saved data. Never imply unperformed hardware or fresh-Mac tests passed.
@@ -170,7 +170,7 @@ Use an HTML fragment for concise user-facing release notes. Sparkle generates th
 
 ### Write notes people want to read
 
-Lead with what the person can do more easily in this release. Use a short, warm opening and three to five concrete outcomes, with the most useful first. Name the familiar tool and a real moment: “Pick up your last capture from Home” or “Keep your reading draft when copied text can’t be read.” Include an outcome only after it passes the release’s acceptance checks. Avoid component names, test counts, vague “improvements” and promises of perfect reliability in the updater’s small reading area.
+Lead with what the person can do more easily in this release. Use a short, warm opening and three to five concrete outcomes, with the most useful first. Name the familiar tool and a real moment: “Pick up your last capture from Home” or “Copy the complete transcript when a meeting finishes.” Include an outcome only after it passes the release’s acceptance checks. Avoid component names, test counts, vague “improvements” and promises of perfect reliability in the updater’s small reading area.
 
 Draft the customer-facing copy once, then use the same opening and outcomes in the GitHub Markdown and Sparkle HTML. A useful shape is:
 

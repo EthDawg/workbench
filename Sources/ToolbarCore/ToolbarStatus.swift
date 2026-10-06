@@ -22,8 +22,6 @@ public struct ToolbarActivity: Hashable, Sendable {
     public var captureTransport: CaptureTransport
     /// The capturing owner's own latest level sample, 0 to 1; nil when it has none.
     public var level: Double?
-    /// Reading aloud.
-    public var playback: Bool
     /// Transcribing, tidying, delivering, cancelling, preparing audio or finishing a capture.
     public var processing: Bool
     /// A recoverable failure that is still unresolved.
@@ -44,11 +42,11 @@ public struct ToolbarActivity: Hashable, Sendable {
     /// The capturing owner judges its microphone too quiet to use, after a stretch of near silence.
     public var quiet: Bool
 
-    public init(capture: Capture? = nil, level: Double? = nil, playback: Bool = false, processing: Bool = false,
+    public init(capture: Capture? = nil, level: Double? = nil, processing: Bool = false,
                 failure: Bool = false, pendingDelivery: Bool = false, unsavedCapture: Bool = false,
                 paused: Bool = false, live: [Live] = [], stopsSoon: Bool = false, quiet: Bool = false,
                 captureTransport: CaptureTransport = .recording, meetingFinishesSoon: Bool = false) {
-        self.capture = capture; self.level = level; self.playback = playback; self.processing = processing
+        self.capture = capture; self.level = level; self.processing = processing
         self.captureTransport = captureTransport
         self.failure = failure; self.pendingDelivery = pendingDelivery; self.unsavedCapture = unsavedCapture
         self.paused = paused; self.live = Live.allCases.filter(live.contains); self.stopsSoon = stopsSoon
@@ -88,7 +86,7 @@ public struct ToolbarStatus: Equatable, Sendable {
         case idle
         /// A recording dot with the owner's level, or a still level outline without one.
         case capture
-        case playback, processing, failure, pendingDelivery, unsavedCapture, paused
+        case processing, failure, pendingDelivery, unsavedCapture, paused
         /// Ordinary live work; its words remain available even when the mark is quiet.
         case live(ToolbarActivity.Live)
     }
@@ -131,12 +129,11 @@ public struct ToolbarStatus: Equatable, Sendable {
 
     public static let idle = ToolbarStatus()
 
-    /// The fixed priority: capture and playback, processing, failure, a pending result or
+    /// The fixed priority: capture, processing, failure, a pending result or
     /// capture, paused work, other live work, idle.
     public static func resolve(_ activity: ToolbarActivity) -> ToolbarStatus {
         let indicator: Indicator
         if activity.capture != nil && activity.captureTransport == .recording { indicator = .capture }
-        else if activity.playback { indicator = .playback }
         else if activity.processing || activity.capture != nil && activity.captureTransport == .reconnecting { indicator = .processing }
         else if activity.failure { indicator = .failure }
         else if activity.pendingDelivery { indicator = .pendingDelivery }
@@ -171,7 +168,6 @@ public struct ToolbarStatus: Equatable, Sendable {
         if activity.capture == .meeting && activity.captureTransport == .recording && activity.meetingFinishesSoon {
             parts.append("Call audio ended. Finishing soon. Choose Keep recording in Switch tool to continue")
         }
-        if activity.playback { parts.append("Reading aloud") }
         if activity.processing { parts.append("Processing") }
         if activity.failure { parts.append("Needs attention") }
         if activity.pendingDelivery { parts.append("Result waiting to be delivered") }
@@ -183,7 +179,7 @@ public struct ToolbarStatus: Equatable, Sendable {
 
     /// Whether VoiceOver should hear about a change: a new indicator, badge or state in words,
     /// never a level or how quiet it is, which the words leave out. So a failure, a pending
-    /// result or an unsaved capture arriving under processing or playback is heard, though the
+    /// result or an unsaved capture arriving under processing is heard, though the
     /// indicator stays, and so is the time-limit warning, once, when it appears.
     public func announces(after previous: ToolbarStatus) -> Bool {
         indicator != previous.indicator || attentionBadge != previous.attentionBadge || description != previous.description

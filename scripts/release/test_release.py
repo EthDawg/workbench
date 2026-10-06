@@ -160,6 +160,20 @@ class ReleaseTests(unittest.TestCase):
                 with self.assertRaises(RuntimeError):
                     release.validate_identity(renamed, config)
 
+    def test_incoming_service_rejected_without_blocking_historical_inspection(self):
+        for is_preview in (False, True):
+            config = release.configuration(self.ROOT, preview=is_preview)
+            with tempfile.TemporaryDirectory() as temporary:
+                app = self.make_app(Path(temporary), config)
+                path = app / "Contents/Info.plist"
+                info = plistlib.loads(path.read_bytes())
+                release.validate_identity(app, config, incoming=True)
+                info["NSServices"] = [{"NSMessage": "readSelection"}]
+                path.write_bytes(plistlib.dumps(info))
+                with self.assertRaisesRegex(RuntimeError, "retired Read Service"):
+                    release.validate_identity(app, config, incoming=True)
+                release.validate_identity(app, config)
+
     def test_archive_rejects_wrong_app_traversal_and_duplicate_paths(self):
         config = release.configuration(self.ROOT, preview=True)
         with tempfile.TemporaryDirectory() as temporary:

@@ -40,12 +40,17 @@ class SurfaceTests(unittest.TestCase):
         return [e['label'] for e in self.entries()]
 
     def registry(self, entries=None):
-        return [{**e, 'kind': 'action', 'belongsTo': 'read'} for e in (self.entries() if entries is None else entries)]
+        return [{**e, 'kind': 'action', 'belongsTo': 'app'} for e in (self.entries() if entries is None else entries)]
 
     def errors(self, entries=None):
         return check.compare(self.entries(), self.registry() if entries is None else entries)
 
     def test_pass(self):
+        self.assertEqual([], self.errors())
+
+    def test_disclosure_is_a_named_control_on_an_owned_surface(self):
+        self.file.write_text(PANEL % 'DisclosureGroup("Details") { Text("Diagnostic") }')
+        self.assertEqual(["Details"], self.labels())
         self.assertEqual([], self.errors())
 
     def test_unregistered_footer_teaches_without_deciding(self):

@@ -94,7 +94,7 @@ final class ToolbarKeyboardTraversalTests: XCTestCase {
 
     /// Read has no accessory: Tab goes from the next action straight to More.
     @MainActor func testTabCyclesARowWithoutAnAccessory() throws {
-        let (forward, backward) = try cycle(ToolbarViewState(name: "read", tier: .revealed, mode: .read), count: 2)
+        let (forward, backward) = try cycle(ToolbarViewState(name: "snap", tier: .revealed, mode: .snap), count: 2)
         XCTAssertEqual(forward, ["primary", "launcher"])
         XCTAssertEqual(backward, ["primary", "launcher"])
     }

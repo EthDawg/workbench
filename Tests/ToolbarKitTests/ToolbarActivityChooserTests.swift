@@ -6,17 +6,17 @@ import ToolbarCore
 
 final class ToolbarActivityChooserTests: XCTestCase {
     @MainActor func testACommandCannotTurnIntoAnotherOperationOrActAfterItReturns() {
-        let pause = ToolbarChooserAction("read.pause", "Pause reading", identity: "track-1")
-        var row = ToolbarToolChoice(mode: .read, isLive: true); row.actions = [pause]
+        let pause = ToolbarChooserAction("dictate.pause", "Pause dictation", identity: "capture-1")
+        var row = ToolbarToolChoice(mode: .dictate, isLive: true); row.actions = [pause]
         let model = ToolbarChooserModel(choices: [row])
         var performed: [String] = []; model.perform = { performed.append($0.id) }
         let held = model.press(pause)
-        row.actions = [.init("read.resume", "Resume reading", identity: "track-1")]; model.refresh([row])
+        row.actions = [.init("dictate.resume", "Resume dictation", identity: "capture-1")]; model.refresh([row])
         row.actions = [pause]; model.refresh([row])
         held?()
         XCTAssertTrue(performed.isEmpty, "a Pause that left and came back is a different press")
         model.press(pause)?()
-        XCTAssertEqual(performed, ["read.pause"])
+        XCTAssertEqual(performed, ["dictate.pause"])
     }
 
     @MainActor func testEveryDestructiveActivityRejectsAReplacementOperation() {
@@ -70,8 +70,8 @@ final class ToolbarActivityChooserTests: XCTestCase {
     }
 
     @MainActor func testAnotherActivityAndTimerTicksDoNotCancelTheNamedCommand() {
-        let stop = ToolbarChooserAction("read.stop", "Stop reading", identity: "track-1")
-        var row = ToolbarToolChoice(mode: .read, isLive: true); row.actions = [stop]
+        let stop = ToolbarChooserAction("dictate.stop", "Finish dictation", identity: "capture-1")
+        var row = ToolbarToolChoice(mode: .dictate, isLive: true); row.actions = [stop]
         let model = ToolbarChooserModel(choices: [row])
         var performed = 0; model.perform = { _ in performed += 1 }
         let held = model.press(stop)
@@ -82,16 +82,16 @@ final class ToolbarActivityChooserTests: XCTestCase {
         held?()
         XCTAssertEqual(performed, 1)
         let old = model.press(stop)
-        row.actions = [.init("read.stop", "Stop reading", identity: "track-2")]; model.refresh([row]); old?()
-        XCTAssertEqual(performed, 1, "the same label must not stop a replacement track")
+        row.actions = [.init("dictate.stop", "Finish dictation", identity: "capture-2")]; model.refresh([row]); old?()
+        XCTAssertEqual(performed, 1, "the same label must not stop a replacement capture")
     }
 
     @MainActor func testEveryVisibleActivityCommandIsASeparateNativeButtonAndFits() {
         _ = NSApplication.shared
         var choices = ToolbarMode.allCases.map { ToolbarToolChoice(mode: $0, isSelected: $0 == .present) }
         choices[0].actions = [.init("dictate.retry", "Retry transcription"), .init("dictate.review", "Review recordings"), .init("dictate.dismiss", "Dismiss message")]
-        choices[1].actions = [.init("read.pause", "Pause reading"), .init("read.stop", "Stop reading")]
-        choices[5].actions = [.init("present.end", "End presentation")]
+        choices[2].actions = [.init("snap-talk.stop", "Stop narration"), .init("snap-talk.cancel", "Cancel narration")]
+        choices[4].actions = [.init("present.end", "End presentation")]
         let model = ToolbarChooserModel(choices: choices)
         var opened: [ToolbarMode] = []; model.openTool = { opened.append($0) }
         model.highlight(.persona)
@@ -121,8 +121,8 @@ final class ToolbarActivityChooserTests: XCTestCase {
 
     @MainActor func testTabReachesNativeCommandsAndAccessibilityPressUsesTheCurrentCommand() {
         _ = NSApplication.shared
-        var row = ToolbarToolChoice(mode: .read, isSelected: true)
-        row.actions = [.init("read.pause", "Pause reading", identity: "track"), .init("read.stop", "Stop reading", identity: "track")]
+        var row = ToolbarToolChoice(mode: .dictate, isSelected: true)
+        row.actions = [.init("dictate.pause", "Pause dictation", identity: "capture"), .init("dictate.stop", "Finish dictation", identity: "capture")]
         let model = ToolbarChooserModel(choices: [row])
         var performed: [String] = []; model.perform = { performed.append($0.id) }
         let host = FocusableChooserHost(rootView: ToolbarChooserView(model: model))
@@ -141,8 +141,8 @@ final class ToolbarActivityChooserTests: XCTestCase {
             visited.append(button?.accessibilityIdentifier() ?? "missing")
             if visited.count == 1 { XCTAssertTrue(button?.accessibilityPerformPress() == true) }
         }
-        XCTAssertEqual(visited, ["chooser.action.read.pause", "chooser.action.read.stop", "chooser.action.open-tool"])
-        XCTAssertEqual(performed, ["read.pause"])
+        XCTAssertEqual(visited, ["chooser.action.dictate.pause", "chooser.action.dictate.stop", "chooser.action.open-tool"])
+        XCTAssertEqual(performed, ["dictate.pause"])
         XCTAssertTrue(ToolbarChooserKeyboard.tab(tab, in: window, from: window.firstResponder as? NSButton))
         XCTAssertTrue(window.firstResponder === host)
     }

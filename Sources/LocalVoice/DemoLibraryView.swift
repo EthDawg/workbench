@@ -28,6 +28,21 @@ struct DemoLibraryView: View {
         SavedBrowserSettings(resources: library.resources, defaults: browserDefaults)
     }
 
+    @ViewBuilder private var readPreservationRecovery: some View {
+        if let problem = library.readPreservationFailure {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Workbench couldn’t finish preserving your old Read text. The original is still saved.")
+                DisclosureGroup("Details") { Text(problem).textSelection(.enabled) }
+                HStack {
+                    Button("Retry saving Read text") { library.retryReadPreservation() }
+                    Button("Show original saved state") {
+                        NSWorkspace.shared.activateFileViewerSelecting([library.readPreservationSource])
+                    }
+                }
+            }.font(.caption).foregroundStyle(.orange)
+        }
+    }
+
     private var resources: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .firstTextBaseline) {
@@ -54,6 +69,7 @@ struct DemoLibraryView: View {
                 Toggle(isOn: $library.favoritesOnly) { Image(systemName: library.favoritesOnly ? "star.fill" : "star") }
                     .toggleStyle(.button).help("Show favorites only").accessibilityLabel("Favorites only")
             }
+            readPreservationRecovery
             if let error = library.error {
                 HStack(alignment: .top) {
                     Text(error).textSelection(.enabled)
@@ -220,7 +236,6 @@ struct DemoLibraryView: View {
                 HStack {
                     primaryActionButton(item)
                     if item.kind == .link { Button("Copy link") { library.copy(item) } }
-                    else { Button("Read aloud") { model.importReading(item.content, from: .savedText) } }
                 }
                 // How the toolbar's Prompts delivers, kept here with the prompts rather than in the picker (#159).
                 if item.kind == .prompt {

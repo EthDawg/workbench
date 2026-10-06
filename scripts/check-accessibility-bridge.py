@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Keep the Accessibility framework behind its two doors.
+"""Keep Accessibility element IPC behind its existing bridge.
 
 Element IPC (AXUIElement*) and observers (AXObserver*) belong in
 `AccessibilityBridge.swift`, the one place that calls them, so a check or a
@@ -7,21 +7,11 @@ later measurement sees every call go through it. The types AXUIElement,
 AXObserver and AXObserverCallback, the AXValue helpers and AXIsProcessTrusted
 stay free: they do not message another process.
 
-The voice listings (AVSpeechSynthesisVoice.speechVoices, NSSpeechSynthesizer's
-voice list and attributes) belong in `ReadingVoices.swift`, under the rule #269
-established: on macOS 26 they log an AXCommon fault, "unsafeForcedSync called
-from Swift Concurrent context", for every voice when they run on a Swift
-task's thread, main actor or detached; the installed app logged more than
-126,000 of them in a week that way, from `MacVoiceCatalog.installed()` in a
-`Task.detached` closure. `MacVoiceCatalog` reads them from a plain frame or a
-GCD queue, so in any file a `Task {` or `Task.detached {` closure that calls a
-listing, `MacVoiceCatalog.listed()`, `installed()` or `sayVoices()`, or the
-voice-by-identifier initializer `AVSpeechSynthesisVoice(identifier:)`, fails
-(the closure body is brace-tracked; a call after it is a plain frame). Outside
-a Task closure the identifier initializer stays free: it constructs an
-installed voice from its identifier without a lookup, and
-`MacVoiceCatalog.voice(identifier:)` hands out the listed object without even
-that. Comments, line and block, and string literals are not code.
+Read and its voice catalogue are retired. The historical unsafe voice-call
+patterns remain guarded for isolated fixtures and to catch regressions, but
+ReadingVoices.swift is no longer a required production file. The separate
+Read-retirement check rejects runtime TTS admission. Element IPC and observer
+coverage remains mandatory. Comments and string literals are not code.
 
     python3 scripts/check-accessibility-bridge.py          # the repository
     python3 scripts/check-accessibility-bridge.py DIR...   # other roots, for its test
@@ -112,7 +102,7 @@ def strays(root):
 def main(roots):
     failed = False
     for root in roots:
-        missing = [door for door in (BRIDGE, VOICES) if not (root / door).exists()]
+        missing = [door for door in (BRIDGE,) if not (root / door).exists()]
         for door in missing:
             print(f'{root}: {door} is missing')
         found = strays(root) if not missing else []

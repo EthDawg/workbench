@@ -7,12 +7,14 @@ import VoiceAppearance
 /// signed app through LaunchServices so macOS applies its own microphone
 /// permission:
 ///
-///     open -n -a "Workbench Preview.app" --args --check-persona-voice-native NEW_FOLDER [--speak]
+///     open -n -a "Workbench Preview.app" --args --check-persona-voice-native NEW_FOLDER
 ///
 /// It never asks for permission, uses a disposable library with synthetic
 /// artwork, leaves the saved choice alone and keeps no audio: the recordings it
 /// makes beside the ring go to temporary files that are measured and deleted.
-/// `--speak` plays synthetic speech through the speakers so the outline's
+/// The app command measures microphone input only. The isolated fixture's
+/// `speak` parameter retains synthetic speech for compatibility tests; production
+/// command admission always passes false. That fixture can measure the outline's
 /// response is measured through the air: a sentence at the usual volume, the
 /// same sentence softly, a long passage without pauses, and a sentence already
 /// under way when the outline is turned on. The receipt records every frame's

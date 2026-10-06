@@ -43,7 +43,7 @@ struct WorkbenchHome: View {
     static let navItems: [(id: String, title: String, symbol: String)] = [
         ("home", "Home", "square.grid.2x2"), ("dictate", "Dictate", "mic"),
         ("meeting", "Meetings", "person.2.wave.2"),
-        ("speak", "Read", "speaker.wave.2"), ("snap", "Snap", "viewfinder"), ("readback", "Snap & Talk", "rectangle.dashed.badge.record"), ("annotate", "Draw", "pencil.tip"),
+        ("snap", "Snap", "viewfinder"), ("readback", "Snap & Talk", "rectangle.dashed.badge.record"), ("annotate", "Draw", "pencil.tip"),
         ("present", "Present", "iphone"), ("personas", "Persona", "person.crop.rectangle"),
         ("history", "History", "clock"), ("library", "Library", "square.stack"), ("settings", "Settings", "slider.horizontal.3")]
     /// A page's sections, in switcher order. Each opens from its own route, and the page's own
@@ -66,7 +66,7 @@ struct WorkbenchHome: View {
     static let floatingToolbarHelp = "Show between actions. Recording and recovery controls still appear when needed."
     /// Stable, visible groups explain what belongs together without adding a navigation level.
     static let sidebarGroups: [(title: String, routes: [String])] = [
-        ("Voice", ["dictate", "meeting", "speak"]),
+        ("Voice", ["dictate", "meeting"]),
         ("Screen", ["snap", "readback", "annotate", "present", "personas"]),
         ("Saved", ["history", "library"])
     ]
@@ -323,25 +323,13 @@ struct WorkbenchHome: View {
                 ScrollView { KeyboardCoachView(model: keyboard) }
             case "models":
                 ScrollView { VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
-                    ModelSettingsView(engine: model.engine, isBusy: model.phase != .idle || model.preparing || model.rendering || model.meetings.isBusy || readback.isRecording || readback.isCapturing || readback.hasPendingTranscriptions,
+                    ModelSettingsView(engine: model.engine, isBusy: model.phase != .idle || model.preparing || model.meetings.isBusy || readback.isRecording || readback.isCapturing || readback.hasPendingTranscriptions,
                                       progress: model.modelMessage, hostPreparing: model.preparing, hostFailure: model.modelFailure,
                                       onFailure: { model.modelFailure = $0 }) { ready, message in
                         model.ready = ready; model.modelMessage = message
                     }
                     Divider()
-                    CleanupModelSettingsView(manager: model.cleanupModels, isBusy: model.phase != .idle || model.preparing || model.rendering)
-                    Divider()
-                    // Read's voice source is an engine too, so Models shows it with the others (rule 9).
-                    VStack(alignment: .leading, spacing: 14) {
-                        HStack(alignment: .top) {
-                            Image(systemName: "speaker.wave.2").font(.title2).foregroundStyle(Workbench.accent)
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text("Reading voice").font(Workbench.sectionTitle).accessibilityAddTraits(.isHeader)
-                                Text("Choose what reads your text aloud. The voice itself is in Read › Voice & pace.").foregroundStyle(.secondary)
-                            }
-                        }
-                        ReadingProviderView(model: model)
-                    }
+                    CleanupModelSettingsView(manager: model.cleanupModels, isBusy: model.phase != .idle || model.preparing)
                 }.padding(Workbench.pagePadding) }
             case "connections":
                 ScrollView { VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
@@ -601,17 +589,16 @@ struct WorkbenchHomePage: View {
 
     // MARK: Current work
 
-    /// Live dictation and reading, each read from its owner.
+    /// Live dictation read from its owner.
     private var dictationLive: Bool { model.phase != .idle || model.waitingForDrawing }
-    private var readingLive: Bool { model.rendering || model.playing || model.paused }
-    /// Active or paused work and stopped reading. Retained dictation audio belongs on Dictate,
+    /// Active or paused work. Retained dictation audio belongs on Dictate,
     /// where Retry, the saved files and explicit Discard stay together; it is not current work.
     private var hasCurrentWork: Bool {
-        dictationLive || readingLive || model.readingFailure != nil || !model.ready
+        dictationLive || !model.ready
             || readback.isRecording || readback.hasPendingTranscriptions || stage.isDrawing || stage.isPresenting
             || personaControl.isCurrentWork || stage.hasTimerSession || meetings.isBusy || jobs.isBusy
     }
-    /// Active input first, then stopped reading and other running or resumable work, each with its
+    /// Active input first, then other running or resumable work, each with its
     /// own truthful action. Leaving Home collapses, acknowledges or discards none of it.
     private var currentWork: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -624,12 +611,6 @@ struct WorkbenchHomePage: View {
                 liveRow("Narrating", WorkbenchHome.symbol(of: "readback")) { Button("Stop narration") { readback.stopNarration() } }
             }
             if meetings.isRecording { MeetingQuickStatus(model: meetings) { model.page = "meeting" } }
-            if model.readingFailure != nil {
-                liveRow("A reading stopped", "exclamationmark.triangle") {
-                    Button("Retry") { model.retryReading() }.disabled(!model.canRetryReading)
-                        .help("Makes new audio and reads from the start")
-                }
-            }
             // The guide shows the speech engine itself while it is offered.
             if !model.ready && !journey.showsGuide { engineBanner }
             // Other running or resumable work.
@@ -637,11 +618,6 @@ struct WorkbenchHomePage: View {
                 liveRow("Text ready", "doc.on.clipboard") { Button("Copy") { model.copyWaitingDelivery() } }
             } else if model.phase != .idle && model.phase != .recording {
                 liveRow("Processing speech", "waveform") { ProgressView().controlSize(.small) }
-            }
-            if model.rendering {
-                liveRow("Making audio to read", "speaker.wave.2") { Button("Cancel") { model.cancelReading() } }
-            } else if model.playing || model.paused {
-                liveRow(model.paused ? "Reading paused" : "Reading", "speaker.wave.2") { Button("Stop reading") { model.stopPlayback() } }
             }
             if !readback.isRecording && readback.hasPendingTranscriptions {
                 liveRow("Transcribing narration", WorkbenchHome.symbol(of: "readback")) { ProgressView().controlSize(.small) }
@@ -731,7 +707,7 @@ struct WorkbenchHomePage: View {
                               systemImage: model.phase == .requesting ? "xmark" : model.phase == .recording ? "stop.fill" : "mic.fill")
                             .font(.system(size: 16, weight: .semibold)).padding(.horizontal, 6).padding(.vertical, 4)
                     }.buttonStyle(PrimaryButton())
-                        .disabled(![.idle, .requesting, .recording].contains(model.phase) || model.rendering || readback.blocksDictation)
+                        .disabled(![.idle, .requesting, .recording].contains(model.phase) || readback.blocksDictation)
                         .accessibilityLabel(model.phase == .requesting ? "Cancel microphone request" : model.phase == .recording ? "Stop recording" : "Start recording")
                     if model.phase == .recording {
                         WaveBars(level: model.level).frame(width: 100, height: 22)
@@ -952,7 +928,7 @@ struct HomeJourney: Equatable {
     var transcripts = 0
     /// Saved with the Dictate preferences; nil reads as offered.
     var guide: FirstDictationGuide? = nil
-    /// Something is running, paused or a reading has stopped.
+    /// Something is running or paused.
     var hasCurrentWork = false
     /// A loaded Snap & Talk session with captures, not already current work.
     var hasSession = false

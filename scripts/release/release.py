@@ -142,7 +142,7 @@ def validate_cloud(app, root, team, enabled):
             "environment": info["WorkbenchPhotoCloudEnvironment"]}
 
 
-def validate_identity(app, config):
+def validate_identity(app, config, *, incoming=False):
     info = plistlib.loads((app / "Contents/Info.plist").read_bytes())
     expected = {
         "CFBundleIdentifier": config["identifier"],
@@ -151,6 +151,8 @@ def validate_identity(app, config):
     }
     if app.name != config["bundle"] or any(info.get(key) != value for key, value in expected.items()):
         raise RuntimeError("Unexpected bundle name, identifier, executable or release channel")
+    if incoming and any(service.get("NSMessage") == "readSelection" for service in info.get("NSServices", [])):
+        raise RuntimeError("Incoming bundle registers the retired Read Service")
     executable = app / "Contents/MacOS" / config["executable"]
     if not executable.is_file() or executable.is_symlink():
         raise RuntimeError("Expected channel executable is missing or is a symbolic link")
@@ -228,7 +230,7 @@ def main():
         staging = Path(temporary)
         run("ditto", "-x", "-k", archive, staging)
         app = staging / config["bundle"]
-        info = validate_identity(app, config)
+        info = validate_identity(app, config, incoming=True)
         version = info["CFBundleShortVersionString"]
         build = info["CFBundleVersion"]
         output = release_directory(root, version, build, config["channel"])
@@ -292,7 +294,7 @@ def main():
         extracted = staging / "verify"
         run("ditto", "-x", "-k", packaged, extracted)
         delivered = extracted / config["bundle"]
-        final_info = validate_identity(delivered, config)
+        final_info = validate_identity(delivered, config, incoming=True)
         if any(final_info[key] != info[key] for key in ("CFBundleShortVersionString", "CFBundleVersion")):
             raise RuntimeError("The final archive version does not match the notarized candidate")
         check_signature(delivered, args.team_id)

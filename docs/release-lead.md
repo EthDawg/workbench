@@ -79,7 +79,7 @@ Give each worker a brief with the outcome, the scope (files and surfaces), the a
 
 Then run an independent adversarial reviewer on each branch with the diff, the brief and the contract, asking for failures with reproduction steps rather than opinions, and a fix pass that answers every finding. Read the reviewer's findings yourself before accepting the fix.
 
-The harness rule: the Python harnesses in `scripts/` compile production Swift from fixed lists of files and members ([scripts/test-live-dictation.py](../scripts/test-live-dictation.py), [scripts/test-capture-persistence.py](../scripts/test-capture-persistence.py), [scripts/test-reading-playback.py](../scripts/test-reading-playback.py), [scripts/test-read-selection-service.py](../scripts/test-read-selection-service.py)). A new file, a new member or a renamed member in `Sources/LocalVoice/AppModel.swift`, the delivery code or the Read code fails CI's Harnesses and StageKit job until those lists are taught about it. Before pushing any such change:
+The harness rule: the Python harnesses in `scripts/` compile production Swift from fixed lists of files and members ([scripts/test-live-dictation.py](../scripts/test-live-dictation.py), [scripts/test-capture-persistence.py](../scripts/test-capture-persistence.py), [scripts/test-read-retirement.py](../scripts/test-read-retirement.py)). A new file, a new member or a renamed member in `Sources/LocalVoice/AppModel.swift`, the delivery code or retained recovery code fails CI's Harnesses and StageKit job until those lists are taught about it. Before pushing any such change:
 
 ```sh
 bash scripts/test.sh harnesses
@@ -119,14 +119,13 @@ ditto -x -k "dist/Workbench Preview.zip" .build/verify
 bash scripts/verify-preview.sh ".build/verify/Workbench Preview.app" .build/verify/out
 ```
 
-`scripts/verify-preview.sh` prints one row per check mode with four columns: `exit` is the mode's exit code, `axsync` counts Accessibility "unsafeForcedSync" faults, `siri` counts Siri AFLocalization errors and `runtime` counts AppKit and SwiftUI runtime-issue faults logged by that process id while the mode ran (the log window opens in local time, which is how `log show --start` reads a zone-less date). Before any mode runs it validates the bundle through the release tooling (exact Preview identity, executable and channel, Services identity, strict codesign, Developer ID) and refuses a Stable, ad-hoc or tampered bundle. It never installs or touches saved data and opens no visible or interactive window; a check may host an invisible view. A failed log query prints capture-failed instead of a number and fails the script, so unavailable evidence never reads as a clean pass. This is source evidence from the packaged binary, not installed acceptance. Its mode list names the check modes on `main`; add a mode when the PR that brings it merges, and remove Read's modes when #284 retires them. Any non-zero count on a mode that was zero before is a regression to explain before release.
+`scripts/verify-preview.sh` prints one row per check mode with four columns: `exit` is the mode's exit code, `axsync` counts Accessibility "unsafeForcedSync" faults, `siri` counts Siri AFLocalization errors and `runtime` counts AppKit and SwiftUI runtime-issue faults logged by that process id while the mode ran (the log window opens in local time, which is how `log show --start` reads a zone-less date). Before any mode runs it validates the bundle through the release tooling (exact Preview identity, executable and channel, absence of the retired Read Service, strict codesign, Developer ID) and refuses a Stable, ad-hoc or tampered bundle. It never installs or touches saved data and opens no visible or interactive window; a check may host an invisible view. A failed log query prints capture-failed instead of a number and fails the script, so unavailable evidence never reads as a clean pass. This is source evidence from the packaged binary, not installed acceptance. Its mode list names the check modes on `main`; add a mode when the PR that brings it merges. Read is retired; `--check-read-retirement` checks preservation and inactive admission without a TTS provider. Any non-zero count on a mode that was zero before is a regression to explain before release.
 
 Render the galleries for every visible change and compare them with the renders in the PRs:
 
 ```sh
 BIN_DIR="$(swift build -c release --disable-sandbox --show-bin-path)"
 "$BIN_DIR/LocalVoice" --render-surfaces .build/verify/surfaces
-"$BIN_DIR/LocalVoice" --render-reading-fixture .build/verify/reading
 swift run --disable-sandbox ToolbarGalleryRenderer .build/verify/toolbar
 ```
 

@@ -12,7 +12,7 @@ extension FloatingToolbar {
     var chooserCommands: [ToolbarActivityCommand] {
         var commands: [ToolbarActivityCommand] = []
         func command(_ title: String, id: String, _ mode: ToolbarMode?, identity: String = "", run: @escaping () -> Void) {
-            let owner = mode == .dictate ? model.toolbarCaptureIdentity : mode == .read ? model.toolbarReadingIdentity : ""
+            let owner = mode == .dictate ? model.toolbarCaptureIdentity : ""
             commands.append(.init(value: .init(id, title, identity: owner + ":" + identity), mode: mode, run: run))
         }
         let phase = String(describing: model.phase)
@@ -53,20 +53,6 @@ extension FloatingToolbar {
             command("Review delivery", id: "dictate.review-delivery", .dictate, identity: identity) { model.onShowEditor?("dictate") }
             if unresolved.offersCopy { command("Copy again", id: "dictate.copy-again", .dictate, identity: identity) { model.copyUnresolvedDelivery() } }
             command("Dismiss delivery", id: "dictate.dismiss-delivery", .dictate, identity: identity) { model.dismissUnresolvedDelivery() }
-        }
-        switch live.reading {
-        case .preparing: command("Cancel", id: "read.cancel", .read) { model.cancelReading() }
-        case .playing:
-            command("Pause reading", id: "read.pause", .read) { model.listen() }
-            command("Stop reading", id: "read.stop", .read, identity: "playing") { model.stopPlayback() }
-        case .paused:
-            command("Resume reading", id: "read.resume", .read) { model.listen() }
-            command("Stop reading", id: "read.stop", .read, identity: "paused") { model.stopPlayback() }
-        case .idle:
-            if model.readingFailure != nil {
-                if model.canRetryReading { command("Retry", id: "read.retry", .read) { model.retryReading() } }
-                command("Dismiss message", id: "read.dismiss", .read) { model.dismissReadingFailure() }
-            }
         }
         if let draft = snapModel.draft {
             command("Review unfinished Snap", id: "snap.review", .snap, identity: draft.id.uuidString) { model.onShowEditor?("snap"); snapModel.reviewDraft() }
@@ -151,7 +137,6 @@ extension FloatingToolbar {
                 else if model.captureFailure != nil { choice.detail = "Dictation needs attention" }
                 else if model.hasCaptureRecovery { choice.detail = "Recording kept for recovery" }
                 else if model.unresolvedDelivery != nil { choice.detail = "Delivery needs attention" }
-            case .read: if model.readingFailure != nil { choice.detail = "Reading stopped · text kept" }
             case .snap: if snapModel.draft != nil { choice.detail = "Unsaved capture" }
             case .snapAndTalk:
                 if readback.sessionURL != nil {

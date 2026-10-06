@@ -1002,7 +1002,7 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         // read from AppModel.swift: every member that clears or hides the receipt,
         // and every member that changes the undelivered result.
         let clearCallSites: Set<String> = __CLEAR_CALL_SITES__
-        try check(clearCallSites == ["receiveReadingSelection", "toggleRecording", "transcribe", "cleanCurrentDraft", "shutdown"],
+        try check(clearCallSites == ["toggleRecording", "transcribe", "cleanCurrentDraft", "shutdown"],
                   "every member that clears or hides the receipt is known: \(clearCallSites.sorted())")
         let writers: Set<String> = __UNDELIVERED_WRITERS__
         try check(writers == ["init", "transcribe", "copyTextWithReceipt", "dismissUnresolvedDelivery", "removeTranscript"],

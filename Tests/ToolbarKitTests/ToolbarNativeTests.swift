@@ -66,7 +66,7 @@ final class ToolbarNativeTests: XCTestCase {
             XCTAssertEqual(quiet.width, 48)
         }
         for activity in [ToolbarActivity(capture: .dictation, level: 0.6), ToolbarActivity(capture: .narration, level: 0.3, stopsSoon: true),
-                         ToolbarActivity(processing: true), ToolbarActivity(playback: true), ToolbarActivity(paused: true),
+                         ToolbarActivity(processing: true), ToolbarActivity(paused: true),
                          ToolbarActivity(failure: true), ToolbarActivity(pendingDelivery: true), ToolbarActivity(unsavedCapture: true)] {
             let working = try drawn(.resolve(activity))
             XCTAssertEqual(working.size, ToolbarLayout.mark, "\(activity)")
@@ -804,7 +804,7 @@ final class ToolbarNativeTests: XCTestCase {
             let size = NSHostingView(rootView: ToolbarChooserView(model: ToolbarChooserModel(choices: choices), textScale: scale)).fittingSize
             XCTAssertEqual(size.width, ToolbarChooserLayout.width * scale, accuracy: 0.5, "at \(scale)")
             // Rows of 48.6 points at larger text land on whole pixels.
-            XCTAssertEqual(size.height, ToolbarChooserLayout.height(rows: 7, scale: scale) + 45 * scale, accuracy: 1, "at \(scale)")
+            XCTAssertEqual(size.height, ToolbarChooserLayout.height(rows: 6, scale: scale) + 45 * scale, accuracy: 1, "at \(scale)")
         }
         let short = NSHostingView(rootView: ToolbarChooserView(model: ToolbarChooserModel(choices: choices), available: 150)).fittingSize
         XCTAssertEqual(short.height, 150, accuracy: 0.5, "a short display scrolls the list rather than clipping it")
@@ -816,7 +816,7 @@ final class ToolbarNativeTests: XCTestCase {
         let model = ToolbarChooserModel(choices: ToolbarNextAction.choices(for: ToolbarLiveState(mode: .dictate)),
                                         choose: { chosen.append($0) }, dismiss: { dismissed += 1 })
         XCTAssertTrue(model.handle(keyCode: 125, characters: nil, time: 0))
-        XCTAssertEqual(model.state.highlighted, .read)
+        XCTAssertEqual(model.state.highlighted, .snap)
         XCTAssertTrue(model.handle(keyCode: 53, characters: nil, time: 0))
         XCTAssertEqual(dismissed, 1); XCTAssertTrue(chosen.isEmpty, "Escape changes nothing")
         XCTAssertTrue(model.handle(keyCode: 35, characters: "p", time: 1))

@@ -227,7 +227,6 @@ struct HandoffJobCard<MadeFrom: View>: View {
     var applySuggestedMetadata: ((HandoffJob, String) -> Void)?
     var query = ""
     var copyResult: (HandoffJob, String) -> Void = { _, _ in }
-    var readAloud: (String) -> Void = { _ in }
     @ViewBuilder var madeFrom: MadeFrom
     @State private var showingOthers = false
 
@@ -267,9 +266,9 @@ struct HandoffJobCard<MadeFrom: View>: View {
                 Button("Copy instructions") { jobs.copy(job) }.accessibilityLabel("Copy instructions, " + context)
                 Button("Show selected files") { jobs.showInputs(job) }.accessibilityLabel("Show selected files, " + context)
                 if job.status == .completed {
-                    Button(expanded == job.id ? "Hide result" : "Read result") { expanded = expanded == job.id ? nil : job.id }
+                    Button(expanded == job.id ? "Hide result" : "Review result") { expanded = expanded == job.id ? nil : job.id }
                         .disabled(!resultReady && expanded != job.id)
-                        .accessibilityLabel((expanded == job.id ? "Hide result, " : "Read result, ") + context)
+                        .accessibilityLabel((expanded == job.id ? "Hide result, " : "Review result, ") + context)
                     Button("Open result") { jobs.showResult(job) }.disabled(!resultReady)
                         .accessibilityLabel("Open result, " + context)
                     if job.reviewKey != nil {
@@ -313,10 +312,10 @@ struct HandoffJobCard<MadeFrom: View>: View {
                                 Button("Show selected files") { jobs.showInputs(previous) }
                                     .accessibilityLabel("Show selected files, " + previousContext)
                                 if previous.status == .completed {
-                                    Button(expanded == previous.id ? "Hide result" : "Read result") {
+                                    Button(expanded == previous.id ? "Hide result" : "Review result") {
                                         expanded = expanded == previous.id ? nil : previous.id
                                     }.disabled(!readable && expanded != previous.id)
-                                        .accessibilityLabel((expanded == previous.id ? "Hide result, " : "Read result, ") + previousContext)
+                                        .accessibilityLabel((expanded == previous.id ? "Hide result, " : "Review result, ") + previousContext)
                                     Button("Open saved result") { jobs.showResult(previous) }.disabled(!readable)
                                         .accessibilityLabel("Open saved result, " + previousContext)
                                     Button("Use as current review") { jobs.publishReview(previous, replacingChanges: true) }
@@ -360,7 +359,7 @@ struct HandoffJobCard<MadeFrom: View>: View {
         if let files = jobs.files(task) {
             if let result = files.resultText {
                 HandoffResultPreview(text: result, context: Self.context(task),
-                    copyText: { copyResult(task, result) }, readAloud: { readAloud(result) })
+                    copyText: { copyResult(task, result) })
                 if let applySuggestedMetadata, jobs.isMetadataSuggestion(task) {
                     Button("Review suggested details…") { applySuggestedMetadata(task, result) }
                 }
@@ -386,19 +385,16 @@ struct HandoffJobCard<MadeFrom: View>: View {
     }
 }
 
-/// Reuses the exact words currently shown. Read opens its normal import review;
-/// it does not play or replace a current reading without that owner's admission.
+/// Copies the exact words currently shown by visual result review.
 struct HandoffResultPreview: View {
     let text: String
     let context: String
     var copyText: () -> Void
-    var readAloud: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Button("Copy result", action: copyText).accessibilityLabel("Copy result, " + context)
-                Button("Read aloud", action: readAloud).accessibilityLabel("Read aloud, " + context)
             }.buttonStyle(.borderless).font(.caption)
                 .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             Text(text.isEmpty ? "The saved result has no text." : text)

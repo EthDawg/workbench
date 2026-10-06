@@ -27,9 +27,6 @@ enum WorkbenchRowAction: Hashable {
         case .stopDictation: model.stopRecording()
         case .finishNarration: readback.stopNarration()
         case .finishDrawing: stage.finishDrawing()
-        case .pauseReading, .resumeReading: model.listen()
-        case .cancelReading: model.cancelReading()
-        case .stopReading: model.stopPlayback()
         case .hidePersona, .pauseOverlays, .resumeOverlays,
              .cancelPersonaCamera, .hidePersonaCamera, .showPersonaCamera, .retryPersonaCamera: stage.togglePersona()
         case .captureNext: start(.snapAndTalk)

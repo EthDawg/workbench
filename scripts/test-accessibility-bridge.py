@@ -146,11 +146,20 @@ class BridgeCheck(unittest.TestCase):
         self.assertNotIn('AppModel.swift:8:', out)
         self.assertNotIn('MacSpeechRenderer.swift:2:', out)
 
-    def test_missing_doors_fail(self):
+    def test_missing_bridge_fails(self):
         code, out = run(self.tree({'Sources/LocalVoice/A.swift': 'let a = 1\n'}))
         self.assertEqual(code, 1)
         self.assertIn('AccessibilityBridge.swift is missing', out)
-        self.assertIn('ReadingVoices.swift is missing', out)
+        self.assertNotIn('ReadingVoices.swift is missing', out)
+
+    def test_retired_catalogue_absence_preserves_element_gate(self):
+        root = self.tree({str(BRIDGE): BRIDGE_TEXT})
+        self.assertEqual(run(root), (0, 'Accessibility bridge OK\n'))
+        stray = root / 'Sources/LocalVoice/Stray.swift'
+        stray.write_text('let value = AXUIElementCopyAttributeValue(e, k, &v)\n')
+        code, out = run(root)
+        self.assertEqual(code, 1)
+        self.assertIn('Stray.swift:1: AXUIElementCopyAttributeValue belongs in', out)
 
 
 if __name__ == '__main__':

@@ -69,18 +69,17 @@
       <div><p class="tool-name">Leaving your Mac</p><h2 id="leaves-title">What can leave, and only when.</h2><p class="lead">Each of these happens because you turned it on or started it.</p></div>
       <div>
         <ul>
-          <li><strong>Model and voice downloads.</strong> The host sees normal request information, such as your IP address.</li>
+          <li><strong>Model downloads.</strong> The host sees normal request information, such as your IP address.</li>
           <li><strong>Assistant tasks.</strong> Only when you start a reviewed task, the official Codex or Claude Code app you installed sends the selected text, supported images and chosen skill instructions, under that provider’s sign-in and policies. Workbench never extracts credentials or falls back to paid API billing. Cancelling stops local work, but anything already submitted may have been processed. Results are never sent to colleagues, suggested transcript details are never applied automatically, and meeting audio never goes to an assistant automatically.</li>
-          <li><strong>Speko reading, with your own key.</strong> Mac voices are the default. If you add a Speko key, Speko receives the text you choose to hear, including clipboard text if you ask, through its hosted Router and the voice provider you picked.</li>
           <li><strong>Team packs.</strong> GitHub requests, including an update check at launch and every six hours.</li>
           <li><strong>iCloud photo hand-off and scene sync</strong>, if you turn them on, go to your own iCloud.</li>
           <li><strong>Logo search</strong> opens Google Images inside Workbench, so your search words go to Google. No cookies or history are kept after it closes, and only the image you choose is saved, as a local copy.</li>
           <li><strong>What you send yourself.</strong> Copying, dragging, exporting, sharing and screen sharing follow the destination’s policies. Your meeting app decides what the audience sees: whole-screen sharing can include floating personas and controls, while a shared browser tab doesn’t include native overlays. QuickTime and iPhone Mirroring are separate Apple apps.</li>
         </ul>
-        <details><summary>More detail: local servers, Speko and Shortcuts</summary>
+        <details><summary>More detail: local servers, preserved text and Shortcuts</summary>
           <p><strong>Local transcription server.</strong> The selected audio and model name go to the loopback address you configured. Remote addresses and redirects are refused. The server is separate software and may forward audio, so check its settings.</p>
           <p><strong>Ollama.</strong> Model details are checked before the transcript and editing instructions go to the loopback address. Remote addresses, redirects and models identified as cloud-backed are refused. These checks rely on what the server reports; they don’t audit the server or prove it never forwards text.</p>
-          <p><strong>Speko.</strong> Text is sent only when you choose Listen or Save audio. Speko may bill for accepted text even if you cancel. Your key is kept in this edition’s macOS Keychain, and removing it returns reading to Mac voices. Opening or refreshing the voice picker sends the key and English and length filters to Speko’s catalogue, not your draft. A chosen voice saves its public name and provider, model and voice identifiers in preferences. The picker doesn’t turn on Speko speech-to-text.</p>
+          <p><strong>Retired Read text.</strong> Read text-to-speech and its online providers are removed. An old Read draft is preserved exactly as a text file in Library, while the original saved fields remain available for recovery. Existing audio exports, credentials and model caches are not deleted. Workbench no longer reads those TTS credentials or sends text to a reading provider.</p>
           <p><strong>Shortcuts.</strong> Apple’s Record Audio action owns recording and its Stop button. Transcribe with Workbench uses your selected speech engine, and the actions after it decide where the text goes, including services that sync online.</p>
         </details>
       </div>

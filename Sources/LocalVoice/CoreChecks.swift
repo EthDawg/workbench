@@ -99,61 +99,8 @@ enum CoreChecks {
         try Data("not json".utf8).write(to: store.url)
         try rejects("damaged state reports an error") { _ = try store.load() }
         try check(String(contentsOf: store.url, encoding: .utf8) == "not json", "damaged state is not silently erased")
-        try rejects("empty reading rejected") { _ = try AudioRenderer.render(text: " \n ", voice: "Karen", rate: 180) }
-        try rejects("oversized reading rejected") { _ = try AudioRenderer.render(text: String(repeating: "a", count: 50_001), voice: "Karen", rate: 180) }
         try check(TextRules.wordCount(" one\n two\tthree ") == 3, "word count handles mixed whitespace")
         try check(time(65.8) == "1:05" && time(-1) == "0:00", "recording duration formatting")
         print("CORE_CHECKS_OK: \(passed) checks passed")
-    }
-}
-
-enum AudioRendererCancellationChecks {
-    static func run() async throws {
-        let task = Task {
-            try await AudioRenderer.runCancellable("/bin/sleep", ["30"])
-        }
-        try await Task.sleep(nanoseconds: 100_000_000)
-        let cancellationStarted = Date()
-        task.cancel()
-        var reportedCancellation = false
-        do { try await task.value }
-        catch is CancellationError { reportedCancellation = true }
-        guard reportedCancellation else { throw VoiceError.message("CHECK FAILED: cancelled renderer reports cancellation") }
-        guard Date().timeIntervalSince(cancellationStarted) < 2 else {
-            throw VoiceError.message("CHECK FAILED: cancelled renderer terminates its child process promptly")
-        }
-        try await AudioRenderer.runCancellable("/usr/bin/true", [])
-
-        // Save audio's tool is bounded: a hung process is stopped at its limit.
-        let boundedStarted = Date()
-        var timedOut = false
-        do { try await AudioRenderer.runBounded("/bin/sleep", ["30"], timeout: 0.3) } catch is AudioRenderer.ToolTimeout { timedOut = true }
-        guard timedOut, Date().timeIntervalSince(boundedStarted) < 3 else {
-            throw VoiceError.message("CHECK FAILED: a tool past its bound is stopped promptly and reported as a timeout")
-        }
-        try await AudioRenderer.runBounded("/usr/bin/true", [], timeout: 5)
-        // The bounded export Save audio uses writes its file from synthetic silence.
-        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("LocalVoice-" + UUID().uuidString)
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: folder) }
-        let wav = folder.appendingPathComponent("synthetic.wav"), m4a = folder.appendingPathComponent("synthetic.m4a")
-        try SpekoRenderer.wav(Data(repeating: 0, count: 48_000)).write(to: wav)
-        try await AudioRenderer.exportBounded(wav, to: m4a)
-        guard ((try? FileManager.default.attributesOfItem(atPath: m4a.path))?[.size] as? NSNumber)?.intValue ?? 0 > 0 else {
-            throw VoiceError.message("CHECK FAILED: the bounded export writes its file")
-        }
-        // Read's Cancel during Save audio cancels this export: afconvert stops and nothing is written.
-        let long = folder.appendingPathComponent("ten-minutes.wav"), cancelled = folder.appendingPathComponent("cancelled.m4a")
-        try SpekoRenderer.wav(Data(repeating: 0, count: 48_000 * 600)).write(to: long)
-        let export = Task { try await AudioRenderer.exportBounded(long, to: cancelled) }
-        try await Task.sleep(nanoseconds: 200_000_000)
-        let exportCancelled = Date()
-        export.cancel()
-        var exportReportedCancellation = false
-        do { try await export.value } catch is CancellationError { exportReportedCancellation = true }
-        guard exportReportedCancellation, Date().timeIntervalSince(exportCancelled) < 2, !FileManager.default.fileExists(atPath: cancelled.path) else {
-            throw VoiceError.message("CHECK FAILED: a cancelled export stops promptly and writes no file")
-        }
-        print("AUDIO_RENDERER_CANCELLATION_OK: child process terminated, a hung tool stops at its bound, the bounded export writes its file, a cancelled export writes none, and a later render can start")
     }
 }

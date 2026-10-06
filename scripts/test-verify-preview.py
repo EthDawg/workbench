@@ -15,7 +15,7 @@ import tempfile
 import unittest
 
 SCRIPT = Path(__file__).resolve().with_name("verify-preview.sh")
-MODE_COUNT = 10
+MODE_COUNT = 8
 
 
 class VerifyPreviewTests(unittest.TestCase):
@@ -43,8 +43,7 @@ exit "${{CODESIGN_EXIT:-0}}"
         info = {"CFBundleIdentifier": "com.ethdawg.workbench.preview", "CFBundleExecutable": "WorkbenchPreview",
                 "WorkbenchChannel": "preview", "CFBundleShortVersionString": "2.4.1", "CFBundleVersion": "20261006084435",
                 "WorkbenchSourceRevision": "5d12768f14b2033acee418215e8ddee1a4672e9a", "WorkbenchSourceDirty": False,
-                "NSServices": [{"NSMessage": "readSelection", "NSPortName": "Workbench Preview",
-                                "NSMenuItem": {"default": "Read Selection in Workbench Preview"}}]}
+                "NSServices": []}
         for key, value in overrides.items():
             if value is None: info.pop(key, None)
             else: info[key] = value
@@ -113,10 +112,10 @@ exit "${{CODESIGN_EXIT:-0}}"
         self.assertIn("VERIFY FAILED", result.stderr)
 
     def test_failed_mode_fails_the_run(self):
-        result, out = self.run_script(self.bundle(), FAIL_MODE="--check-reading")
+        result, out = self.run_script(self.bundle(), FAIL_MODE="--check-read-retirement")
         self.assertEqual(result.returncode, 1)
         rows = {row.split()[0]: row.split()[1] for row in (out / "summary.txt").read_text().splitlines()[1:]}
-        self.assertEqual(rows["--check-reading"], "1")
+        self.assertEqual(rows["--check-read-retirement"], "1")
         self.assertEqual(rows["--check-core"], "0")
 
     def test_output_directory_must_be_new_or_empty(self):

@@ -8,7 +8,7 @@
 # The output directory must be new or empty: every receipt is written fresh, and a receipt
 # that cannot be written fails the run. Before anything runs, the bundle must pass the
 # release tooling's own Preview validation (scripts/release/preview.py validate_bundle: the
-# exact Preview identifier, executable and channel, the Services identity, a strict deep
+# exact Preview identifier, executable and channel, absence of the retired Read Service, a strict deep
 # codesign verification and a Developer ID signature), carry its version, build, source
 # revision and clean-source flag (retained in <output dir>/build.json), and the executable
 # it launches must live inside that bundle. A Stable bundle, an ad-hoc build, a tampered
@@ -32,8 +32,8 @@
 #
 # MODES lists the check modes the binary has on main. When a PR adds a mode, add it here
 # once that PR is merged; a mode the binary does not know prints exit 1 and no log counts.
-# The three reading modes are retired with Read (#284, #295): replace them with
-# --check-read-retirement when that lands.
+# Read is retired (#284, #295); preservation and inactive admission are covered
+# by --check-read-retirement, without loading a TTS provider or voice catalogue.
 #
 # It never installs or replaces an app, needs no microphone or screen access, and never
 # reads or writes the installed editions' saved data or preferences. It opens no visible or
@@ -79,7 +79,7 @@ print(f"validated: {config['identifier']} {version} {build} {revision[:12]} dirt
 PY
 [ -s "$OUT/build.json" ] || { echo "refused: build.json was not written" >&2; exit 2; }
 BIN="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["executable"])' "$OUT/build.json")"
-MODES=(--check-core --check-reading --check-reading-render --check-reading-service --check-live-dictation-delivery --check-insertion-boundary --check-floating-toolbar --check-refinement --check-readback --check-feedback)
+MODES=(--check-core --check-read-retirement --check-live-dictation-delivery --check-insertion-boundary --check-floating-toolbar --check-refinement --check-readback --check-feedback)
 PRED='(subsystem == "com.apple.Accessibility" AND eventMessage CONTAINS "unsafeForcedSync") OR (subsystem == "com.apple.siri" AND eventMessage CONTAINS "AFLocalization") OR (subsystem == "com.apple.runtime-issues")'
 failed=0
 write_row() { printf "%-34s %6s %15s %15s %15s\n" "$@" >> "$OUT/summary.txt" || { echo "cannot write $OUT/summary.txt" >&2; exit 2; }; printf "%-34s %6s %15s %15s %15s\n" "$@"; }

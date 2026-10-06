@@ -3,15 +3,12 @@ import XCTest
 
 /// Which waiting result the pointer's reveal may show over live work (#220, #222).
 final class ToolbarResultHoldTests: XCTestCase {
-    private enum Result: Hashable { case dictationFailure, readingFailure, receipt(Int) }
+    private enum Result: Hashable { case dictationFailure, receipt(Int) }
     private let idle = ToolbarLiveState(mode: .dictate)
 
     /// Every kind of input-consuming work, whichever tool is chosen.
     private var inputWork: [(String, ToolbarLiveState)] {
-        [("a reading preparing", ToolbarLiveState(mode: .dictate, reading: .preparing)),
-         ("a reading playing", ToolbarLiveState(mode: .read, reading: .playing)),
-         ("a reading paused", ToolbarLiveState(mode: .read, reading: .paused)),
-         ("a narration", ToolbarLiveState(mode: .snapAndTalk, narrating: true, captureCount: 1)),
+        [("a narration", ToolbarLiveState(mode: .snapAndTalk, narrating: true, captureCount: 1)),
          ("a recording", ToolbarLiveState(mode: .dictate, dictation: .recording)),
          ("its processing", ToolbarLiveState(mode: .dictate, dictation: .processing)),
          ("drawing", ToolbarLiveState(mode: .draw, drawing: true)),
@@ -26,16 +23,14 @@ final class ToolbarResultHoldTests: XCTestCase {
          ("a hidden Persona set", ToolbarLiveState(mode: .persona, persona: .sessionHidden)),
          ("a shown card", ToolbarLiveState(mode: .persona, persona: .shown)),
          ("a meeting transcription", ToolbarLiveState(mode: .dictate, meetingRecording: true)),
-         ("Snap & Talk between captures", ToolbarLiveState(mode: .snapAndTalk, captureCount: 2)),
-         // A paused reading belongs to Read; in another tool it holds nothing back.
-         ("a reading paused in another tool", ToolbarLiveState(mode: .present, reading: .paused))]
+         ("Snap & Talk between captures", ToolbarLiveState(mode: .snapAndTalk, captureCount: 2))]
     }
 
     /// The result pending when the work began stays out of the reveal while the work lasts, a new
     /// one that arrives during it is revealed, and the work ending lets the older one go.
     func testTheResultWaitingWhenWorkBeginsIsHeldBackUntilItEnds() {
         for (name, work) in inputWork {
-            for older in [Result.dictationFailure, .readingFailure, .receipt(1)] {
+            for older in [Result.dictationFailure, .receipt(1)] {
                 var hold = ToolbarResultHold<Result>()
                 hold.observe(idle, pending: older)
                 XCTAssertTrue(hold.reveals(older), "\(name): nothing live yet")
@@ -58,16 +53,15 @@ final class ToolbarResultHoldTests: XCTestCase {
     /// The held result's own slot set again, to the same words or to none, makes what follows new;
     /// another kind's slot changing keeps it held.
     func testOnlyTheHeldKindsOwnSlotLetsItGo() {
-        let reading = ToolbarLiveState(mode: .read, reading: .playing)
+        let narration = ToolbarLiveState(mode: .snapAndTalk, narrating: true)
         var hold = ToolbarResultHold<Result>()
-        hold.observe(reading, pending: .dictationFailure)
+        hold.observe(narration, pending: .dictationFailure)
         hold.slotChanged(.dictationFailure)
-        hold.observe(reading, pending: .dictationFailure)
+        hold.observe(narration, pending: .dictationFailure)
         XCTAssertTrue(hold.reveals(.dictationFailure), "the same message set again is a new failure")
         var receipt = ToolbarResultHold<Result>()
-        receipt.observe(reading, pending: .receipt(1))
+        receipt.observe(narration, pending: .receipt(1))
         receipt.slotChanged(.dictationFailure)
-        receipt.slotChanged(.readingFailure)
         XCTAssertFalse(receipt.reveals(.receipt(1)), "a held receipt stays held when another slot is cleared")
         XCTAssertTrue(receipt.reveals(.receipt(2)), "a new receipt is its own")
     }
@@ -75,7 +69,7 @@ final class ToolbarResultHoldTests: XCTestCase {
     /// The chosen tool's own sessions hold nothing back: older and newer results are revealed.
     func testTheToolsOwnSessionsHoldNothingBack() {
         for (name, session) in sessions {
-            for result in [Result.dictationFailure, .readingFailure, .receipt(1)] {
+            for result in [Result.dictationFailure, .receipt(1)] {
                 var older = ToolbarResultHold<Result>()
                 older.observe(idle, pending: result)
                 older.observe(session, pending: result)

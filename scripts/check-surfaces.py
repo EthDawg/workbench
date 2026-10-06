@@ -91,7 +91,7 @@ import sys
 
 REPO = Path(__file__).resolve().parents[1]
 MODULES = ('LocalVoice', 'StageKit', 'ToolbarCore', 'ToolbarKit')
-OWNERS = set('dictate snap snapAndTalk read draw present persona timer history library settings app'.split())
+OWNERS = set('dictate snap snapAndTalk draw present persona timer history library settings app'.split())
 KINDS = set('capability workflow option action place setting status'.split())
 GUIDANCE = ("Workbench keeps a small grammar (docs/workbench.md#grammar). "
             "Before adding an entry: can this be Quality (no new entry) or an Option "
@@ -130,7 +130,7 @@ ENTRY_POINTS = [
     # Position… in that menu opens the toolbar's placement control (#163).
     ('StageKit/FloatingPositionControl.swift', 'FloatingPositionControl', 'floating position control', 'controls'),
     # The same window's live controls: the no-speech cue, and a result's own controls, which the
-    # toolbar reveals in place of its row (#134 T4). Recording, narration and reading are the row's.
+    # toolbar reveals in place of its row (#134 T4). Recording and narration are the row's.
     ('LocalVoice/FloatingToolbar.swift', 'WorkbenchFloatingContent', 'floating toolbar live controls', 'page'),
     ('LocalVoice/FloatingToolbar.swift', 'FloatingResultView', 'floating toolbar live controls', 'page'),
     # Persona's Appearance accessory opens its own menu for the selected live copy (#134 part B).
@@ -157,9 +157,7 @@ ENTRY_POINTS = [
     # Settings, and the views it embeds (VoiceOptions) are followed.
     ('LocalVoice/Views.swift', 'ContentView.dictate', 'dictate page options', 'options'),
     ('LocalVoice/Views.swift', 'ContentView.dictateHeader', 'dictate page', 'page'),
-    ('LocalVoice/Views.swift', 'ContentView.readingHeader', 'read page', 'page'),
     ('LocalVoice/Views.swift', 'DictateSettingsView', 'dictate settings', 'page'),
-    ('LocalVoice/Views.swift', 'ReadingSettingsView', 'read settings', 'page'),
     ('LocalVoice/Views.swift', 'DictionaryView', 'dictionary page', 'doors'),
     # Capability pages also carry doors (rule 8: opens a place or page, wherever
     # it appears). Mode 'doors' keeps the page's own actions (editor, selection,
@@ -189,12 +187,12 @@ ENTRY_POINTS = [
     ('LocalVoice/HistorySelectionControls.swift', 'HistorySelectionControls', 'history page', 'doors'),
     ('LocalVoice/HistorySelectionControls.swift', 'TranscriptMetadataEditor', 'history page', 'doors'),
     ('LocalVoice/DemoLibraryView.swift', 'DemoLibraryView', 'library page', 'doors'),
+    ('LocalVoice/DemoLibraryView.swift', 'DemoLibraryView.readPreservationRecovery', 'library recovery', 'page'),
 ]
 # Calls that change the window's route or open a place (mode 'doors').
 # openHistory opens History with a door's starting view; openTranscript opens
-# a transcript on the Dictate page; importReading opens text on the Read page
-# through its import decision.
-ROUTES = {'navigate', 'onShowEditor', 'showHistory', 'showLibrary', 'showControls', 'openHistory', 'openTranscript', 'importReading', 'reviewUnresolvedDelivery'}
+# a transcript on the Dictate page.
+ROUTES = {'navigate', 'onShowEditor', 'showHistory', 'showLibrary', 'showControls', 'openHistory', 'openTranscript', 'reviewUnresolvedDelivery'}
 # Calls in a menu action's own body that open a page (Inventory.menu_page): None takes
 # the route from the call's literal argument; otherwise the call always opens that page.
 MENU_ROUTES = {'navigate': None, 'onShowEditor': None, 'openHistory': 'history', 'showLibrary': 'library'}
@@ -226,7 +224,7 @@ ROWS = {'WorkbenchControlTool': ('quick-panel.row.', 'quick panel rows')}
 
 # CapturePreviewButton is a capture image that opens the read-only preview; its
 # first argument is its accessible name. PanelSwitch is the panel header's switch row.
-CONTROLS = set('''Button Toggle Picker Menu Label ColorPicker TextField SecureField
+CONTROLS = set('''Button Toggle Picker Menu Label ColorPicker TextField SecureField DisclosureGroup
     Stepper Slider Link NativeControlMenu PanelSwitch ToolbarMenuAction StageMenuAction
     NSMenuItem NSButton addItem addSubmenu card workspaceCard command actionItem action CapturePreviewButton StageLiveMenu submenu'''.split())
 # Label-taking helpers, counted only in the file that declares them.
