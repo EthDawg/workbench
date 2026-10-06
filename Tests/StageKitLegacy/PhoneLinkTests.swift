@@ -277,6 +277,21 @@ final class PhoneLinkTests {
         XCTAssertTrue(PhoneLink.diagnostic(cases[0], build: "b").contains("USB: iPhone (product 0x12A8)"))
     }
 
+    /// Copy connection details claims success only when the pasteboard took the text.
+    func testCopySuccessDependsOnThePasteboardsAnswer() {
+        let board = NSPasteboard(name: NSPasteboard.Name("Workbench.PhoneLinkTests.\(UUID().uuidString)"))
+        defer { board.releaseGlobally() }
+        XCTAssertTrue(PhoneConnectionSupport.copy("Workbench b · facts", to: board))
+        XCTAssertEqual(board.string(forType: .string), "Workbench b · facts")
+        let copied = PhoneConnectionSupport.copyOutcome(true)
+        XCTAssertEqual(copied.label, "Copied")
+        XCTAssertEqual(copied.announcement, "Connection details copied")
+        let failed = PhoneConnectionSupport.copyOutcome(false)
+        XCTAssertEqual(failed.label, "Couldn’t copy")
+        XCTAssertFalse(failed.announcement == copied.announcement, "VoiceOver never hears success for a failed write")
+        XCTAssertTrue(failed.announcement.contains("not copied"))
+    }
+
     func testNounsFollowTheDeviceNotTheSerial() {
         XCTAssertEqual(PhoneLink.noun(for: .init(id: "x", name: "Ethan’s iPad", isScreen: true), usb: []), "iPad")
         XCTAssertEqual(PhoneLink.noun(for: .init(id: "x", name: "Screen 00008030", isScreen: true), usb: [phone]), "iPhone")

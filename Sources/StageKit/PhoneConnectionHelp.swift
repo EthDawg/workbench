@@ -25,6 +25,18 @@ enum PhoneConnectionSupport {
         "The phone is unlocked and you tapped Trust This Computer. A reset phone or a new Mac asks again.",
         "This Mac allowed the accessory. Approve its prompt, or look under System Settings › Privacy & Security › Allow accessories to connect. A managed Mac may block phones over USB; that is IT’s setting, not yours."
     ]
+
+    /// Copies the connection details and reports whether the pasteboard took them.
+    static func copy(_ text: String, to pasteboard: NSPasteboard = .general) -> Bool {
+        pasteboard.clearContents()
+        return pasteboard.setString(text, forType: .string)
+    }
+    /// What the button and VoiceOver say after a copy, from the pasteboard's own answer:
+    /// success is never claimed for a write that did not happen.
+    static func copyOutcome(_ wrote: Bool) -> (label: String, announcement: String) {
+        wrote ? ("Copied", "Connection details copied")
+              : ("Couldn’t copy", "Connection details were not copied. Try again.")
+    }
 }
 
 /// One compact answer to "Can’t see your phone?": the live status, the three
@@ -39,7 +51,8 @@ struct PhoneConnectionHelp: View {
     var endsPresentation = false
     let openApp: (NativePresentationApp) -> Void
     @Environment(\.dismiss) private var dismiss
-    @State private var copied = false
+    /// The last copy's words, nil until a copy is tried or after they fade.
+    @State private var copyLabel: String?
     @State private var copiedLifetime: DispatchWorkItem?
 
     var body: some View {
@@ -90,19 +103,18 @@ struct PhoneConnectionHelp: View {
             }
             Divider()
             HStack {
-                Button(copied ? "Copied" : "Copy connection details") {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(diagnostic(), forType: .string)
+                Button(copyLabel ?? "Copy connection details") {
+                    let outcome = PhoneConnectionSupport.copyOutcome(PhoneConnectionSupport.copy(diagnostic()))
                     // One owner-held lifetime per copy (Fit rule 7): a rerender cannot restart it and
-                    // a stale one cannot end a newer one. VoiceOver hears the success once.
+                    // a stale one cannot end a newer one. VoiceOver hears what actually happened, once.
                     copiedLifetime?.cancel()
-                    copied = true
+                    copyLabel = outcome.label
                     NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested,
-                                         userInfo: [.announcement: "Connection details copied", .priority: NSAccessibilityPriorityLevel.medium.rawValue])
-                    let lifetime = DispatchWorkItem { copied = false }
+                                         userInfo: [.announcement: outcome.announcement, .priority: NSAccessibilityPriorityLevel.medium.rawValue])
+                    let lifetime = DispatchWorkItem { copyLabel = nil }
                     copiedLifetime = lifetime
                     DispatchQueue.main.asyncAfter(deadline: .now() + 4, execute: lifetime)
-                }.help("Facts about the USB bus, screen sources and permissions, with no identifiers, for IT or a report")
+                }.help("Facts about the USB bus, screen sources and permissions, with no identifiers or device names, for IT or a report")
                 Spacer()
                 Link("Help online ↗", destination: PhoneConnectionSupport.guideURL)
             }

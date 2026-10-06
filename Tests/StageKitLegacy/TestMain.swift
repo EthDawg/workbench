@@ -631,6 +631,7 @@ struct TestRunner {
             ("phone link: monitor keeps a failed look and drops a late one", phoneLink.testTheMonitorKeepsAFailedLookAndDropsALateOne),
             ("phone link: bounded capture faults and QuickTime only when busy", phoneLink.testCaptureFaultsStayBoundedAndOnlyABusyDeviceNamesQuickTime),
             ("phone link: reports carry kinds, never personal names", phoneLink.testReportsCarryKindsNeverPersonalNames),
+            ("phone link: copy success depends on the pasteboard", phoneLink.testCopySuccessDependsOnThePasteboardsAnswer),
             ("phone End: a late permission answer stays ended", phoneEnd.testEndWithAPendingPermissionStaysEndedWhenTheAnswerArrivesLate),
             ("phone End: a late frame neither goes live nor reopens", phoneEnd.testALateFrameAfterEndNeitherGoesLiveNorReopens),
             ("phone End: stale stage steps cannot take the phone back", phoneEnd.testTheStagesStepsAfterEndCannotTakeThePhoneBack),
