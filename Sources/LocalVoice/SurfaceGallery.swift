@@ -443,6 +443,7 @@ enum SurfaceGallery {
         if let history = pages.firstIndex(where: { $0.route == "history" }) { pages[history].shots += try renderHistoryStates(to: output) }
         // The read-only image preview that capture thumbnails open (#154), shown with the Snap page.
         if let snapPage = pages.firstIndex(where: { $0.route == "snap" }) { pages[snapPage].shots += try renderImagePreview(to: output) }
+        if let personas = pages.firstIndex(where: { $0.route == "personas" }) { pages[personas].shots.append(try renderPersonaVoiceRefusal(to: output)) }
         let listings = menus()
         // Screen Recording off (#112): Snap, Home's quick starts and a Snap & Talk session explain it.
         for (route, shot) in try renderScreenAccessOff(to: output) {
@@ -1317,6 +1318,7 @@ enum SurfaceGallery {
         if let index = pass.pages.firstIndex(where: { $0.route == "meeting" }) { pass.pages[index].shots += [completed.meeting, try renderMeetingKept(to: output)] }
         if let index = pass.pages.firstIndex(where: { $0.route == "history" }) { pass.pages[index].shots.append(completed.history) }
         if let index = pass.pages.firstIndex(where: { $0.route == "readback" }) { pass.pages[index].shots += try renderSnapTalkStates(to: output) }
+        if let index = pass.pages.firstIndex(where: { $0.route == "personas" }) { pass.pages[index].shots.append(try renderPersonaVoiceRefusal(to: output)) }
         pass.panels += try renderTimerSurfaces(to: output)
         pass.checks += dictate.checks + completed.checks
         pass.menus = menus()
@@ -2292,6 +2294,22 @@ enum SurfaceGallery {
                               detail: "The eight docks the floating toolbar's Position… has, from the Timer menu, the panel's Timer Options, Home and the timer window; no Reset position, since the Timer has none.",
                               file: "timer-position-control-\(theme).png", to: output))
         return shots
+    }
+
+    // MARK: Persona microphone refusal
+
+    /// Persona with React to my voice refused on a synthetic microphone: the switch stays off and
+    /// the reason shows under it with Microphone Settings…, as Dictate's refusal does (#134 Fit rule 2).
+    func renderPersonaVoiceRefusal(to output: URL) throws -> SurfaceGallery.Shot {
+        let size = SurfaceGallery.sizes[0].size
+        let window = homeWindow(size: size)
+        defer { window.contentViewController = nil; window.close() }
+        let restore = stage.showSyntheticPersonaVoiceRefusal()
+        defer { restore() }
+        let (rep, drawn) = try renderPage("personas", in: window)
+        return try save(rep, id: "voice-refused", title: "React to my voice refused, \(Int(drawn.width)) × \(Int(drawn.height)) pt",
+                        detail: "The switch stays off; Microphone access is off shows beside it with Microphone Settings…, the same words as Dictate.",
+                        file: "page-personas-voice-refused-\(theme).png", to: output)
     }
 
     /// Free placement through the production host (#163, #134), with its panel invisible. Every

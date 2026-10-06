@@ -835,6 +835,7 @@ struct TestRunner {
             ("Present compact preview policy", personaWorkspace.testPresentPreviewReservesControlsAndFitsNarrowEditors),
             ("persona voice ring listens only while on and showing", personaVoice.testVoiceRingListensOnlyWhileOnAndItsPersonaShows),
             ("persona voice ring asks while preparing and stops when unavailable", personaVoice.testVoiceRingAsksWhilePreparingAndStopsWhenTheMicrophoneIsUnavailable),
+            ("persona voice refusal offers Microphone Settings in the live menus", personaVoice.testRefusedMicrophoneOffersMicrophoneSettingsInTheLiveMenus),
             ("persona voice ring single floating persona", personaVoice.testSingleFloatingPersonaIsPlacedWithRoomForItsRing),
             ("persona voice ring placement keeps artwork and ring on screen", personaVoice.testPlacementKeepsArtworkSizeAndTheRingOnScreen),
             ("persona voice analyzer quiet and loud microphones", personaVoice.testAnalyzerHearsQuietAndLoudMicrophonesAlikeButNotTheRoom),

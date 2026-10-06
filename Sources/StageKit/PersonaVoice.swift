@@ -375,6 +375,16 @@ protocol PersonaVoiceSource: AnyObject {
     func stop()
 }
 
+/// A microphone that never opens, for renders of a refusal: starting it is the refusal.
+final class PersonaSilentVoiceSource: PersonaVoiceSource {
+    var onFrames: (([PersonaVoiceFrame]) -> Void)?
+    var onUnavailable: ((String) -> Void)?
+    var onDevice: ((String?) -> Void)?
+    var deviceName: String? { nil }
+    func start() throws { throw PersonaVoiceError.microphoneDenied }
+    func stop() {}
+}
+
 enum PersonaVoiceError: LocalizedError {
     case microphoneDenied
     case unavailable(String)
@@ -382,7 +392,8 @@ enum PersonaVoiceError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .microphoneDenied:
-            return "React to my voice needs microphone access. Allow Workbench in System Settings › Privacy & Security › Microphone."
+            // Dictate's words for the same refusal, so one word set names it on every surface.
+            return "Microphone access is off. Open System Settings › Privacy & Security › Microphone and allow \(Workbench.displayName)."
         case .unavailable(let reason):
             return "React to my voice stopped: \(reason)"
         }
@@ -403,6 +414,11 @@ struct PersonaVoiceAccess {
     /// The presenter's remembered ring colour; nil until one is chosen.
     var savedColor: () -> InkColor? = { nil }
     var saveColor: (InkColor) -> Void = { _ in }
+    /// Microphone Settings…: Privacy & Security › Microphone, the door Dictate and Meetings
+    /// open beside the same refusal. Checks replace it so none opens System Settings.
+    var openMicrophoneSettings: () -> Void = {
+        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!)
+    }
 
     static var system: PersonaVoiceAccess {
         let key = "persona.voiceRing", colorKey = "persona.voiceColor"

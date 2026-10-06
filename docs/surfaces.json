@@ -2854,6 +2854,15 @@
     "note": "Option of Persona: the existing click-through lock applies to the camera bubble, while its move and resize handles remain usable."
   },
   {
+    "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.microphone-settings",
+    "surface": "Persona menu",
+    "label": "Microphone Settings…",
+    "kind": "action",
+    "belongsTo": "persona",
+    "aliasOf": "dictate",
+    "note": "Quality (#134 Fit rule 2, 1 Oct follow-up): React to my voice refused the microphone opens its System Settings pane beside the refusal under the switch, with Dictate's words, as Dictate's page and Meetings do. Shown only beside the microphone refusal, never another problem."
+  },
+  {
     "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.react-to-my-voice-uses-microphone",
     "surface": "Persona menu",
     "label": "React to My Voice · Uses Microphone",

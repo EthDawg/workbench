@@ -340,6 +340,18 @@ public final class StageKitController: ObservableObject {
     }
     /// Whether the Timer's Position… control is open.
     public var isTimerPositionControlShown: Bool { coordinator.timerPositionPanel.isShown }
+    /// For renders: React to my voice turned on against a synthetic refused microphone, so the
+    /// Persona page and its live menus show the refusal with Microphone Settings…. Nothing asks
+    /// macOS or opens System Settings. The returned closure restores the earlier access.
+    public func showSyntheticPersonaVoiceRefusal() -> () -> Void {
+        let library = coordinator.demoScenes.personas
+        let previous = library.replaceVoiceAccess(PersonaVoiceAccess(
+            permission: { .denied }, requestPermission: { $0(false) },
+            makeSource: { PersonaSilentVoiceSource() }, savedChoice: { false }, saveChoice: { _ in },
+            openMicrophoneSettings: {}))
+        library.setVoiceRing(true)
+        return { _ = library.replaceVoiceAccess(previous) }
+    }
     public var scenesView: AnyView { AnyView(DemoScenesView(model: coordinator.demoScenes)) }
     public var personasView: AnyView { AnyView(PersonaLibraryView(library: coordinator.demoScenes.personas, mode: .workspace)) }
     /// The local profile is a reference to an ordinary saved persona. It has no account,

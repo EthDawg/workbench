@@ -26,6 +26,8 @@ final class PersonaVoiceTests {
         var permission = PersonaVoiceAccess.Permission.allowed
         var requests: [(Bool) -> Void] = []
         var running: [Microphone] { made.filter(\.running) }
+        /// Microphone Settings… presses, which here open nothing.
+        var settingsOpened = 0
     }
     private final class Display: PersonaSessionDisplaying {
         var onPlacementChange: ((PersonaOverlayState) -> Void)?
@@ -51,7 +53,8 @@ final class PersonaVoiceTests {
                            requestPermission: { microphones.requests.append($0) },
                            makeSource: { let microphone = Microphone(); microphone.failure = microphones.failure; microphones.made.append(microphone); return microphone },
                            savedChoice: { defaults.saved }, saveChoice: { defaults.saved = $0 },
-                           savedColor: { defaults.color }, saveColor: { defaults.color = $0 })
+                           savedColor: { defaults.color }, saveColor: { defaults.color = $0 },
+                           openMicrophoneSettings: { microphones.settingsOpened += 1 })
     }
     private func fixture(_ microphones: Microphones, _ defaults: Choice, _ displays: Displays) throws -> (URL, PersonaLibrary, UUID, [UUID]) {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("PersonaVoice-" + UUID().uuidString)
@@ -156,12 +159,17 @@ final class PersonaVoiceTests {
         microphones.permission = .denied
         microphones.requests.removeFirst()(false)
         XCTAssertFalse(library.voiceRing, "A refusal turns it back off")
-        XCTAssertTrue(library.notice?.contains("microphone access") == true)
+        // Dictate's words for the same refusal, and its door (#134 Fit rule 2).
+        XCTAssertEqual(library.notice, "Microphone access is off. Open System Settings › Privacy & Security › Microphone and allow Workbench.")
+        XCTAssertEqual(library.voiceRefusal, library.notice, "The refusal shows beside the switch with Microphone Settings…")
         XCTAssertTrue(microphones.made.isEmpty)
 
         library.setVoiceRing(true)
         XCTAssertFalse(library.voiceRing, "Still refused: it stays off and explains")
         XCTAssertTrue(microphones.requests.isEmpty, "A settled refusal is not asked again")
+        XCTAssertEqual(microphones.settingsOpened, 0, "Nothing opens System Settings by itself")
+        library.openMicrophoneSettings()
+        XCTAssertEqual(microphones.settingsOpened, 1, "Microphone Settings… opens Privacy & Security › Microphone")
 
         microphones.permission = .undecided
         library.setVoiceRing(true)
@@ -182,6 +190,48 @@ final class PersonaVoiceTests {
         library.setVoiceRing(true)
         XCTAssertFalse(library.voiceRing, "A microphone that cannot start turns it off")
         XCTAssertEqual(library.notice, "React to my voice stopped: No microphone input is available.")
+        XCTAssertTrue(library.voiceRefusal == nil, "Only the microphone refusal gets the System Settings door, never another problem")
+    }
+
+    /// The shown card's menu and the pill's Persona Options carry the refusal under the switch
+    /// with Microphone Settings…, which opens Privacy & Security › Microphone; another problem
+    /// and an allowed microphone leave the switch alone (#134 Fit rule 2, one word set).
+    func testRefusedMicrophoneOffersMicrophoneSettingsInTheLiveMenus() throws {
+        let defaults = Choice()
+        let microphones = Microphones(), displays = Displays()
+        let (root, library, _, _) = try fixture(microphones, defaults, displays)
+        defer { library.shutdown(); try? FileManager.default.removeItem(at: root) }
+        func titles() -> [String] { library.makeControlsMenu().items.map(\.title) }
+        func choose(_ title: String) {
+            guard let item = library.makeControlsMenu().items.first(where: { $0.title == title }), let action = item.action else { return }
+            _ = (item.target as AnyObject?)?.perform(action, with: item)
+        }
+        guard case .success = library.showOverlay() else { XCTAssertTrue(false, "The persona shows"); return }
+        let switchTitle = "React to My Voice · Uses Microphone", door = "Microphone Settings…"
+        XCTAssertTrue(titles().contains(switchTitle))
+        XCTAssertFalse(titles().contains(door), "An allowed microphone offers no settings door")
+
+        microphones.permission = .denied
+        choose(switchTitle)
+        XCTAssertFalse(library.voiceRing, "The switch stays off")
+        let items = titles()
+        guard let at = items.firstIndex(of: switchTitle) else { XCTAssertTrue(false, "The switch stays in the menu: \(items)"); return }
+        XCTAssertEqual(Array(items.dropFirst(at + 1).prefix(2)), [library.notice ?? "", door],
+                       "The reason and Microphone Settings… sit under the switch: \(items)")
+        XCTAssertTrue(library.makeControlsMenu().items.first { $0.title == library.notice }?.isEnabled == false, "The reason is a note")
+        choose(door)
+        XCTAssertEqual(microphones.settingsOpened, 1, "Microphone Settings… opens Privacy & Security › Microphone")
+        XCTAssertFalse(library.voiceRing, "and changes nothing else")
+
+        // The toolbar's picker shows cards, never the refusal; the panel row's notice opens the page.
+        XCTAssertFalse(library.makeToolbarPickerMenu().items.contains { $0.title == door })
+
+        microphones.permission = .allowed
+        choose(switchTitle)
+        XCTAssertTrue(library.voiceRing, "Allowed again, the switch turns on")
+        XCTAssertTrue(library.voiceRefusal == nil)
+        XCTAssertFalse(titles().contains(door), "The door goes with the refusal")
+        XCTAssertEqual(microphones.settingsOpened, 1)
     }
 
     func testSingleFloatingPersonaIsPlacedWithRoomForItsRing() throws {
