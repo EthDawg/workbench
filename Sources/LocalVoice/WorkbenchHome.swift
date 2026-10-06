@@ -345,7 +345,7 @@ struct WorkbenchHome: View {
                     // Saved drawing settings that could not be read or saved, and login, belong to
                     // General: the menu-bar panel's Open Settings… leads to these words (#134).
                     if let notice = stage.notice(on: .general) {
-                        Text(notice).font(.callout).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                        WorkbenchNote(notice)
                     }
                     VStack(alignment: .leading, spacing: 8) {
                         WorkbenchSectionTitle("Appearance")
@@ -372,12 +372,11 @@ struct WorkbenchHome: View {
                             .font(.caption).foregroundStyle(.secondary)
                         if loginNeedsApproval {
                             HStack(spacing: 8) {
-                                Text("macOS needs your approval in System Settings › General › Login Items.")
-                                    .font(.caption).foregroundStyle(Workbench.attention).fixedSize(horizontal: false, vertical: true)
+                                WorkbenchNote("macOS needs your approval in System Settings › General › Login Items.", font: .caption)
                                 Button("Open Login Items…") { SMAppService.openSystemSettingsLoginItems() }.controlSize(.small)
                             }
                         }
-                        if let loginError { Text(loginError).font(.caption).foregroundStyle(Workbench.attention) }
+                        if let loginError { WorkbenchNote(loginError, font: .caption) }
                     }.onAppear(perform: readLoginItem)
                         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in readLoginItem() }
                     Divider()

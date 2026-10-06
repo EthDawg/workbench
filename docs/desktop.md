@@ -41,7 +41,11 @@ Every page uses the same few parts, so a page built by any person or agent looks
 
 **Cards.** `WorkbenchTile(title, symbol:)`: 12 pt corners, 16 pt inside, the control surface with a hairline border, a section title with its symbol in the accent and an optional trailing status or door. A card is never itself a button.
 
-**Status.** `WorkbenchStatusBadge(text, tone:)`: a symbol and a few words. Done is the accent; attention is orange; neutral is secondary. Orange only asks for attention; red is for recording and removal.
+**Cards without a title.** `.workbenchCard(outlined:)`: the tile's padding, surface and hairline for a page's own card; `outlined` marks the row a door revealed. `WorkbenchTile` is built on it.
+
+**Notes.** `WorkbenchNote(text, tone:)`: a sentence about a problem or a state, in primary words that wrap and can be selected, with the tone on the symbol only. Problems and cautions use the triangle.
+
+**Status.** `WorkbenchStatusBadge(text, tone:)`: a symbol and a few words on one line, with the circle symbols. Done is the accent; attention is orange; neutral is secondary. Orange only asks for attention; red is for recording and removal.
 
 **Empty states.** `WorkbenchEmptyState(symbol:title:detail:)`: what will appear here, why it is useful, and the one next step. Left-aligned inside a card; a whole empty page centres it.
 

@@ -245,7 +245,7 @@ struct HomePermissionsPanel: View {
                     }
                 }
                 if let problem {
-                    Text(problem).font(.caption).foregroundStyle(Workbench.attention).fixedSize(horizontal: false, vertical: true)
+                    WorkbenchNote(problem, font: .caption)
                 }
                 if !snapshot.needsAttention {
                     Button(snapshot.isComplete ? "Hide details" : "Done for now") { dismissed = true; showingDetails = false }

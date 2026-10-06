@@ -112,10 +112,7 @@ struct HomeMeetingTile: View {
                 Spacer(minLength: 8)
                 Text(Self.stamp(last.date) + " · " + HomeMeetings.duration(last.seconds)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
-            if let note = last.note {
-                Label { Text(note).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
-                    icon: { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Workbench.attention).font(.caption) }
-            }
+            if let note = last.note { WorkbenchNote(note, font: .caption) }
             // Once a follow-up exists, its words are the recap; until then, the meeting's own.
             if let recap {
                 Text("Follow-up").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
@@ -149,7 +146,7 @@ struct HomeMeetingTile: View {
             }
         }.controlSize(.small)
         if let copyProblem, copyProblem.id == last.id {
-            Text(copyProblem.message).font(.caption).foregroundStyle(Workbench.attention).fixedSize(horizontal: false, vertical: true)
+            WorkbenchNote(copyProblem.message, font: .caption)
         }
     }
 
@@ -312,7 +309,7 @@ struct HomeDecksTile: View {
                 }
             }
             if let problem {
-                Text(problem).font(.caption).foregroundStyle(Workbench.attention).fixedSize(horizontal: false, vertical: true)
+                WorkbenchNote(problem, font: .caption)
             }
         }
         .task(id: readback.recentSessionURLs.map(\.path) + [readback.manifest?.updatedAt.description ?? "", "\(returns)"]) {

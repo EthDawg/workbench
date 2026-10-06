@@ -41,10 +41,7 @@ struct WorkbenchTile<Accessory: View, Content: View>: View {
             }
             content()
         }
-        .padding(Workbench.tilePadding)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(Workbench.surface, in: RoundedRectangle(cornerRadius: Workbench.tileRadius))
-        .overlay(RoundedRectangle(cornerRadius: Workbench.tileRadius).strokeBorder(Workbench.border))
+        .workbenchCard()
         // One named group per card for VoiceOver, and one stop for keyboard focus moving between cards.
         .accessibilityElement(children: .contain).accessibilityLabel(title)
         .focusSection()
@@ -54,6 +51,48 @@ struct WorkbenchTile<Accessory: View, Content: View>: View {
 extension WorkbenchTile where Accessory == EmptyView {
     init(_ title: String, symbol: String, @ViewBuilder content: @escaping () -> Content) {
         self.init(title, symbol: symbol, accessory: { EmptyView() }, content: content)
+    }
+}
+
+extension View {
+    /// A card without a title row: the tile's padding, surface and hairline, full width. Every
+    /// surface container on a page carries the hairline, because the window and control
+    /// backgrounds are the same colour on macOS 26. `outlined` marks the row a door revealed.
+    func workbenchCard(outlined: Bool = false) -> some View {
+        padding(Workbench.tilePadding).frame(maxWidth: .infinity, alignment: .topLeading)
+            .background(Workbench.surface, in: RoundedRectangle(cornerRadius: Workbench.tileRadius))
+            .overlay(RoundedRectangle(cornerRadius: Workbench.tileRadius)
+                .strokeBorder(outlined ? Workbench.accent : Workbench.border, lineWidth: outlined ? 2 : 1))
+    }
+}
+
+/// A sentence about a problem or a state: primary words that wrap, with the tone on the symbol
+/// only, so orange never carries text (2.2:1 on a light card). Problems and cautions use the
+/// triangle; the one-line `WorkbenchStatusBadge` keeps the circle.
+struct WorkbenchNote: View {
+    let text: String
+    var tone: WorkbenchTone = .attention
+    var symbol: String? = nil
+    var font: Font = .callout
+    var selectable = true
+    init(_ text: String, tone: WorkbenchTone = .attention, symbol: String? = nil, font: Font = .callout, selectable: Bool = true) {
+        self.text = text; self.tone = tone; self.symbol = symbol; self.font = font; self.selectable = selectable
+    }
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Image(systemName: symbol ?? defaultSymbol).foregroundStyle(color).accessibilityHidden(true)
+            if selectable {
+                Text(text).foregroundStyle(.primary).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+            } else {
+                Text(text).foregroundStyle(.primary).fixedSize(horizontal: false, vertical: true)
+            }
+        }.font(font).accessibilityElement(children: .combine)
+    }
+    private var defaultSymbol: String {
+        switch tone { case .attention: return "exclamationmark.triangle.fill"; case .done: return "checkmark.circle.fill"; case .neutral: return "info.circle" }
+    }
+    private var color: Color {
+        switch tone { case .done: return Workbench.accent; case .attention: return Workbench.attention; case .neutral: return .secondary }
     }
 }
 
