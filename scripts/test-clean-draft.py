@@ -96,7 +96,7 @@ enum TextRules {
     var status = ""
     var attention: Attention?
     var error: String? { attention?.message }
-    func report(_ message: String, on page: Attention.Page) { attention = Attention(message: message, page: page) }
+    func report(_ message: String, on page: Attention.Page, code: String? = nil) { attention = Attention(message: message, page: page, code: code) }
     var persistenceCalls = 0
     var transitions: [Phase] = []
     var onPhaseChange: (() -> Void)?

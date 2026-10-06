@@ -29,7 +29,9 @@ struct Attention: Equatable {
 
     init(message: String, page: Page, code: String? = nil) {
         self.message = message; self.page = page
-        self.code = code.flatMap { BugReportText.isErrorCode($0) ? $0 : nil } ?? "\(page.route).problem"
+        // The manifest's error_code pattern; this file is also compiled alone by scripts/test-clean-draft.py.
+        let valid = code.flatMap { $0.range(of: "^[a-z][a-z0-9_.]{0,63}$", options: .regularExpression) != nil ? $0 : nil }
+        self.code = valid ?? "\(page.route).problem"
     }
 }
 
