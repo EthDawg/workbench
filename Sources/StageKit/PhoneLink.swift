@@ -41,13 +41,19 @@ public struct PhoneLinkSignals: Equatable {
     /// Workbench let go of the phone so an Apple app could use it, and stays out of
     /// the way until the person asks for it back.
     public var released = false
+    /// A capture session is allowed to run now (the Present page shows a device scene,
+    /// or a presentation with a device frame runs), so an available screen is about to
+    /// be shown. Off in the headless receipt, where nothing ever connects.
+    public var capturing = false
     public init() {}
 }
 
 /// The capture session's own phase, published by `DemoCapture`. Words live in
 /// `PhoneLink.status`, not here.
 public enum CapturePhase: Equatable {
-    public enum Failure: Equatable { case busy, couldNotOpen }
+    /// `busy` only when macOS said another app holds the device; `couldNotStart` is a
+    /// session that configured but never ran, for any reason.
+    public enum Failure: Equatable { case busy, couldNotOpen, couldNotStart }
     case idle
     case waitingForAccess
     case connecting(String)
@@ -67,8 +73,8 @@ public enum CapturePhase: Equatable {
 
 public struct PhoneLinkStatus: Equatable {
     public enum Phase: Equatable {
-        case noPhone, phoneOnUSB, screenFound, chooseScreen, waitingForRemembered, connecting, live, stalled,
-             interrupted, busy, couldNotOpen, accessPending, accessDenied, accessRestricted, released
+        case noPhone, phoneOnUSB, screenFound, chooseScreen, waitingForRemembered, available, connecting, live, stalled,
+             interrupted, busy, couldNotOpen, couldNotStart, accessPending, accessDenied, accessRestricted, released
     }
     /// The one next action a surface renders beside the words. nil means the words
     /// already say what to do away from the Mac (unlock, trust, a cable).
@@ -95,7 +101,7 @@ public struct PhoneLinkStatus: Equatable {
     /// the next step is not already Reconnect: a phone on the bus, a choice to make.
     public var offersReconnect: Bool {
         switch phase {
-        case .phoneOnUSB, .chooseScreen, .waitingForRemembered, .screenFound: return true
+        case .phoneOnUSB, .chooseScreen, .waitingForRemembered, .screenFound, .accessDenied: return true
         default: return false
         }
     }
@@ -103,14 +109,14 @@ public struct PhoneLinkStatus: Equatable {
     /// the surface offers "Can't see your phone?".
     public var offersHelp: Bool {
         switch phase {
-        case .live, .connecting, .screenFound, .accessPending, .released: return false
+        case .live, .connecting, .available, .screenFound, .accessPending, .released: return false
         default: return true
         }
     }
     public var symbol: String {
         switch phase {
         case .live: return "iphone"
-        case .connecting, .accessPending: return "iphone.radiowaves.left.and.right"
+        case .connecting, .available, .accessPending: return "iphone.radiowaves.left.and.right"
         case .accessDenied, .accessRestricted: return "video.slash"
         case .noPhone: return "cable.connector.slash"
         default: return "cable.connector"
@@ -144,6 +150,9 @@ public enum PhoneLink {
         case .failed(_, .couldNotOpen):
             return .init(phase: .couldNotOpen, title: "Workbench can’t open the \(noun)",
                          detail: "Unlock it and close any other preview using it, then Reconnect.", step: .reconnect)
+        case .failed(_, .couldNotStart):
+            return .init(phase: .couldNotStart, title: "The \(noun)’s screen didn’t start",
+                         detail: "Unlock the phone, close any other app previewing it, then Reconnect.", step: .reconnect)
         case .waitingForAccess:
             return .init(phase: .accessPending, title: "Allow device video in the macOS prompt",
                          detail: "Workbench shows the phone’s picture only. It never opens the phone’s microphone.", step: nil)
@@ -161,13 +170,15 @@ public enum PhoneLink {
                          detail: "Use a route your organisation allows, or ask IT.", step: nil)
         case .denied:
             return .init(phase: .accessDenied, title: "Workbench can’t use device video",
-                         detail: "Allow Workbench under System Settings › Privacy & Security › Camera, then Reconnect.", step: .openCameraSettings)
+                         detail: "Allow Workbench under System Settings › Privacy & Security › Camera, then come back to Present.", step: .openCameraSettings)
         case .notDetermined, .authorized:
             break
         }
-        if remembered != nil {
-            // The capture reconnects a remembered screen by itself; idle between attempts reads as connecting.
-            return .init(phase: .connecting, title: "Connecting to \(noun)…", detail: nil, step: nil)
+        if let remembered {
+            // The capture reconnects a remembered screen by itself; idle between attempts reads as
+            // connecting. With no session allowed, the screen is simply there for Present.
+            if signals.capturing { return .init(phase: .connecting, title: "Connecting to \(noun)…", detail: nil, step: nil) }
+            return .init(phase: .available, title: "\(noun) ready", detail: "Present shows \(remembered.name).", step: nil)
         }
         if sources.isEmpty {
             if let phone = signals.usb.first {
@@ -187,7 +198,10 @@ public enum PhoneLink {
         }
         if sources.count == 1 {
             // The one phone screen is adopted by the capture itself; a plain video device waits for a choice.
-            if sources[0].isScreen { return .init(phase: .connecting, title: "Connecting to \(noun)…", detail: nil, step: nil) }
+            if sources[0].isScreen {
+                if signals.capturing { return .init(phase: .connecting, title: "Connecting to \(noun)…", detail: nil, step: nil) }
+                return .init(phase: .available, title: "\(noun) ready", detail: "Present shows \(sources[0].name).", step: nil)
+            }
             return .init(phase: .screenFound, title: "\(sources[0].name) found",
                          detail: "Show it, and Workbench remembers it. Only phone and tablet screens appear by themselves.",
                          step: .showSource(id: sources[0].id, title: "Show \(sources[0].name)"))
@@ -240,6 +254,7 @@ public enum PhoneLink {
         case .interrupted: phase = "interrupted"
         case .failed(_, .busy): phase = "could not start, device busy"
         case .failed(_, .couldNotOpen): phase = "could not open the device"
+        case .failed(_, .couldNotStart): phase = "the session did not start"
         }
         lines.append("Session: " + phase)
         lines.append("Status: " + status.title + (status.detail.map { " — " + $0 } ?? ""))
@@ -364,6 +379,7 @@ public final class PhoneLinkMonitor: ObservableObject {
     private let usb = USBPhoneWatch()
     private var captureObservations = Set<AnyCancellable>()
     private var observers: [NSObjectProtocol] = []
+    private var wakeObserver: NSObjectProtocol?
     private var running = false
     private var mirrored = PhoneLinkSignals()
 
@@ -376,7 +392,10 @@ public final class PhoneLinkMonitor: ObservableObject {
     /// and the phase of its session. The capture may be stopped; its facts still hold.
     func mirror(_ capture: DemoCapture) {
         captureObservations.removeAll()
-        capture.$phase.receive(on: RunLoop.main).sink { [weak self] phase in self?.update { $0.phase = phase } }.store(in: &captureObservations)
+        capture.$phase.receive(on: RunLoop.main).sink { [weak self] phase in
+            // A phase change is the moment the permission may have changed too.
+            self?.update { $0.phase = phase; if self?.running == true { $0.access = Self.access() } }
+        }.store(in: &captureObservations)
         capture.$selectedID.receive(on: RunLoop.main).sink { [weak self] id in self?.update { $0.rememberedID = id } }.store(in: &captureObservations)
         capture.$sources.receive(on: RunLoop.main).sink { [weak self] sources in
             self?.update { $0.sources = sources.map { .init(id: $0.id, name: $0.name, isScreen: $0.isScreen) } }
@@ -393,9 +412,11 @@ public final class PhoneLinkMonitor: ObservableObject {
     }
     /// The capture was let go for an Apple app, or taken back.
     func setReleased(_ released: Bool) { update { $0.released = released } }
+    /// A session is allowed to run now, so an available screen reads as connecting.
+    func setCapturing(_ capturing: Bool) { update { $0.capturing = capturing } }
     private func start() {
         running = true
-        observers.append(NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in self?.refresh() })
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in self?.refresh() }
         observers.append(NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in self?.refresh() })
         usb.start()
         refresh()
@@ -404,6 +425,7 @@ public final class PhoneLinkMonitor: ObservableObject {
         running = false
         usb.stop()
         observers.forEach(NotificationCenter.default.removeObserver); observers.removeAll()
+        if let wakeObserver { NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver); self.wakeObserver = nil }
         update { $0.usb = [] }
     }
     private func update(_ change: (inout PhoneLinkSignals) -> Void) {
@@ -435,6 +457,11 @@ public final class PhoneLinkMonitor: ObservableObject {
         DemoCapture.allowScreenCaptureDevices()
         let discovery = AVCaptureDevice.DiscoverySession(deviceTypes: [.external], mediaType: nil, position: .unspecified)
         let monitor = PhoneLinkMonitor()
+        // The device this edition's Present remembers, read only, so the receipt says present or absent.
+        let preference = Workbench.supportDirectory(component: "StageMark").appendingPathComponent("Scenes/demo-source.json")
+        if let data = try? Data(contentsOf: preference), let id = try? JSONDecoder().decode(String.self, from: data) {
+            monitor.update { $0.rememberedID = id }
+        }
         var last: PhoneLinkStatus?
         let subscription = monitor.$status.sink { status in
             guard status != last else { return }

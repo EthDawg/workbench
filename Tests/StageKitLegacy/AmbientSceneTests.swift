@@ -29,7 +29,7 @@ final class AmbientSceneTests {
                 let record = try require(adapter.library.records.first { $0.id == scene.id })
                 let recipe = try require(record.scene.ambience)
                 XCTAssertEqual(scene.ambience, recipe); XCTAssertEqual(recipe.preset, starter.id)
-                XCTAssertTrue(scene.gentleMotion == nil, "Starters are still scenes; motion is retired on the Mac"); XCTAssertFalse(scene.showsPhone)
+                XCTAssertTrue(scene.gentleMotion == nil, "Starters are still scenes; motion is retired on the Mac"); XCTAssertTrue(scene.showsPhone, "Every starter is an ordinary scene with a device frame")
                 let package = try adapter.library.package(for: record.scene)
                 XCTAssertEqual(package.version, 2); XCTAssertEqual(package.assets.count, 3)
                 let directory = resources.deletingLastPathComponent().appendingPathComponent("AmbientScenes")
@@ -171,13 +171,15 @@ final class AmbientSceneTests {
             let view = MovingSceneView(frame: CGRect(x: 0, y: 0, width: 320, height: 180))
             window.contentView = view
             defer { window.contentView = nil }
-            view.configure(scene: scene, backdrop: poster, logo: nil, hand: nil, persona: nil, ambience: model.ambienceImages(for: scene))
+            // Poster parity is about the backdrop; the device frame's shadow would dominate a pixel count.
+            let still: DemoScene = { var copy = scene; copy.showsPhone = false; return copy }()
+            view.configure(scene: still, backdrop: poster, logo: nil, hand: nil, persona: nil, ambience: model.ambienceImages(for: still))
             view.layout(); view.motionRequested = true
             XCTAssertFalse(view.isAnimating)
-            let expected = try require(CGImageSourceCreateWithData(SceneRenderer.png(scene, image: poster, size: view.bounds.size) as CFData, nil))
+            let expected = try require(CGImageSourceCreateWithData(SceneRenderer.png(still, image: poster, size: view.bounds.size) as CFData, nil))
             let expectedImage = try require(CGImageSourceCreateImageAtIndex(expected, 0, nil))
             XCTAssertTrue(changedPixels(try render(view), expectedImage).count < 320 * 180 / 100)
-            var ordinaryPhoto = scene; ordinaryPhoto.ambience = nil
+            var ordinaryPhoto = still; ordinaryPhoto.ambience = nil
             view.configure(scene: ordinaryPhoto, backdrop: poster, logo: nil, hand: nil, persona: nil)
             view.layout(); view.motionRequested = true
             let permitted = GentlePhotoMotion.permitted(requested: true, visible: true,

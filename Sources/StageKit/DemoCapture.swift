@@ -42,8 +42,10 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     @Published private(set) var dimensions = CGSize.zero
     /// Every surface showing this session draws through its own layer: the Present
     /// page's preview and the stage. Newest first, so a stage opened later is wired
-    /// before the preview behind it.
-    private let layers = NSHashTable<AVCaptureVideoPreviewLayer>.weakObjects()
+    /// before the preview behind it; if macOS refuses a second connection, the surface
+    /// in front keeps the picture. Touched only on the capture queue.
+    private final class LayerSlot { weak var layer: AVCaptureVideoPreviewLayer?; init(_ layer: AVCaptureVideoPreviewLayer) { self.layer = layer } }
+    private var layers: [LayerSlot] = []
     private let queue = DispatchQueue(label: "StageMark.device-preview", qos: .userInitiated)
     private var session: AVCaptureSession?
     private var recovery = CaptureRecovery()
@@ -79,16 +81,20 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     func makePreviewLayer() -> AVCaptureVideoPreviewLayer {
         let layer = AVCaptureVideoPreviewLayer()
         layer.videoGravity = .resizeAspect; layer.masksToBounds = true
-        layers.add(layer)
         queue.async { [weak self] in
-            guard let self, let session, let port = session.inputs.first?.ports.first(where: { $0.mediaType == .video }) else { return }
+            guard let self else { return }
+            layers.removeAll { $0.layer == nil }
+            layers.insert(LayerSlot(layer), at: 0)
+            guard let session, let port = session.inputs.first?.ports.first(where: { $0.mediaType == .video }) else { return }
             session.beginConfiguration()
             attach(layer, to: session, port: port)
             session.commitConfiguration()
         }
         return layer
     }
+    /// On the capture queue. A layer already on this session is left alone.
     private func attach(_ layer: AVCaptureVideoPreviewLayer, to session: AVCaptureSession, port: AVCaptureInput.Port) {
+        guard layer.session !== session else { return }
         layer.setSessionWithNoConnection(session)
         let connection = AVCaptureConnection(inputPort: port, videoPreviewLayer: layer)
         if connection.isVideoMirroringSupported {
@@ -159,6 +165,8 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
             // The remembered device survives a stop: the page and the stage share one capture
             // that starts again when either needs it.
             enabled = false; recovery.invalidateSession(); stopSession(); publish(.idle)
+            devices.removeAll()
+            DispatchQueue.main.async { [weak self] in self?.sources = [] }
             timer?.cancel(); timer = nil
             observers.forEach(NotificationCenter.default.removeObserver); observers.removeAll()
             if let wakeObserver { NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver); self.wakeObserver = nil }
@@ -187,9 +195,10 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         if let candidate = recovery.candidate(in: choices) {
             if recovery.desiredID == nil { remember(candidate) }
             connect(candidate)
-        } else if case .interrupted = phaseSnapshot {
-            // The selected device is still away; the stage keeps waiting for that exact device.
+        } else if case .interrupted = phaseSnapshot, choices.isEmpty {
+            // The remembered device is away and nothing else is offered: keep waiting for that exact device.
         } else {
+            // Idle lets the words offer the other screens that are here, or say what is missing.
             publish(.idle)
         }
     }
@@ -235,7 +244,8 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
             let videoConnection = AVCaptureConnection(inputPorts: ports, output: output)
             guard newSession.canAddConnection(videoConnection) else { throw CaptureError.unavailable }
             newSession.addConnection(videoConnection)
-            for layer in layers.allObjects.reversed() { attach(layer, to: newSession, port: ports[0]) }
+            layers.removeAll { $0.layer == nil }
+            for slot in layers { if let layer = slot.layer { attach(layer, to: newSession, port: ports[0]) } }
             newSession.commitConfiguration()
             // Explicit video-only wiring avoids connecting a muxed device
             // microphone as an accidental side effect of auto-connection.
@@ -244,7 +254,9 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
             deliveryLock.lock(); deliveryToken = activeToken; deliveryLock.unlock()
             lastFrame = .distantPast; startedAt = Date()
             newSession.startRunning()
-            if !newSession.isRunning { stopSession(); publish(.failed(id, .busy)) }
+            if !newSession.isRunning { stopSession(); publish(.failed(id, .couldNotStart)) }
+        } catch let error as AVError where error.code == .deviceInUseByAnotherApplication {
+            stopSession(); publish(.failed(id, .busy))
         } catch { stopSession(); publish(.failed(id, .couldNotOpen)) }
     }
     private func stopSession() {
@@ -252,7 +264,7 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         // another selection. Its new session must never reuse an old frame token.
         recovery.invalidateSession()
         deliveryLock.lock(); deliveryToken = -1; deliveryLock.unlock()
-        session?.stopRunning(); layers.allObjects.forEach { $0.session = nil }; session = nil; activeID = nil
+        session?.stopRunning(); layers.forEach { $0.layer?.session = nil }; session = nil; activeID = nil
         DispatchQueue.main.async { [weak self] in self?.live = false; self?.dimensions = .zero; self?.heldDeviceID = nil }
     }
     private func checkHealth() {

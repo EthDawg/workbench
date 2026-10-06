@@ -419,7 +419,7 @@ public final class StageKitController: ObservableObject {
     public func presentSelectedScene() {
         if coordinator.demoScenes.selected == nil { onOpenScenes?() }
         else {
-            coordinator.demoScenes.startDemo(mode: .windowed)
+            coordinator.demoScenes.startDemo()
             if !coordinator.demoScenes.isPresenting { onOpenScenes?() }
         }
     }
