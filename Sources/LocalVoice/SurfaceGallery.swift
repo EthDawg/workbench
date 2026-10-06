@@ -4172,6 +4172,8 @@ extension SurfacePass {
                  "received", "Received · report ID", "Only the verifier's readback says Received. The local copy is gone; the receipt explains retention and deletion.")
         try shot(try receipt("failed", { $0.state = .failed; $0.problem = .unauthorized; $0.status = 401; $0.nextAttemptAt = nil }),
                  "failed", "Couldn't deliver", "A refusal that retrying the same bytes cannot fix by itself: Retry and Save a copy…, with no automatic loop.")
+        try shot(try receipt("words-only", { $0.state = .sent; $0.wordsOnly = true; $0.contents = ["text", "screenshot", "voice"]; $0.sentAt = clock; $0.nextAttemptAt = nil }),
+                 "words-only", "Sent · words only", "Sentry's 200 limited attachments: the words arrived without the files. Send attachments again sends them under a new event ID, only when chosen.")
         try shot(try receipt("unconfirmed", { $0.state = .unconfirmed; $0.problem = .notFound; $0.sentAt = clock; $0.nextAttemptAt = nil }),
                  "unconfirmed", "Couldn't confirm delivery", "The verifier never found it within 15 minutes. Send again uses a new event ID for the same report, only when chosen.")
         let unavailable = composer("unavailable", sending: false); try fill(unavailable)
