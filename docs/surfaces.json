@@ -22,7 +22,7 @@
     "kind": "action",
     "belongsTo": "dictate",
     "note": "Quality (#197 review): renamed from Reset to bottom centre. A result's own Position menu repeats Position…'s Reset position, the same reset of the one shared position.",
-    "aliasOf": "LocalVoice.ToolbarPositionControl.ToolbarPositionControl.Button.reset-position"
+    "aliasOf": "StageKit.FloatingPositionControl.FloatingPositionControl.Button.reset-position"
   },
   {
     "id": "LocalVoice.CapturePanel.CapturePositionMenu.Menu.runtime-251931a1542e",
@@ -1203,14 +1203,6 @@
     "belongsTo": "timer",
     "aliasOf": "timer",
     "note": "Quality (1 October, Ethan: the timer must not be an afterthought): one name, Timer, and one word set on every surface. Stop timer ends the countdown and closes its window, as the panel row and the Timer menu say; it replaces End timer."
-  },
-  {
-    "id": "LocalVoice.ToolbarPositionControl.ToolbarPositionControl.Button.reset-position",
-    "surface": "floating toolbar position control",
-    "label": "Reset position",
-    "kind": "action",
-    "belongsTo": "app",
-    "note": "Quality (#163): in Position…, docks the toolbar at bottom centre, its default. A result's own Position menu offers the same reset under the same name."
   },
   {
     "id": "LocalVoice.ToolbarSettingsView.ToolbarSettingsControls.Button.position-floating-toolbar",
@@ -2734,6 +2726,14 @@
     "belongsTo": "present"
   },
   {
+    "id": "StageKit.FloatingPositionControl.FloatingPositionControl.Button.reset-position",
+    "surface": "floating position control",
+    "label": "Reset position",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Quality (#163): in Position…, docks the toolbar at bottom centre, its default. A result's own Position menu offers the same reset under the same name. The control moved into StageKit so the Timer's Position… shares it (#134 Fit rule 1); the Timer has no Reset position and offers none."
+  },
+  {
     "id": "StageKit.LocalPersonaProfile.LocalPersonaProfileView.Button.choose-photo",
     "surface": "local profile",
     "label": "Choose photo…",
@@ -2800,6 +2800,14 @@
     "note": "Option of Persona: an explicit switch opens the chosen camera and releases the old one; a workspace source choice alone starts nothing."
   },
   {
+    "id": "StageKit.Persona.PersonaLibrary.NSMenuItem.voice-colour",
+    "surface": "Persona menu",
+    "label": "Voice Colour",
+    "kind": "option",
+    "belongsTo": "persona",
+    "note": "Option within Persona's voice framing (Ethan, 1 Oct): the ring's colour, shown while React to my voice is on. The same presets, Black and picker as Draw's Ink Colour."
+  },
+  {
     "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.camera",
     "surface": "floating toolbar Persona picker",
     "label": "Camera",
@@ -2814,6 +2822,15 @@
     "kind": "action",
     "belongsTo": "persona",
     "note": "Quality: cancellation ends only the current permission or startup request and drops late replies."
+  },
+  {
+    "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.choose-colour",
+    "surface": "Persona menu",
+    "label": "Choose Colour…",
+    "kind": "option",
+    "belongsTo": "persona",
+    "note": "Option: macOS's colour picker for a voice ring colour outside the presets, worded as Draw's Ink Colour menu words it (Ethan, 1 Oct: the same UI as Draw).",
+    "aliasOf": "draw"
   },
   {
     "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.end-camera",
@@ -2854,21 +2871,13 @@
     "note": "Option of Persona: the existing click-through lock applies to the camera bubble, while its move and resize handles remain usable."
   },
   {
-    "id": "StageKit.Persona.PersonaLibrary.NSMenuItem.voice-colour",
+    "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.microphone-settings",
     "surface": "Persona menu",
-    "label": "Voice Colour",
-    "kind": "option",
+    "label": "Microphone Settings…",
+    "kind": "action",
     "belongsTo": "persona",
-    "note": "Option within Persona's voice framing (Ethan, 1 Oct): the ring's colour, shown while React to my voice is on. The same presets, Black and picker as Draw's Ink Colour."
-  },
-  {
-    "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.choose-colour",
-    "surface": "Persona menu",
-    "label": "Choose Colour…",
-    "kind": "option",
-    "belongsTo": "persona",
-    "note": "Option: macOS's colour picker for a voice ring colour outside the presets, worded as Draw's Ink Colour menu words it (Ethan, 1 Oct: the same UI as Draw).",
-    "aliasOf": "draw"
+    "aliasOf": "dictate",
+    "note": "Quality (#134 Fit rule 2, 1 Oct follow-up): React to my voice refused the microphone opens its System Settings pane beside the refusal under the switch, with Dictate's words, as Dictate's page and Meetings do. Shown only beside the microphone refusal, never another problem."
   },
   {
     "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.react-to-my-voice-uses-microphone",
@@ -3575,6 +3584,15 @@
     "belongsTo": "timer"
   },
   {
+    "id": "StageKit.StageKitController.StageKitController.StageMenuAction.position",
+    "surface": "Timer menu",
+    "label": "Position…",
+    "kind": "option",
+    "belongsTo": "timer",
+    "aliasOf": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.position",
+    "note": "Quality (#134 Fit rule 1, 1 Oct follow-up): Position… replaces the Timer menu's submenu of eight anchors with the floating toolbar's compact eight-dock control, beside the timer window or at the pointer before it first opens. One option, one name, on the Timer menu, the panel's Timer Options and Home's current work."
+  },
+  {
     "id": "StageKit.StageKitController.StageKitController.StageMenuAction.prepare-personas",
     "surface": "Persona menu",
     "label": "Prepare Personas…",
@@ -3612,15 +3630,6 @@
     "label": "Duration",
     "kind": "option",
     "belongsTo": "timer"
-  },
-  {
-    "id": "StageKit.StageKitController.StageKitController.addSubmenu.position",
-    "surface": "Timer menu",
-    "label": "Position",
-    "kind": "option",
-    "belongsTo": "timer",
-    "aliasOf": "timer",
-    "note": "Existing contextual \"Position\" label inside timer; shared wording, not a separate capability."
   },
   {
     "id": "ToolbarCore.ToolbarCaptureKind.ToolbarCaptureKind.title.region",

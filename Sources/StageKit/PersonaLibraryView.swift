@@ -231,7 +231,8 @@ struct PersonaLibraryView: View {
                    onManageGroups: { leavePreparation(dismissLibrary: false) },
                    onDraftChanged: { unsavedPresentationLayout = $0 })
             }
-            if let notice = library.notice {
+            // A refused microphone shows under React to my voice, where the switch was turned on.
+            if let notice = library.notice, library.voiceRefusal == nil {
                 Text(notice).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Text("Whole-screen sharing includes preparation and floating controls. Use a persona in a scene when sharing that presentation window.")
@@ -343,6 +344,16 @@ struct PersonaLibraryView: View {
                         .toggleStyle(.switch).controlSize(.small)
                     if let status = library.voiceStatus {
                         Text(status).font(.caption2).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                    }
+                    // The switch stays off; the reason and its one fix sit beside it, as on Dictate
+                    // and Meetings (#134 Fit rule 2). Only the microphone refusal gets this door.
+                    if let refusal = library.voiceRefusal {
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Text(refusal).font(.caption).foregroundStyle(.orange).multilineTextAlignment(.trailing)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Button("Microphone Settings…") { library.openMicrophoneSettings() }.controlSize(.small)
+                                .help("Open Privacy & Security › Microphone in System Settings")
+                        }.frame(maxWidth: 420, alignment: .trailing)
                     }
                     if library.voiceRing {
                         HStack(spacing: 8) {

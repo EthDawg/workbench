@@ -491,7 +491,8 @@ struct TestRunner {
                 ("timer paused resume and visibility-only shortcut", timerTransport.testPausedResumeKeepsItsTimeAndTheShortcutOnlyShowsOrHides),
                 ("timer transport keeps marks and boards", timerTransport.testTransportLeavesMarksAndBoardsAlone),
                 ("timer controls perform only the transport they showed", timerTransport.testAShownTransportIsTheOnlyOneItPerforms),
-                ("timer one name and word set on every surface", timerTransport.testOneNameAndWordSetFollowTheTimerEverywhere)
+                ("timer one name and word set on every surface", timerTransport.testOneNameAndWordSetFollowTheTimerEverywhere),
+                ("timer Position… sits by the window or the pointer", timerTransport.testPositionControlSitsByTheWindowOrThePointer)
             ]
             for (name, test) in tests {
                 let before = assertionFailures
@@ -657,6 +658,7 @@ struct TestRunner {
             ("timer transport keeps marks and boards", timerTransport.testTransportLeavesMarksAndBoardsAlone),
             ("timer controls perform only the transport they showed", timerTransport.testAShownTransportIsTheOnlyOneItPerforms),
             ("timer one name and word set on every surface", timerTransport.testOneNameAndWordSetFollowTheTimerEverywhere),
+            ("timer Position… sits by the window or the pointer", timerTransport.testPositionControlSitsByTheWindowOrThePointer),
             ("full-height frame persistence and edges", viewportFit.testFullHeightSurvivesSavingAndReachesBothEdges),
             ("maximum frame size across displays", viewportFit.testMaximumSizeFitsDisplayAndPreservesScreenShape),
             ("full-height export and live geometry", viewportFit.testExportAndLiveScreenUseFullHeightBorder),
@@ -833,6 +835,7 @@ struct TestRunner {
             ("Present compact preview policy", personaWorkspace.testPresentPreviewReservesControlsAndFitsNarrowEditors),
             ("persona voice ring listens only while on and showing", personaVoice.testVoiceRingListensOnlyWhileOnAndItsPersonaShows),
             ("persona voice ring asks while preparing and stops when unavailable", personaVoice.testVoiceRingAsksWhilePreparingAndStopsWhenTheMicrophoneIsUnavailable),
+            ("persona voice refusal offers Microphone Settings in the live menus", personaVoice.testRefusedMicrophoneOffersMicrophoneSettingsInTheLiveMenus),
             ("persona voice ring single floating persona", personaVoice.testSingleFloatingPersonaIsPlacedWithRoomForItsRing),
             ("persona voice ring placement keeps artwork and ring on screen", personaVoice.testPlacementKeepsArtworkSizeAndTheRingOnScreen),
             ("persona voice analyzer quiet and loud microphones", personaVoice.testAnalyzerHearsQuietAndLoudMicrophonesAlikeButNotTheRoom),

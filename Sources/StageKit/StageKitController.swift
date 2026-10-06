@@ -322,15 +322,36 @@ public final class StageKitController: ObservableObject {
                 // A duration change applies on the next Start or Reset.
             }
         })
-        menu.addSubmenu("Position", items: FloatingControlAnchor.allCases.map { anchor in
-            StageMenuAction(anchor.title, checked: app.timerPlacementAnchor == anchor) { [weak app] in app?.setTimerPosition(anchor) }
-        })
+        // Position…: the floating toolbar's compact eight-dock control, not a submenu of
+        // anchors (#134 Fit rule 1). It applies before the window first opens.
+        menu.addItem(StageMenuAction("Position…") { [weak app] in app?.showTimerPositionControl() })
         menu.addItem(StageMenuAction("Chime When Finished", checked: app.settings.value.timerChime) { [weak app] in
             guard let app else { return }; app.settings.value.timerChime.toggle()
         })
         return menu
     }
     public var controlsView: AnyView { AnyView(ControlCenter(app: coordinator, settings: coordinator.settings)) }
+    /// The timer's window content with its hover controls shown, for renders with synthetic state.
+    public var timerWindowPreview: AnyView { AnyView(BreakTimerView(app: coordinator, settings: coordinator.settings, controlsShown: true)) }
+    /// Position… as the Timer opens it: the shared eight-dock control, without Reset position.
+    public var timerPositionControlPreview: AnyView {
+        AnyView(FloatingPositionControl(current: coordinator.timerPlacementAnchor, choose: { _ in }, reset: nil, close: {},
+                                        hint: "Or drag the timer window anywhere.", accessibilityLabel: "Timer position"))
+    }
+    /// Whether the Timer's Position… control is open.
+    public var isTimerPositionControlShown: Bool { coordinator.timerPositionPanel.isShown }
+    /// For renders: React to my voice turned on against a synthetic refused microphone, so the
+    /// Persona page and its live menus show the refusal with Microphone Settings…. Nothing asks
+    /// macOS or opens System Settings. The returned closure restores the earlier access.
+    public func showSyntheticPersonaVoiceRefusal() -> () -> Void {
+        let library = coordinator.demoScenes.personas
+        let previous = library.replaceVoiceAccess(PersonaVoiceAccess(
+            permission: { .denied }, requestPermission: { $0(false) },
+            makeSource: { PersonaSilentVoiceSource() }, savedChoice: { false }, saveChoice: { _ in },
+            openMicrophoneSettings: {}))
+        library.setVoiceRing(true)
+        return { _ = library.replaceVoiceAccess(previous) }
+    }
     public var scenesView: AnyView { AnyView(DemoScenesView(model: coordinator.demoScenes)) }
     public var personasView: AnyView { AnyView(PersonaLibraryView(library: coordinator.demoScenes.personas, mode: .workspace)) }
     /// The local profile is a reference to an ordinary saved persona. It has no account,
