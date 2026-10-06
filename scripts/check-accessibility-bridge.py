@@ -12,12 +12,16 @@ voice list and attributes) belong in `ReadingVoices.swift`, under the rule #269
 established: on macOS 26 they log an AXCommon fault, "unsafeForcedSync called
 from Swift Concurrent context", for every voice when they run on a Swift
 task's thread, main actor or detached; the installed app logged more than
-126,000 of them in a week that way. `MacVoiceCatalog` reads them from a plain
-frame or a GCD queue, so inside `ReadingVoices.swift` a listing, or the
-voice-by-identifier initializer, inside a `Task {` or `Task.detached {`
-closure fails too. Elsewhere `AVSpeechSynthesisVoice(identifier:)` stays
-free: it constructs an installed voice from its identifier without a lookup.
-Comments, line and block, and string literals are not code.
+126,000 of them in a week that way, from `MacVoiceCatalog.installed()` in a
+`Task.detached` closure. `MacVoiceCatalog` reads them from a plain frame or a
+GCD queue, so in any file a `Task {` or `Task.detached {` closure that calls a
+listing, `MacVoiceCatalog.listed()`, `installed()` or `sayVoices()`, or the
+voice-by-identifier initializer `AVSpeechSynthesisVoice(identifier:)`, fails
+(the closure body is brace-tracked; a call after it is a plain frame). Outside
+a Task closure the identifier initializer stays free: it constructs an
+installed voice from its identifier without a lookup, and
+`MacVoiceCatalog.voice(identifier:)` hands out the listed object without even
+that. Comments, line and block, and string literals are not code.
 
     python3 scripts/check-accessibility-bridge.py          # the repository
     python3 scripts/check-accessibility-bridge.py DIR...   # other roots, for its test
@@ -36,7 +40,9 @@ TYPES = {'AXUIElement', 'AXObserver', 'AXObserverCallback', 'AXObserverCallbackW
 LISTINGS = re.compile(r'\bAVSpeechSynthesisVoice\.speechVoices\b|\bNSSpeechSynthesizer\.availableVoices\b'
                       r'|\bNSSpeechSynthesizer\.attributes\s*\(\s*forVoice\s*:')
 LOOKUP = re.compile(r'\bAVSpeechSynthesisVoice(?:\.init)?\s*\(\s*identifier\s*:')
+CATALOGUE = re.compile(r'\bMacVoiceCatalog\.(?:listed|installed|sayVoices)\s*\(')
 TASK = re.compile(r'\bTask(?:\.detached)?\s*(?:\([^)]*\))?\s*\{')
+TASK_REASON = 'runs inside a Task closure; list voices from a plain frame or a GCD queue'
 COMMENTS = re.compile(r'/\*.*?\*/|//[^\n]*', re.DOTALL)
 STRINGS = re.compile(r'"""[\s\S]*?"""|"(?:\\.|[^"\\\n])*"')
 
@@ -77,7 +83,7 @@ def task_closures(text):
 
 
 def strays(root):
-    """(relative path, line number, call, where it belongs) for every call outside its door."""
+    """(relative path, line number, call, why) for every call outside its door or inside a Task closure."""
     found = []
     for path in sorted(root.glob('Sources/**/*.swift')):
         relative = path.relative_to(root)
@@ -86,16 +92,20 @@ def strays(root):
             for match in ELEMENT_CALLS.finditer(text):
                 if name(match) not in TYPES:
                     found.append((str(relative), line_of(text, match.start()), name(match), f'belongs in {BRIDGE}'))
-        if relative != VOICES:
-            for match in LISTINGS.finditer(text):
+        closures = task_closures(text)
+
+        def in_task(match):
+            return any(start <= match.start() <= end for start, end in closures)
+
+        for match in LISTINGS.finditer(text):
+            if relative != VOICES:
                 found.append((str(relative), line_of(text, match.start()), name(match), f'belongs in {VOICES}'))
-        else:
-            closures = task_closures(text)
-            for pattern in (LISTINGS, LOOKUP):
-                for match in pattern.finditer(text):
-                    if any(start <= match.start() <= end for start, end in closures):
-                        found.append((str(relative), line_of(text, match.start()), name(match),
-                                      'runs inside a Task closure; list voices from a plain frame or a GCD queue'))
+            elif in_task(match):
+                found.append((str(relative), line_of(text, match.start()), name(match), TASK_REASON))
+        for pattern in (CATALOGUE, LOOKUP):
+            for match in pattern.finditer(text):
+                if in_task(match):
+                    found.append((str(relative), line_of(text, match.start()), name(match), TASK_REASON))
     return found
 
 
