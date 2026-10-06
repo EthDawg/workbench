@@ -33,6 +33,7 @@ struct DemoScenesView: View {
     @State private var personaSelectionAfterPopover: UUID?
     @State private var showingHelp = false
     @State private var choosingSource = false
+    @State private var helpAfterSource = false
     @State private var pendingNativeApp: NativePresentationApp?
     @State private var resizingDevice = false
     @State private var creatingTextLogo = false
@@ -232,12 +233,17 @@ struct DemoScenesView: View {
             pendingNativeApp = nil
             model.openNativeApp(app)
         }) {
-            PhoneConnectionHelp(status: phoneLink.status, diagnostic: { phoneLink.diagnostic(build: Workbench.buildLabel) }) { app in
+            // While a presentation runs, opening an Apple app ends it first, through its own handoff.
+            PhoneConnectionHelp(status: phoneLink.status, diagnostic: { phoneLink.diagnostic(build: Workbench.buildLabel) }, endsPresentation: model.isPresenting) { app in
                 pendingNativeApp = app
                 showingHelp = false
             }
         }
-        .sheet(isPresented: $choosingSource) { sourceSheet }
+        .sheet(isPresented: $choosingSource, onDismiss: {
+            guard helpAfterSource else { return }
+            helpAfterSource = false
+            showingHelp = true
+        }) { sourceSheet }
         .sheet(item: $backdropReplacement) { draft in BackdropReplacementView(model: model, draft: draft) }
         .sheet(item: $removalRequest) { request in
             SceneRemovalConfirmation(request: request) { model.removeScenes(request.scenes) }
@@ -336,7 +342,7 @@ struct DemoScenesView: View {
             }
             Divider()
             HStack {
-                Button("Can’t see your phone?") { choosingSource = false; showingHelp = true }.buttonStyle(.link)
+                Button("Can’t see your phone?") { helpAfterSource = true; choosingSource = false }.buttonStyle(.link)
                 Spacer()
                 Button("Look again") { capture.refresh() }
             }
@@ -574,7 +580,8 @@ final class SceneCanvasView: NSView {
     var previewCovered = false
     var isLive = false { didSet { preview.isLive = isLive; refreshPreview() } }
     var liveDimensions = CGSize.zero { didSet { refreshPreview() } }
-    var onVisibility: ((Bool) -> Void)?
+    /// Set after the view may already be in a window, so the current state is reported at once.
+    var onVisibility: ((Bool) -> Void)? { didSet { reportedVisible = false; reportVisibility() } }
     private let preview: DemoStageSurfaceView
     private let handles = SceneCanvasHandles()
     private var ambience: AmbientSceneImages?
@@ -606,7 +613,7 @@ final class SceneCanvasView: NSView {
     override func viewDidHide() { super.viewDidHide(); reportVisibility() }
     override func viewDidUnhide() { super.viewDidUnhide(); reportVisibility() }
     private func reportVisibility() {
-        let visible = window.map { $0.occlusionState.contains(.visible) && !isHiddenOrHasHiddenAncestor } ?? false
+        let visible = window.map { $0.isVisible && $0.occlusionState.contains(.visible) && !isHiddenOrHasHiddenAncestor } ?? false
         guard visible != reportedVisible else { return }
         reportedVisible = visible
         onVisibility?(visible)

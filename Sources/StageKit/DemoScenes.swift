@@ -268,7 +268,6 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
     func setPageVisible(_ visible: Bool) {
         guard pageVisible != visible else { return }
         pageVisible = visible
-        if !visible { setReleasedForHandoff(false) }
         reconsiderCapture()
     }
     private func setReleasedForHandoff(_ value: Bool) {
@@ -276,11 +275,15 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
         releasedForHandoff = value
         MainActor.assumeIsolated { phoneLink.setReleased(value) }
     }
-    /// Asked for explicitly: the capture may hold the device again after a handoff.
+    /// Asked for explicitly: the capture may hold the device again after a handoff. The
+    /// release ends only here, with a shown source or with Present, never by the page
+    /// being covered, so an Apple app keeps the phone while it is in front.
     func reconnectPhone() { setReleasedForHandoff(false); reconsiderCapture(); capture.reconnect() }
-    /// Opens QuickTime Player or iPhone Mirroring from the page. The capture releases
-    /// the phone first, and stays released until the person comes back to Present.
+    /// Opens QuickTime Player or iPhone Mirroring from the page. A running presentation
+    /// ends first through its own handoff; otherwise the capture releases the phone, and
+    /// stays released until the person reconnects.
     func openNativeApp(_ app: NativePresentationApp) {
+        if let presentation { presentation.endAndOpen(app); return }
         setReleasedForHandoff(true)
         reconsiderCapture { [weak self] in app.open { message in self?.notice = message } }
     }
@@ -294,15 +297,18 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
         }
     }
     private var captureWanted: Bool {
-        guard !releasedForHandoff, systemIntegrationEnabled else { return false }
-        if let presentation { return presentation.showsPhone }
-        return pageVisible && selected?.showsPhone == true
+        guard !releasedForHandoff, !shuttingDown, systemIntegrationEnabled else { return false }
+        return presentation?.showsPhone == true || (pageVisible && selected?.showsPhone == true)
     }
+    private var shuttingDown = false
     /// Starts or stops the one session to match where Present is in use. A completion
     /// runs once the session is released, or at once when it keeps running.
     private func reconsiderCapture(completion: (() -> Void)? = nil) {
         let wanted = captureWanted
-        MainActor.assumeIsolated { phoneLink.setActive(wanted || presentation != nil) }
+        MainActor.assumeIsolated {
+            phoneLink.setCapturing(wanted)
+            phoneLink.setActive(!shuttingDown && (wanted || presentation != nil || (pageVisible && selected?.showsPhone == true)))
+        }
         if wanted { capture.start(); completion?() } else { capture.stop(completion: completion) }
     }
     @Published private(set) var myDevice: DeviceViewport?
@@ -447,6 +453,10 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
         setReleasedForHandoff(false)
         let presenter = DemoPresentation(scene: scene, image: image, logo: logoImage(for: scene), hand: handImage(for: scene), persona: personaImage(for: scene), ambience: ambienceImages(for: scene), screen: targetScreen, root: root, capture: capture, phoneLink: phoneLink, mode: mode, sharedControls: usesSharedControls)
         presenter.onRevealSharedControls = { [weak self] in self?.onFocusSharedControls?() }
+        // The stage's Reconnect and Show go through the owner, so a capture released for an
+        // Apple app comes back when asked from any surface.
+        presenter.reconnect = { [weak self] in self?.reconnectPhone() }
+        presenter.showSource = { [weak self] id in self?.performPhoneStep(.showSource(id: id, title: ""), chooseSource: {}) }
         presenter.releaseCapture = { [weak self] forHandoff, completion in
             guard let self else { completion(); return }
             if forHandoff { setReleasedForHandoff(true) }
@@ -470,7 +480,7 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
         for scene in scenes {
             menu.addItem(StageMenuAction(scene.name, checked: scene.id == selectedID) { [weak self] in
                 guard let self, self.presentation == nil, self.mayBeginInteraction?() != false else { return }
-                self.selectedID = scene.id; self.startDemo(mode: .windowed)
+                self.selectedID = scene.id; self.startDemo()
             })
         }
         if scenes.isEmpty { menu.addItem(StageMenuAction("Prepare a scene in Workbench first.", enabled: false) {}) }
@@ -479,9 +489,11 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
     func endPresentation() { presentation?.end() }
     func shutdown() {
         personas.shutdown()
-        MainActor.assumeIsolated { phoneLink.setActive(false); sceneSync?.shutdown() }
+        shuttingDown = true; pageVisible = false
+        MainActor.assumeIsolated { sceneSync?.shutdown() }
         presentation?.onEnd = nil; presentation?.end(); presentation = nil
-        pageVisible = false; capture.stop()
+        capture.stop()
+        MainActor.assumeIsolated { phoneLink.setActive(false) }
         window?.orderOut(nil); window?.contentView = nil; window?.delegate = nil; window = nil
         imageCache.removeAllObjects()
     }
@@ -625,7 +637,7 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
                 let detail = try adapter.library.importAsset(Data(contentsOf: assets.appendingPathComponent(starter.detailFilename)))
                 var scene = DemoScene(name: starter.name, background: filename)
                 scene.ambience = SceneAmbience(preset: preset, cleanPlate: plate, detail: detail)
-                scene.showsPhone = false; scene.viewport = myDevice ?? .phone
+                scene.viewport = myDevice ?? .phone
                 try persist(scenes + [scene]); query = ""; selectedID = scene.id; notice = nil
             }
         } catch { try? FileManager.default.removeItem(at: root.appendingPathComponent(filename)); throw error }

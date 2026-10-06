@@ -17,7 +17,7 @@ enum NativePresentationApp: String, CaseIterable {
 }
 
 enum PhoneConnectionSupport {
-    static let guideURL = URL(string: "https://workbench-mac.vercel.app/phone-presenting/")!
+    static let guideURL = URL(string: "https://workbench-mac.vercel.app/guide/#phone-share")!
     static let cameraSettingsURL = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Camera")!
     /// The three things that happen away from Workbench, in the order they fail.
     static let checks = [
@@ -38,8 +38,8 @@ struct PhoneConnectionHelp: View {
     var endsPresentation = false
     let openApp: (NativePresentationApp) -> Void
     @Environment(\.dismiss) private var dismiss
-    @State private var copiedUntil = Date.distantPast
-    @State private var now = Date()
+    @State private var copied = false
+    @State private var copiedLifetime: DispatchWorkItem?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -87,12 +87,19 @@ struct PhoneConnectionHelp: View {
             }
             Divider()
             HStack {
-                Button(now < copiedUntil ? "Copied" : "Copy connection details") {
+                Button(copied ? "Copied" : "Copy connection details") {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(diagnostic(), forType: .string)
-                    copiedUntil = Date().addingTimeInterval(4)
+                    // One owner-held lifetime per copy (Fit rule 7): a rerender cannot restart it and
+                    // a stale one cannot end a newer one. VoiceOver hears the success once.
+                    copiedLifetime?.cancel()
+                    copied = true
+                    NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested,
+                                         userInfo: [.announcement: "Connection details copied", .priority: NSAccessibilityPriorityLevel.medium.rawValue])
+                    let lifetime = DispatchWorkItem { copied = false }
+                    copiedLifetime = lifetime
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 4, execute: lifetime)
                 }.help("Facts about the USB bus, screen sources and permissions, with no identifiers, for IT or a report")
-                    .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { now = $0 }
                 Spacer()
                 Link("Help online ↗", destination: PhoneConnectionSupport.guideURL)
             }

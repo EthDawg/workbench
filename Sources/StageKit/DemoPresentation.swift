@@ -11,6 +11,9 @@ final class DemoPresentation: NSObject, NSWindowDelegate {
     /// Apple app the owner releases the device; otherwise it may keep the session
     /// for the Present page. The completion runs once the device is released, or at once.
     var releaseCapture: ((_ forHandoff: Bool, _ completion: @escaping () -> Void) -> Void)?
+    /// Reconnect and Show go through the capture's owner, which may have released it.
+    var reconnect: (() -> Void)?
+    var showSource: ((String) -> Void)?
     private let sharedControls: Bool
     private var window: DemoStageWindow?
     private let capture: DemoCapture
@@ -52,7 +55,7 @@ final class DemoPresentation: NSObject, NSWindowDelegate {
             guard let self else { return }
             if !self.controls.handleEscape() { self.end() }
         }
-        window.onReconnect = { [weak self] in self?.capture.reconnect() }
+        window.onReconnect = { [weak self] in self?.reconnectCapture() }
         window.onRevealControls = { [weak self] in
             guard let self else { return }
             if self.sharedControls { self.onRevealSharedControls?() } else { self.controls.revealForKeyboard() }
@@ -66,12 +69,13 @@ final class DemoPresentation: NSObject, NSWindowDelegate {
     /// The one next step the status names, wherever it is shown.
     func perform(_ step: PhoneLinkStatus.Step) {
         switch step {
-        case .showSource(let id, _): capture.select(id)
+        case .showSource(let id, _): if let showSource { showSource(id) } else { capture.select(id) }
         case .chooseSource: controls.close(); controls.choosingSource = true; bringForward()
-        case .reconnect: capture.reconnect()
+        case .reconnect: reconnectCapture()
         case .openCameraSettings: NSWorkspace.shared.open(PhoneConnectionSupport.cameraSettingsURL)
         }
     }
+    func reconnectCapture() { if let reconnect { reconnect() } else { capture.reconnect() } }
     var status: PhoneLinkStatus { MainActor.assumeIsolated { phoneLink.status } }
     func makeControlsMenu() -> NSMenu {
         let menu = NSMenu(title: "Present"); menu.autoenablesItems = false
@@ -79,12 +83,13 @@ final class DemoPresentation: NSObject, NSWindowDelegate {
             let status = self.status
             menu.addItem(StageMenuAction(status.title, enabled: false) {})
             if let step = status.step { menu.addItem(StageMenuAction(step.title) { [weak self] in self?.perform(step) }) }
-            if capture.sources.count > 1 { menu.addSubmenu("Source", items: capture.sources.map { source in
-                StageMenuAction(source.name, checked: source.id == capture.selectedID) { [weak self] in self?.capture.select(source.id) }
+            if capture.sources.count > 1 { menu.addSubmenu("Choose screen", items: capture.sources.map { source in
+                StageMenuAction(source.name, checked: source.id == capture.selectedID) { [weak self] in self?.perform(.showSource(id: source.id, title: source.name)) }
             }) }
             if status.offersReconnect {
-                menu.addItem(StageMenuAction("Reconnect") { [weak self] in self?.capture.reconnect() })
+                menu.addItem(StageMenuAction("Reconnect") { [weak self] in self?.reconnectCapture() })
             }
+            menu.addItem(StageMenuAction("Match Device Proportions", checked: controls.fitToSource) { [weak self] in self?.controls.fitToSource.toggle() })
             if status.offersHelp {
                 menu.addItem(StageMenuAction("Can’t See Your Phone?…") { [weak self] in self?.showHelp() })
             }
@@ -149,8 +154,8 @@ final class DemoPresentation: NSObject, NSWindowDelegate {
                 HStack { submenu("Window Size"); submenu("Window Position") }.disabled(controls.fullScreen)
                 if presentation.scene.showsPhone {
                     PhoneLinkStatusRow(status: phoneLink.status, perform: { presentation.perform($0) }, help: { presentation.showHelp() },
-                                       reconnect: { capture.reconnect() })
-                    if capture.sources.count > 1 { submenu("Source") }
+                                       reconnect: { presentation.reconnectCapture() })
+                    if capture.sources.count > 1 { submenu("Choose screen") }
                 }
             }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
                 .background(Workbench.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
@@ -175,7 +180,7 @@ final class DemoPresentation: NSObject, NSWindowDelegate {
         releaseKeepAwake()
         apply(lifecycle.requestEnd())
     }
-    private func endAndOpen(_ app: NativePresentationApp) {
+    func endAndOpen(_ app: NativePresentationApp) {
         guard !lifecycle.ending, !lifecycle.finished else { return }
         guard handoff.request({
             app.open { message in
@@ -300,6 +305,8 @@ private final class PresentationControlsModel: ObservableObject {
     @Published var fitToSource = true
     @Published var choosingSource = false
     @Published var showingHelp = false
+    /// Set while the source sheet closes so the help opens after it, not in the same update.
+    var helpAfterSource = false
     @Published private(set) var focusRequest = 0
     @Published private(set) var placement = PresentationControlPlacement()
     @Published private(set) var dragFrame: CGRect?
@@ -469,7 +476,11 @@ private struct DemoStageContent: View {
                     focusedControl = controls.policy.isExpanded
                         ? (scene.showsPhone ? (status.step != nil ? .step : status.offersReconnect ? .reconnect : .position) : .close) : .tile
                 }
-                .sheet(isPresented: $controls.choosingSource) { sourceSheet }
+                .sheet(isPresented: $controls.choosingSource, onDismiss: {
+                    guard controls.helpAfterSource else { return }
+                    controls.helpAfterSource = false
+                    controls.showingHelp = true
+                }) { sourceSheet }
                 .sheet(isPresented: $controls.showingHelp, onDismiss: {
                     guard let app = pendingNativeApp else { return }
                     pendingNativeApp = nil
@@ -524,11 +535,11 @@ private struct DemoStageContent: View {
                         Button(step.title) { perform(step) }.focused($focusedControl, equals: .step)
                     }
                     if status.offersReconnect {
-                        Button("Reconnect") { capture.reconnect() }
+                        Button("Reconnect") { perform(.reconnect) }
                             .focused($focusedControl, equals: .reconnect).help("Reconnect device · ⌘R")
                     }
                     if capture.sources.count > 1, status.step != .chooseSource {
-                        Button("Source…") { perform(.chooseSource) }.focused($focusedControl, equals: .source)
+                        Button("Choose screen…") { perform(.chooseSource) }.focused($focusedControl, equals: .source)
                     }
                 }
                 Spacer()
@@ -575,7 +586,7 @@ private struct DemoStageContent: View {
                     VStack(spacing: 8) {
                         ForEach(capture.sources) { source in
                             Button {
-                                capture.select(source.id); controls.choosingSource = false
+                                perform(.showSource(id: source.id, title: source.name)); controls.choosingSource = false
                             } label: {
                                 HStack { Image(systemName: source.isScreen ? "iphone" : "video"); Text(source.name); Spacer(); if capture.selectedID == source.id { Image(systemName: "checkmark") } }
                             }.buttonStyle(.bordered)
@@ -590,7 +601,7 @@ private struct DemoStageContent: View {
             }
             Divider()
             HStack {
-                Button("Can’t see your phone?") { controls.choosingSource = false; controls.showingHelp = true }.buttonStyle(.link)
+                Button("Can’t see your phone?") { controls.helpAfterSource = true; controls.choosingSource = false }.buttonStyle(.link)
                 Spacer()
                 Button("Look again") { capture.refresh() }
             }

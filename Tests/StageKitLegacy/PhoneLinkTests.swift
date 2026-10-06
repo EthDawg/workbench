@@ -37,12 +37,17 @@ final class PhoneLinkTests {
     }
 
     func testOnePhoneScreenIsAdoptedAndAPlainVideoDeviceWaitsForAClick() {
-        // The one phone screen: the capture adopts it, so the words say connecting and offer no click.
-        let adopted = PhoneLink.status(signals { $0.usb = [phone]; $0.sources = [screen] })
+        // The one phone screen: with a session allowed, the capture adopts it, so the words say
+        // connecting and offer no click; with none allowed (the receipt), it is simply ready.
+        let adopted = PhoneLink.status(signals { $0.usb = [phone]; $0.sources = [screen]; $0.capturing = true })
         XCTAssertEqual(adopted.phase, .connecting)
         XCTAssertEqual(adopted.title, "Connecting to iPhone…")
         XCTAssertTrue(adopted.step == nil)
         XCTAssertFalse(adopted.offersHelp)
+        let ready = PhoneLink.status(signals { $0.usb = [phone]; $0.sources = [screen] })
+        XCTAssertEqual(ready.phase, .available)
+        XCTAssertEqual(ready.title, "iPhone ready")
+        XCTAssertTrue(ready.detail?.contains("Ethan’s iPhone") == true)
         // A plain video device is never shown by itself.
         let found = PhoneLink.status(signals { $0.sources = [card] })
         XCTAssertEqual(found.phase, .screenFound)
@@ -78,15 +83,18 @@ final class PhoneLinkTests {
     }
 
     func testRememberedPhonePresentReadsAsConnectingUntilTheSessionSpeaks() {
-        let status = PhoneLink.status(signals { $0.sources = [screen]; $0.rememberedID = screen.id })
+        let status = PhoneLink.status(signals { $0.sources = [screen]; $0.rememberedID = screen.id; $0.capturing = true })
         XCTAssertEqual(status.phase, .connecting)
         XCTAssertEqual(status.title, "Connecting to iPhone…")
         XCTAssertTrue(status.step == nil)
         XCTAssertFalse(status.offersHelp)
+        let ready = PhoneLink.status(signals { $0.sources = [screen]; $0.rememberedID = screen.id })
+        XCTAssertEqual(ready.phase, .available, "With no session allowed, as in the headless receipt, the screen is ready for Present")
+        XCTAssertEqual(ready.title, "iPhone ready")
     }
 
     func testSessionPhasesOutrankAvailability() {
-        let base: (inout PhoneLinkSignals) -> Void = { $0.sources = [self.screen]; $0.rememberedID = self.screen.id; $0.access = .authorized }
+        let base: (inout PhoneLinkSignals) -> Void = { $0.sources = [self.screen]; $0.rememberedID = self.screen.id; $0.access = .authorized; $0.capturing = true }
         let live = PhoneLink.status(signals { base(&$0); $0.phase = .live(self.screen.id, CGSize(width: 1179, height: 2556)) })
         XCTAssertEqual(live.phase, .live)
         XCTAssertEqual(live.title, "Showing iPhone")
@@ -112,6 +120,11 @@ final class PhoneLinkTests {
         let unopenable = PhoneLink.status(signals { base(&$0); $0.phase = .failed(self.screen.id, .couldNotOpen) })
         XCTAssertEqual(unopenable.phase, .couldNotOpen)
         XCTAssertEqual(unopenable.step, .reconnect)
+        let unstarted = PhoneLink.status(signals { base(&$0); $0.phase = .failed(self.screen.id, .couldNotStart) })
+        XCTAssertEqual(unstarted.phase, .couldNotStart)
+        XCTAssertEqual(unstarted.title, "The iPhone’s screen didn’t start")
+        XCTAssertFalse(unstarted.title.contains("Another app"), "A generic start failure never blames another app")
+        XCTAssertEqual(unstarted.step, .reconnect)
         let connecting = PhoneLink.status(signals { base(&$0); $0.phase = .connecting(self.screen.id) })
         XCTAssertEqual(connecting.title, "Connecting to iPhone…")
         let prompt = PhoneLink.status(signals { base(&$0); $0.phase = .waitingForAccess })
@@ -124,6 +137,7 @@ final class PhoneLinkTests {
         XCTAssertEqual(denied.phase, .accessDenied)
         XCTAssertEqual(denied.step, .openCameraSettings)
         XCTAssertTrue(denied.detail?.contains("System Settings") == true)
+        XCTAssertTrue(denied.offersReconnect, "Coming back from System Settings, Reconnect is the way to try again")
         let restricted = PhoneLink.status(signals { $0.sources = [screen]; $0.access = .restricted })
         XCTAssertEqual(restricted.phase, .accessRestricted)
         XCTAssertTrue(restricted.step == nil, "A policy restriction cannot be removed by the person's Camera toggle")
@@ -144,6 +158,8 @@ final class PhoneLinkTests {
         XCTAssertFalse(released.offersReconnect, "Reconnect is already the step")
         let live = PhoneLink.status(signals { $0.released = true; $0.phase = .live(screen.id, CGSize(width: 1, height: 2)); $0.sources = [screen] })
         XCTAssertEqual(live.phase, .live, "A session that is running was never released")
+        let unplugged = PhoneLink.status(signals { $0.released = true; $0.capturing = true })
+        XCTAssertEqual(unplugged.phase, .released, "The release outranks what is on the bus and whether a session is allowed")
         XCTAssertTrue(PhoneLink.diagnostic(signals { $0.released = true }, status: released, build: "b").contains("Session: released for another app"))
     }
 
@@ -169,7 +185,7 @@ final class PhoneLinkTests {
 
     func testDiagnosticNamesFactsWithoutIdentifiers() {
         let value = signals {
-            $0.usb = [phone]; $0.sources = [screen]; $0.rememberedID = screen.id; $0.access = .authorized
+            $0.usb = [phone]; $0.sources = [screen]; $0.rememberedID = screen.id; $0.access = .authorized; $0.capturing = true
             $0.phase = .live(screen.id, CGSize(width: 1179, height: 2556))
         }
         let text = PhoneLink.diagnostic(value, status: PhoneLink.status(value), build: "2.5.0 (test)")

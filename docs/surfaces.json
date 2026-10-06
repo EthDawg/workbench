@@ -2560,13 +2560,12 @@
     "aliasOf": "present"
   },
   {
-    "id": "StageKit.DemoPresentation.DemoPresentation.LiveSettings.submenu.source",
+    "id": "StageKit.DemoPresentation.DemoPresentation.LiveSettings.submenu.choose-screen",
     "surface": "Present live window",
-    "label": "Source",
+    "label": "Choose screen",
     "kind": "option",
     "belongsTo": "present",
-    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
-    "aliasOf": "present"
+    "note": "Quality (#276): the running presentation’s screens, listed only when the Mac offers more than one; choosing one shows and remembers it through the capture’s owner. The same words as the status’s Choose screen… step and the stage’s Which screen? sheet."
   },
   {
     "id": "StageKit.DemoPresentation.DemoPresentation.LiveSettings.submenu.window-position",
@@ -2623,6 +2622,14 @@
     "belongsTo": "present"
   },
   {
+    "id": "StageKit.DemoPresentation.DemoPresentation.StageMenuAction.match-device-proportions",
+    "surface": "Present menu",
+    "label": "Match Device Proportions",
+    "kind": "setting",
+    "belongsTo": "present",
+    "note": "Quality (#276): the live frame follows the phone’s own proportions, on by default; kept in the Present menu so it stays reachable with one screen, when no Which screen? sheet opens. It changes only the running presentation, never the saved scene."
+  },
+  {
     "id": "StageKit.DemoPresentation.DemoPresentation.StageMenuAction.medium",
     "surface": "Present menu",
     "label": "Medium",
@@ -2655,11 +2662,12 @@
     "belongsTo": "present"
   },
   {
-    "id": "StageKit.DemoPresentation.DemoPresentation.addSubmenu.source",
+    "id": "StageKit.DemoPresentation.DemoPresentation.addSubmenu.choose-screen",
     "surface": "Present menu",
-    "label": "Source",
+    "label": "Choose screen",
     "kind": "option",
-    "belongsTo": "present"
+    "belongsTo": "present",
+    "note": "Quality (#276): the Present menu’s screens, listed only when the Mac offers more than one; choosing one shows and remembers it through the capture’s owner. The same words as the status’s Choose screen… step and the stage’s Which screen? sheet."
   },
   {
     "id": "StageKit.DemoPresentation.DemoPresentation.addSubmenu.window-position",

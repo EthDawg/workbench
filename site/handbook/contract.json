@@ -249,7 +249,7 @@
       "label": "Open an Apple app from Can’t see your phone?",
       "status": "implemented",
       "stops": "Workbench’s capture of the phone, released on its own queue before the app opens. During a presentation the stage ends first: its window, controls and keep-awake activity.",
-      "keeps": "Saved scenes and other apps. The capture stays released, and the status reads Let go for another app, until the person leaves the Present page and returns, presses Present or reconnects. The Apple app owns its own device session; meeting sharing remains separate.",
+      "keeps": "Saved scenes and other apps. The capture stays released, and the status reads Let go for another app, until the person presses Present, reconnects or shows a screen; covering the window never takes it back. The Apple app owns its own device session; meeting sharing remains separate.",
       "check": "From the page, the sheet closes and the capture’s stop completes before one open. During a presentation, capture release and window closure must both finish, in either order, before one app-open attempt. A visible launch error never silently reacquires capture."
     },
     {
