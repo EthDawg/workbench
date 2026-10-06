@@ -328,7 +328,7 @@ struct WorkbenchHome: View {
             case "models":
                 ScrollView { VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
                     ModelSettingsView(engine: model.engine, isBusy: model.phase != .idle || model.meetings.isBusy || readback.isRecording || readback.isCapturing || readback.hasPendingTranscriptions,
-                                      snapshot: model.recognition, onNotNow: { model.page = "home" }, onSnapshot: model.acceptRecognition)
+                                      snapshot: model.recognition, onSnapshot: model.acceptRecognition)
                     Divider()
                     CleanupModelSettingsView(manager: model.cleanupModels, isBusy: model.phase != .idle || model.preparing)
                 }.padding(Workbench.pagePadding) }
