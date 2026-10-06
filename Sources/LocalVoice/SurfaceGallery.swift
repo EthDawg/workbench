@@ -2035,6 +2035,8 @@ enum SurfaceGallery {
             PanelState(id: "speech-not-ready", title: "Speech not ready", detail: "First run while the on-device model prepares.", readback: readback,
                        apply: { model.ready = false; model.preparing = true; model.modelMessage = "Preparing speech · first setup may take a few minutes" },
                        reset: { model.ready = true; model.preparing = false; model.modelMessage = RecognitionConfiguration().summary }),
+            PanelState(id: "writing-model-download", title: "Writing model downloading", detail: "The app downloading an Ollama model: its one line in the readiness row with Open Models…, the same line Home and Dictate show.", readback: readback,
+                       apply: { model.cleanupModels.presentDownload("gemma3:1b", fraction: 0.42) }, reset: { model.cleanupModels.cancel() }),
             PanelState(id: "dictating", title: "Dictating", detail: "Recording for 14 seconds.", readback: readback,
                        apply: { model.phase = .recording; model.elapsed = 14 }, reset: { model.phase = .idle; model.elapsed = 0 }),
             PanelState(id: "combined-live", title: "Drawing, presenting, Persona and timer",

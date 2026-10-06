@@ -138,6 +138,8 @@ struct WorkbenchQuickPanel: View {
         if let notice = stage.notice, let page = stage.noticePage { return (notice, page.route, true) }
         if let notice = readback.notice { return (notice, "readback", false) }
         if model.phase == .idle && !model.ready { return (model.modelMessage, "models", false) }
+        // The writing model's download or its failure, the same line Home and Dictate show (#134).
+        if let line = model.writingModelLine { return (line, "models", model.cleanupModels.failure != nil) }
         return nil
     }
 
