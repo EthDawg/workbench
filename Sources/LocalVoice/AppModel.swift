@@ -506,35 +506,60 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         catch { report(error.localizedDescription, on: .read) }
     }
 
-    /// Home's Read tile: the click is the choice. Different text replaces the
-    /// reading through the same step as Replace reading, then Listen starts.
-    /// The same text is not restarted: paused resumes, playing carries on.
-    func listen(to text: String) {
+    /// Read's one start, given the front app's selection (ReadStart): the selection becomes
+    /// the draft and reads at once when that discards nothing unheard; a different draft
+    /// nobody has heard keeps the selection behind Replace reading / Keep current on the
+    /// Read page, as every import does, and nothing plays. Returns whether reading started;
+    /// when it did not, the Read page is open and says why.
+    @discardableResult
+    func readSelection(_ selection: ReadingSelectionImport) -> Bool {
+        switch ReadStart.draft(current: speechText, incoming: selection.text, heard: draftWasHeard) {
+        case .review:
+            receiveReadingSelection(selection)
+            return false
+        case .readNow:
+            if listen(to: selection.text) { return true }
+            page = "speak"; onShowEditor?("speak")
+            return false
+        }
+    }
+    /// Audio exists for the draft as it stands: it was heard (a reading was made, stopped or
+    /// finished) or saved. Cancel while preparing discards that audio, so such a draft counts
+    /// as unheard and is kept.
+    var draftWasHeard: Bool { audio != nil && signature == audioSignature }
+
+    /// The click is the choice: different text replaces the reading through the
+    /// same step as Replace reading, then Listen starts. The same text is not
+    /// restarted: paused resumes, playing carries on. Returns whether a reading
+    /// is now playing or being made; a refusal is reported on Read.
+    @discardableResult
+    func listen(to text: String) -> Bool {
         // Only replace the draft when the reading can start, so it never waits unheard.
         guard !meetings.isBusy else {
-            report("Finish the meeting recording or transcription before playing a reading.", on: .read, from: .homeReadTileMeeting); return
+            report("Finish the meeting recording or transcription before playing a reading.", on: .read, from: .homeReadTileMeeting); return false
         }
-        guard phase == .idle else { return }
-        guard canReplaceReading else { status = Self.replaceWaitsForSave; return }
+        guard phase == .idle else { return false }
+        guard canReplaceReading else { status = Self.replaceWaitsForSave; return false }
         // Text the selected provider cannot read is turned away before anything changes: the
         // draft, its audio, player and playhead, and any review stay exactly as they were, and
-        // nothing starts. The reason is Read's, heard at once wherever the tile was (#173).
+        // nothing starts. The reason is Read's, heard at once wherever the start was (#173).
         if let rejection = readingRejection(for: text) {
-            let reason = copiedTextRefusal(rejection, text: text)
+            let reason = selectedTextRefusal(rejection, text: text)
             report(reason, on: .read, from: .homeReadTileRefused)
             announceForAccessibility(reason)
-            return
+            return false
         }
         let setAside = pendingReadingSelection != nil
         pendingReadingSelection = nil
         if text != speechText {
             let note = endReadingForNewText()
             speechText = text
-            let notes = [setAside ? "Reading the copied text instead of the text waiting for review." : nil, note].compactMap { $0 }
+            let notes = [setAside ? "Reading the selected text instead of the text waiting for review." : nil, note].compactMap { $0 }
             if !notes.isEmpty { status = notes.joined(separator: " ") }
         }
-        guard !playing else { return }
+        guard !playing else { return true }
         listen()
+        return rendering || playing
     }
 
     /// Replace ends a reading that is generating, playing or paused, but waits
@@ -594,16 +619,16 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         guard !spoken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return .nothingToRead }
         return nil
     }
-    /// Home's tile read nothing: why, and that the draft it would have replaced is kept.
-    private func copiedTextRefusal(_ rejection: ReadingRejection, text: String) -> String {
+    /// A Read start read nothing: why, and that the draft it would have replaced is kept.
+    private func selectedTextRefusal(_ rejection: ReadingRejection, text: String) -> String {
         let kept = "Your reading draft is unchanged."
         switch rejection {
         case .tooLong:
-            return "The copied text has \(text.count.formatted()) characters, more than \(readingProviderName) accepts (\(readingLimit.formatted())). \(kept)"
+            return "The selected text has \(text.count.formatted()) characters, more than \(readingProviderName) accepts (\(readingLimit.formatted())). \(kept)"
         case .preparedTooLong:
-            return "Prepared for listening, the copied text is longer than \(readingProviderName) accepts (\(readingLimit.formatted()) characters). \(kept)"
+            return "Prepared for listening, the selected text is longer than \(readingProviderName) accepts (\(readingLimit.formatted()) characters). \(kept)"
         case .nothingToRead:
-            return "The copied text has nothing to read aloud. \(kept)"
+            return "The selected text has nothing to read aloud. \(kept)"
         }
     }
 

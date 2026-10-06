@@ -107,6 +107,18 @@ enum ReadingChecks {
         try check(voices.first?.id == "com.apple.voice.super-compact.en-AU.Karen" && voices.last?.isNovelty == true,
                   "picker order puts the person's accent first and novelty voices last")
         try check(voices.first?.label == "Karen (Australian, compact)", "labels show accent and quality")
+        // The panel's Voice menu (Read's Option on its row): one heading per quality, best first.
+        let mixed = compactCatalogue + [voice("com.apple.voice.premium.en-AU.Matilda", "Matilda", "en-AU", .premium),
+                                        voice("com.apple.voice.enhanced.en-US.Ava", "Ava", "en-US", .enhanced)]
+        let tiers = MacVoiceCatalog.byQuality(mixed, preferredLanguage: "en-AU")
+        try check(tiers.map(\.quality) == [.premium, .enhanced, .compact] && tiers.map { $0.quality.title } == ["Premium", "Enhanced", "Compact"],
+                  "the Voice menu lists installed voices by quality, best first, under the tier's name")
+        try check(tiers[0].voices.map(\.accentLabel) == ["Matilda (Australian)"] && tiers[1].voices.map(\.accentLabel) == ["Ava (American)"],
+                  "each voice is named with its accent under a heading that already names the quality")
+        try check(tiers[2].voices.map(\.id) == voices.map(\.id) && tiers[2].voices.first?.name == "Karen" && tiers[2].voices.last?.isNovelty == true,
+                  "within a tier the picker's order holds: the person's accent first, novelty voices last")
+        try check(MacVoiceCatalog.byQuality(compactCatalogue, preferredLanguage: "en-AU").map(\.quality) == [.compact]
+                  && MacVoiceCatalog.byQuality([], preferredLanguage: "en-AU").isEmpty, "an empty tier has no heading, and no voices make no menu")
         let eddies = voices.filter { $0.name == "Eddy" }.map(\.label)
         try check(Set(eddies) == ["Eddy (British, compact)", "Eddy (American, compact)"], "same-name voices in several accents are told apart")
         try check(SavedState().voice.isEmpty, "a fresh install has no saved voice, so the best default applies")

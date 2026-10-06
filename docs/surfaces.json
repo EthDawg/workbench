@@ -2042,6 +2042,41 @@
     "belongsTo": "present"
   },
   {
+    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-read-options.NSMenuItem.voice",
+    "surface": "quick panel read options",
+    "label": "Voice",
+    "kind": "option",
+    "belongsTo": "read",
+    "aliasOf": "LocalVoice.Views.MacVoicePanel.Picker.voice",
+    "note": "Option of Read (voice is Read's option in the capability table): the page's Voice choice on the panel row, under the same name. Installed Mac voices by quality with the chosen one ticked, or the neural voices once downloaded; Speko's online list stays on the page. Changes the same saved voice as Voice & pace (#134 follow-up, 1 Oct)."
+  },
+  {
+    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-read-options.NativeControlMenu.options",
+    "surface": "quick panel read options",
+    "label": "Options",
+    "kind": "option",
+    "belongsTo": "read",
+    "aliasOf": "read",
+    "note": "Shared \"Options\" wording for the Read row; the row owns it (1 October follow-up on #134: Options on Read's panel row)."
+  },
+  {
+    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-read-options.ToolbarMenuAction.models",
+    "surface": "quick panel read options",
+    "label": "Models…",
+    "kind": "action",
+    "belongsTo": "settings",
+    "aliasOf": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.models",
+    "note": "Door to Settings › Models, where Read's engine is chosen (rule 9), named as Home and the Dictate settings name it. The panel adds no second place to choose engines."
+  },
+  {
+    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-read-options.ToolbarMenuAction.open-read",
+    "surface": "quick panel read options",
+    "label": "Open Read…",
+    "kind": "action",
+    "belongsTo": "read",
+    "note": "Quality: Read's options end with the one door to its page, as Snap, Snap & Talk, Draw, Present and Persona's do (#134)."
+  },
+  {
     "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-row-controls.Button.runtime-6a4307689762",
     "surface": "quick panel row controls",
     "label": null,

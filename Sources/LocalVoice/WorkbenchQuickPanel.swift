@@ -26,6 +26,9 @@ struct WorkbenchQuickPanel: View {
     var present: () -> Void
     var timer: () -> Void
     var personas: () -> Void
+    /// Read's host-level start (Fit rule 6): the selection in the app the panel was opened
+    /// over, else the Read page. The gallery's panel has none to call.
+    var read: () -> Void = {}
     /// The gallery renders the same rows with frozen synthetic StageKit facts.
     var controlState: WorkbenchControlState? = nil
     private var context: WorkbenchControlContext { .init(model: model, readback: readback, stage: stage, snap: snapModel) }
@@ -221,7 +224,7 @@ struct WorkbenchQuickPanel: View {
                 // other row; a font on a borderless menu is ignored.
                 .controlSize(.small).foregroundStyle(Workbench.accent)
         case .read:
-            EmptyView()
+            NativeControlMenu(title: "Options") { nativeOptions(tool) ?? NSMenu() }
         case .snap:
             NativeControlMenu(title: "Options") {
                 let menu = NSMenu(title: "Snap"); menu.autoenablesItems = false
@@ -254,6 +257,18 @@ struct WorkbenchQuickPanel: View {
     /// Native option menus, built when clicked. The surface gallery lists these same menus.
     func nativeOptions(_ tool: WorkbenchControlTool) -> NSMenu? {
         switch tool {
+        case .read:
+            // Read's own choice under its page's name, Voice: the chosen one ticked, as Voice & pace
+            // has it. Its engine is chosen in Models (rule 9), so that is a door, then the page's.
+            let menu = NSMenu(title: "Read"); menu.autoenablesItems = false
+            if let voices = readVoiceMenu() {
+                let voice = NSMenuItem(title: "Voice", action: nil, keyEquivalent: ""); voice.submenu = voices
+                menu.addItem(voice)
+                menu.addItem(.separator())
+            }
+            menu.addItem(ToolbarMenuAction("Models…") { open("models") })
+            menu.addItem(ToolbarMenuAction("Open Read…") { open("speak") })
+            return menu
         case .annotate:
             // Draw's own tools, then its one door, as Present and Persona end.
             return stage.makeAnnotationMenu(includeSettings: false) { [ToolbarMenuAction("Open Draw…") { open("annotate") }] }
@@ -270,8 +285,34 @@ struct WorkbenchQuickPanel: View {
             menu.addItem(ToolbarMenuAction("Open Persona…") { open("personas") })
             return menu
         case .timer: return stage.makeTimerMenu(optionsOnly: true)
-        case .dictate, .read, .snap, .snapAndTalk: return nil
+        case .dictate, .snap, .snapAndTalk: return nil
         }
+    }
+
+    /// The voices the chosen engine reads with, as Read's Voice & pace lists them: installed Mac
+    /// voices by quality, best first, each named with its accent; the neural voices once they are
+    /// downloaded. Speko's voices are refreshed online, so its choice stays on the page. The page
+    /// keeps the picker still while audio is being made, and so does this.
+    private func readVoiceMenu() -> NSMenu? {
+        let menu = NSMenu(title: "Voice"); menu.autoenablesItems = false
+        let still = model.rendering
+        switch model.readingProvider {
+        case .mac:
+            let chosen = model.selectedVoiceID
+            for tier in MacVoiceCatalog.byQuality(model.macVoices, preferredLanguage: model.voiceLanguage) {
+                menu.addItem(.sectionHeader(title: tier.quality.title))
+                for voice in tier.voices {
+                    menu.addItem(ToolbarMenuAction(voice.accentLabel, checked: voice.id == chosen, enabled: !still) { model.chooseVoice(voice.id) })
+                }
+            }
+        case .neural:
+            guard model.neuralVoicesDownloaded else { return nil }
+            for voice in NeuralVoiceCatalog.voices {
+                menu.addItem(ToolbarMenuAction(NeuralVoiceCatalog.title(voice), checked: voice == model.neuralVoice, enabled: !still) { model.neuralVoice = voice })
+            }
+        case .speko: return nil
+        }
+        return menu.items.isEmpty ? nil : menu
     }
 
     /// The row does exactly what its label says: the same operation, through the
@@ -282,7 +323,7 @@ struct WorkbenchQuickPanel: View {
         let dispatch = WorkbenchOperationDispatch(model: model, readback: readback, stage: stage, meetings: model.meetings) { mode in
             switch mode {
             case .dictate: model.onMenuRecording?()
-            case .read: open("speak")
+            case .read: read()
             case .snap: snapCapture(.region)
             case .snapAndTalk: snap()
             case .draw: draw()

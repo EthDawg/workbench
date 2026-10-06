@@ -94,6 +94,8 @@ struct FloatingToolbar: View {
     let snapCapture: () -> Void
     let draw: () -> Void
     let present: () -> Void
+    /// Read's host-level start (Fit rule 6); the gallery's toolbar has none to call.
+    var read: () -> Void = {}
     var capture: (ToolbarMode, ToolbarCaptureKind) -> Void = { _, _ in }
     private var context: WorkbenchControlContext { .init(model: model, readback: readback, stage: stage, snap: snapModel) }
 
@@ -348,7 +350,7 @@ struct FloatingToolbar: View {
         WorkbenchOperationDispatch(model: model, readback: readback, stage: stage, meetings: meetings) { mode in
             switch mode {
             case .dictate: dictate()
-            case .read: model.onShowEditor?("speak")
+            case .read: read()
             case .snap: snapCapture()
             case .snapAndTalk: snap()
             case .draw: draw()
@@ -402,6 +404,7 @@ struct WorkbenchFloatingContent: View {
     let snapCapture: () -> Void
     let draw: () -> Void
     let present: () -> Void
+    var read: () -> Void = {}
     var capture: (ToolbarMode, ToolbarCaptureKind) -> Void = { _, _ in }
 
     /// Dictation, narration, reading and their results share the toolbar's host (#134 T4): the
@@ -415,7 +418,7 @@ struct WorkbenchFloatingContent: View {
         } else {
             FloatingToolbar(model: model, readback: readback, stage: stage, controls: controls, promptInsertion: model.promptInsertion,
                             meetings: model.meetings, snapModel: snapModel, receipts: model.clipboardReceipt,
-                            dictate: dictate, snap: snap, snapCapture: snapCapture, draw: draw, present: present, capture: capture)
+                            dictate: dictate, snap: snap, snapCapture: snapCapture, draw: draw, present: present, read: read, capture: capture)
         }
     }
 }

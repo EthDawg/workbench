@@ -418,7 +418,7 @@ struct WorkbenchControlContext {
         case .present: return state.presenting ? "End the scene; it stays saved." : "Present your selected device scene."
         case .persona: return state.personaDetail
         case .timer: return state.timerStarted ? stage.timerStateDetail : "Start your saved timer."
-        case .read: return model.rendering ? "Preparing audio…" : model.playing ? "Reading aloud" : model.paused ? "Reading paused" : "Listen to text from Workbench."
+        case .read: return model.rendering ? "Preparing audio…" : model.playing ? "Reading aloud" : model.paused ? "Reading paused" : "Read the text selected in the app you were in, or open Read."
         }
     }
     var activitySummary: String {

@@ -196,6 +196,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         if PackLibraryModel.shared.pendingSource != nil { model.page = "packs" }
         capturePanel = CapturePanelController(model: model, readback: readback, stage: stage, snapModel: snap,
             dictate: { [weak self] in self?.toolbarDictation() },
+            read: { [weak self] in self?.toolbarRead() },
             snap: { [weak self] in self?.toolbarSnap() },
             snapCapture: { [weak self] in self?.toolbarSnapCapture() },
             draw: { [weak self] in
@@ -255,7 +256,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             if self.stage.hasTimerSession { self.stage.stopTimer() } else { self.stage.startTimer() }
         }, personas: { [weak self] in
             self?.closeControls(); self?.stage.togglePersona()
-        }))
+        }, read: { [weak self] in self?.menuRead() }))
         quickController.sizingOptions = [.preferredContentSize]
         popover.contentViewController = quickController
         model.onPhaseChange = { [weak self] in
@@ -290,11 +291,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             if id == 1 { self.model.shortcutChanged(down: down, at: time) }
             else if down, id == 3 { self.model.showLibrary() }
             else if down, id == 4 { self.showPresenter() }
-            else if down, id == 6 {
-                if self.model.rendering { self.model.cancelReading() }
-                else if self.model.playing || self.model.paused { self.model.listen() }
-                else { self.navigate("speak") }
-            }
+            else if down, id == 6 { self.readStart(from: NSWorkspace.shared.frontmostApplication) }
             else if down, id == 7 {
                 if self.stage.isPresenting { self.stage.endDeviceScene() }
                 else { self.stage.presentSelectedScene() }
@@ -555,6 +552,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let target = capturePanel.targetForDictation()
         model.toolbarMode = .dictate
         model.toggleRecording(target: target)
+    }
+    /// Read's one host-level start (Fit rule 6), reached from the panel row, the pill and the
+    /// Read key: a reading being made is cancelled, one playing or paused is stopped, else the
+    /// front app's selection is read at once with the current voice, else the Read page opens.
+    /// The selection is read once, here, like dictation's field is captured at its start; no
+    /// later door reuses it. Returns what it did, so a door can give focus back.
+    @discardableResult
+    func readStart(from app: NSRunningApplication?) -> ReadStart.Decision {
+        model.toolbarMode = .read
+        let reading: ToolbarLiveState.Reading = model.rendering ? .preparing : model.playing ? .playing : model.paused ? .paused : .idle
+        let decision = ReadStart.decide(reading: reading) { ReadStart.selectedText(of: app) }
+        switch decision {
+        case .cancel: model.cancelReading()
+        case .stop: model.stopPlayback()
+        case .read(let text):
+            do { model.readSelection(try ReadingSelectionImport(text: text)) }
+            catch { model.report(error.localizedDescription, on: .read); navigate("speak") }
+        case .page: navigate("speak")
+        }
+        return decision
+    }
+    /// The pill's Read: the field's app while the toolbar owns the keyboard, else the front app.
+    func toolbarRead() { readStart(from: capturePanel.appForReading()) }
+    /// The panel's Read row reads the app the panel was opened over, and gives it focus back
+    /// when a selection reads, so the person keeps working while it plays. Read before closing:
+    /// closing the panel expires its field (#162).
+    func menuRead() {
+        let app = menuTarget.current?.app
+        closeControls()
+        if case .read = readStart(from: app) { app?.activate(options: []) }
     }
     /// Snap mode's start: one standalone capture into Snap. Source choices are per capture;
     /// the existing shortcut and generic starts retain their region default.

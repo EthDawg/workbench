@@ -247,7 +247,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
     }
 
     init(model: AppModel, readback: ReadbackModel, stage: StageKitController, snapModel: SnapModel,
-         dictate: @escaping () -> Void, snap: @escaping () -> Void,
+         dictate: @escaping () -> Void, read: @escaping () -> Void = {}, snap: @escaping () -> Void,
          snapCapture: @escaping () -> Void = {},
          draw: @escaping () -> Void, present: @escaping () -> Void,
          capture: @escaping (ToolbarMode, ToolbarCaptureKind) -> Void = { _, _ in },
@@ -311,7 +311,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         let hosting = CaptureHostingView(rootView: WorkbenchFloatingContent(model: model, readback: readback,
             stage: stage, controls: controls, receipts: model.clipboardReceipt, meetings: model.meetings, snapModel: snapModel, dictate: dictate, snap: snap, snapCapture: snapCapture,
-            draw: draw, present: present, capture: capture))
+            draw: draw, present: present, read: read, capture: capture))
         hosting.sizingOptions = []
         hosting.autoresizingMask = [.width, .height]
         let tracking = ToolbarTrackingView(content: hosting)
@@ -594,6 +594,13 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         let target = window?.isKeyWindow == true ? keyboardTarget : TextDelivery.capture()
         releaseKeyboardFocus()
         return target
+    }
+    /// The app whose selection the pill's Read reads: the field's app while the toolbar owns
+    /// the keyboard, else the front app, taken at the click as dictation's field is.
+    func appForReading() -> NSRunningApplication? {
+        let app = window?.isKeyWindow == true ? keyboardTarget?.app : NSWorkspace.shared.frontmostApplication
+        releaseKeyboardFocus()
+        return app
     }
 
     /// Leaves keyboard interaction. The field the toolbar was focused from gets the keyboard

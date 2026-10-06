@@ -19,6 +19,8 @@ struct MacVoice: Identifiable, Hashable, Sendable {
             self = parts.contains("premium") ? .premium : parts.contains("enhanced") ? .enhanced : .compact
         }
         var label: String { self == .premium ? "premium" : self == .enhanced ? "enhanced" : "compact" }
+        /// The tier as a menu section's heading.
+        var title: String { label.prefix(1).uppercased() + label.dropFirst() }
     }
 
     let id: String
@@ -36,6 +38,8 @@ struct MacVoice: Identifiable, Hashable, Sendable {
     /// "Karen (Australian, compact)": the same name can exist in several accents
     /// and qualities, so the picker always shows both.
     var label: String { "\(name) (\(MacVoiceCatalog.accent(for: language)), \(quality.label))" }
+    /// "Karen (Australian)": the same, under a heading that already names the quality.
+    var accentLabel: String { "\(name) (\(MacVoiceCatalog.accent(for: language)))" }
     /// The name `say -v` accepts for a voice only `say` can use.
     var sayName: String { legacyNames.first ?? name }
 }
@@ -119,6 +123,18 @@ enum MacVoiceCatalog {
     static func relevant(_ language: String, preferredLanguage: String) -> Bool {
         let code = languageCode(language)
         return code == "en" || code == languageCode(preferredLanguage)
+    }
+
+    /// The panel's Voice menu: the picker's voices in the picker's order, under one
+    /// heading per quality, best first. Within a tier the order is the picker's, so
+    /// voices only `say` can speak and novelty voices end their tier. An empty tier
+    /// has no heading.
+    static func byQuality(_ voices: [MacVoice], preferredLanguage: String) -> [(quality: MacVoice.Quality, voices: [MacVoice])] {
+        let all = ordered(voices, preferredLanguage: preferredLanguage)
+        return [MacVoice.Quality.premium, .enhanced, .compact].compactMap { quality in
+            let tier = all.filter { $0.quality == quality }
+            return tier.isEmpty ? nil : (quality, tier)
+        }
     }
 
     /// Picker order: better quality first, the person's accent first within a

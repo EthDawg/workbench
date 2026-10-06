@@ -2786,10 +2786,11 @@ enum SurfaceGallery {
         let results: [(name: String, kind: FloatingResult, show: () -> Void, clear: () -> Void)] = [
             ("A dictation failure", .dictationFailure, { self.model.captureFailure = words }, { self.model.dismissCaptureFailure() })]
         // A paused reading belongs to Read. In Dictate it neither leads the row nor holds Dictate's own
-        // failure back, and Resume reading stays in the chooser's Read row.
+        // failure back, and Resume reading stays in the chooser's Read row. Playback leads with Stop
+        // reading, Read's one ending, with Pause reading in that row too.
         let readings: [(state: String, start: () -> Void, action: String, holdsBack: Bool)] = [
             ("preparing", { self.model.rendering = true }, "Cancel", true),
-            ("playing", { self.model.playing = true }, "Pause reading", true),
+            ("playing", { self.model.playing = true }, "Stop reading", true),
             ("paused", { self.model.paused = true }, "Dictate", false)]
         func pendingIdentity() -> FloatingResult.Identity? { FloatingResult.pending(model)?.identity(in: model) }
         model.toolbarMode = .dictate
@@ -2933,11 +2934,11 @@ enum SurfaceGallery {
         expect("A revealed result as a reading starts under the pointer", [
             first ? nil : "the pointer's reveal did not show the result",
             stays ? nil : "the reading took the row from under the pointer",
-            rowNow && readsNow == "Pause reading" ? nil : "once the pointer let go the next reveal read \(described(readsNow)), not \"Pause reading\"",
+            rowNow && readsNow == "Stop reading" ? nil : "once the pointer let go the next reveal read \(described(readsNow)), not \"Stop reading\"",
             backAfter ? nil : "once the reading ended the next reveal did not show the result",
             kept ? nil : "the kept-open row did not show the result",
             keptStays ? nil : "the reading took the kept-open row while a hold was on it",
-            keptRow && keptReads == "Pause reading" ? nil : "once the hold let go the kept-open row read \(described(keptReads)), not \"Pause reading\"",
+            keptRow && keptReads == "Stop reading" ? nil : "once the hold let go the kept-open row read \(described(keptReads)), not \"Stop reading\"",
             keptBack ? nil : "once the reading ended the kept-open row did not show the result again"])
     }
 
@@ -3208,7 +3209,10 @@ enum SurfaceGallery {
                          action(panel, "Dictate · Options · Delivery and Text style", "Changes the saved dictation settings"),
                          action(panel, "Dictate · Options · Set up automatic paste…", "Asks macOS for Accessibility approval; shown while Paste automatically waits for it")]
             case .read:
-                list += [page(panel, "Read, when nothing is playing", "speak"), action(panel, "Read, while reading", "Pauses, resumes or cancels the reading from the row itself")]
+                list += [action(panel, "Read, when nothing is playing", "Reads the text selected in the app the panel was opened over, else opens Read"),
+                         action(panel, "Read, while reading", "Stops the reading, or cancels one still being made, from the row itself"),
+                         action(panel, "Read · Options · Voice", "Chooses the voice the chosen engine reads with, as Voice & pace does"),
+                         page(panel, "Read · Options · Models…", "models"), page(panel, "Read · Options · Open Read…", "speak")]
             case .snap:
                 list += [action(panel, "Snap", "Captures a region, saved in History"),
                          action(panel, "Snap · Options · Region, Window or Screen", "Captures that area, saved in History"),
