@@ -40,3 +40,11 @@ Detailed logs remain local as `.build/foundation-ownership-*.log`. The A1 galler
 ## Limits and integration
 
 Actual held-key/menu dismissal timing, VoiceOver, native picker focus return, Me sheet focus, and navigation while independent work runs still require the integrated signed Preview. Programmatic key/accessibility activation and renders do not establish those native results. Camera hardware and phone/receiver behavior were not exercised. Resources/Packs hierarchy and conditional legacy recovery remain the separately assigned A2/E work; the remaining From iPhone section in these source-candidate renders is not a clean-app acceptance claim. Parent integration must reconcile current main and C before installing the final candidate.
+
+## Combined foundation integration
+
+Parent integration `57779c3454cc2d2f312ebca8e14445e81f947a68` combines A1 with manual handoff #291, browser pause #292, Read retirement #295, the accepted verifier #277 and merged main through #294. Independent review accepted both source parents and the integration: all 21 handoff registry entries and the Persona entry remain intact, with 541 unique entries. The only source-merge conflict was the additive registry tail.
+
+The combined release build completed in 134.22 seconds. Its core checks, Readback checks and transcript handoff checks (129 plus 11 runner checks) passed. The complete `scripts/test.sh harnesses` phase then passed after adding the production preservation dependencies and isolating the separately tested Saved Prompts panel from the resource-row fixture. No settings suites were left behind. The isolated Library fixture does not establish Saved Prompts keyboard/focus behavior; production core checks, earlier production renders and pending signed native acceptance cover that separate panel. Subsequent changes in this integration were harness/documentation-only.
+
+The candidate remains a development integration until required queue checks and installed workflows pass. No public release, permission reset or data replacement was performed by these checks.
