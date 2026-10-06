@@ -114,9 +114,9 @@ Each page moves to the kit in its own small PR, rendered in the surface gallery,
 | Snap & Talk | Empty state to `WorkbenchEmptyState` with New session… prominent; header's extra bottom padding removed | Next |
 | Draw (StageKit) | StageKit cannot see the page tokens: move them into the shared `Workbench` namespace, then use `WorkbenchPageHeader` and the kit's card, badge and prominent action | Next, needs the token move first |
 | Present | Owned by #276 / #285 | After #285 lands |
-| Persona | Frozen beyond kit tokens (mac-foundation §1) | Tokens only |
-| History | Row radius to the kit; one prominent Hand off… in the selection footer | Later |
-| Library | Resources and Packs empty states and radii to the kit; From iPhone retires with #286 | After #286 |
+| Persona | Frozen beyond kit tokens (mac-foundation §1) | Tokens and defects done in the Saved pages PR: one first-run empty state, groups hidden until something is saved, one Done |
+| History | Row radius to the kit; one prominent Hand off… in the selection footer | Done in the Saved pages PR (rows, one date, Transcript review); pointer pass owed |
+| Library | Resources and Packs empty states and radii to the kit; From iPhone retires with #286 | Resources and Packs done in the Saved pages PR; From iPhone after #286 |
 | Settings | Sections titled with `WorkbenchSectionTitle`; founder card to `WorkbenchTile`; Open Workbench at login explains macOS's approval | Login approval done in the first desktop PR; rest next |
 
 ## Working on a page
