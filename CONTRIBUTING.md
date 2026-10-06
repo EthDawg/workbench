@@ -16,7 +16,15 @@ Repository collaborators can push their own feature branches after accepting the
 
 Matt's ServiceNow branding and deck helpers originated in [#104](https://github.com/Ship-Work/workbench/pull/104), whose authorship and public history remain intact. From 2.2, company content is maintained in its private pack repository; open its source link in Packs to contribute there. Changes to Workbench's generic loader and handoff contracts belong in this public repository. Preserve original artwork and credit, publish changed payloads as a new pack version, verify rendered examples in the pack repository, and leave existing sessions' snapshots unchanged. Colleagues use the [team guide](https://workbench-mac.vercel.app/guide/#servicenow-pack) and their team's pack link.
 
+## Before revisiting an idea
+
+Before revisiting an idea, check [research and decisions](docs/research/README.md). Reuse the existing investigation, then verify the relevant current source and changing vendor facts. Keep a short record of the outcome, decision, primary sources and checked date, reason, simpler route, reconsideration condition and acceptance/issue link. Preserve a superseded finding with a pointer to its replacement; do not revive its old schedule. Store reusable, sanitized conclusions in the owning repository document rather than only in chat or ignored build output.
+
 ## Choose a first step
+
+For the current refinement work, start with the [focused Mac foundation](docs/mac-foundation.md) and its issue/owner map. Complete one bounded journey, including unavailable setup and usable output, and keep implementation, native acceptance and release claims distinct. Existing owners and preserved data take priority over a fresh rewrite.
+
+Apply [Value before scope](docs/workbench.md#value-before-scope) in the existing issue/PR: explain the evidenced outcome, simpler alternative, existing owner, net complexity and complete-use acceptance. This includes infrastructure and marketing. Prefer removing friction over adding choices; a small fix needs a concise explanation, not another proposal document.
 
 1. Check the [open issues](https://github.com/Ship-Work/workbench/issues). An unassigned [good first issue](https://github.com/Ship-Work/workbench/issues?q=is%3Aissue%20is%3Aopen%20label%3A%22good%20first%20issue%22) is a useful starting point. Comment that you want to take it so others can coordinate; no repository write access is needed.
 2. A typo or clear, small fix can go directly to a PR. Discuss a larger feature in an issue or [Discussions](https://github.com/Ship-Work/workbench/discussions) first. Agree the smallest useful outcome and who is working on it.
@@ -66,6 +74,16 @@ CI always checks the site, contracts and surface registry. Documentation/site-on
 Several Python checks in `scripts/` compile exact members of `AppModel.swift` and other sources beside synthetic fixtures. Each check names the members it needs, and `scripts/swift_extract.py` reads each one whole, with its comments and attributes, so moving a method never changes what a check compiles. A missing, ambiguous or repeated name fails with that name. When a check needs another member, add it to that check's list; `python3 scripts/swift_extract.py Sources/LocalVoice/AppModel.swift AppModel` lists every member's name and selector.
 
 CI also keeps a `surface-gallery` artifact: `LocalVoice --render-surfaces DIR` draws the menu-bar panel in fixed states and the top of every Home page at the default and minimum window sizes, in light and dark, with an `index.html` listing each entry and where it leads. It uses synthetic data in a temporary home and never reads saved work, preferences or Keychain. It flags an entry whose route has no page and a page no entry opens. When you add a button or key that opens a page, add it to the catalogue in `Sources/LocalVoice/SurfaceGallery.swift`; the app menus are read from the menu bar itself. `scripts/check-surfaces.py` also fails an app menu item that opens a page under a name other than the page's own.
+
+For native History acceptance with synthetic content, quit both editions and run the installed signed Preview through the existing gallery's isolated home and preferences:
+
+```sh
+python3 scripts/history-acceptance.py --app "$HOME/Applications/Workbench Preview.app" --output .build/history-native-acceptance
+```
+
+Use a new output folder each time. This opens the production History and reading-replacement views with a long transcript, an assistant result and an inspector for unrelated drafts. The complete app shell and its device, credential and system-setting controls are excluded. No live saved data is replaced, no provider process runs and no new app identity is created. Use Copy build details in its app menu. `history-acceptance.json` names the synthetic result file for edit/removal checks; the fixture stays after quitting. This verifies these native views and actions, not live microphone, provider, global-shortcut or receiver behavior.
+
+For the sidebar update action, use the same isolated launcher with `--updates` and a new output directory inside the checkout. It opens only the production updater control, a synthetic active-recording switch and status text. No updater is started and no application is replaced. While the switch is on, Update must retain its offer and explain the busy state; after switching it off, one click or keyboard activation writes `update-choice.json` with one install choice. Copy build details remains available in its app menu. This verifies the native control and admission policy; a real signed old-to-new Sparkle replacement is still a separate release gate.
 
 ## Paused mobile development reference
 

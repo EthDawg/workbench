@@ -333,6 +333,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 timer: self.stage.hasActiveTimer,
                 interaction: self.shortcutsSuspended || NSApp.modalWindow != nil || NSApp.windows.contains(where: { $0.attachedSheet != nil }))
         }
+        WorkbenchUpdates.shared.showUpdate = { [weak self] in self?.showWindow() }
         WorkbenchUpdates.shared.start()
         setupMenus()
         readSelectionService = ReadSelectionService { [weak self] selection in
@@ -673,7 +674,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         capturePanel?.close()
         meetingOffer?.close()
         snap?.cancelCapture()
-        model?.promptInsertion.cancel(); keyboard?.stopInteraction(); stage?.shutdown(); readback?.shutdown(); model?.shutdown(); hotkeys.unregister()
+        model?.promptInsertion.cancel(); keyboard?.stopInteraction(); stage?.shutdown(); readback?.shutdown(); model?.cleanupModels.cancel(); model?.shutdown(); hotkeys.unregister()
         if let navigationObserver { NotificationCenter.default.removeObserver(navigationObserver) }
     }
     func navigate(_ page: String) {
@@ -844,6 +845,7 @@ func runCLI(_ args: [String]) async -> Int32 {
             try SpekoChecks.run()
         case "--check-refinement":
             try LocalRefinementChecks.run(); try await LocalRefinementChecks.runTransportChecks()
+            try await LocalRefinementChecks.runOwnershipChecks()
         case "--check-input":
             try await MainActor.run { try InputChecks.run() }
         case "--check-readback":

@@ -9,6 +9,11 @@ struct ReadbackView: View {
     var onChooseSnaps: (() -> Void)?
     var onReviewHandoff: (() -> Void)?
     var onSaveImageToLibrary: ((CaptureImagePreviewItem) -> String?)?
+    /// The speech model narration is transcribed with, as the host's readiness line names it;
+    /// nil only where no host owns one, such as the isolated gallery.
+    var engine: NarrationEngine?
+    var onOpenModels: () -> Void = {}
+    var onRetryModel: () -> Void = {}
     @State private var sheet: Sheet?
     @State private var afterSheet: (() -> Void)?
     @State private var captureMode: SnapCapture.Mode = .screen
@@ -24,12 +29,55 @@ struct ReadbackView: View {
     private var isCapturing: Bool { capturePresentation?.capturing ?? model.isCapturing }
 
     init(model: ReadbackModel, onOpenPacks: @escaping () -> Void = {}, onChooseSnaps: (() -> Void)? = nil,
-         onReviewHandoff: (() -> Void)? = nil, onSaveImageToLibrary: ((CaptureImagePreviewItem) -> String?)? = nil, initialSheet: Sheet? = nil, capturePresentation: CapturePresentation? = nil) {
+         onReviewHandoff: (() -> Void)? = nil, onSaveImageToLibrary: ((CaptureImagePreviewItem) -> String?)? = nil, initialSheet: Sheet? = nil, capturePresentation: CapturePresentation? = nil,
+         engine: NarrationEngine? = nil, onOpenModels: @escaping () -> Void = {}, onRetryModel: @escaping () -> Void = {}) {
         self.model = model; self.onOpenPacks = onOpenPacks; self.onChooseSnaps = onChooseSnaps; self.onReviewHandoff = onReviewHandoff; self.onSaveImageToLibrary = onSaveImageToLibrary
         self._sheet = State(initialValue: initialSheet); self.capturePresentation = capturePresentation
+        self.engine = engine; self.onOpenModels = onOpenModels; self.onRetryModel = onRetryModel
+    }
+
+    /// What turns narration into text, where it runs, and the way to change it (workbench.md,
+    /// rule 9), beside Record narration. While the model is not ready, it says so here with Retry
+    /// model and Models…, so a recording never waits in a silent queue (Fit rule 2).
+    @ViewBuilder private var narrationEngine: some View {
+        if let engine {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    if engine.preparing { ProgressView().controlSize(.small) }
+                    Label(engine.line, systemImage: engine.needsAttention ? "exclamationmark.triangle" : "waveform")
+                        .font(.caption).foregroundStyle(engine.needsAttention ? .orange : .secondary)
+                        .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                    if engine.needsAttention { Button("Retry model", action: onRetryModel).buttonStyle(.link).font(.caption) }
+                    Button("Models…", action: onOpenModels).buttonStyle(.link).font(.caption)
+                        .help("Choose the speech model in Settings › Models")
+                }
+                if engine.needsAttention {
+                    Text("You can record now. If the model still can’t be prepared, the recording is kept with Retry transcription.").font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else if !engine.ready {
+                    Text("You can record now; transcription waits for the speech model.").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        }
     }
 
     enum Sheet: String, Identifiable { case sessions, settings, ordering, deleted; var id: String { rawValue } }
+
+    /// The host's speech readiness as Snap & Talk shows it: the one readiness line's words, whether
+    /// narration can be transcribed now, and why not when preparation failed. The failure is the one
+    /// signal, as Home's is: a model that is not ready and has not failed is preparing, whichever
+    /// door started it (launch, Retry model or Settings › Models), and only a failure needs Retry.
+    struct NarrationEngine: Equatable {
+        var name: String
+        var ready: Bool
+        var failure: String?
+        /// Still on its way: the line carries its progress and needs only patience.
+        var preparing: Bool { !ready && failure == nil }
+        /// A stopped preparation needs Retry model.
+        var needsAttention: Bool { failure != nil }
+        /// The line beside Record narration: the engine, or the readiness line with its reason.
+        var line: String { failure.map { ready ? name : "\(name). \($0)" } ?? name }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -343,6 +391,7 @@ struct ReadbackView: View {
                             .disabled(changing || model.microphonePermission != .authorized)
                     }
                 }
+                if section.audio == nil { narrationEngine }
                 TextEditor(text: Binding(get: { model.transcriptDrafts[section.id] ?? "" }, set: { model.updateTranscript($0, for: section.id) }))
                     .font(.body).frame(height: 180).padding(8)
                     .background(Workbench.surface, in: RoundedRectangle(cornerRadius: 8))
@@ -364,6 +413,7 @@ struct ReadbackView: View {
             } else if section.status == .failed, section.audio != nil {
                 Button("Retry transcription") { model.retryTranscription(section.id) }
                     .disabled(model.isRecording || model.isCapturing)
+                narrationEngine
             } else if section.status == .needsNarration {
                 HStack {
                     Text("The screenshot is saved. Add narration when you’re ready.").font(.callout).foregroundStyle(.secondary)
@@ -371,9 +421,11 @@ struct ReadbackView: View {
                     Button("Record narration") { model.startNarration(for: section.id) }
                         .disabled(changing || model.microphonePermission != .authorized)
                 }
+                narrationEngine
             } else if section.status == .failed {
                 Button("Record narration") { model.startNarration(for: section.id) }
                     .disabled(changing || model.microphonePermission != .authorized)
+                narrationEngine
             } else {
                 HStack(spacing: 8) {
                     if section.status != .recording { ProgressView().controlSize(.small) }

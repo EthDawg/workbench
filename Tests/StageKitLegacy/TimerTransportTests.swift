@@ -281,6 +281,23 @@ final class TimerTransportTests {
                 app.setTimerPosition(.topLeft)
                 XCTAssertEqual(app.timerPlacementAnchor, .topLeft, "Position from the panel works before the timer has opened")
                 XCTAssertFalse(timerVisible, "Choosing a position opens nothing")
+                // Position… is one control with the eight docks, the floating toolbar's, never a
+                // submenu of anchors (#134 Fit rule 1). It opens before the window ever has.
+                for menu in [stage.makeTimerMenu(), stage.makeTimerMenu(optionsOnly: true)] {
+                    XCTAssertTrue(titles(menu).contains("Position…"), "Position… is in the Timer menu and the panel's Options: \(titles(menu))")
+                    XCTAssertFalse(menu.items.contains { $0.title == "Position" && $0.hasSubmenu }, "No tree of anchors remains: \(titles(menu))")
+                }
+                XCTAssertFalse(stage.isTimerPositionControlShown)
+                choose(try item(stage.makeTimerMenu(optionsOnly: true), "Position…"))
+                XCTAssertTrue(stage.isTimerPositionControlShown, "Position… opens its control before the timer window exists")
+                XCTAssertFalse(timerVisible, "and opens no timer window")
+                let control = app.timerPositionPanel.window
+                XCTAssertEqual(control?.title, "Timer position")
+                XCTAssertTrue(control?.isVisible == true && control?.isKeyWindow == true, "The control takes the keyboard")
+                XCTAssertTrue(NSScreen.screens.contains { $0.visibleFrame.contains(control?.frame ?? .infinite) }, "and sits on a display: \(String(describing: control?.frame))")
+                app.timerPositionPanel.close()
+                XCTAssertFalse(stage.isTimerPositionControlShown, "Escape, a choice or a click elsewhere closes it")
+                XCTAssertEqual(app.timerPlacementAnchor, .topLeft, "Closing without a choice keeps the saved position")
 
                 XCTAssertEqual(titles(stage.makeTimerMenu()).prefix(1), ["Start Timer"])
                 XCTAssertFalse(titles(stage.makeTimerMenu(optionsOnly: true)).contains("Start Timer"), "The panel row starts it")
@@ -288,6 +305,16 @@ final class TimerTransportTests {
                 choose(try item(stage.makeTimerMenu(), "Start Timer"))
                 XCTAssertEqual(app.timerTransport, .running)
                 XCTAssertTrue(timerVisible && stage.isTimerShown)
+                // Beside the shown window, a choice moves it at once and closes the control.
+                choose(try item(stage.makeTimerMenu(), "Position…"))
+                XCTAssertTrue(stage.isTimerPositionControlShown)
+                app.setTimerPosition(.bottomRight); app.timerPositionPanel.close(.chose)
+                XCTAssertEqual(app.timerPlacementAnchor, .bottomRight)
+                XCTAssertFalse(stage.isTimerPositionControlShown)
+                choose(try item(stage.makeTimerMenu(), "Position…"))
+                choose(try item(stage.makeTimerMenu(), "Hide Timer"))
+                XCTAssertFalse(stage.isTimerPositionControlShown, "Hide timer takes Position… with the window")
+                choose(try item(stage.makeTimerMenu(), "Show Timer"))
                 let running = titles(stage.makeTimerMenu())
                 XCTAssertEqual(Array(running.prefix(3)), ["Pause Timer", "Hide Timer", "Stop Timer"], "\(running)")
                 XCTAssertFalse(running.contains("Start Timer") || running.contains("Reset Timer") || running.contains("End Timer"),
@@ -321,6 +348,34 @@ final class TimerTransportTests {
                 XCTAssertEqual(stage.timerStateDetail, "")
             }
         }
+    }
+}
+
+extension TimerTransportTests {
+    /// Position… sits above a timer window in the lower half of its display and below one in
+    /// the upper half; with no window shown it opens under the pointer. It never leaves the
+    /// usable screen.
+    func testPositionControlSitsByTheWindowOrThePointer() throws {
+        let visible = NSRect(x: 0, y: 0, width: 1440, height: 860), size = NSSize(width: 150, height: 170)
+        let low = NSRect(x: 300, y: 40, width: 570, height: 330)
+        let aboveLow = AppCoordinator.timerPositionFrame(size: size, beside: low, pointer: .zero, visible: visible)
+        XCTAssertEqual(aboveLow.origin, NSPoint(x: 300, y: low.maxY + 8), "Above a low window")
+        let high = NSRect(x: 300, y: 500, width: 570, height: 330)
+        let belowHigh = AppCoordinator.timerPositionFrame(size: size, beside: high, pointer: .zero, visible: visible)
+        XCTAssertEqual(belowHigh.origin, NSPoint(x: 300, y: high.minY - 8 - size.height), "Below a high window")
+        let edge = NSRect(x: 1400, y: 40, width: 570, height: 330)
+        let clamped = AppCoordinator.timerPositionFrame(size: size, beside: edge, pointer: .zero, visible: visible)
+        XCTAssertTrue(visible.contains(clamped), "Kept on the usable screen: \(clamped)")
+        let pointer = NSPoint(x: 700, y: 400)
+        let atPointer = AppCoordinator.timerPositionFrame(size: size, beside: nil, pointer: pointer, visible: visible)
+        XCTAssertTrue(atPointer.contains(pointer) && visible.contains(atPointer), "Under the pointer before the window opens: \(atPointer)")
+        let corner = AppCoordinator.timerPositionFrame(size: size, beside: nil, pointer: NSPoint(x: 1435, y: 5), visible: visible)
+        XCTAssertTrue(visible.contains(corner), "A pointer at the corner still gets a control on screen: \(corner)")
+        // The shared control's grid: arrow keys step over the empty middle and stop at the edge.
+        XCTAssertEqual(FloatingPositionControl.neighbour(of: .left, column: 1, row: 0), .right)
+        XCTAssertEqual(FloatingPositionControl.neighbour(of: .top, column: 0, row: 1), .bottom)
+        XCTAssertEqual(FloatingPositionControl.neighbour(of: .topLeft, column: -1, row: 0), .topLeft)
+        XCTAssertEqual(FloatingPositionControl.neighbour(of: .bottom, column: 1, row: 0), .bottomRight)
     }
 }
 

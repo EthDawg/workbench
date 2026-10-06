@@ -112,8 +112,19 @@ final class SnapModel: ObservableObject {
     private let pasteboard: NSPasteboard
     private var captureRequest: UUID?
     private var closingWithCopy = false
+    private var backgroundRefresh: Task<Void, Never>?
+    private var refreshRequested = false
+    private var refreshGeneration = 0
+    /// A separate instance owns each background read's mutable store cache.
+    /// Checks can hold this read without blocking the main actor.
+    var loadLibrary: @Sendable (URL) throws -> SnapLibraryRead = { try SnapStore(root: $0).load() }
+    private static let refreshQueue = DispatchQueue(label: "Workbench.SnapRefresh", qos: .utility)
     private var analysis: Task<Void, Never>?
     private var analysisRequested = false
+    private var analysisImages: [UUID: String] = [:]
+    private var recognizedImageDigests: [UUID: String] = [:]
+    /// Checks wait for the real reload and image-text owners to settle.
+    var hasPendingHistoryWork: Bool { backgroundRefresh != nil || analysis != nil }
     /// Reads an image's visible text and repeat fingerprint for search. A check
     /// that does not test search replaces it before saving, so it never runs Vision.
     var analyzeImage: @Sendable (_ png: Data, _ imageSHA256: String) throws -> SnapDerivedData = { try SnapAnalysis.analyze(png: $0, imageSHA256: $1) }
@@ -131,7 +142,8 @@ final class SnapModel: ObservableObject {
     /// Snap search: title, notes, source type, tags and the text Vision read in
     /// the image. Every term must match. History searches Snaps through this too.
     func matches(_ item: SnapItem, query: String) -> Bool {
-        guard let text = recognizedText[item.id], !text.isEmpty else { return item.matches(query) }
+        guard recognizedImageDigests[item.id] == item.imageSHA256,
+              let text = recognizedText[item.id], !text.isEmpty else { return item.matches(query) }
         let searchable = item.searchableText + "\n" + text
         return query.split(whereSeparator: \.isWhitespace).allSatisfy { searchable.localizedStandardContains(String($0)) }
     }
@@ -313,37 +325,95 @@ final class SnapModel: ObservableObject {
     }
 
     func refresh() {
+        // Saves, archives and imports still become visible before their caller
+        // returns. An older passive read must never undo that accepted state.
+        refreshGeneration &+= 1
+        refreshRequested = false
         refreshScreenAccess()
-        do { let read = try store.load(); items = read.items; problems = read.problems }
-        catch { problems = [error.localizedDescription] }
+        do { acceptLibrary(try store.load()) }
+        catch { acceptProblems([error.localizedDescription]) }
         refreshDerivedData()
+    }
+
+    /// Appearing or activating History refreshes its files without stopping
+    /// typing, selection or an independent capture. Repeated requests coalesce
+    /// into at most one follow-up read, and keep the current rows until accepted.
+    func requestRefresh() {
+        refreshScreenAccess()
+        refreshGeneration &+= 1
+        guard backgroundRefresh == nil else { refreshRequested = true; return }
+        let generation = refreshGeneration, root = store.root, load = loadLibrary
+        backgroundRefresh = Task { [weak self] in
+            let result: Result<SnapLibraryRead, Error> = await withCheckedContinuation { finished in
+                Self.refreshQueue.async { finished.resume(returning: Result { try load(root) }) }
+            }
+            guard let self else { return }
+            self.backgroundRefresh = nil
+            if generation == self.refreshGeneration {
+                switch result {
+                case .success(let read): self.acceptLibrary(read)
+                case .failure(let error): self.acceptProblems([error.localizedDescription])
+                }
+                self.refreshDerivedData()
+            }
+            if self.refreshRequested {
+                self.refreshRequested = false
+                self.requestRefresh()
+            }
+        }
+    }
+
+    private func acceptLibrary(_ read: SnapLibraryRead) {
+        if items != read.items { items = read.items }
+        acceptProblems(read.problems)
+        let images = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0.imageSHA256) })
+        recognizedImageDigests = recognizedImageDigests.filter { images[$0.key] == $0.value }
+        let texts = recognizedText.filter { recognizedImageDigests[$0.key] != nil }
+        if recognizedText != texts { recognizedText = texts }
+    }
+
+    private func acceptProblems(_ value: [String]) {
+        let sorted = value.sorted()
+        if problems != sorted { problems = sorted }
     }
 
     /// Reads, or builds once, each Snap's search text and repeat fingerprint off
     /// the main thread. It never edits a Snap record, so it cannot collide with
     /// an open editor, and a failure only leaves that Snap searchable by title.
     private func refreshDerivedData() {
-        guard analysis == nil else { analysisRequested = true; return }
+        let images = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0.imageSHA256) })
+        guard analysis == nil else { analysisRequested = analysisImages != images; return }
+        guard recognizedImageDigests != images else { return }
+        analysisImages = images
         let root = store.root, items = self.items, analyze = analyzeImage
         analysis = Task { [weak self] in
-            let found: [UUID: String] = await withCheckedContinuation { finished in
+            let found: [UUID: SnapDerivedData] = await withCheckedContinuation { finished in
                 Self.analysisQueue.async {
                     // A separate store instance: SnapStore keeps unsynchronised load state
                     // for editor conflict checks, which must never be touched off the main thread.
                     let store = SnapStore(root: root)
-                    var texts: [UUID: String] = [:]
+                    var texts: [UUID: SnapDerivedData] = [:]
                     for item in items {
-                        if let derived = store.derived(for: item) { texts[item.id] = derived.text; continue }
-                        guard let image = try? store.snapshot(item.id).imagePNG,
-                              let derived = try? analyze(image, item.imageSHA256) else { continue }
+                        if let derived = store.derived(for: item) { texts[item.id] = derived; continue }
+                        // A newer snapshot must never be labelled with the
+                        // digest from the older list captured by this pass.
+                        guard let snapshot = try? store.snapshot(item.id),
+                              snapshot.item.imageSHA256 == item.imageSHA256,
+                              let derived = try? analyze(snapshot.imagePNG, snapshot.item.imageSHA256),
+                              derived.imageSHA256 == item.imageSHA256,
+                              (try? store.read(item.id).imageSHA256) == derived.imageSHA256 else { continue }
                         try? store.writeDerived(derived, for: item.id)
-                        texts[item.id] = derived.text
+                        texts[item.id] = derived
                     }
                     finished.resume(returning: texts)
                 }
             }
             guard let self else { return }
-            self.recognizedText = found
+            let current = Dictionary(uniqueKeysWithValues: self.items.map { ($0.id, $0.imageSHA256) })
+            let valid = found.filter { current[$0.key] == $0.value.imageSHA256 }
+            self.recognizedImageDigests = valid.mapValues(\.imageSHA256)
+            let texts = valid.mapValues(\.text)
+            if self.recognizedText != texts { self.recognizedText = texts }
             self.analysis = nil
             if self.analysisRequested { self.analysisRequested = false; self.refreshDerivedData() }
         }

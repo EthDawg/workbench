@@ -22,6 +22,74 @@ enum ReadbackChecks {
         print("READBACK_PACKAGED_RESOURCES_OK: new session, exact complete skill payload, README and reopened manifest")
     }
 
+    /// Resolve disposable bundle fixtures only; no LaunchServices lookup or app launch.
+    static func runHandoffApplicationChecks() throws -> Int {
+        var passed = 0
+        func check(_ condition: @autoclosure () -> Bool, _ message: String) throws {
+            guard condition() else { throw ReadbackError.message("READBACK_HANDOFF_APP_CHECK_FAILED: \(message)") }
+            passed += 1
+        }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("Workbench-handoff-app-check-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        func app(_ filename: String, displayName: Any? = nil, bundleName: Any? = nil) throws -> URL {
+            let url = root.appendingPathComponent(filename + ".app")
+            let contents = url.appendingPathComponent("Contents")
+            try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
+            var info: [String: Any] = ["CFBundleIdentifier": "example.handoff.\(UUID().uuidString)", "CFBundlePackageType": "APPL"]
+            info["CFBundleDisplayName"] = displayName
+            info["CFBundleName"] = bundleName
+            try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0)
+                .write(to: contents.appendingPathComponent("Info.plist"))
+            return url
+        }
+        let claude = try app("Claude current", displayName: "Claude")
+        let legacyClaude = try app("Claude legacy", displayName: "Claude Legacy")
+        let chatGPT = try app("ChatGPT", displayName: "ChatGPT")
+        let codex = try app("Codex", displayName: "Codex")
+        let installed = ["com.anthropic.claudefordesktop": claude, "com.anthropic.claude": legacyClaude,
+                         "com.openai.chat": chatGPT, "com.openai.codex": codex]
+        let cases: [(ReadbackHandoffTarget, String, String)] = [
+            (.claude, "com.anthropic.claudefordesktop", "com.anthropic.claude"),
+            (.chatGPT, "com.openai.chat", "com.openai.codex"),
+            (.codex, "com.openai.codex", "com.openai.chat"),
+        ]
+        let launchError = NSError(domain: "SyntheticLaunch", code: 1, userInfo: [NSLocalizedDescriptionKey: "Synthetic failure"])
+        for (target, primary, alternate) in cases {
+            let preferred = target.resolveApplication { $0 == primary ? installed[$0] : nil }
+            try check(preferred?.url == installed[primary], "\(target.title) resolves its preferred installed app")
+            var lookups: [String] = []
+            let both = target.resolveApplication { identifier in
+                lookups.append(identifier)
+                return installed[identifier]
+            }
+            try check(both?.url == installed[primary] && lookups == [primary], "\(target.title) prefers its own identity when both are installed")
+            guard let fallback = target.resolveApplication(using: { $0 == alternate ? installed[$0] : nil }) else {
+                throw ReadbackError.message("READBACK_HANDOFF_APP_CHECK_FAILED: \(target.title) lost its installed fallback")
+            }
+            try check(fallback.url == installed[alternate], "\(target.title) retains its installed fallback")
+            let actualName = alternate == "com.anthropic.claude" ? "Claude Legacy" : (alternate == "com.openai.chat" ? "ChatGPT" : "Codex")
+            try check(fallback.openingNotice.contains("\(actualName) is opening.") && fallback.openingNotice.contains("Nothing was uploaded."),
+                      "\(target.title) opening notice names the resolved app without claiming delivery")
+            try check(fallback.failureNotice(launchError).hasPrefix("\(actualName) could not open: Synthetic failure")
+                      && fallback.failureNotice(launchError).contains("Nothing was uploaded."),
+                      "\(target.title) failure names the same resolved app")
+            lookups = []
+            let absent = target.resolveApplication { identifier in lookups.append(identifier); return nil }
+            try check(absent == nil && lookups == [primary, alternate], "\(target.title) reports neither installed without inventing an app")
+        }
+        let display = try app("Disk name", displayName: "  Friendly Assistant  ", bundleName: "Internal name")
+        try check(ReadbackHandoffApplication(url: display).title == "Friendly Assistant", "bundle display name takes precedence and trims whitespace")
+        let named = try app("Different disk name", bundleName: "Bundle Assistant")
+        try check(ReadbackHandoffApplication(url: named).title == "Bundle Assistant", "bundle name is used without a display name")
+        let blank = try app("Renamed Assistant", displayName: " \n", bundleName: "\t")
+        try check(ReadbackHandoffApplication(url: blank).title == "Renamed Assistant", "blank metadata falls back to the app filename")
+        let invalid = try app("Untyped Assistant", displayName: 42)
+        try check(ReadbackHandoffApplication(url: invalid).title == "Untyped Assistant", "non-string metadata falls back to the app filename")
+        try check(ReadbackHandoffApplication(url: root.appendingPathComponent("Unavailable Assistant.app")).title == "Unavailable Assistant",
+                  "an unreadable bundle keeps its own filename rather than the requested product name")
+        return passed
+    }
+
     static func run() throws {
         var passed = 0
         func check(_ condition: @autoclosure () -> Bool, _ message: String) throws {
@@ -58,6 +126,7 @@ enum ReadbackChecks {
             try check(prompt.contains("SKILL.md") && prompt.contains("session.json") && prompt.contains(handoffRoot.path), "\(target.title) handoff identifies the portable session")
             try check(prompt.contains("Keep the original session") && prompt.contains("Keep the work local"), "\(target.title) handoff preserves originals and external-service consent")
         }
+        passed += try runHandoffApplicationChecks()
         try check(manifest.formatVersion == 1 && manifest.title == "Synthetic review" && manifest.sections.isEmpty, "new manifest is versioned and empty")
 
         let firstID = UUID(), secondID = UUID()
@@ -193,6 +262,16 @@ enum ReadbackChecks {
         var legacyPreferences = VoicePreferences()
         legacyPreferences.readbackShortcut = VoicePreferences.legacyReadbackShortcut
         try check(VoicePreferences.migratingLegacyDefaults(legacyPreferences).shortcut(5) == VoicePreferences.defaultReadbackShortcut, "the conflicting legacy Control-Option-R default migrates")
+        // The engine line beside Record narration (#134 follow-up): the readiness line's words while
+        // ready or preparing, the reason with Retry model once preparation stopped.
+        let readyEngine = ReadbackView.NarrationEngine(name: RecognitionConfiguration().summary, ready: true)
+        try check(readyEngine.line == "Parakeet v2 · English · on this Mac" && !readyEngine.needsAttention && !readyEngine.preparing, "a ready engine shows the one readiness line")
+        let preparingEngine = ReadbackView.NarrationEngine(name: "Downloading Parakeet · 42%", ready: false)
+        try check(preparingEngine.line == "Downloading Parakeet · 42%" && preparingEngine.preparing && !preparingEngine.needsAttention, "a preparing engine shows its progress without Retry")
+        let applying = ReadbackView.NarrationEngine(name: "Preparing Parakeet · first setup may take a few minutes", ready: false)
+        try check(applying.preparing && !applying.needsAttention, "Settings › Models' own Use or Download is preparing too, never a failure with a second Retry")
+        let failedEngine = ReadbackView.NarrationEngine(name: "The speech model couldn’t be prepared", ready: false, failure: "Check your connection.")
+        try check(failedEngine.line == "The speech model couldn’t be prepared. Check your connection." && failedEngine.needsAttention && !failedEngine.preparing, "a failed preparation names its reason and needs Retry model")
         print("READBACK_CHECKS_OK: \(passed) checks")
     }
 

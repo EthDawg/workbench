@@ -590,4 +590,8 @@ for turn in 1...3 {
     try check(try JSONDecoder().decode(SnapEdit.self, from: JSONEncoder().encode(upright)) == upright, "text direction survives save/reopen at rotation \(turn)")
 }
 
-print("SNAP_CHECKS_OK: \(checks) checks for rendering, Desktop screenshot import, screenshots off the Desktop and while editing, revision conflicts, private storage, immutable snapshots, reversible review, repeats, search text and portable optional narration")
+try MainActor.assumeIsolated {
+    checks += try SnapRefreshChecks.run(root: directory.appendingPathComponent("background-refresh"), png: png)
+}
+
+print("SNAP_CHECKS_OK: \(checks) checks for rendering, Desktop screenshot import, screenshots off the Desktop and while editing, background refresh and OCR revisions, revision conflicts, private storage, immutable snapshots, reversible review, repeats, search text and portable optional narration")

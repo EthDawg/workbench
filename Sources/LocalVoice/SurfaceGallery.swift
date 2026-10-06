@@ -219,6 +219,14 @@ enum SurfaceGallery {
             }
             let output = URL(fileURLWithPath: arguments[0], isDirectory: true)
             let pass = try SurfacePass(theme: arguments[1], output: output)
+            if arguments.contains("--interactive-updates") {
+                try pass.openInteractiveUpdates(output: output)
+                return 0
+            }
+            if arguments.contains("--interactive-history") {
+                try pass.openInteractiveHistory(output: output)
+                return 0
+            }
             let result = try pass.render(to: output)
             let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             try encoder.encode(result).write(to: output.appendingPathComponent("pass-\(arguments[1]).json"))
@@ -276,6 +284,44 @@ enum SurfaceGallery {
         UserDefaults.standard.setVolatileDomain(arguments, forName: UserDefaults.argumentDomain)
         guard UserDefaults.standard === isolated, UserDefaults.standard.string(forKey: "appearance") == appearance else {
             throw VoiceError.message("Could not isolate preferences.")
+        }
+    }
+}
+
+/// A deliberately bounded native host. History and the reading-replacement
+/// card are the production views; the draft inspector is test instrumentation.
+private struct HistoryNativeAcceptanceView: View {
+    @ObservedObject var model: AppModel
+    @ObservedObject var snap: SnapModel
+    let transcriptID: UUID
+    @State private var inspectDrafts = false
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Synthetic History acceptance").font(.headline)
+                Spacer()
+                Button("Review long transcript") { model.openHistory(HistoryDoor(transcript: transcriptID)) }
+                Toggle("Inspect drafts", isOn: $inspectDrafts).toggleStyle(.checkbox)
+            }.padding(12)
+            if inspectDrafts {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Dictate draft").font(.caption)
+                    Text(model.transcript).textSelection(.enabled)
+                    Text("Read draft").font(.caption)
+                    Text(model.speechText).textSelection(.enabled)
+                    Text("Playback: \(model.playing ? "playing" : "stopped") · Selection: \(model.historyLibrary.selected.count)").font(.caption)
+                }.frame(maxWidth: .infinity, alignment: .leading).padding(12)
+            }
+            if let selection = model.pendingReadingSelection {
+                ReadingSelectionReviewCard(selection: selection,
+                    limitMessage: model.readingLimitMessage(for: selection.text),
+                    replacingDisabled: !model.canReplaceReading,
+                    waitReason: model.canReplaceReading ? nil : AppModel.replaceWaitsForSave,
+                    keep: model.keepCurrentReading, replace: model.replaceReadingWithSelection)
+                    .padding(12)
+            }
+            Divider()
+            HistoryView(model: model, snap: snap, applySuggestedMetadata: { _, _ in })
         }
     }
 }
@@ -385,6 +431,98 @@ enum SurfaceGallery {
         stage.onEditShortcuts = { [weak self] in self?.opened.append("shortcuts") }
     }
 
+    /// A native pointer/keyboard pass through the production views. It inherits
+    /// the gallery's verified disposable home, preferences and Keychain refusal.
+    /// The launcher retains the fixture folder for reproducible external edits.
+    /// The production sidebar action only. No updater is started, and the
+    /// protocol choice writes a synthetic receipt instead of replacing an app.
+    func openInteractiveUpdates(output: URL) throws {
+        #if !APP_STORE
+        let updates = WorkbenchUpdates.shared
+        var choices = 0
+        updates.receiveOffer(version: "9.0.1", buildNumber: "9001", summary: "Follow your words live and keep conversations together.", downloaded: true) { choice in
+            choices += 1
+            let receipt: [String: Any] = ["choice": choice.rawValue, "count": choices, "synthetic": true]
+            try? JSONSerialization.data(withJSONObject: receipt, options: [.prettyPrinted, .sortedKeys])
+                .write(to: output.appendingPathComponent("update-choice.json"), options: .atomic)
+            updates.finishUpdateSession()
+            updates.status = "Synthetic install choice received once. No app was replaced."
+        }
+        NSApp.setActivationPolicy(.regular)
+        let window = NSWindow(contentViewController: NSHostingController(rootView: UpdateNativeAcceptanceView(updates: updates)))
+        window.title = "Workbench Preview · Synthetic update acceptance"
+        window.styleMask = [.titled, .closable]
+        window.setContentSize(NSSize(width: 670, height: 310)); window.isReleasedWhenClosed = false
+        let menu = NSMenu(), appItem = NSMenuItem(), appMenu = NSMenu(title: "Workbench")
+        let details = NSMenuItem(title: "Copy build details", action: #selector(AppDelegate.copyBuildDetails), keyEquivalent: "")
+        details.target = shell; appMenu.addItem(details)
+        appMenu.addItem(withTitle: "Quit acceptance", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appItem.submenu = appMenu; menu.addItem(appItem); NSApp.mainMenu = menu
+        window.center(); window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
+        withExtendedLifetime(window) { NSApp.run() }
+        #endif
+    }
+
+    func openInteractiveHistory(output: URL) throws {
+        let transcript = Transcript(id: UUID(uuidString: "5D1C0A1E-0000-4000-8000-000000000099")!,
+            date: Date(timeIntervalSince1970: 1_791_200_000),
+            text: (1...24).map { "Section \($0). The project team reviewed the synthetic orchard plan. Keep each decision visible when reviewing a long capture." }.joined(separator: "\n\n") + "\n\nFinal decision: plant the silver apricot orchard.",
+            seconds: 600, rawText: "Original wording marker.\n\n" + (1...24).map { "Original section \($0): um, review the synthetic orchard plan." }.joined(separator: "\n\n"))
+        model.history = [transcript] + Self.history
+        model.transcript = "Unfinished Dictate draft. Preserve this exact wording."
+        model.rawTranscript = model.transcript
+        model.importReading("Unfinished Read draft. Keep this until I choose Replace.", from: .savedText)
+        model.historyLibrary.setMetadata(TranscriptMetadata(purpose: .meeting, person: "Avery Example", company: "Synthetic Orchard"), for: transcript.id)
+        model.historyLibrary.setSelected([.init(kind: .transcript, id: Self.history[0].id)])
+        let jobs = model.handoffJobs
+        jobs.runner = HandoffRunner(
+            discover: { SubscriptionConnection(provider: $0, executable: URL(fileURLWithPath: "/usr/bin/false"), version: "synthetic", ready: true, detail: "Synthetic fixture; no process or network.") },
+            run: { _, _, _, _, onSession in
+                onSession("history-native-fixture")
+                return SubscriptionCLIResult(providerSessionID: "history-native-fixture", text: "# Orchard follow-up\n\nThe answer-only search marker is cobalt marmalade.\n\nConfirm the planting date with Avery.\n\nThis is disposable synthetic acceptance content.")
+            })
+        jobs.setEnabled(.codex, true)
+        try wait("the synthetic connection") { jobs.connections[.codex]?.ready == true }
+        let source = HandoffSourceSnapshot(reference: .init(kind: .transcript, id: transcript.id), title: "Orchard meeting", capturedAt: transcript.date,
+            text: transcript.text, originalText: transcript.rawText!, role: .reference)
+        let job = try jobs.prepare(sources: [source], task: "Draft a short orchard follow-up.", skill: TranscriptHandoffSkill.followUp.load())
+        jobs.start(job, provider: .codex)
+        try wait("the synthetic result") { jobs.jobs.first(where: { $0.id == job.id })?.status == .completed }
+        let loading = Task { await jobs.loadTaskFiles(jobs.jobs) }
+        try wait("the saved result") { jobs.jobs.allSatisfy { jobs.files($0) != nil } }
+        _ = loading
+        let evidence = ["home": home.path, "transcript": transcript.id.uuidString,
+                        "job": job.id.uuidString, "result": jobs.folder(job).appendingPathComponent("result.md").path]
+        try JSONSerialization.data(withJSONObject: evidence, options: [.prettyPrinted, .sortedKeys])
+            .write(to: output.appendingPathComponent("history-acceptance.json"), options: .atomic)
+        model.page = "history"
+        model.microphoneStartFailure = { _ in "This acceptance pass does not record audio." }
+        snap.mayBeginCapture = { "This acceptance pass does not capture the screen." }
+        // Only these saved-work views are interactive. The complete shell also
+        // exposes device capture, credential writes and OS settings, whose
+        // owners are intentionally outside this acceptance pass.
+        NSApp.setActivationPolicy(.regular)
+        let window = NSWindow(contentViewController: NSHostingController(rootView:
+            HistoryNativeAcceptanceView(model: model, snap: snap, transcriptID: transcript.id)))
+        window.title = "Workbench Preview · Synthetic History acceptance"
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+        window.setContentSize(SurfaceGallery.sizes[0].size)
+        window.minSize = SurfaceGallery.sizes[1].size
+        window.isReleasedWhenClosed = false
+        let menu = NSMenu(), appItem = NSMenuItem(), appMenu = NSMenu(title: "Workbench")
+        let details = NSMenuItem(title: "Copy build details", action: #selector(AppDelegate.copyBuildDetails), keyEquivalent: "")
+        details.target = shell; appMenu.addItem(details)
+        appMenu.addItem(withTitle: "Quit acceptance", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appItem.submenu = appMenu; menu.addItem(appItem)
+        let editItem = NSMenuItem(), edit = NSMenu(title: "Edit")
+        for (title, action, key) in [("Copy", "copy:", "c"), ("Paste", "paste:", "v"), ("Select All", "selectAll:", "a")] {
+            edit.addItem(withTitle: title, action: NSSelectorFromString(action), keyEquivalent: key)
+        }
+        editItem.submenu = edit; menu.addItem(editItem); NSApp.mainMenu = menu
+        window.center(); window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
+        withExtendedLifetime(window) { NSApp.run() }
+    }
+
     func render(to output: URL) throws -> SurfaceGallery.Pass {
         if SurfaceGallery.desktopOnly { return try renderDesktopOnly(to: output) }
         if ProcessInfo.processInfo.environment["WORKBENCH_HOME_GALLERY_ONLY"] == "1" { return try renderHomeOnly(to: output) }
@@ -405,6 +543,7 @@ enum SurfaceGallery {
         panels += try renderFloatingStates(to: output)
         let (hostShots, host) = try renderToolbarHost(to: output)
         let toolbar = hostShots + [try renderChooser(to: output), try renderPositionControl(to: output)]
+        panels += try renderTimerSurfaces(to: output)
         let placement = try checkToolbarPlacement()
         let pickers = try renderPickerStates(to: output)
         let (pickerShots, pickerHost) = try checkPickerHost(to: output)
@@ -433,7 +572,10 @@ enum SurfaceGallery {
                 + [try renderHomeLargerText(to: output), try renderHomeSavedPhotos(to: output)]
         }
         let review = try checkHomeReview(to: output)
-        if let history = pages.firstIndex(where: { $0.route == "history" }) { pages[history].shots.append(review.shot) }
+        if let history = pages.firstIndex(where: { $0.route == "history" }) {
+            pages[history].shots.append(review.shot)
+            pages[history].shots += try renderTranscriptReviewStates(to: output)
+        }
         let meetingReview = try renderMeetingReview(to: output)
         if let meeting = pages.firstIndex(where: { $0.route == "meeting" }) { pages[meeting].shots += [meetingReview.meeting, try renderMeetingKept(to: output)] }
         if let history = pages.firstIndex(where: { $0.route == "history" }) { pages[history].shots.append(meetingReview.history) }
@@ -442,6 +584,7 @@ enum SurfaceGallery {
         if let history = pages.firstIndex(where: { $0.route == "history" }) { pages[history].shots += try renderHistoryStates(to: output) }
         // The read-only image preview that capture thumbnails open (#154), shown with the Snap page.
         if let snapPage = pages.firstIndex(where: { $0.route == "snap" }) { pages[snapPage].shots += try renderImagePreview(to: output) }
+        if let personas = pages.firstIndex(where: { $0.route == "personas" }) { pages[personas].shots.append(try renderPersonaVoiceRefusal(to: output)) }
         let listings = menus()
         // Screen Recording off (#112): Snap, Home's quick starts and a Snap & Talk session explain it.
         for (route, shot) in try renderScreenAccessOff(to: output) {
@@ -806,7 +949,32 @@ enum SurfaceGallery {
         let generalShot = try save(general, id: "state-before-first-dictation", title: "General before the first dictation, minimum window, \(Int(generalSize.width)) × \(Int(generalSize.height)) pt",
                                    detail: "Nothing dictated yet: Show me a first dictation sits beside Dictate settings… and opens Home on the guide.",
                                    file: "page-settings-state-before-first-dictation-\(theme).png", to: output)
-        return [("library", [libraryShot]), ("models", [modelsShot]), ("settings", [generalShot])]
+        // Models while the app downloads a writing model (#134 follow-up): the saved choice is Ollama in
+        // this pass's isolated preferences, the download is presentation only, and Cancel clears it.
+        let cleanupStore = CleanupConfigurationStore()
+        let savedCleanup = UserDefaults.standard.data(forKey: CleanupConfigurationStore.key)
+        try cleanupStore.save(.init(naturalProvider: .ollama, model: "gemma3:1b"))
+        model.cleanupModels.presentDownload("gemma3:1b", fraction: 0.42)
+        defer {
+            model.cleanupModels.cancel()
+            if let savedCleanup { UserDefaults.standard.set(savedCleanup, forKey: CleanupConfigurationStore.key) }
+            else { UserDefaults.standard.removeObject(forKey: CleanupConfigurationStore.key) }
+        }
+        let (download, downloadSize) = try renderPage("models", in: window)
+        guard model.cleanupModels.downloadLine == "Downloading gemma3:1b · 42%" else { throw VoiceError.message("Rendering Models changed the writing model's download line.") }
+        let downloadShot = try save(download, id: "state-writing-model-download", title: "Models during a writing model download, minimum window, \(Int(downloadSize.width)) × \(Int(downloadSize.height)) pt",
+                                    detail: "Synthetic Ollama download of gemma3:1b at 42%: the app owns it, Cancel is explicit, and the same line shows on Home and Dictate.",
+                                    file: "page-models-state-writing-model-download-\(theme).png", to: output)
+        // The same line under Dictate's engine line and on Home's readiness banner.
+        let (dictate, dictateSize) = try renderPage("dictate", in: window)
+        let dictateShot = try save(dictate, id: "state-writing-model-download", title: "Dictate during a writing model download, minimum window, \(Int(dictateSize.width)) × \(Int(dictateSize.height)) pt",
+                                   detail: "Downloading gemma3:1b · 42% under the speech model and text style line, beside Models….",
+                                   file: "page-dictate-state-writing-model-download-\(theme).png", to: output)
+        let (homeDownload, homeSize) = try renderPage("home", in: window)
+        let homeShot = try save(homeDownload, id: "state-writing-model-download", title: "Home during a writing model download, minimum window, \(Int(homeSize.width)) × \(Int(homeSize.height)) pt",
+                                detail: "The engine banner carries Downloading gemma3:1b · 42% under the speech model's line.",
+                                file: "page-home-state-writing-model-download-\(theme).png", to: output)
+        return [("library", [libraryShot]), ("models", [modelsShot, downloadShot]), ("settings", [generalShot]), ("dictate", [dictateShot]), ("home", [homeShot])]
     }
 
     // MARK: Read states
@@ -958,6 +1126,94 @@ enum SurfaceGallery {
                  "An older transcript's title opens History on All, showing it; the edited Dictate draft is unchanged byte for byte and the selection is kept.",
                  "History Open preserves a different Dictate draft and original in the actual saved store until Replace draft; Keep current, navigation and live capture preserve them, including capture beginning after the decision opens.",
                  "Clearing the displayed draft keeps its original behind the same Keep/Replace decision. Keep and saved-state reload preserve it, Original restores it, and explicit Replace commits the selected transcript and original."], shot)
+    }
+
+    /// Open the production page-owned review through the same typed door used
+    /// by Home and Meetings. Native sheet attachment, a scrollable full-text
+    /// viewport and dismissal are verified while independent work stays exact.
+    func renderTranscriptReviewStates(to output: URL) throws -> [SurfaceGallery.Shot] {
+        let kept = (history: model.history, draft: model.transcript, raw: model.rawTranscript,
+                    selected: model.historyLibrary.selected, page: model.page, phase: model.phase,
+                    reading: model.speechText, playing: model.meetings.recordingPlayback.playing)
+        defer { model.history = kept.history; model.page = kept.page; model.phase = kept.phase; model.historyDoor = nil }
+        let paragraphs = (1...24).map {
+            "Item \($0). Maya will review the proposal on Thursday. Sam will confirm the room and bring the revised agenda. The budget remains $2,400, and no purchase is approved."
+        }.joined(separator: "\n\n")
+        let item = Transcript(id: UUID(uuidString: "5D1C0A1E-0000-4000-8000-000000000188")!,
+                              date: Date(timeIntervalSince1970: 1_789_399_000),
+                              text: paragraphs + "\n\nFinal decision: keep the original evidence.", seconds: 900,
+                              rawText: "um " + paragraphs + "\n\nFinal original words: don't discard the evidence.")
+        model.history.append(item)
+        // Review must work during unrelated dictation, rather than invoking
+        // the existing busy guard for replacing Dictate's draft.
+        model.phase = .recording
+        var shots: [SurfaceGallery.Shot] = []
+        for (name, size) in SurfaceGallery.sizes {
+            final class Frames { var values: [String: CGRect] = [:] }
+            let frames = Frames()
+            model.page = "home"; model.historyDoor = nil
+            let window = homeWindow(size: size, hostsSheets: true) { frames.values[$0] = $1 }
+            let root = window.contentView?.superview ?? window.contentView!
+            defer {
+                if let sheet = window.attachedSheet { window.endSheet(sheet); sheet.orderOut(nil) }
+                window.contentViewController = nil; window.close()
+            }
+            settle(root)
+            guard let door = HomeRecentWork.review(for: .transcript(item)) else {
+                throw VoiceError.message("The long saved transcript has no History review door.")
+            }
+            model.openHistory(door)
+            let deadline = Date().addingTimeInterval(4)
+            repeat { settle(root, seconds: 0.1) }
+            while (window.attachedSheet == nil || frames.values["history.transcript-review.text"] == nil) && Date() < deadline
+            guard model.historyDoor == nil, let sheet = window.attachedSheet, let content = sheet.contentView,
+                  let frame = frames.values["history.transcript-review"],
+                  let textFrame = frames.values["history.transcript-review.text"],
+                  let document = frames.values["history.transcript-review.document"],
+                  document.height > textFrame.height * 2,
+                  abs(frame.width - 640) < 1, abs(frame.height - 560) < 1,
+                  textFrame.width > 500, textFrame.height > 250 else {
+                throw VoiceError.message("History did not attach the full transcript review at \(name): \(frames.values).")
+            }
+            settle(content)
+            guard model.transcript == kept.draft, model.rawTranscript == kept.raw,
+                  model.historyLibrary.selected == kept.selected, model.speechText == kept.reading,
+                  model.phase == .recording, model.pendingTranscript == nil,
+                  model.meetings.recordingPlayback.playing == kept.playing,
+                  TranscriptReview.find(item.id, in: model.history)?.text == item.text else {
+                throw VoiceError.message("Read-only transcript review changed independent work or opened other words.")
+            }
+            shots.append(try save(try snapshot(content), id: "transcript-review-" + name,
+                title: "Full transcript review, " + name + " window",
+                detail: "The existing Home/Meetings History door attaches the actual sheet for a long saved transcript while Dictate is busy. Full text scrolls; draft, original, selection, reading and recording playback stay unchanged.",
+                file: "page-history-transcript-review-\(name)-\(theme).png", to: output))
+            let done = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
+                timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: sheet.windowNumber, context: nil,
+                characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36)!
+            guard sheet.performKeyEquivalent(with: done) else { throw VoiceError.message("Transcript review did not handle Done.") }
+            let closed = Date().addingTimeInterval(3)
+            repeat { settle(root, seconds: 0.1) } while window.attachedSheet != nil && Date() < closed
+            guard window.attachedSheet == nil, model.transcript == kept.draft,
+                  model.rawTranscript == kept.raw, model.historyLibrary.selected == kept.selected,
+                  model.phase == .recording else {
+                throw VoiceError.message("Done failed to close only the transcript review.")
+            }
+        }
+        let original = TranscriptReview(transcript: item, version: .original)
+        guard original.text == item.rawText,
+              TranscriptExport.data(for: item, version: .original) == Data(original.text.utf8),
+              TranscriptReview.find(UUID(), in: model.history) == nil else {
+            throw VoiceError.message("Original review/export lost wording or a missing History ID opened another transcript.")
+        }
+        let host = NSHostingView(rootView: TranscriptReviewView(model: model, review: original, done: {}))
+        host.frame = NSRect(x: 0, y: 0, width: 640, height: 560)
+        let window = offscreenWindow(size: host.frame.size, styleMask: [.borderless])
+        defer { window.contentView = nil; window.close() }
+        window.contentView = host; settle(host)
+        shots.append(try save(try snapshot(host), id: "transcript-review-original", title: "Transcript review, original wording",
+            detail: "The production review on Original wording. Copy explicitly names current text; Export original uses the exact original UTF-8 bytes. No playback, copy or export is started by opening it.",
+            file: "page-history-transcript-review-original-\(theme).png", to: output))
+        return shots
     }
 
     /// Home at 1.35 times its text in the minimum window's content column. SwiftUI's text styles do
@@ -1314,8 +1570,12 @@ enum SurfaceGallery {
         if let index = pass.pages.firstIndex(where: { $0.route == "speak" }) { pass.pages[index].shots += try renderReadStates(to: output) }
         if let index = pass.pages.firstIndex(where: { $0.route == "dictate" }) { pass.pages[index].shots += dictate.shots }
         if let index = pass.pages.firstIndex(where: { $0.route == "meeting" }) { pass.pages[index].shots += [completed.meeting, try renderMeetingKept(to: output)] }
-        if let index = pass.pages.firstIndex(where: { $0.route == "history" }) { pass.pages[index].shots.append(completed.history) }
+        if let index = pass.pages.firstIndex(where: { $0.route == "history" }) {
+            pass.pages[index].shots += [completed.history, try renderResultReuse(to: output)]
+        }
         if let index = pass.pages.firstIndex(where: { $0.route == "readback" }) { pass.pages[index].shots += try renderSnapTalkStates(to: output) }
+        if let index = pass.pages.firstIndex(where: { $0.route == "personas" }) { pass.pages[index].shots.append(try renderPersonaVoiceRefusal(to: output)) }
+        pass.panels += try renderTimerSurfaces(to: output)
         pass.checks += dictate.checks + completed.checks
         pass.menus = menus()
         pass.entries = entries() + menuEntries
@@ -1486,7 +1746,10 @@ enum SurfaceGallery {
         pages[homeIndex].shots += try renderHomeChrome(to: output) + renderHomeStates(to: output)
             + [renderHomeLargerText(to: output), renderHomeSavedPhotos(to: output)]
         let review = try checkHomeReview(to: output)
-        if let history = pages.firstIndex(where: { $0.route == "history" }) { pages[history].shots.append(review.shot) }
+        if let history = pages.firstIndex(where: { $0.route == "history" }) {
+            pages[history].shots.append(review.shot)
+            pages[history].shots += try renderTranscriptReviewStates(to: output)
+        }
         guard model.hasCaptureRecovery, model.canRetry, model.canDiscardCaptureRecovery,
               try Data(contentsOf: audio) == audioBytes, try Data(contentsOf: journal) == journalBytes else {
             throw VoiceError.message("Visiting Home or History changed the pending recording or its recovery controls.")
@@ -1551,6 +1814,25 @@ enum SurfaceGallery {
                     file: "page-home-hint-\(hint)-\(name)-\(theme).png", to: output))
             }
         }
+        #if !APP_STORE
+        let updates = WorkbenchUpdates.shared
+        defer { updates.finishUpdateSession() }
+        updates.receiveOffer(version: "9.0.1", summary: "Follow your words live and keep conversations together.", downloaded: true, reply: { _ in })
+        for collapsed in [false, true] {
+            let window = offscreenWindow(size: SurfaceGallery.sizes[1].size, styleMask: [.titled, .closable, .fullSizeContentView])
+            defer { window.contentViewController = nil; window.close() }
+            window.titlebarAppearsTransparent = true; window.titleVisibility = .hidden
+            window.contentViewController = NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard,
+                readback: sessionReadback, snap: snap, sidebarCollapsed: collapsed, sidebarHint: collapsed ? "update" : nil))
+            window.setContentSize(SurfaceGallery.sizes[1].size)
+            let frame = window.contentView?.superview ?? window.contentView!
+            settle(frame)
+            let suffix = collapsed ? "collapsed" : "expanded"
+            shots.append(try save(try snapshot(frame), id: "update-" + suffix, title: "Available update, " + suffix,
+                detail: "Synthetic release, existing sidebar action. Nothing is checked, downloaded or installed.",
+                file: "page-home-update-\(suffix)-\(theme).png", to: output))
+        }
+        #endif
         let host = NSHostingView(rootView: stage.localProfileView)
         let window = offscreenWindow(size: NSSize(width: 470, height: 370), styleMask: [.borderless])
         window.contentView = host
@@ -1693,7 +1975,24 @@ enum SurfaceGallery {
         jobs.cancel()
         try wait("the running task to stop") { !jobs.isBusy }
         library.setSelected([])
+        shots.append(try renderResultReuse(to: output))
         return shots
+    }
+
+    /// Mount native result actions in an invisible window, as the real History
+    /// page does. Detached hosting views do not draw AppKit button labels.
+    func renderResultReuse(to output: URL) throws -> SurfaceGallery.Shot {
+        let preview = NSHostingView(rootView: HandoffResultPreview(
+            text: "Follow-up for Sam\n\nWe agreed to review the pilot on Friday.\nSam will share the revised notes before the review.",
+            context: "Synthetic follow-up", copyText: {}, readAloud: {}).padding(16).workbenchTheme())
+        let window = offscreenWindow(size: NSSize(width: 620, height: 230), styleMask: [.borderless])
+        defer { window.contentView = nil; window.close() }
+        window.contentView = preview
+        window.appearance = NSAppearance(named: theme == "dark" ? .darkAqua : .aqua)
+        settle(preview)
+        return try save(snapshot(preview), id: "state-result-reuse", title: "History, saved result reuse",
+            detail: "The reviewed assistant result has Copy result and Read aloud. Both use these exact words; reading starts only from Read.",
+            file: "page-history-state-result-reuse-\(theme).png", to: output)
     }
 
     // MARK: Image preview
@@ -1769,11 +2068,21 @@ enum SurfaceGallery {
     /// live data or provider runs. Recording is a presentation-only override in the same view.
     func renderSnapTalkStates(to output: URL) throws -> [SurfaceGallery.Shot] {
         var shots: [SurfaceGallery.Shot] = []
-        for state in ["review", "processing", "recovery", "unavailable", "unsaved", "recording", "settings", "sessions", "deleted"] {
+        for state in ["review", "processing", "recovery", "unavailable", "unsaved", "recording", "settings", "sessions", "deleted", "narration", "narration-not-ready"] {
             let base = home.appendingPathComponent("SnapTalk gallery \(theme) \(state)")
             let root = try Self.makeSession(in: base, count: 39)
             var manifest = try ReadbackStore.load(from: root)
             if state == "processing" { manifest.sections[0].status = .queued }
+            // A section saved without narration: Record narration sits beside the speech model's line
+            // and its Models… door, and says so when the model could not be prepared (#134 follow-up).
+            if state.hasPrefix("narration") {
+                manifest.sections[0].audio = nil; manifest.sections[0].originalTranscript = nil; manifest.sections[0].transcript = nil
+            }
+            if state == "narration-not-ready" {
+                model.ready = false; model.preparing = false; model.modelFailure = "Check your connection and try again."
+                model.modelMessage = "The speech model couldn’t be prepared"
+            }
+            defer { if state == "narration-not-ready" { model.ready = true; model.modelFailure = nil; model.modelMessage = RecognitionConfiguration().summary } }
             if state == "recovery" {
                 manifest.sections[0].status = .failed
                 manifest.sections[0].failure = "Transcription stopped. Your screenshot and original recording are saved; retry when ready."
@@ -2000,6 +2309,8 @@ enum SurfaceGallery {
             PanelState(id: "speech-not-ready", title: "Speech not ready", detail: "First run while the on-device model prepares.", readback: readback,
                        apply: { model.ready = false; model.preparing = true; model.modelMessage = "Preparing speech · first setup may take a few minutes" },
                        reset: { model.ready = true; model.preparing = false; model.modelMessage = RecognitionConfiguration().summary }),
+            PanelState(id: "writing-model-download", title: "Writing model downloading", detail: "The app downloading an Ollama model: its one line in the readiness row with Open Models…, the same line Home and Dictate show.", readback: readback,
+                       apply: { model.cleanupModels.presentDownload("gemma3:1b", fraction: 0.42) }, reset: { model.cleanupModels.cancel() }),
             PanelState(id: "dictating", title: "Dictating", detail: "Recording for 14 seconds.", readback: readback,
                        apply: { model.phase = .recording; model.elapsed = 14 }, reset: { model.phase = .idle; model.elapsed = 0 }),
             PanelState(id: "combined-live", title: "Drawing, presenting, Persona and timer",
@@ -2263,6 +2574,49 @@ enum SurfaceGallery {
         settle(view)
         return try save(try snapshot(view), id: "position-control", title: "Position…",
                         detail: "The eight docks with bottom centre current and selected, and Reset position.", file: "toolbar-position-control-\(theme).png", to: output)
+    }
+
+    // MARK: Timer
+
+    /// The Timer's window with its hover controls shown, and Position… as the Timer opens it: the
+    /// toolbar's eight-dock control without Reset position (#134 Fit rule 1). The countdown is
+    /// idle and synthetic; nothing starts, and no timer window opens on screen.
+    func renderTimerSurfaces(to output: URL) throws -> [SurfaceGallery.Shot] {
+        var shots: [SurfaceGallery.Shot] = []
+        let window = NSHostingView(rootView: stage.timerWindowPreview)
+        let timer = offscreenWindow(size: NSSize(width: 570, height: 330), styleMask: [.titled, .closable, .resizable])
+        timer.contentView = window
+        defer { timer.contentView = nil; timer.close() }
+        settle(window)
+        shots.append(try save(try snapshot(window), id: "timer-window", title: "Timer window",
+                              detail: "The window's own controls: the next step, Reset, Position… and Hide. Position… opens the toolbar's compact control.",
+                              file: "timer-window-\(theme).png", to: output))
+        let control = NSHostingView(rootView: stage.timerPositionControlPreview)
+        let host = offscreenWindow(size: control.fittingSize, styleMask: [.borderless])
+        host.isOpaque = false; host.backgroundColor = .clear
+        host.contentView = control
+        defer { host.contentView = nil; host.close() }
+        settle(control)
+        shots.append(try save(try snapshot(control), id: "timer-position-control", title: "Timer · Position…",
+                              detail: "The eight docks the floating toolbar's Position… has, from the Timer menu, the panel's Timer Options, Home and the timer window; no Reset position, since the Timer has none.",
+                              file: "timer-position-control-\(theme).png", to: output))
+        return shots
+    }
+
+    // MARK: Persona microphone refusal
+
+    /// Persona with React to my voice refused on a synthetic microphone: the switch stays off and
+    /// the reason shows under it with Microphone Settings…, as Dictate's refusal does (#134 Fit rule 2).
+    func renderPersonaVoiceRefusal(to output: URL) throws -> SurfaceGallery.Shot {
+        let size = SurfaceGallery.sizes[0].size
+        let window = homeWindow(size: size)
+        defer { window.contentViewController = nil; window.close() }
+        let restore = stage.showSyntheticPersonaVoiceRefusal()
+        defer { restore() }
+        let (rep, drawn) = try renderPage("personas", in: window)
+        return try save(rep, id: "voice-refused", title: "React to my voice refused, \(Int(drawn.width)) × \(Int(drawn.height)) pt",
+                        detail: "The switch stays off; Microphone access is off shows beside it with Microphone Settings…, the same words as Dictate.",
+                        file: "page-personas-voice-refused-\(theme).png", to: output)
     }
 
     /// Free placement through the production host (#163, #134), with its panel invisible. Every
@@ -3278,7 +3632,8 @@ enum SurfaceGallery {
                  E(surface: "Meetings page", label: "Review transcript", leads: "Page: history, showing the exact completed transcript", route: "history"),
                  E(surface: "Handoff review", label: "Copy instructions or Start task", leads: "Page: history, revealing the task it prepared", route: "history"),
                  page("Remember correction", "Open Dictionary", "dictionary"),
-                 page("History page", "Transcript · Open", "dictate"), page("History page", "Transcript · More… · Read aloud", "speak"),
+                 page("History page", "Transcript · More… · Open in Dictate", "dictate"), page("History page", "Transcript · More… · Read aloud", "speak"),
+                 page("History page", "Result · Read aloud", "speak"),
                  action("History page", "Connections…", "Shows provider connections over History"),
                  action("History page", "Hand off…", "Opens the handoff review for the selected items"),
                  action("History page", "Result · Review suggested details…", "Reviews an assistant's suggested details for the task's transcript"),
@@ -3503,4 +3858,27 @@ private final class SilentMeetingCapture: MeetingCapture {
     func requestStop() {}
     var elapsedSeconds: Double { 0 }
     var stopReason: String? { nil }
+}
+
+private struct UpdateNativeAcceptanceView: View {
+    @ObservedObject var updates: WorkbenchUpdates
+    @State private var hovered: String?
+    @State private var busy = false
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("Synthetic update acceptance").font(.title2)
+            Text("The real sidebar action. No network, download or application replacement.").font(.callout)
+            HStack(alignment: .top, spacing: 24) {
+                VStack(alignment: .leading, spacing: 0) {
+                    WorkbenchUpdateSidebar(updates: updates, collapsed: false, hovered: $hovered)
+                }.frame(width: SidebarMetrics.expandedWidth - 2 * SidebarMetrics.inset)
+                VStack(alignment: .leading, spacing: 12) {
+                    Toggle("Simulate active recording", isOn: $busy)
+                        .onChange(of: busy) { _, value in updates.activity = { WorkbenchUpdateActivity(voice: value) } }
+                    Text(updates.status).font(.callout).foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+        }.padding(24).workbenchTheme()
+    }
 }

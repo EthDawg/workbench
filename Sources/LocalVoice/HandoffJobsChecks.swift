@@ -161,6 +161,33 @@ enum HandoffJobsChecks {
         try check(manual.contains(phrase) && manual.contains("Original wording:") && manual.contains("Attach these selected image"), "manual fallback includes selected words and exact attachment step")
         let connected = HandoffJobStore.prompt(snapshot: snapshot, skill: followUpText, folder: folder, manual: false)
         try check(connected.contains("format requested by the task") && connected.contains("REFERENCE"), "connected task output and source roles explicit")
+        // Resolve the actual links supplied to an assistant from the documents
+        // each route asks it to produce, rather than checking a path fragment.
+        func imageLinks(in prompt: String) throws -> [String] {
+            let expression = try NSRegularExpression(pattern: #"\]\(([^)]+)\)"#)
+            let text = prompt as NSString
+            return expression.matches(in: prompt, range: NSRange(location: 0, length: text.length))
+                .map { text.substring(with: $0.range(at: 1)) }
+                .filter { $0.contains("inputs/") }
+        }
+        func linkedImage(_ link: String, from document: String) throws -> Data {
+            let directory = folder.appendingPathComponent(document).deletingLastPathComponent()
+            return try Data(contentsOf: directory.appendingPathComponent(link).standardizedFileURL)
+        }
+        let manualLinks = try imageLinks(in: manual)
+        let directLinks = manualLinks.filter { $0.hasPrefix("../inputs/") }
+        let nestedLinks = manualLinks.filter { $0.hasPrefix("../../inputs/") }
+        try check(directLinks.count == 1 && nestedLinks.count == 1, "manual prompt supplies links for direct and nested output documents")
+        try check(try linkedImage(directLinks[0], from: "outputs/follow-up.md") == image,
+                  "manual source link resolves to the exact frozen image from outputs")
+        try check(try linkedImage(nestedLinks[0], from: "outputs/review/follow-up.md") == image,
+                  "nested manual source-link example resolves to the exact frozen image")
+        let connectedLinks = try imageLinks(in: connected)
+        try check(connectedLinks.count == 1 && connectedLinks[0] == snapshot.items[1].images[0],
+                  "connected source links retain the root-relative inventory path")
+        try check(try linkedImage(connectedLinks[0], from: "result.md") == image,
+                  "connected result source link resolves to the exact frozen image")
+        try HandoffJobStore.verify(first, root: folder); passed += 1
         try check(snapshot.items[0].captureNotes == sources[0].captureNotes && connected.contains("The selected app stopped producing audio."),
                   "recording gaps survive frozen inputs and provider prompt without modifying source words")
 
@@ -633,7 +660,7 @@ enum HandoffJobsChecks {
         let resultURL = doors.folder(madeFrom).appendingPathComponent("result.md")
         try HandoffJobStore.write(Data([0xFF, 0xFE, 0xFD]), to: resultURL)
         await doors.loadTaskFiles([madeFrom])
-        try check(doors.files(madeFrom)?.resultReadable == true && doors.result(madeFrom) == nil, "a result that is not UTF-8 text is not shown as text")
+        try check(doors.files(madeFrom)?.resultReadable == false && doors.result(madeFrom) == nil, "a result that is not UTF-8 text is not shown as text")
         doors.showResult(madeFrom)
         try check(doors.error?.hasPrefix("This task’s result can’t be opened") == true, "Open result reports a result that is not text instead of doing nothing")
         doors.error = nil
@@ -652,6 +679,7 @@ enum HandoffJobsChecks {
         try check(doors.inputImageURL(madeFrom, path: frozenImage) == nil && doors.files(madeFrom)?.inputs.items[1].images == [frozenImage]
                   && doors.files(madeFrom)?.imageBytes == nil && doors.files(madeFrom)?.imageURLs.isEmpty == true,
                   "a missing frozen image is unavailable while its input stays listed")
+        passed += try await HistoryResultReuseChecks.run(root: root.appendingPathComponent("Result reuse"))
         return ["HANDOFF_JOBS_CHECKS_OK: \(passed) checks"]
     }
 }

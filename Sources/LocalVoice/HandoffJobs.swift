@@ -72,7 +72,7 @@ struct HandoffJobInputs: Equatable {
 
 /// What a task's own folder holds, read away from the main thread so History
 /// never waits on the disk: its frozen inputs, the sizes of the images it
-/// recorded, and whether its result is an ordinary readable file.
+/// recorded, and its bounded, validated result text. Views never reopen result.md.
 struct HandoffTaskFiles: Equatable {
     var inputs: HandoffJobInputs
     /// Bytes of each recorded image in order; nil when one is missing or unsafe.
@@ -80,6 +80,8 @@ struct HandoffTaskFiles: Equatable {
     /// The recorded images that passed the checks, by their recorded path.
     var imageURLs: [String: URL] = [:]
     var resultReadable: Bool
+    var resultText: String? = nil
+    var resultProblem: String? = nil
 
     /// Kind, size, date, permissions and identity of the files this reads, so
     /// unchanged tasks are skipped and any change is read again.
@@ -109,11 +111,9 @@ struct HandoffTaskFiles: Equatable {
             sizes?.append(size)
             urls[path] = url
         }
-        let result = folder.appendingPathComponent("result.md")
-        let values = try? result.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey, .isSymbolicLinkKey, .isReadableKey])
-        let readable = values?.isRegularFile == true && values?.isSymbolicLink != true && values?.isReadable == true
-            && (values?.fileSize ?? Int.max) <= 2_000_000
-        return .init(inputs: inputs, imageBytes: inputs.problem == nil ? sizes : nil, imageURLs: urls, resultReadable: readable)
+        let result = HandoffResultFile.read(directory: directory, folder: folder)
+        return .init(inputs: inputs, imageBytes: inputs.problem == nil ? sizes : nil, imageURLs: urls,
+                     resultReadable: result.text != nil, resultText: result.text, resultProblem: result.problem)
     }
 }
 
@@ -396,10 +396,12 @@ enum HandoffJobStore {
             }
             if !item.images.isEmpty {
                 parts.append("Selected image files (in this order):\n" + item.images.map { folder.appendingPathComponent($0).path }.joined(separator: "\n"))
-                parts.append("Link this source in the result using these relative Markdown image links: " + item.images.map { "[" + item.title.replacingOccurrences(of: "]", with: "") + "](" + $0 + ")" }.joined(separator: ", "))
+                let linkPrefix = manual ? "../" : ""
+                parts.append("Link this source in the result using these relative Markdown image links: " + item.images.map { "[" + item.title.replacingOccurrences(of: "]", with: "") + "](" + linkPrefix + $0 + ")" }.joined(separator: ", "))
             }
         }
-        if manual && snapshot.items.contains(where: { !$0.images.isEmpty }) {
+        if manual, let firstImage = snapshot.items.lazy.flatMap(\.images).first {
+            parts.append("The source links above are relative to a document directly inside outputs/. Adjust links to the location of each output document if you use subfolders. For example, from outputs/review/follow-up.md, link the first image as [Source](../../" + firstImage + "). Paths in selection.json and handoff.json remain relative to the selected work folder.")
             parts.append("Attach these selected image files before asking the assistant to use them. The images have not been uploaded by Workbench.")
         }
         return parts.joined(separator: "\n\n")
@@ -432,6 +434,12 @@ final class HandoffJobsModel: ObservableObject {
     private let pasteboard: NSPasteboard
     private var running: Task<Void, Never>?
     private var fileStamps: [UUID: String] = [:]
+    private var fileLoadRequests: [UUID: UUID] = [:]
+    /// An async seam for deterministic out-of-order read checks. Production reads
+    /// remain inside loadTaskFiles' detached task.
+    var taskFileReader: @Sendable (HandoffJob, URL, URL) async -> HandoffTaskFiles = {
+        HandoffTaskFiles.read($0, directory: $1, folder: $2)
+    }
     var isBusy: Bool { activeID != nil }
     /// The installed CLI and the real clock, except in the surface gallery.
     var runner = HandoffRunner.installedCLI
@@ -514,19 +522,33 @@ final class HandoffJobsModel: ObservableObject {
     /// since the last read, then publishes them together. Unchanged tasks cost
     /// a few file-status calls there and nothing here.
     func loadTaskFiles(_ jobs: [HandoffJob]) async {
-        let directory = self.directory, known = fileStamps
+        let directory = self.directory, known = fileStamps, reader = taskFileReader
+        let request = UUID()
+        for job in jobs { fileLoadRequests[job.id] = request }
         let changed = await Task.detached(priority: .utility) { () -> [(UUID, String, HandoffTaskFiles)] in
-            jobs.compactMap { job in
+            var changes: [(UUID, String, HandoffTaskFiles)] = []
+            for job in jobs {
                 let folder = directory.appendingPathComponent(job.id.uuidString)
                 let stamp = HandoffTaskFiles.stamp(directory: directory, folder: folder)
-                guard known[job.id] != stamp else { return nil }
-                return (job.id, stamp, HandoffTaskFiles.read(job, directory: directory, folder: folder))
+                guard known[job.id] != stamp else { continue }
+                let value = await reader(job, directory, folder)
+                // A replacement during a read must not publish mixed versions.
+                if stamp == HandoffTaskFiles.stamp(directory: directory, folder: folder) {
+                    changes.append((job.id, stamp, value))
+                } else {
+                    changes.append((job.id, "", .init(inputs: .init(problem: HandoffJobInputs.replaced),
+                        imageBytes: nil, resultReadable: false,
+                        resultProblem: "The task files changed while being read. Return to History to reload them.")))
+                }
             }
+            return changes
         }.value
-        guard !changed.isEmpty else { return }
+        guard !Task.isCancelled else { return }
         var files = taskFiles
-        for (id, stamp, value) in changed { fileStamps[id] = stamp; files[id] = value }
-        taskFiles = files
+        for (id, stamp, value) in changed where fileLoadRequests[id] == request {
+            fileStamps[id] = stamp; files[id] = value
+        }
+        if files != taskFiles { taskFiles = files }
     }
     /// What was last read from this task's folder; nil until it has been read.
     func files(_ job: HandoffJob) -> HandoffTaskFiles? { taskFiles[job.id] }
@@ -541,12 +563,24 @@ final class HandoffJobsModel: ObservableObject {
         return await Task.detached(priority: .userInitiated) { Self.readResult(directory: directory, folder: folder) }.value
     }
     nonisolated private static func readResult(directory: URL, folder: URL) -> String? {
-        guard HandoffJobStore.isRealFolder(directory), HandoffJobStore.isRealFolder(folder) else { return nil }
-        let url = folder.appendingPathComponent("result.md")
-        guard let size = try? url.resourceValues(forKeys: [.fileSizeKey, .isSymbolicLinkKey]), size.isSymbolicLink != true,
-              (size.fileSize ?? Int.max) <= 2_000_000 else { return nil }
-        return try? String(contentsOf: url, encoding: .utf8)
+        HandoffResultFile.read(directory: directory, folder: folder).text
     }
+
+    /// Each term must match one task. A parent card can match an earlier task,
+    /// but words spread across separate results never produce a false match.
+    func matchesResult(_ job: HandoffJob, query: String, includingGrouped: Bool = true) -> Bool {
+        let terms = query.split(whereSeparator: \.isWhitespace).map(String.init)
+        let candidates = includingGrouped ? [job] + otherReviewJobs(job) : [job]
+        return candidates.contains { candidate in
+            let files = files(candidate)
+            return terms.allSatisfy { term in
+                candidate.title.localizedCaseInsensitiveContains(term)
+                    || files?.inputs.task.localizedCaseInsensitiveContains(term) == true
+                    || (candidate.status == .completed && files?.resultText?.localizedCaseInsensitiveContains(term) == true)
+            }
+        }
+    }
+
     func copy(_ job: HandoffJob) {
         error = nil
         do {

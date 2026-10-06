@@ -374,7 +374,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
     var liveControlsGeneration: UUID { cameraOwnsSlot ? camera.visit : overlayGeneration }
     private let sessionPanelFactory: (() -> any PersonaSessionDisplaying)?
     private let sessionHUDEnabled: Bool
-    private let voiceAccess: PersonaVoiceAccess?
+    private var voiceAccess: PersonaVoiceAccess?
     private var voice: (any PersonaVoiceSource)?
     private var archiveVersion = 2
     private let imageCache = NSCache<NSString, NSImage>()
@@ -1341,6 +1341,8 @@ final class PersonaLibrary: NSObject, ObservableObject {
         if enabled && access.permission() == .denied {
             rememberVoiceRing(false); notice = PersonaVoiceError.microphoneDenied.localizedDescription; return
         }
+        // Allowed since: the refusal and its door leave with the switch turning on.
+        if enabled, voiceRefusal != nil { notice = nil }
         rememberVoiceRing(enabled)
     }
     /// The ring's colour, remembered for next time. Changing it never opens
@@ -1359,6 +1361,23 @@ final class PersonaLibrary: NSObject, ObservableObject {
         if voicePermissionPending { return "Waiting for microphone access" }
         if let voiceDevice { return "Listening · \(voiceDevice)" }
         return session == nil ? "Listens while a persona shows" : "Listens while the selected overlay shows"
+    }
+    /// The microphone refusal while it is the notice: the switch stays off and the reason shows
+    /// beside it with Microphone Settings…, on the page and in the live menus (#134 Fit rule 2).
+    var voiceRefusal: String? {
+        guard voiceAccess != nil, let notice, notice == PersonaVoiceError.microphoneDenied.localizedDescription else { return nil }
+        return notice
+    }
+    /// Microphone Settings…: opens Privacy & Security › Microphone, as Dictate's does.
+    func openMicrophoneSettings() { voiceAccess?.openMicrophoneSettings() }
+    /// Swaps the microphone access for renders and checks. The ring stops and turns off first,
+    /// so no real microphone outlives its owner; the earlier access comes back the same way.
+    func replaceVoiceAccess(_ access: PersonaVoiceAccess?) -> PersonaVoiceAccess? {
+        let previous = voiceAccess
+        stopVoice(); voiceRing = false; voicePermissionPending = false
+        if notice == PersonaVoiceError.microphoneDenied.localizedDescription { notice = nil }
+        voiceAccess = access
+        return previous
     }
     private func rememberVoiceRing(_ enabled: Bool) {
         voiceRing = enabled
@@ -1672,14 +1691,17 @@ final class PersonaLibrary: NSObject, ObservableObject {
             }
         }
         // One switch for the voice ring in both live menus. Its second line
-        // names the microphone while it listens.
-        func voiceSwitch() -> NSMenuItem? {
-            guard voiceAccess != nil else { return nil }
+        // names the microphone while it listens. A refused microphone keeps the
+        // switch off and says so under it, with the door Dictate offers.
+        func voiceSwitch() -> [NSMenuItem] {
+            guard voiceAccess != nil else { return [] }
             let item = StageMenuAction("React to My Voice · Uses Microphone", checked: voiceRing) { [weak self] in
                 guard let self, self.overlayGeneration == generation else { return }; self.setVoiceRing(!self.voiceRing)
             }
             if #available(macOS 14.4, *), let status = voiceStatus { item.subtitle = status }
-            return item
+            guard let refusal = voiceRefusal else { return [item] }
+            return [item, StageMenuAction(refusal, enabled: false) {},
+                    StageMenuAction("Microphone Settings…") { [weak self] in self?.openMicrophoneSettings() }]
         }
         // The ring's colour, chosen as Draw's ink colour is: the presets,
         // black, and macOS's own picker for any other.
@@ -1771,7 +1793,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
             menu.addSubmenu("Add Overlay", items: state.candidates.map { action($0.label, .add($0.id), enabled: state.instances.count < PersonaSessionController.maximumOverlays) })
             menu.addItem(.separator())
             menu.addItem(action(state.phase == .paused ? "Show Again" : "Hide All Temporarily", .pauseResume))
-            if let item = voiceSwitch() { menu.addItem(item) }; if let item = voiceColour() { menu.addItem(item) }
+            voiceSwitch().forEach(menu.addItem); if let item = voiceColour() { menu.addItem(item) }
             menu.addItem(action("Save Layout for Next Time", .saveLayout, enabled: state.canSaveLayout && state.hasUnsavedLayout))
             menu.addItem(action("End Overlays", .end))
         } else if overlayVisible, let current = displayedID {
@@ -1805,7 +1827,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
                     }
                 })
             }
-            if let item = voiceSwitch() { menu.addItem(item) }; if let item = voiceColour() { menu.addItem(item) }
+            voiceSwitch().forEach(menu.addItem); if let item = voiceColour() { menu.addItem(item) }
             menu.addItem(endCard())
         } else {
             if let card = shownCard {
@@ -1816,7 +1838,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
                     self.showAgain()
                 })
                 cardChanges().forEach(menu.addItem)
-                if let item = voiceSwitch() { menu.addItem(item) }; if let item = voiceColour() { menu.addItem(item) }
+                voiceSwitch().forEach(menu.addItem); if let item = voiceColour() { menu.addItem(item) }
                 menu.addItem(endCard())
             } else {
                 menu.addItem(StageMenuAction("Show Selected Persona", enabled: !visibleItems.isEmpty) { [weak self] in

@@ -21,12 +21,12 @@ struct TranscriptRemoval {
     let includesRecording: Bool
 }
 
-/// A transcript list's page-level sheets: the original wording, the details
+/// A transcript list's page-level sheets: read-only transcript review, the details
 /// editor and the removal confirmation that names a saved recording. They sit
 /// on the page, not the row, so a row leaving a lazy list cannot close them.
 struct TranscriptHistoryDialogs: ViewModifier {
     @ObservedObject var model: AppModel
-    @Binding var original: Transcript?
+    @Binding var review: TranscriptReview?
     @Binding var details: Transcript?
     @Binding var removal: TranscriptRemoval?
     @Binding var recording: Transcript?
@@ -34,12 +34,8 @@ struct TranscriptHistoryDialogs: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .sheet(item: $original) { item in
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("Original transcript").font(.title2)
-                    ScrollView { Text(item.rawText ?? item.text).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
-                    HStack { Text(item.date, format: .dateTime.month().day().hour().minute()).foregroundStyle(.secondary); Spacer(); Button("Done") { original = nil }.keyboardShortcut(.defaultAction) }
-                }.padding(24).frame(width: 560, height: 380)
+            .sheet(item: $review) { item in
+                TranscriptReviewView(model: model, review: item) { review = nil }
             }
             .sheet(item: $recording) { item in
                 MeetingRecordingReviewView(meetings: model.meetings, playback: model.meetings.recordingPlayback,
@@ -73,7 +69,7 @@ struct TranscriptHistoryRow: View {
     /// The captures to tell identical times apart among. Passing only those in
     /// the same second keeps a long history from being scanned for every row.
     var history: [Transcript]
-    @Binding var original: Transcript?
+    @Binding var review: TranscriptReview?
     @Binding var details: Transcript?
     @Binding var removal: TranscriptRemoval?
     @Binding var recording: Transcript?
@@ -125,11 +121,12 @@ struct TranscriptHistoryRow: View {
                 }
                 HStack(spacing: 12) {
                     Button("Copy") { model.copyCapture(item) }.accessibilityLabel(CaptureHistoryAccessibility.label("Copy", context: context))
-                    Button("Open") { model.openTranscript(item) }
-                        .accessibilityLabel(CaptureHistoryAccessibility.label("Open", context: context))
+                    Button("Review transcript") { review = TranscriptReview(transcript: item) }
+                        .accessibilityLabel(CaptureHistoryAccessibility.label("Review transcript", context: context))
                     Button("Details…") { details = item }.accessibilityLabel(CaptureHistoryAccessibility.label("Edit details", context: context))
-                    Button("Original") { original = item }.accessibilityLabel(CaptureHistoryAccessibility.label("Show original", context: context))
+                    Button("Original") { review = TranscriptReview(transcript: item, version: .original) }.accessibilityLabel(CaptureHistoryAccessibility.label("Show original", context: context))
                     Menu("More…") {
+                        Button("Open in Dictate") { model.openTranscript(item) }
                         Button("Read aloud") { model.importReading(item.text, from: .transcript) }
                         Button("Save prompt") { model.savePrompt(item.text) }
                         Button("Export cleaned text…") { model.exportCapture(item, version: .cleaned) }

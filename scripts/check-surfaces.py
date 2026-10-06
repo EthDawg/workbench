@@ -128,7 +128,7 @@ ENTRY_POINTS = [
     ('StageKit/Persona.swift', 'PersonaLibrary.makeToolbarPickerMenu', 'floating toolbar Persona picker', 'controls'),
     ('StageKit/DemoPresentation.swift', 'LiveSettings', 'Present live window', 'controls'),
     # Position… in that menu opens the toolbar's placement control (#163).
-    ('LocalVoice/ToolbarPositionControl.swift', 'ToolbarPositionControl', 'floating toolbar position control', 'controls'),
+    ('StageKit/FloatingPositionControl.swift', 'FloatingPositionControl', 'floating position control', 'controls'),
     # The same window's live controls: the no-speech cue, and a result's own controls, which the
     # toolbar reveals in place of its row (#134 T4). Recording, narration and reading are the row's.
     ('LocalVoice/FloatingToolbar.swift', 'WorkbenchFloatingContent', 'floating toolbar live controls', 'page'),
@@ -148,6 +148,7 @@ ENTRY_POINTS = [
     ('StageKit/LocalPersonaProfile.swift', 'LocalPersonaProfileView', 'local profile', 'page'),
     # The window's own controls around the pages: the sidebar column.
     ('LocalVoice/WorkbenchHome.swift', 'WorkbenchHome.body', 'window sidebar', 'controls'),
+    ('LocalVoice/WorkbenchDesktopChrome.swift', 'WorkbenchUpdateSidebar', 'window sidebar', 'controls'),
     # Capability pages own their options (Grammar: options live with their
     # capability). The page body is scanned in mode 'options', so its transient
     # controls (editor buttons, selection, the current draft) stay out while a
@@ -183,6 +184,7 @@ ENTRY_POINTS = [
     ('LocalVoice/HistoryView.swift', 'HistoryInputChip', 'history page', 'doors'),
     ('LocalVoice/CaptureHistoryView.swift', 'TranscriptHistoryRow', 'history page', 'doors'),
     ('LocalVoice/HistorySelectionControls.swift', 'HandoffJobCard', 'history page', 'doors'),
+    ('LocalVoice/HistorySelectionControls.swift', 'HandoffResultPreview', 'history page', 'doors'),
     ('LocalVoice/HistorySelectionControls.swift', 'HistorySelectionControls', 'history page', 'doors'),
     ('LocalVoice/HistorySelectionControls.swift', 'TranscriptMetadataEditor', 'history page', 'doors'),
     ('LocalVoice/DemoLibraryView.swift', 'DemoLibraryView', 'library page', 'doors'),

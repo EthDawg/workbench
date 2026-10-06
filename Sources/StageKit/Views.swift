@@ -8,7 +8,6 @@ private let inkAccent = Workbench.accent
 struct ControlCenter: View {
     @ObservedObject var app: AppCoordinator
     @ObservedObject var settings: SettingsStore
-    @State private var choosingPersonas = false
     private let tabs: [(String, String)] = [("Present", "play.rectangle"), ("Drawing", "pencil.tip"), ("Pointer", "cursorarrow.rays"), ("Boards", "rectangle.on.rectangle"), ("Timer", "timer"), ("Shortcuts", "command")]
     var body: some View {
         HStack(spacing: 0) {
@@ -65,7 +64,7 @@ struct ControlCenter: View {
                         .accessibilityAddTraits(.isHeader)
                     Spacer()
                     // In Workbench, Persona is its own page; a second library sheet here was a parallel door.
-                    if !app.embedded { Button { choosingPersonas = true } label: { Label("Persona…", systemImage: "person.crop.rectangle") } }
+                    if !app.embedded { Button { app.choosingPersonas = true } label: { Label("Persona…", systemImage: "person.crop.rectangle") } }
                     HStack(spacing: 6) {
                         Circle().fill(inkAccent).frame(width: 6, height: 6)
                         Text("Ready on \(app.displayCount) \(app.displayCount == 1 ? "display" : "displays")")
@@ -102,7 +101,7 @@ struct ControlCenter: View {
                 }.id(app.selectedTab)
             }
         }.background(inkBackground).tint(inkAccent).workbenchTheme()
-            .sheet(isPresented: $choosingPersonas) { PersonaLibraryView(library: app.demoScenes.personas) }
+            .sheet(isPresented: $app.choosingPersonas) { PersonaLibraryView(library: app.demoScenes.personas) }
     }
     private var present: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -465,7 +464,12 @@ struct ScreenshotHandoffButton: View {
 struct BreakTimerView: View {
     @ObservedObject var app: AppCoordinator
     @ObservedObject var settings: SettingsStore
-    @State private var controlsVisible = false
+    @State private var controlsVisible: Bool
+    /// `controlsShown` starts with the hover-revealed controls at full strength, for renders.
+    init(app: AppCoordinator, settings: SettingsStore, controlsShown: Bool = false) {
+        self.app = app; self.settings = settings
+        _controlsVisible = State(initialValue: controlsShown)
+    }
     var body: some View {
         GeometryReader { geometry in
             VStack(spacing: 12) {
@@ -490,16 +494,11 @@ struct BreakTimerView: View {
                     let transport = TimerTransportAction(app)
                     Button { transport() } label: { Label(transport.transport.title, systemImage: transport.transport.symbol) }
                     Button("Reset") { app.resetTimer() }
-                    Menu {
-                        ForEach(FloatingControlAnchor.allCases) { anchor in
-                            Button { app.setTimerPosition(anchor) } label: {
-                                if app.timerPlacementAnchor == anchor { Label(anchor.title, systemImage: "checkmark") }
-                                else { Text(anchor.title) }
-                            }
-                        }
-                    } label: { Label("Position", systemImage: "arrow.up.and.down.and.arrow.left.and.right") }
+                    // Position…: one compact control with the eight docks, the floating toolbar's
+                    // (#134 Fit rule 1), never a submenu of anchors.
+                    Button { app.showTimerPositionControl() } label: { Label("Position…", systemImage: "arrow.up.and.down.and.arrow.left.and.right") }
                         .accessibilityLabel("Timer position")
-                        .accessibilityHint("Choose one of eight positions on the current display.")
+                        .accessibilityHint("Opens the placement control: arrow keys move between eight docks, Return applies, Escape closes.")
                     Button("Hide") { app.hideTimer() }
                 }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(Color(nsColor: settings.value.timerColor.nsColor).opacity(controlsVisible ? 0.8 : 0.3))
             }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity)
