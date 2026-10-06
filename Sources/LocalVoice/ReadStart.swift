@@ -31,6 +31,21 @@ enum ReadStart {
         }
     }
 
+    /// What the host did with a decision, so a door that gives focus back to the app it was
+    /// opened over does so only when a reading plays there. Every other outcome shows itself in
+    /// Workbench: a stop or cancel on the row and pill, and `page` is the Read page, open with
+    /// its reason (the Replace reading / Keep current review, a refusal, or work that must
+    /// finish first), which another app must not cover.
+    enum Outcome: Equatable { case cancelled, stopped, reading, page }
+    static func outcome(of decision: Decision, started: Bool) -> Outcome {
+        switch decision {
+        case .cancel: return .cancelled
+        case .stop: return .stopped
+        case .read: return started ? .reading : .page
+        case .page: return .page
+        }
+    }
+
     /// What the selection does to Read's draft, under the existing Replace reading / Keep
     /// current rule. The quiet default: an empty or identical draft, or one whose audio was
     /// already made (heard or saved), is replaced and the selection reads at once. A different

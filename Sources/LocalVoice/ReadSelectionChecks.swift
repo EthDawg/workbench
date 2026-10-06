@@ -100,6 +100,14 @@ enum ReadSelectionChecks {
         try check(ReadStart.draft(current: "Heard", incoming: "New", heard: true) == .readNow, "a different draft whose audio was made is replaced and the selection reads")
         try check(ReadStart.draft(current: "Unheard", incoming: "New", heard: false) == .review, "a different draft nobody heard waits behind Replace reading / Keep current")
         try check(ReadStart.draft(current: "  \n", incoming: "New", heard: false) == .readNow, "a whitespace draft is empty")
+        // What a door does with the outcome: focus goes back to the app only while a reading plays;
+        // the Read page, opened with its reason, is never covered.
+        try check(ReadStart.outcome(of: .read("Read this."), started: true) == .reading, "a selection that started reading gives focus back")
+        try check(ReadStart.outcome(of: .read("Read this."), started: false) == .page
+                  && ReadStart.outcome(of: .page, started: false) == .page,
+                  "a selection that opened the Read page instead (review, refusal or work to finish first) leaves the page in front")
+        try check(ReadStart.outcome(of: .stop, started: false) == .stopped && ReadStart.outcome(of: .cancel, started: false) == .cancelled,
+                  "a stop or cancel is shown where you acted and gives nothing back")
 
         // The one Accessibility read: selected text, else the selected range's string; never a
         // secure field, nothing without approval, and no clipboard or window.

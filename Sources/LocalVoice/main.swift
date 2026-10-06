@@ -557,31 +557,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     /// Read key: a reading being made is cancelled, one playing or paused is stopped, else the
     /// front app's selection is read at once with the current voice, else the Read page opens.
     /// The selection is read once, here, like dictation's field is captured at its start; no
-    /// later door reuses it. Returns what it did, so a door can give focus back.
+    /// later door reuses it. Returns what happened, so a door gives focus back only when a
+    /// reading plays; every other outcome is shown in Workbench (ReadStart.Outcome).
     @discardableResult
-    func readStart(from app: NSRunningApplication?) -> ReadStart.Decision {
+    func readStart(from app: NSRunningApplication?) -> ReadStart.Outcome {
         model.toolbarMode = .read
         let reading: ToolbarLiveState.Reading = model.rendering ? .preparing : model.playing ? .playing : model.paused ? .paused : .idle
         let decision = ReadStart.decide(reading: reading) { ReadStart.selectedText(of: app) }
+        var started = false
         switch decision {
         case .cancel: model.cancelReading()
         case .stop: model.stopPlayback()
         case .read(let text):
-            do { model.readSelection(try ReadingSelectionImport(text: text)) }
+            do { started = model.readSelection(try ReadingSelectionImport(text: text)) }
             catch { model.report(error.localizedDescription, on: .read); navigate("speak") }
         case .page: navigate("speak")
         }
-        return decision
+        return ReadStart.outcome(of: decision, started: started)
     }
     /// The pill's Read: the field's app while the toolbar owns the keyboard, else the front app.
     func toolbarRead() { readStart(from: capturePanel.appForReading()) }
     /// The panel's Read row reads the app the panel was opened over, and gives it focus back
-    /// when a selection reads, so the person keeps working while it plays. Read before closing:
-    /// closing the panel expires its field (#162).
+    /// only when a selection is playing, so the person keeps working while it plays. When the
+    /// Read page opened instead (the Replace reading / Keep current review, a refusal, or work
+    /// that must finish first) it stays in front with its reason. Read before closing: closing
+    /// the panel expires its field (#162).
     func menuRead() {
         let app = menuTarget.current?.app
         closeControls()
-        if case .read = readStart(from: app) { app?.activate(options: []) }
+        if readStart(from: app) == .reading { app?.activate(options: []) }
     }
     /// Snap mode's start: one standalone capture into Snap. Source choices are per capture;
     /// the existing shortcut and generic starts retain their region default.
