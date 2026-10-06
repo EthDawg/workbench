@@ -75,6 +75,8 @@ python3 scripts/history-acceptance.py --app "$HOME/Applications/Workbench Previe
 
 Use a new output folder each time. This opens the production History and reading-replacement views with a long transcript, an assistant result and an inspector for unrelated drafts. The complete app shell and its device, credential and system-setting controls are excluded. No live saved data is replaced, no provider process runs and no new app identity is created. Use Copy build details in its app menu. `history-acceptance.json` names the synthetic result file for edit/removal checks; the fixture stays after quitting. This verifies these native views and actions, not live microphone, provider, global-shortcut or receiver behavior.
 
+For the sidebar update action, use the same isolated launcher with `--updates` and a new output directory inside the checkout. It opens only the production updater control, a synthetic active-recording switch and status text. No updater is started and no application is replaced. While the switch is on, Update must retain its offer and explain the busy state; after switching it off, one click or keyboard activation writes `update-choice.json` with one install choice. Copy build details remains available in its app menu. This verifies the native control and admission policy; a real signed old-to-new Sparkle replacement is still a separate release gate.
+
 ## Paused mobile development reference
 
 Mobile development and distribution are paused. These commands remain for maintaining historical work; they are not an invitation to extend the mobile release.

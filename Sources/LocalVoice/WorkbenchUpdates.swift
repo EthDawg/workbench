@@ -164,12 +164,14 @@ final class WorkbenchUpdates: NSObject, ObservableObject {
         #endif
     }
     func finishUpdateSession() {
+        let wasUpdating = installRequested || checking
         checking = false; installRequested = false
         #if !APP_STORE
         offerReply = nil; requestedVersion = nil; requestedBuildNumber = nil; availableBuildNumber = nil
         #endif
         if !restartWaiting {
             availableVersion = nil; releaseSummary = nil; downloaded = false; installing = false
+            if wasUpdating { status = "Update paused. Check again when you’re ready." }
         }
     }
     func canTerminate(saveSession: () -> Bool) -> Bool {

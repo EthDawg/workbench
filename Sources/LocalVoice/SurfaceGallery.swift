@@ -439,8 +439,10 @@ private struct HistoryNativeAcceptanceView: View {
     func openInteractiveUpdates(output: URL) throws {
         #if !APP_STORE
         let updates = WorkbenchUpdates.shared
+        var choices = 0
         updates.receiveOffer(version: "9.0.1", buildNumber: "9001", summary: "Follow your words live and keep conversations together.", downloaded: true) { choice in
-            let receipt: [String: Any] = ["choice": choice.rawValue, "page": "unchanged", "synthetic": true]
+            choices += 1
+            let receipt: [String: Any] = ["choice": choice.rawValue, "count": choices, "synthetic": true]
             try? JSONSerialization.data(withJSONObject: receipt, options: [.prettyPrinted, .sortedKeys])
                 .write(to: output.appendingPathComponent("update-choice.json"), options: .atomic)
             updates.finishUpdateSession()

@@ -89,6 +89,7 @@ enum WorkbenchUpdateChecks {
         policy.finishUpdateSession()
         try require(!policy.continueInstallation(reply: { choices.append($0) }) && !policy.installRequested && policy.availableVersion == nil,
                     "cancel or completion clears stale install intent")
+        try require(policy.status == "Update paused. Check again when you’re ready.", "cancelled progress cannot keep an Updating status")
         policy.receiveOffer(version: "9.0.2", summary: nil, downloaded: false, reply: { choices.append($0) })
         policy.updater(updater, didAbortWithError: NSError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet))
         policy.checkForUpdates()

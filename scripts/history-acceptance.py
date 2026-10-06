@@ -17,6 +17,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--app', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--updates', action='store_true', help='Use the isolated sidebar updater fixture instead of History; no app is replaced')
     parser.add_argument('--theme', choices=('light', 'dark'), default='light')
     args = parser.parse_args()
     app = args.app.resolve(strict=True)
@@ -37,7 +38,8 @@ def main():
     environment = dict(os.environ, CFFIXED_USER_HOME=str(fixture_home), HOME=str(fixture_home),
                        TMPDIR=str(temporary) + '/', TZ='UTC')
     command = [str(executable), '--render-surfaces-pass', str(output), args.theme,
-               '--interactive-history', '-AppleLanguages', '(en)', '-AppleLocale', 'en_US']
+               '--interactive-updates' if args.updates else '--interactive-history',
+               '-AppleLanguages', '(en)', '-AppleLocale', 'en_US']
     print(f'Synthetic native acceptance: {output}', flush=True)
     print('Close with the acceptance menu’s Quit command. Fixture data is retained.', flush=True)
     return subprocess.call(command, env=environment)
