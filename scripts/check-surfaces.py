@@ -10,7 +10,7 @@ Scope: ENTRY_POINTS, CATALOGUES and offers. That is the quick panel (header,
 capability rows, each row's shortcut key and options, status rows, footer and
 views embedded in it); the Draw, Present, Persona and Timer menus that the
 rows, the floating toolbar and the app menu bar open, with any native views
-embedded in them, and the Saved Prompts picker the toolbar opens; the
+embedded in them, and the Saved Prompts picker Library opens; the
 floating toolbar's modes (its launcher's chooser), next action and hover
 labels, accessory and More menu, and the live dictation, narration and
 reading controls shown in the same window; the app menu bar and any status
@@ -116,10 +116,11 @@ ENTRY_POINTS = [
     ('LocalVoice/FloatingToolbar.swift', 'FloatingToolbar', 'floating toolbar context menu', 'controls'),
     ('LocalVoice/ToolbarActivityActions.swift', 'FloatingToolbar', 'floating toolbar activity chooser', 'controls'),
     ('LocalVoice/PresentWorkspaceView.swift', 'PresentWorkspaceView', 'Present workspace', 'page'),
-    ('LocalVoice/PresentWorkspaceView.swift', 'PresentPromptButton', 'Present workspace', 'controls'),
+    ('LocalVoice/LibraryPromptButton.swift', 'LibraryPromptButton', 'Library', 'controls'),
     ('StageKit/PersonaLiveSettings.swift', 'PersonaLiveSettings', 'Persona live copies', 'controls'),
     ('StageKit/PersonaLibraryView.swift', 'PersonaLibraryView.shownPanel', 'Persona live copy', 'controls'),
     ('StageKit/PersonaLibraryView.swift', 'PersonaLibraryView.liveSourceControl', 'Persona source', 'controls'),
+    ('StageKit/PersonaLibraryView.swift', 'PersonaLibraryView', 'Persona workspace', 'doors'),
     # Persona's other live source: the local camera bubble, prepared and run beside
     # the shown card's controls on the same page.
     ('StageKit/PersonaCamera.swift', 'PersonaCameraPanel', 'Persona live camera', 'controls'),
@@ -1031,8 +1032,8 @@ class Inventory:
             # Native menu titles assigned after construction.
             if v[i:i + 3] == ['.', 'title', '='] and swift.stem == 'main' and literal([swift.tokens[i + 3]]):
                 self.add(swift, i, 'menu-title', [swift.tokens[i + 3]], 'app menu bar', identity=v[i - 1])
-            if v[i:i + 3] == ['.', 'title', '='] and swift.stem == 'PresentWorkspaceView' and literal([swift.tokens[i + 3]]):
-                self.add(swift, i, 'button-title', [swift.tokens[i + 3]], 'Present workspace', identity=v[i - 1])
+            if v[i:i + 3] == ['.', 'title', '='] and swift.stem == 'LibraryPromptButton' and literal([swift.tokens[i + 3]]):
+                self.add(swift, i, 'button-title', [swift.tokens[i + 3]], 'Library', identity=v[i - 1])
             # The floating toolbar resolves its action title before rendering the row.
             # A title computed by another function is recorded where that function is.
             if v[i:i + 2] == ['title', '='] and v[i - 1] != '.' and swift.stem == 'FloatingToolbar':

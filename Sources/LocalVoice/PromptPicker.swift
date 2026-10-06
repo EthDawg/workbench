@@ -158,9 +158,9 @@ enum PromptPickerLayout {
 struct PromptPickerAction {
     var mode: PromptPickerMode
     var insert: (_ text: String, _ title: String) -> Void
-    var copy: (_ text: String, _ title: String) -> Void
+    var copy: (DemoResource) -> Void
     func perform(_ prompt: DemoResource) {
-        if mode.inserts { insert(prompt.content, prompt.pickerTitle) } else { copy(prompt.content, prompt.pickerTitle) }
+        if mode.inserts { insert(prompt.content, prompt.pickerTitle) } else { copy(prompt) }
     }
 }
 
@@ -515,7 +515,7 @@ private final class PromptPickerPanel: NSPanel {
 final class PromptPickerController: NSObject, NSWindowDelegate {
     static let shared = PromptPickerController()
 
-    struct Context {
+    @MainActor struct Context {
         /// The library's resources when the picker was asked for; it freezes its prompts from these.
         var resources: [DemoResource]
         var delivery: PromptInsertion
@@ -525,6 +525,23 @@ final class PromptPickerController: NSObject, NSWindowDelegate {
         var trusted: Bool
         var controls: CaptureHUDControls?
         var openLibrary: () -> Void
+        var copyPrompt: ((DemoResource) -> Void)? = nil
+
+        /// Library supplies no external field. Its existing copy owner keeps
+        /// exact text and shows success or failure beside the saved resource.
+        static func library(_ library: DemoLibraryModel, delivery: PromptInsertion,
+                            receipts: ClipboardReceiptModel, openLibrary: @escaping () -> Void) -> Self {
+            Self(resources: library.resources, delivery: delivery, receipts: receipts, destination: nil,
+                 trusted: false, controls: nil, openLibrary: openLibrary, copyPrompt: { library.copy($0) })
+        }
+        var action: PromptPickerAction {
+            PromptPickerAction(mode: PromptPickerMode.resolve(trusted: trusted, destination: destination),
+                insert: { text, title in delivery.insert(text, title: title, into: destination) },
+                copy: { prompt in
+                    if let copyPrompt { copyPrompt(prompt) }
+                    else { delivery.copy(prompt.content, title: prompt.pickerTitle, receipts: receipts) }
+                })
+        }
     }
 
     private var panel: PromptPickerPanel?
@@ -573,10 +590,7 @@ final class PromptPickerController: NSObject, NSWindowDelegate {
         }
         self.anchor = anchor; self.visible = visible; anchorView = view; self.context = context
         toolbarAnchor = context.controls?.rowAnchor ?? .bottom
-        let mode = PromptPickerMode.resolve(trusted: context.trusted, destination: context.destination)
-        let action = PromptPickerAction(mode: mode,
-            insert: { text, title in context.delivery.insert(text, title: title, into: context.destination) },
-            copy: { text, title in context.delivery.copy(text, title: title, receipts: context.receipts) })
+        let action = context.action, mode = action.mode
         let room = PromptPickerLayout.room(anchor: anchor, visible: visible)
         let model = PromptPickerModel(list: PromptPickerList(resources: context.resources), mode: mode,
             width: PromptPickerLayout.width(in: visible, beside: anchor, anchor: toolbarAnchor),

@@ -29,7 +29,6 @@ struct WorkbenchHome: View {
     @State private var suggestionReview: MetadataSuggestionReview?
     @AppStorage("workbench.sidebarCollapsed.v1") private var sidebarCollapsed = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var greetingPlayed = false
     @State private var showingProfile = false
     @State private var hoveredSidebarItem: String?
     /// Only the offscreen gallery supplies an override; the app keeps the person's choice.
@@ -202,7 +201,7 @@ struct WorkbenchHome: View {
                     prepareFollowUp: { id in handoffReview = HandoffReviewRequest(task: MeetingFollowUp.task, transcriptID: id) })
                 case "annotate": titled("annotate", summary: "Draw attention to what matters, right over your live demo.") { stage.controlsView }
                 case "present": titled("present", summary: "Show a device in a saved scene, with your backdrop and branding.", divided: true) { PresentWorkspaceView(model: model, stage: stage) }
-                case "personas": stage.personasView
+                case "personas": stage.personasView(editProfile: { keyboard.stopInteraction(); showingProfile = true })
                 case _ where Self.destination(model.page).page == "library": library
                 case _ where Self.destination(model.page).page == "settings": settings
                 default: ContentView(model: model, embedded: true)
@@ -276,8 +275,7 @@ struct WorkbenchHome: View {
     }
     private var welcome: some View {
         WorkbenchHomePage(model: model, stage: stage, readback: readback, snap: snap, introduction: introduction,
-                          jobs: model.handoffJobs, photos: model.photoHandoff, meetings: model.meetings,
-                          greetingPlayed: $greetingPlayed, openProfile: { keyboard.stopInteraction(); showingProfile = true })
+                          jobs: model.handoffJobs, photos: model.photoHandoff, meetings: model.meetings)
     }
     /// Library holds Resources, Packs and From iPhone as sections of one page, with its switcher
     /// at the top (#134). The route alone chooses the section, so every Library door opens
@@ -521,8 +519,6 @@ struct WorkbenchHomePage: View {
     @ObservedObject var jobs: HandoffJobsModel
     @ObservedObject var photos: PhotoHandoffModel
     @ObservedObject var meetings: MeetingModel
-    var greetingPlayed: Binding<Bool> = .constant(true)
-    var openProfile: () -> Void = {}
     /// Keeps the guide up after the first dictation lands, so where the words
     /// went is seen once; Done or leaving Home ends it.
     @State private var stayInGuide = false
@@ -536,28 +532,7 @@ struct WorkbenchHomePage: View {
         // so it is drawn with the content, as Dictate's is.
         GeometryReader { proxy in ScrollView {
             VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text("Home").font(.callout.weight(.medium)).foregroundStyle(.secondary)
-                        HomeGreeting(hasPlayed: greetingPlayed)
-                    }
-                    Spacer(minLength: 16)
-                    Button(action: openProfile) {
-                        VStack(spacing: 4) {
-                            Group {
-                                if let image = stage.localProfileImage { Image(nsImage: image).resizable().scaledToFill() }
-                                else { Image(systemName: "person.crop.circle").resizable().scaledToFit().foregroundStyle(.secondary).padding(5) }
-                            }.frame(width: 38, height: 38).clipShape(Circle())
-                                .background(Workbench.surface, in: Circle())
-                            Text("Me").font(.caption)
-                        }.padding(6)
-                    }.buttonStyle(WorkbenchNavigationStyle()).help("Your photo and Me persona")
-                        .accessibilityLabel("Your profile. Photo and Me persona").accessibilityIdentifier("home.profile")
-                }.padding(.bottom, 8)
-                if journey.offersGuide {
-                    Button("Show me a first dictation") { showGuide() }.buttonStyle(.link)
-                        .help("Bring back the short guide to your first dictation.")
-                }
+                Text("Home").font(.title.weight(.semibold)).accessibilityAddTraits(.isHeader)
                 ForEach(journey.sections, id: \.self) { section in
                     switch section {
                     case .currentWork: currentWork
@@ -773,34 +748,37 @@ struct WorkbenchHomePage: View {
     private var quickStart: some View {
         VStack(alignment: .leading, spacing: 10) {
             WorkbenchSectionTitle("Start here")
+            if journey.offersGuide {
+                Button("Show me a first dictation") { showGuide() }.buttonStyle(.link)
+                    .help("Bring back the short guide to your first dictation.")
+            }
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
                 workspaceCard("dictate", detail: "Turn your voice into text.")
                 workspaceCard("meeting", detail: "Transcribe a meeting or call.")
-                workspaceCard("snap", detail: "Capture and mark up your screen.")
                 workspaceCard("readback", detail: hasSession ? "Continue · " + (readback.manifest?.title ?? "Your session") : "Explain screens with your voice.")
+                workspaceCard("present", detail: "Your phone on a clean stage.")
             }
         }
     }
     private func workspaceCard(_ route: String, detail: String) -> some View {
         Button { model.page = route } label: {
-            HStack(spacing: 14) {
+            HStack(spacing: 10) {
                 Image(systemName: WorkbenchHome.symbol(of: route))
-                    .font(.system(size: 21, weight: .medium)).foregroundStyle(Workbench.accent)
-                    .frame(width: 44, height: 44)
-                    .background(Workbench.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 11))
+                    .font(.system(size: 17, weight: .medium)).foregroundStyle(Workbench.accent)
+                    .frame(width: 24)
                     .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(WorkbenchHome.name(of: route)).font(.system(size: 15, weight: .semibold))
-                    Text(detail).font(.callout).foregroundStyle(.secondary).lineLimit(2)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(WorkbenchHome.name(of: route)).font(.callout.weight(.semibold))
+                    Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(2)
                         .multilineTextAlignment(.leading)
                 }.frame(maxWidth: .infinity, alignment: .leading)
                 Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary).accessibilityHidden(true)
-            }.padding(16).frame(maxWidth: .infinity, minHeight: 82, alignment: .leading)
-                .background(Workbench.surface, in: RoundedRectangle(cornerRadius: 12))
-                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Workbench.border))
+            }.padding(10).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .background(Workbench.surface, in: RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Workbench.border))
         }.buttonStyle(WorkbenchNavigationStyle())
             .accessibilityLabel(WorkbenchHome.name(of: route) + ". " + detail)
-            .accessibilityHint("Opens the workspace without starting a capture")
+            .accessibilityHint("Opens the tool without starting work")
             .accessibilityIdentifier("home.workspace." + route)
     }
 

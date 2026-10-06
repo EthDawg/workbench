@@ -42,22 +42,21 @@ struct StateStore {
 }
 struct FixtureShortcut { var label = "⌃⌥J" }
 struct FixturePreferences { func shortcut(_ id: UInt32) -> FixtureShortcut { FixtureShortcut() } }
-/// Read aloud goes to Read's one import owner (#173); this fixture only records it.
-struct ReadingSelectionImport { enum Origin: Equatable { case selection, transcript, savedText } }
 @MainActor final class AppModel: ObservableObject {
     @Published var transcript = "A synthetic transcript for this disposable app."
-    @Published var speechText = ""
-    private(set) var readAloud: [(text: String, origin: ReadingSelectionImport.Origin)] = []
-    var onImportReading: ((String) -> Void)?
-    func importReading(_ text: String, from origin: ReadingSelectionImport.Origin) {
-        readAloud.append((text, origin)); onImportReading?(text)
-    }
     @Published var page = "library"
     @Published var libraryFocusToken = UUID()
     @Published var preferences = FixturePreferences()
     let photoHandoff = FixturePhotoHandoff()
     let presenter = FixturePresenter()
     var onUsePhotoAsBackdrop: ((URL, String) -> Void)?
+}
+// The separate Saved Prompts panel is covered by production --check-core and
+// the integrated gallery/native pass. This isolated resource-row harness does
+// not model that panel or claim its keyboard/focus acceptance.
+struct LibraryPromptButton: View {
+    let model: AppModel
+    var body: some View { EmptyView() }
 }
 // Photo arrival is covered by its own shared-module and UI checks. This recall
 // fixture deliberately keeps cloud and handoff dependencies out of its scope.
@@ -228,9 +227,6 @@ import SwiftUI
             ])
         } catch { fatalError("Synthetic fixture preparation failed: \(error)") }
         let events = self.events
-        model.onImportReading = { text in
-            events.count += 1; events.latest = "\(events.count). READ ALOUD (simulated, Read's import review): \(text)"
-        }
         library = DemoLibraryModel(store: store, copyText: { text in
             events.count += 1
             events.latest = "\(events.count). \(events.failCopy ? "COPY FAILED" : "COPY"): \(text)"
