@@ -268,11 +268,11 @@ struct BugReportView: View {
                 // Command-Return, never plain Return: Return in the email field must not send, because
                 // pressing Send is the consent to upload.
                 if model.available {
-                    Button("Send report") { model.send() }
+                    Button("Send report") { model.send() }.buttonStyle(.borderedProminent)
                         .keyboardShortcut(Self.sendShortcut).disabled(!model.canSend)
                         .help("Send report (⌘Return)")
                 } else {
-                    Button("Save a copy…") { model.saveDraftCopy() }
+                    Button("Save a copy…") { model.saveDraftCopy() }.buttonStyle(.borderedProminent)
                         .keyboardShortcut(Self.sendShortcut).disabled(!model.canSubmit)
                 }
             }
