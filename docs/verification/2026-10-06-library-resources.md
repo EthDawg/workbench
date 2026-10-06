@@ -106,3 +106,33 @@ The sole Preview installer verified actual Copy build details on **Workbench Pre
 All three owned Library test rows and the synthetic Pack were removed through normal UI. The original seven resources and saved-state fields matched the private baseline after normal Quit. Existing Pack payload bytes stayed exact; automatic-update restoration and receipt changes are explained in the Packs record. Preview was relaunched and left idle on Home. Private baselines, exact receiving-app files, fingerprints and a partial observation record stay local; no private record or screenshot was published.
 
 These are bounded native observations, with every whole L1–L4 journey still unclaimed and `publicationReady: false`. Full keyboard-only traversal, IME composition, held-key behavior, VoiceOver/larger text, access denial, repeated Quick Look lifecycle, actual independent live work, and production update acceptance remain unverified. No privacy reset, model download, provider job or public publication occurred.
+
+## Library control reconciliation, 7 October
+
+This is the bounded Library portion of foundation L4, checked against accepted source `746d85f13e17c4ee1fcfcd6ea467a10816b5b74b` (including J). It joins the existing page-local inventories; it is not whole-app control or native accessibility acceptance. All 94 Library view/picker registry IDs map to the retained controls below; the wider registry has 628 entries at this checkpoint.
+
+| Registry prefix | Count | Owning inventory / disposition |
+| --- | ---: | --- |
+| `LocalVoice.DemoLibraryView.` | 51 | Keep/refine Resources and editor controls in this record's page-local inventory: types, filters, full content, file recovery, editing, import/export and conditional preservation. Native TextEditor and chooser affordances are described there as well. |
+| `LocalVoice.PackLibraryView.` | 34 | Keep/refine in the [Packs inventory](2026-10-07-library-packs.md#page-local-control-inventory): installed content, account/add/update, use-to-owner, file/reference return, recovery, removal and appearance. |
+| `LocalVoice.PromptPicker.` | 8 | Keep under Library: open Library, selected prompt action, prompt rows, delivery details, clear filters, category/default and conditional cancellation. Seven stale `belongsTo: present` values are corrected; no registry ID, action or shared cancellation behavior is removed. The production opener uses Copy-only context. |
+| `LocalVoice.LibraryPromptButton.` | 1 | Move/keep Saved Prompts with Library, as delivered by A1. No external field is inferred and no Accessibility request is initiated by opening it. |
+
+External entries and runtime paths are included in the same disposition:
+
+| Entry / alias | Decision, state owner and effect |
+| --- | --- |
+| Dictate → More → Save prompt | Keep the page-local entry. `AppModel.savePrompt` rejects empty words, opens Library and starts its existing prompt draft. Saving or cancelling remains the Library editor's transaction. |
+| History / Snap & Talk → Save image to Library… | Keep explicit selected-image export and its ordinary Library reference. The existing image-reuse owner preserves unrelated drafts; destination Cancel does not create a reference. These invoke the Resources owner rather than creating a second library. |
+| Snap & Talk settings → Manage packs… | Keep navigation to Library's Packs section; navigation starts no assistant or capture. |
+| Sidebar Library; Window → Library / ⌘L; global shortcut id 3 | Keep one Library destination and its search focus request. The source resolves to `AppModel.showLibrary`; native keyboard/focus behavior remains limited to the observations already recorded. |
+| Copied-prompt receipt → Review | Keep return to Library via the existing clipboard receipt source kind. It does not insert again or rerun a task. |
+| `speak` / `readback` / `packs` routes | Redirect retired `speak` to Resources; keep `readback` as the existing Snap & Talk identifier; keep `packs` as Library's section. Historical identifiers do not reopen Read. |
+| `workbench://packs/add?source=…` and `workbench-preview://packs/add?source=…` | Keep the strict source parser. Accepted input sets a pending source and navigates to Packs, including a link received before window creation. It prefills the Add form and does not install. |
+| Packs launch / activation / six-hour update check | Keep the existing automatic-update preference and operation owner. It requires an enabled preference, existing login, idle operation and elapsed interval. Navigation/prefill and this separately admitted update activity are distinct. The signed Library test restored the enabled preference and observed only existing receipt rewrites, as recorded above. |
+| Retired Read/browser shortcuts id 4/id 6, Read Service and browser host | Remove/pause as specified in the [Read retirement](2026-10-06-read-retirement.md) and [browser pause](2026-10-06-browser-pause/README.md) evidence. Keep their conditional recovery and original data. |
+| `photos`, From iPhone section, Home arrival cue and photo settings | **Pending E.** Current accepted source still exposes these normal doors; draft #286 does not establish conditional downloaded-file/pending-operation recovery. Do not mark them removed or L3/L4 complete. |
+
+The structured handbook's obsolete promise that Present contains Saved Prompts is corrected to Library ownership, matching [A1](2026-10-06-foundation-ownership.md) and the production opener. Its older hardware/layout evidence retains its original revision and limits. This addendum does not claim registered controls were all physically exercised: full keyboard/IME/held-key, VoiceOver, minimum-window behavior and actual retained toggles remain distinct acceptance work. Other tools' page-local/dynamic/native controls require their owning foundation slices before final whole-app L4 reconciliation.
+
+The related first-download surface follow-up adds the known approximate 450 MB size beside Home’s direct Parakeet download choice (isolated source `11b17e8`, integrated as `c1a7357`). It uses the existing caption hierarchy and appears only while that download choice is offered; it adds no control or preference. The speech lifecycle and signed `746d85f` candidate are unchanged by this caption. Registry validation still finds 628 entries; the three existing handbook rendering/contract tests pass. The updated Home render is checked separately before this follow-up is accepted.
