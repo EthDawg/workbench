@@ -34,12 +34,17 @@ or is paused, `Cancel` while audio is still being made. Clicked while idle, it
 reads the text selected in the front app's focused element at once with the
 current voice, as macOS Spoken Content's key does, and keeps that text as the
 Read page's draft under the page's Replace reading / Keep current rule: an empty,
-identical or already-heard draft is replaced quietly; a different draft nobody
-has heard keeps the selection behind that choice on the Read page, which opens,
-and nothing plays. With nothing selected it opens the Read page. The selection
-is read once, at the click, through the same Accessibility reads dictation
-makes, never from the clipboard, the window or the document. Home's sidebar and
-the Window menu stay page doors.
+identical or already-heard draft (audio exists for its text, whatever voice or
+pace made it) is replaced quietly; a different draft nobody has heard keeps the
+selection behind that choice on the Read page, which opens, and nothing plays.
+While dictation or a meeting still owns the microphone the selection arrives the
+same way and the page says what must finish first; the selection is never
+dropped. With nothing selected it opens the Read page. The selection is read
+once, at the click, through the same Accessibility reads dictation makes, never
+from the clipboard, the window or the document. The panel's row gives focus
+back to the app it was opened over only while the reading plays; a Read page
+opened with a reason stays in front. Home's sidebar and the Window menu stay
+page doors.
 
 **The mode follows you.** A mode, which the launcher calls the tool, is one
 capability or named workflow: Dictate, Read, Snap, Snap & Talk, Draw, Present or
