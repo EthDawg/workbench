@@ -89,10 +89,12 @@ exit "${{CODESIGN_EXIT:-0}}"
     def test_stable_identity_ad_hoc_and_bad_signature_are_refused(self):
         result, _ = self.run_script(self.bundle(name="Stable.app", CFBundleIdentifier="com.ethdawg.workbench"), out=self.temp / "o1")
         self.assertEqual(result.returncode, 2); self.assertEqual(self.modes_run(), [])
-        self.shim("codesign", '#!/bin/bash\nfor a in "$@"; do if [ "$a" = "-d" ]; then echo "Signature=adhoc" >&2; fi; done\nexit 0\n')
-        result, _ = self.run_script(self.bundle(name="AdHoc.app"), out=self.temp / "o2")
+        # A bad signature: the Developer ID shim's strict verification fails.
+        result, _ = self.run_script(self.bundle(name="Bad.app"), out=self.temp / "o2", CODESIGN_EXIT="1")
         self.assertEqual(result.returncode, 2); self.assertEqual(self.modes_run(), [])
-        result, _ = self.run_script(self.bundle(name="Bad.app"), out=self.temp / "o3", CODESIGN_EXIT="1")
+        # An ad-hoc signature: verification passes but no Developer ID authority is listed.
+        self.shim("codesign", '#!/bin/bash\nfor a in "$@"; do if [ "$a" = "-d" ]; then echo "Signature=adhoc" >&2; fi; done\nexit "${CODESIGN_EXIT:-0}"\n')
+        result, _ = self.run_script(self.bundle(name="AdHoc.app"), out=self.temp / "o3")
         self.assertEqual(result.returncode, 2); self.assertEqual(self.modes_run(), [])
 
     def test_executable_outside_the_bundle_is_refused(self):
