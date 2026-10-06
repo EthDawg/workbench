@@ -279,6 +279,7 @@ final class AppModel: NSObject, ObservableObject {
         guard state.sequence >= recognition.sequence else { return }
         recognition = state; ready = state.canTranscribe; preparing = state.isPreparing
         modelMessage = state.line; modelFailure = state.failure?.errorDescription
+        meetings.refreshAdmission()  // Meetings never says Ready to record while speech is not ready.
     }
     func prepare() async {
         do { try await engine.prepareCached() } catch { /* The engine owns the typed failure. */ }

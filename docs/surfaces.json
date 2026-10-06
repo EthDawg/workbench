@@ -492,10 +492,10 @@
   {
     "id": "LocalVoice.MeetingWorkspaceView.MeetingWorkspaceView.Button.models",
     "surface": "meeting page",
-    "label": "Models…",
+    "label": "Models",
     "kind": "action",
     "belongsTo": "settings",
-    "note": "Door to Settings › Models beside the engine Meetings uses, the one place an engine is chosen (Grammar rule 9; 1 Oct)."
+    "note": "Door to Settings › Models beside the engine Meetings uses, the one place an engine is chosen (Grammar rule 9; 1 Oct). No ellipsis: it opens a page, not a dialog (#279)."
   },
   {
     "id": "LocalVoice.MeetingWorkspaceView.MeetingWorkspaceView.Button.prepare-follow-up",
