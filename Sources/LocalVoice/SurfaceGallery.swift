@@ -606,7 +606,7 @@ private struct HistoryNativeAcceptanceView: View {
 
     // MARK: Saved Prompts picker
 
-    /// Library's Saved Prompts picker, from synthetic prompts, at its 420-point width and at
+    /// The Saved Prompts picker (Library's Saved Prompts… and Present's toolbar Prompts), from synthetic prompts, at its 420-point width and at
     /// standard and larger text. The panel's placement and focus are covered by --check-core and
     /// need a pointer on the installed app; nothing here opens a window on screen.
     func renderPickerStates(to output: URL) throws -> [SurfaceGallery.Shot] {
@@ -3479,7 +3479,7 @@ private struct HistoryNativeAcceptanceView: View {
     }
 
     /// Each tool's one accessory (#134 part B) in the real host, docked at bottom centre. Revealed
-    /// with nothing live, Draw shows Tools with its chevron, and no other
+    /// with nothing live, Draw shows Tools and Present Prompts, each with its chevron, and no other
     /// tool shows one: Dictate, Read and Snap never do, Snap & Talk only with a session open, and
     /// Persona only with a live copy, which the gallery never shows over the Mac. Tools holds Draw's
     /// drawing choices; Persona's More opens Persona's page instead; and with a session open,
@@ -3784,6 +3784,7 @@ private struct HistoryNativeAcceptanceView: View {
         // Home opens four workspaces. Capturing begins only from the chosen workspace.
         list += [page(home, "Start here · Dictate", "dictate"), page(home, "Start here · Meetings", "meeting"),
                  page(home, "Start here · Snap & Talk", "readback"), page(home, "Start here · Present", "present"),
+                 action(home, "Me · Your profile", "Opens local photo and Persona preparation"),
                  action("Home sidebar", "Expand or collapse sidebar · Control-Command-S", "Keeps the chosen sidebar width"),
                  E(surface: home, label: "Recent work · a transcript's title", leads: "Page: history, showing that transcript", route: "history"),
                  E(surface: home, label: "Recent work · a result's title", leads: "Page: history, revealing that task", route: "history"),
@@ -4007,7 +4008,7 @@ private struct SurfaceIndex {
             html += "<h3>\(esc(shot.title))</h3><p>\(esc(shot.detail))</p><div class=\"row toolbar\">" + figure(shot, "Light")
                 + (index < dark.toolbar.count ? figure(dark.toolbar[index], "Dark") : "") + "</div>"
         }
-        html += "<h2>Saved Prompts picker</h2><p>Library's Saved Prompts… opens this picker. Its states are drawn at its 420-point width on the window background from synthetic prompts; its keyboard, complete Copy and failure feedback are covered by --check-core. In the full pass, the production panel (<code>PromptPickerController</code>) is also opened invisibly over a synthetic bottom-edge anchor and compared with its content's requested size. Native focus return and dismissal remain separate acceptance.</p>"
+        html += "<h2>Saved Prompts picker</h2><p>Library's Saved Prompts… (Copy) and Present's toolbar Prompts (insert into the frozen field) open this picker. Its states are drawn at its 420-point width on the window background from synthetic prompts; its keyboard, complete Copy and failure feedback are covered by --check-core. In the full pass, the production panel (<code>PromptPickerController</code>) is also opened invisibly over a synthetic bottom-edge anchor and compared with its content's requested size. Native focus return and dismissal remain separate acceptance.</p>"
         if light.pickerHost.isEmpty { html += light.scope == "desktop" ? "<p>Omitted by the bounded desktop pass.</p>" : "<p>The production panel was not opened: this Mac reported no display.</p>" }
         else {
             html += "<table><tr><th>State</th><th>Panel</th><th>Content wants</th><th>Panel heard its content</th><th>Check</th></tr>"

@@ -126,6 +126,45 @@ struct SidebarHintText: View {
     }
 }
 
+/// A finite sequence rather than a repeating timer. Home's shell remembers that it played,
+/// so changing pages never restarts it. The accessible label is stable throughout.
+enum HomeGreetingSequence {
+    static let welcome = "Welcome back!"
+    static let settled = "Let’s make something. ✨"
+    struct Frame: Equatable { let text: String; let milliseconds: UInt64 }
+    static var frames: [Frame] {
+        let hello = Array(welcome), finish = Array(settled)
+        return (1...hello.count).map { Frame(text: String(hello.prefix($0)), milliseconds: 45) }
+            + [Frame(text: welcome, milliseconds: 650)]
+            + (0..<hello.count).reversed().map { Frame(text: String(hello.prefix($0)), milliseconds: 22) }
+            + (1...finish.count).map { Frame(text: String(finish.prefix($0)), milliseconds: 36) }
+    }
+}
+
+struct HomeGreeting: View {
+    @Binding var hasPlayed: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var text = HomeGreetingSequence.settled
+    var body: some View {
+        // Reserve the finished line's space, including while text is being erased.
+        Text(HomeGreetingSequence.settled).hidden().overlay(alignment: .leading) { Text(text) }
+            .font(.system(size: 29, weight: .semibold, design: .rounded))
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(HomeGreetingSequence.settled).accessibilityAddTraits(.isHeader)
+            .task(id: reduceMotion) {
+                guard !reduceMotion, !hasPlayed, !ProcessInfo.processInfo.arguments.contains(SurfaceGallery.passFlag) else {
+                    hasPlayed = true; text = HomeGreetingSequence.settled; return
+                }
+                hasPlayed = true
+                for frame in HomeGreetingSequence.frames {
+                    guard !Task.isCancelled else { return }
+                    text = frame.text
+                    do { try await Task.sleep(nanoseconds: frame.milliseconds * 1_000_000) } catch { return }
+                }
+            }
+    }
+}
+
 /// The same quiet update action in the expanded sidebar and its compact icon rail.
 struct WorkbenchUpdateSidebar: View {
     @ObservedObject var updates: WorkbenchUpdates

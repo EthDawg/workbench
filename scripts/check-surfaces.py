@@ -10,7 +10,7 @@ Scope: ENTRY_POINTS, CATALOGUES and offers. That is the quick panel (header,
 capability rows, each row's shortcut key and options, status rows, footer and
 views embedded in it); the Draw, Present, Persona and Timer menus that the
 rows, the floating toolbar and the app menu bar open, with any native views
-embedded in them, and the Saved Prompts picker Library opens; the
+embedded in them, and the Saved Prompts picker Library and Present's toolbar Prompts open; the
 floating toolbar's modes (its launcher's chooser), next action and hover
 labels, accessory and More menu, and the live dictation, narration and
 reading controls shown in the same window; the app menu bar and any status

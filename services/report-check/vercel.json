@@ -1,0 +1,12 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "buildCommand": "mkdir -p public && printf 'User-agent: *\\nDisallow: /\\n' > public/robots.txt",
+  "installCommand": "npm ci --omit=dev",
+  "functions": {
+    "api/v1/verify.ts": {
+      "maxDuration": 30
+    }
+  },
+  "outputDirectory": "public"
+}

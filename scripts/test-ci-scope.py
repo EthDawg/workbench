@@ -136,6 +136,38 @@ class ScopeTests(unittest.TestCase):
                 for event in ("pull_request", "merge_group", "push"):
                     self.assertFalse(scope.native_required(self.base, head, event))
 
+    def test_report_verifier_changes_run_report_check_not_native(self):
+        # services/report-check is validated by the always-run Report check job.
+        for path in ("services/report-check/api/v1/verify.ts", "services/report-check/package-lock.json",
+                     "services/report-check/ops/report_ops.py", "services/report-check/vercel.json"):
+            with self.subTest(path=path):
+                self.git("reset", "--hard", self.base)
+                self.write(path)
+                head = self.commit()
+                for event in ("pull_request", "merge_group", "push"):
+                    self.assertFalse(scope.native_required(self.base, head, event))
+
+    def test_other_services_and_lookalike_paths_require_native(self):
+        for path in ("services/report-intake/src/index.ts", "services/report-check.md",
+                     "services/report-checker/x.ts", "services/README.md"):
+            with self.subTest(path=path):
+                self.git("reset", "--hard", self.base)
+                self.write(path)
+                self.assertTrue(scope.native_required(self.base, self.commit(), "merge_group"))
+
+    def test_report_verifier_with_native_change_requires_native(self):
+        self.write("services/report-check/api/v1/verify.ts")
+        self.write("Sources/New.swift")
+        head = self.commit()
+        for event in ("merge_group", "push"):
+            self.assertTrue(scope.native_required(self.base, head, event))
+
+    def test_report_verifier_moved_into_native_requires_native(self):
+        self.write("services/report-check/api/v1/verify.ts")
+        middle = self.commit()
+        Path("services/report-check/api/v1/verify.ts").rename("Sources/verify.ts")
+        self.assertTrue(scope.native_required(middle, self.commit(), "merge_group"))
+
     def test_mixed_documentation_and_native(self):
         self.write("docs/updating.md")
         self.write("Sources/New.swift")
@@ -269,11 +301,12 @@ class QueueEvidenceTests(unittest.TestCase):
 class GateTests(unittest.TestCase):
     """Execute the actual aggregate job's shell with synthetic GitHub outcomes."""
 
-    def gate(self, required="true", results=None, scope_result="success", site="success"):
+    def gate(self, required="true", results=None, scope_result="success", site="success",
+             report_check="success"):
         job = WORKFLOW.split("  build-and-test:\n", 1)[1]
         script = textwrap.dedent(job.split("        run: |\n", 1)[1])
         env = dict(os.environ, SCOPE_RESULT=scope_result, SITE_RESULT=site,
-                   NATIVE_REQUIRED=required,
+                   REPORT_CHECK_RESULT=report_check, NATIVE_REQUIRED=required,
                    NATIVE_RESULTS=" ".join(["success"] * 5 if results is None else results))
         return subprocess.run(["bash", "-e", "-c", script], env=env,
                               capture_output=True).returncode == 0
@@ -287,6 +320,17 @@ class GateTests(unittest.TestCase):
             self.assertFalse(self.gate(scope_result=result))
             self.assertFalse(self.gate(site=result))
             self.assertFalse(self.gate("false", ["skipped"] * 5, site=result))
+
+    def test_report_check_is_required(self):
+        for result in ("failure", "cancelled", "skipped", ""):
+            self.assertFalse(self.gate(report_check=result))
+            self.assertFalse(self.gate("false", ["skipped"] * 5, report_check=result))
+
+    def test_gate_waits_for_report_check(self):
+        job = WORKFLOW.split("  build-and-test:\n", 1)[1]
+        needs = job.split("needs: [", 1)[1].split("]", 1)[0]
+        self.assertIn("report-check", [item.strip() for item in needs.split(",")])
+        self.assertIn("REPORT_CHECK_RESULT: ${{ needs.report-check.result }}", job)
 
     def test_native_failure_cannot_turn_green(self):
         for index in range(5):

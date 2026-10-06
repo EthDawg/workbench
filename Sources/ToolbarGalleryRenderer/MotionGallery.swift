@@ -21,7 +21,7 @@ extension ToolbarGalleryRenderer {
                 actionSymbol: live ? "stop.fill" : ToolbarOperation.start(.draw).symbol,
                 actionHint: live ? "⌥Q" : "⌥D", isBusy: live,
                 status: live ? .resolve(ToolbarActivity(live: [.presenting])) : .idle,
-                accessory: live ? nil : .tools)
+                accessory: live ? .prompts : .tools)
             if anchor.growsFromCentre {
                 let mode: ToolbarMode = anchor == .top ? .snap : .snapAndTalk
                 state = ToolbarGallery.captureSources.first { $0.mode == mode }!
