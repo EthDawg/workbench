@@ -134,9 +134,9 @@ extension FloatingToolbar {
                     }
                 }
                 else if model.waitingForDrawing { choice.detail = "Words ready · waiting for Draw" }
-                else if model.captureFailure != nil { choice.detail = "Dictation needs attention" }
+                else if model.captureFailure != nil { choice.detail = "Dictation stopped" }
                 else if model.hasCaptureRecovery { choice.detail = "Recording kept for recovery" }
-                else if model.unresolvedDelivery != nil { choice.detail = "Delivery needs attention" }
+                else if model.unresolvedDelivery != nil { choice.detail = "Words waiting to be delivered" }
             case .snap: if snapModel.draft != nil { choice.detail = "Unsaved capture" }
             case .snapAndTalk:
                 if readback.sessionURL != nil {
