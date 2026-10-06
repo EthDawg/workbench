@@ -1,17 +1,23 @@
 #!/usr/bin/env python3
-"""Keep every Accessibility framework call inside AccessibilityBridge.swift.
+"""Keep the Accessibility framework behind its two doors.
 
-On macOS 26 an Accessibility call that waits on another process from a Swift
-task's thread logs an AXCommon fault, "unsafeForcedSync called from Swift
-Concurrent context"; the installed app logged more than 126,000 of them in a
-week, nearly all from listing the Mac voices. `AccessibilityBridge` runs such
-calls where macOS counts them as plain code, so this check fails when one is
-named anywhere else, called or merely referenced: element IPC (AXUIElement*),
-observers (AXObserver*) and the voice catalogue (AVSpeechSynthesisVoice.speechVoices,
-the voice-by-identifier initializer, NSSpeechSynthesizer's voice list and
-attributes). The types AXUIElement, AXObserver and AXObserverCallback, AXValue
-helpers and AXIsProcessTrusted stay free: they do not message another process.
-Comments, line and block, are not code.
+Element IPC (AXUIElement*) and observers (AXObserver*) belong in
+`AccessibilityBridge.swift`, the one place that calls them, so a check or a
+later measurement sees every call go through it. The types AXUIElement,
+AXObserver and AXObserverCallback, the AXValue helpers and AXIsProcessTrusted
+stay free: they do not message another process.
+
+The voice listings (AVSpeechSynthesisVoice.speechVoices, NSSpeechSynthesizer's
+voice list and attributes) belong in `ReadingVoices.swift`, under the rule #269
+established: on macOS 26 they log an AXCommon fault, "unsafeForcedSync called
+from Swift Concurrent context", for every voice when they run on a Swift
+task's thread, main actor or detached; the installed app logged more than
+126,000 of them in a week that way. `MacVoiceCatalog` reads them from a plain
+frame or a GCD queue, so inside `ReadingVoices.swift` a listing, or the
+voice-by-identifier initializer, inside a `Task {` or `Task.detached {`
+closure fails too. Elsewhere `AVSpeechSynthesisVoice(identifier:)` stays
+free: it constructs an installed voice from its identifier without a lookup.
+Comments, line and block, and string literals are not code.
 
     python3 scripts/check-accessibility-bridge.py          # the repository
     python3 scripts/check-accessibility-bridge.py DIR...   # other roots, for its test
@@ -22,46 +28,87 @@ import sys
 
 PROJECT = Path(__file__).resolve().parents[1]
 BRIDGE = Path('Sources/LocalVoice/AccessibilityBridge.swift')
+VOICES = Path('Sources/LocalVoice/ReadingVoices.swift')
 # Bare identifiers, so a function reference or a call split after its name
 # counts too; the framework's types are the only names left free.
-CALLS = re.compile(r'\b(?:AXUIElement|AXObserver)\w*\b|\bAVSpeechSynthesisVoice\.speechVoices\b'
-                   r'|\bAVSpeechSynthesisVoice(?:\.init)?\s*\(\s*identifier\s*:|\bNSSpeechSynthesizer\.availableVoices\b'
-                   r'|\bNSSpeechSynthesizer\.attributes\s*\(\s*forVoice\s*:')
+ELEMENT_CALLS = re.compile(r'\b(?:AXUIElement|AXObserver)\w*\b')
 TYPES = {'AXUIElement', 'AXObserver', 'AXObserverCallback', 'AXObserverCallbackWithInfo'}
+LISTINGS = re.compile(r'\bAVSpeechSynthesisVoice\.speechVoices\b|\bNSSpeechSynthesizer\.availableVoices\b'
+                      r'|\bNSSpeechSynthesizer\.attributes\s*\(\s*forVoice\s*:')
+LOOKUP = re.compile(r'\bAVSpeechSynthesisVoice(?:\.init)?\s*\(\s*identifier\s*:')
+TASK = re.compile(r'\bTask(?:\.detached)?\s*(?:\([^)]*\))?\s*\{')
 COMMENTS = re.compile(r'/\*.*?\*/|//[^\n]*', re.DOTALL)
+STRINGS = re.compile(r'"""[\s\S]*?"""|"(?:\\.|[^"\\\n])*"')
+
+
+def blank(match):
+    return re.sub(r'[^\n]', ' ', match.group())
 
 
 def code(text):
-    """The text with every comment blanked, line numbers kept."""
-    return COMMENTS.sub(lambda match: re.sub(r'[^\n]', ' ', match.group()), text)
+    """The text with every comment and string literal blanked, line numbers kept."""
+    return STRINGS.sub(blank, COMMENTS.sub(blank, text))
+
+
+def name(match):
+    return re.sub(r'\s*\(.*', '', match.group())
+
+
+def line_of(text, position):
+    return text.count('\n', 0, position) + 1
+
+
+def task_closures(text):
+    """(start, end) of every `Task {` / `Task.detached {` closure body in blanked code."""
+    spans = []
+    for match in TASK.finditer(text):
+        depth, start = 0, match.end() - 1
+        for position in range(start, len(text)):
+            if text[position] == '{':
+                depth += 1
+            elif text[position] == '}':
+                depth -= 1
+                if depth == 0:
+                    spans.append((start, position))
+                    break
+        else:
+            spans.append((start, len(text)))
+    return spans
 
 
 def strays(root):
-    """(relative path, line number, call) for every call outside the bridge."""
+    """(relative path, line number, call, where it belongs) for every call outside its door."""
     found = []
     for path in sorted(root.glob('Sources/**/*.swift')):
         relative = path.relative_to(root)
-        if relative == BRIDGE:
-            continue
-        for number, line in enumerate(code(path.read_text()).splitlines(), 1):
-            for match in CALLS.finditer(line):
-                name = re.sub(r'\s*\(.*', '', match.group())
-                if name not in TYPES:
-                    found.append((str(relative), number, name))
+        text = code(path.read_text())
+        if relative != BRIDGE:
+            for match in ELEMENT_CALLS.finditer(text):
+                if name(match) not in TYPES:
+                    found.append((str(relative), line_of(text, match.start()), name(match), f'belongs in {BRIDGE}'))
+        if relative != VOICES:
+            for match in LISTINGS.finditer(text):
+                found.append((str(relative), line_of(text, match.start()), name(match), f'belongs in {VOICES}'))
+        else:
+            closures = task_closures(text)
+            for pattern in (LISTINGS, LOOKUP):
+                for match in pattern.finditer(text):
+                    if any(start <= match.start() <= end for start, end in closures):
+                        found.append((str(relative), line_of(text, match.start()), name(match),
+                                      'runs inside a Task closure; list voices from a plain frame or a GCD queue'))
     return found
 
 
 def main(roots):
     failed = False
     for root in roots:
-        if not (root / BRIDGE).exists():
-            print(f'{root}: {BRIDGE} is missing')
-            failed = True
-            continue
-        found = strays(root)
-        for path, number, call in found:
-            print(f'{path}:{number}: {call} belongs in {BRIDGE}')
-        failed = failed or bool(found)
+        missing = [door for door in (BRIDGE, VOICES) if not (root / door).exists()]
+        for door in missing:
+            print(f'{root}: {door} is missing')
+        found = strays(root) if not missing else []
+        for path, number, call, reason in found:
+            print(f'{path}:{number}: {call} {reason}')
+        failed = failed or bool(found) or bool(missing)
     if failed:
         return 1
     print('Accessibility bridge OK')
