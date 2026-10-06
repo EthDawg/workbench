@@ -4290,5 +4290,180 @@
     "kind": "action",
     "belongsTo": "library",
     "note": "Conditional recovery for the retired Read draft: inspect the precise problem, retry preservation, or reveal the unchanged saved source."
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.HandoffConnectionsSheet.Button.runtime-934be1867f49",
+    "surface": "handoff review",
+    "label": null,
+    "expression": "backTitle",
+    "note": "Foundation C (#281): handoff review retains the full request and selection while choosing manual copy or an explicitly started checked runner.",
+    "kind": "action",
+    "belongsTo": "history"
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.HandoffReviewView.Button.back-to-handoff",
+    "surface": "handoff review",
+    "label": "Back to handoff",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Foundation C (#281): handoff review retains the full request and selection while choosing manual copy or an explicitly started checked runner."
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.HandoffReviewView.Button.cancel",
+    "surface": "handoff review",
+    "label": "Cancel",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Foundation C (#281): handoff review retains the full request and selection while choosing manual copy or an explicitly started checked runner. Same familiar control label within the handoff review.",
+    "aliasOf": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Button.cancel"
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.HandoffReviewView.Button.check-again",
+    "surface": "handoff review",
+    "label": "Check again",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Foundation C (#281): handoff review retains the full request and selection while choosing manual copy or an explicitly started checked runner."
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.HandoffReviewView.Button.choose-a-session",
+    "surface": "handoff review",
+    "label": "Choose a session…",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Foundation C (#281): handoff review retains the full request and selection while choosing manual copy or an explicitly started checked runner."
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.HandoffReviewView.Button.connections",
+    "surface": "handoff review",
+    "label": "Connections…",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Foundation C (#281): handoff review retains the full request and selection while choosing manual copy or an explicitly started checked runner. Same familiar control label within the handoff review.",
+    "aliasOf": "LocalVoice.HistoryView.HistoryView.Button.connections"
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.HandoffReviewView.Button.copy-instructions",
+    "surface": "handoff review",
+    "label": "Copy instructions",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Foundation C (#281): handoff review retains the full request and selection while choosing manual copy or an explicitly started checked runner."
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.HandoffReviewView.Button.read",
+    "surface": "handoff review",
+    "label": "Read…",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Foundation C (#281): handoff review retains the full request and selection while choosing manual copy or an explicitly started checked runner."
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.HandoffReviewView.Button.remove-evidence",
+    "surface": "handoff review",
+    "label": "Remove evidence",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Foundation C (#281): handoff review retains the full request and selection while choosing manual copy or an explicitly started checked runner."
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.HandoffReviewView.Button.start-task",
+    "surface": "handoff review",
+    "label": "Start task",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Foundation C (#281): handoff review retains the full request and selection while choosing manual copy or an explicitly started checked runner."
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.HandoffReviewView.Button.use-the-open-session",
+    "surface": "handoff review",
+    "label": "Use the open session",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Foundation C (#281): handoff review retains the full request and selection while choosing manual copy or an explicitly started checked runner."
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.HandoffReviewView.Menu.add-snap-talk-evidence",
+    "surface": "handoff review",
+    "label": "Add Snap & Talk evidence…",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Foundation C (#281): handoff review retains the full request and selection while choosing manual copy or an explicitly started checked runner."
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.HandoffReviewView.Picker.run-with",
+    "surface": "handoff review",
+    "label": "Run with",
+    "kind": "setting",
+    "belongsTo": "history",
+    "note": "Foundation C (#281): handoff review retains the full request and selection while choosing manual copy or an explicitly started checked runner."
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.HandoffReviewView.Picker.skill",
+    "surface": "handoff review",
+    "label": "Skill",
+    "kind": "setting",
+    "belongsTo": "history",
+    "note": "Foundation C (#281): handoff review retains the full request and selection while choosing manual copy or an explicitly started checked runner."
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.HandoffReviewView.Picker.use-as",
+    "surface": "handoff review",
+    "label": "Use as",
+    "kind": "setting",
+    "belongsTo": "history",
+    "note": "Foundation C (#281): handoff review retains the full request and selection while choosing manual copy or an explicitly started checked runner."
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.HandoffReviewView.TextField.what-should-the-assistant-prepare",
+    "surface": "handoff review",
+    "label": "What should the assistant prepare?",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Foundation C (#281): handoff review retains the full request and selection while choosing manual copy or an explicitly started checked runner."
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.HandoffReviewView.Toggle.include-the-previous-review-as-reference",
+    "surface": "handoff review",
+    "label": "Include the previous review as reference",
+    "kind": "setting",
+    "belongsTo": "history",
+    "note": "Foundation C (#281): handoff review retains the full request and selection while choosing manual copy or an explicitly started checked runner."
+  },
+  {
+    "id": "choices.HandoffInputRole.instructions",
+    "surface": "choices HandoffInputRole",
+    "label": "My instructions",
+    "case": "instructions",
+    "kind": "setting",
+    "belongsTo": "history",
+    "note": "Foundation C (#281): handoff review retains the full request and selection while choosing manual copy or an explicitly started checked runner."
+  },
+  {
+    "id": "choices.HandoffInputRole.reference",
+    "surface": "choices HandoffInputRole",
+    "label": "Reference material",
+    "case": "reference",
+    "kind": "setting",
+    "belongsTo": "history",
+    "note": "Foundation C (#281): handoff review retains the full request and selection while choosing manual copy or an explicitly started checked runner."
+  },
+  {
+    "id": "choices.SubscriptionProvider.claude",
+    "surface": "choices SubscriptionProvider",
+    "label": "Claude Code",
+    "case": "claude",
+    "kind": "setting",
+    "belongsTo": "history",
+    "note": "Foundation C (#281): handoff review retains the full request and selection while choosing manual copy or an explicitly started checked runner."
+  },
+  {
+    "id": "choices.SubscriptionProvider.codex",
+    "surface": "choices SubscriptionProvider",
+    "label": "Codex",
+    "case": "codex",
+    "kind": "setting",
+    "belongsTo": "history",
+    "note": "Foundation C (#281): handoff review retains the full request and selection while choosing manual copy or an explicitly started checked runner."
   }
 ]
