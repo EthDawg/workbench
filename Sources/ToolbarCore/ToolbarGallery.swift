@@ -72,7 +72,7 @@ public enum ToolbarGallery {
                                 captureChoices: ToolbarCaptureKind.offered(for: live))
     }
 
-    /// Applicable contextual controls: Review, Tools and View, plus Persona selection
+    /// Applicable contextual controls: Review, Tools, Prompts and View, plus Persona selection
     /// and Next. Hidden artwork and one-choice sets omit inapplicable cycling.
     public static let accessories: [ToolbarViewState] = [
         live(ToolbarLiveState(mode: .snapAndTalk, captureCount: 2), name: "accessory-snap-and-talk-review",
@@ -87,7 +87,7 @@ public enum ToolbarGallery {
         ToolbarViewState(name: "accessory-persona-set-right", tier: .revealed, anchor: .right, mode: .persona,
              accessory: .personaPicker, accessoryDescription: "Choose set · Set 1", quickControl: .nextSet),
         ToolbarViewState(name: "accessory-present-view", tier: .revealed, mode: .present, actionTitle: "End presentation",
-             quickControl: .presentationView)
+             accessory: .prompts, quickControl: .presentationView)
     ]
 
     /// Work in progress. Input-consuming work takes the button whatever the

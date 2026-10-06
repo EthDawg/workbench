@@ -87,7 +87,7 @@ final class ToolbarGalleryTests: XCTestCase {
         let saving = ToolbarGallery.activity.first { $0.name == "activity-transcribing" }
         XCTAssertEqual(saving?.actionHint, "saving · ⌥C")
         XCTAssertEqual(saving?.isBusy, true)
-        XCTAssertNil(ToolbarGallery.activity.first { $0.name == "activity-presenting" }?.accessoryTitle)
+        XCTAssertEqual(ToolbarGallery.activity.first { $0.name == "activity-presenting" }?.accessoryTitle, "Prompts")
         XCTAssertEqual(ToolbarGallery.accessories.first { $0.name == "accessory-present-view" }?.quickControl, .presentationView)
         XCTAssertNil(ToolbarGallery.modes.first { $0.mode == .dictate }?.accessoryTitle)
     }
@@ -149,7 +149,7 @@ final class ToolbarGalleryTests: XCTestCase {
     }
 
     /// Each tool's one accessory, when it applies (#134 part B): Snap & Talk's Review once a
-    /// session is open, Draw's Tools, and Persona's Appearance for a selected
+    /// session is open, Draw's Tools, Present's Prompts, and Persona's Appearance for a selected
     /// live copy, shown or hidden. Dictate, Read and Snap have none, whatever else is live.
     func testEachToolOffersOnlyItsOwnAccessory() {
         func offered(_ live: ToolbarLiveState, copy: Bool = false) -> ToolbarAccessory? {
@@ -160,7 +160,7 @@ final class ToolbarGalleryTests: XCTestCase {
         XCTAssertEqual(offered(ToolbarLiveState(mode: .snapAndTalk, narrating: true, captureCount: 3)), .review, "while narrating")
         XCTAssertEqual(offered(ToolbarLiveState(mode: .draw)), .tools)
         XCTAssertEqual(offered(ToolbarLiveState(mode: .draw, drawing: true)), .tools)
-        XCTAssertNil(offered(ToolbarLiveState(mode: .present, presenting: true)), "Present has no general prompt accessory")
+        XCTAssertEqual(offered(ToolbarLiveState(mode: .present, presenting: true)), .prompts)
         XCTAssertEqual(offered(ToolbarLiveState(mode: .persona)), .personaPicker, "nothing live: the cards and the camera are one click away")
         for camera in [ToolbarLiveState.Persona.cameraStarting, .cameraShown, .cameraHidden, .cameraFailed] {
             XCTAssertEqual(offered(ToolbarLiveState(mode: .persona, persona: camera)), .personaPicker, "the camera is one of Persona's choices: \(camera)")
@@ -182,7 +182,7 @@ final class ToolbarGalleryTests: XCTestCase {
                 }
             }
         }
-        XCTAssertEqual(ToolbarAccessory.allCases.map(\.title), ["Review", "Tools", "Choose Persona"])
+        XCTAssertEqual(ToolbarAccessory.allCases.map(\.title), ["Review", "Tools", "Prompts", "Choose Persona"])
         // Appearance carries the Persona menus' word, and VoiceOver hears whose it is (#169).
         XCTAssertEqual(ToolbarAccessory.appearanceDescription(copyHidden: false), "Appearance of the selected persona")
         XCTAssertEqual(ToolbarAccessory.appearanceDescription(copyHidden: true), "Appearance of the selected persona, hidden")
@@ -198,7 +198,7 @@ final class ToolbarGalleryTests: XCTestCase {
             if let accessory = state.accessory { XCTAssertEqual(accessory.mode, state.mode, state.name) }
         }
         let modes = Dictionary(uniqueKeysWithValues: ToolbarGallery.modes.filter { $0.tier == .revealed }.map { ($0.mode, $0.accessory) })
-        XCTAssertEqual(modes, [.dictate: nil, .snap: nil, .snapAndTalk: nil, .draw: .tools, .present: nil, .persona: .personaPicker],
+        XCTAssertEqual(modes, [.dictate: nil, .snap: nil, .snapAndTalk: nil, .draw: .tools, .present: .prompts, .persona: .personaPicker],
                        "idle, Draw and Present show theirs, Persona offers its cards and camera, and nothing else has one to show")
         let hidden = ToolbarGallery.states.first { $0.name == "accessory-persona-hidden" }
         XCTAssertEqual(hidden?.accessory, .personaPicker, "a kept card is chosen again from the picker")

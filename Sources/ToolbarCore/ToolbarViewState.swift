@@ -126,6 +126,8 @@ public enum ToolbarAccessory: String, CaseIterable, Sendable {
     case review
     /// Draw: the drawing choices.
     case tools
+    /// Present: Saved Prompts.
+    case prompts
     /// Persona: the frozen card or prepared-set choices currently on screen.
     case personaPicker
 
@@ -133,6 +135,7 @@ public enum ToolbarAccessory: String, CaseIterable, Sendable {
         switch self {
         case .review: return "Review"
         case .tools: return "Tools"
+        case .prompts: return "Prompts"
         case .personaPicker: return "Choose Persona"
         }
     }
@@ -140,6 +143,7 @@ public enum ToolbarAccessory: String, CaseIterable, Sendable {
         switch self {
         case .review: return "rectangle.stack"
         case .tools: return "paintpalette"
+        case .prompts: return "text.bubble"
         case .personaPicker: return "person.crop.rectangle.stack"
         }
     }
@@ -148,6 +152,7 @@ public enum ToolbarAccessory: String, CaseIterable, Sendable {
         switch self {
         case .review: return .snapAndTalk
         case .tools: return .draw
+        case .prompts: return .present
         case .personaPicker: return .persona
         }
     }
@@ -161,20 +166,21 @@ public enum ToolbarAccessory: String, CaseIterable, Sendable {
     }
 
     /// What the chosen tool offers now: Snap & Talk's Review once a session is open, Draw's Tools,
-    /// and Persona's picker. The cards and the live camera are always Persona's
+    /// Present's Prompts, and Persona's picker. The cards and the live camera are always Persona's
     /// choices, so its picker is one click away whatever is live; a prepared set offers its sets
     /// while it shows. Preparation stays reachable through the chooser's workspace door.
     public static func offered(for live: ToolbarLiveState, selectedPersonaCopy: Bool) -> ToolbarAccessory? {
         switch live.mode {
         case .snapAndTalk: return live.captureCount != nil ? .review : nil
         case .draw: return .tools
+        case .present: return .prompts
         case .persona:
             switch live.persona {
             case .session: return selectedPersonaCopy ? .personaPicker : nil
             case .sessionHidden: return nil
             case .none, .shown, .cameraStarting, .cameraShown, .cameraHidden, .cameraFailed: return .personaPicker
             }
-        case .dictate, .snap, .present: return nil
+        case .dictate, .snap: return nil
         }
     }
 }
