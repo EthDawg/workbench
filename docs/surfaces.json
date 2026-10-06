@@ -1,5 +1,211 @@
 [
   {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.add-screenshot",
+    "surface": "report a problem window",
+    "label": "Add screenshot",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. Region capture hides only this window; Snap's own draft and host are untouched."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.add-to-description",
+    "surface": "report a problem window",
+    "label": "Add to description",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. Appends the reviewed transcript to the description; typed words are never replaced."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.choose-image",
+    "surface": "report a problem window",
+    "label": "Choose image…",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. The fallback when capture is refused or fails: a chosen PNG or JPEG, re-encoded without metadata."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.keep",
+    "surface": "report a problem window",
+    "label": "Keep",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. Cancels the removal question and keeps the report."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.microphone-settings",
+    "surface": "report a problem window",
+    "label": "Microphone Settings…",
+    "kind": "action",
+    "belongsTo": "app",
+    "aliasOf": "LocalVoice.CapturePanel.DictationResultView.Button.microphone-settings",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. The same words as Dictate's refusal, opening the same Privacy & Security pane beside the refused voice note (Fit rule 2)."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.record-voice-note",
+    "surface": "report a problem window",
+    "label": "Record voice note",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. Explicit Record through the shared microphone admission; up to 60 seconds; a busy or refused microphone leaves words and the screenshot usable."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.remove",
+    "surface": "report a problem window",
+    "label": "Remove",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. Removes the screenshot from the draft."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.remove-from-this-mac",
+    "surface": "report a problem window",
+    "label": "Remove from this Mac",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. Confirms removal of the local copy; the dialog says the team keeps a delivered report for 30 days and how to ask for deletion."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.remove.2",
+    "surface": "report a problem window",
+    "label": "Remove",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. Removes the voice note from the draft."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.remove.e2d57943",
+    "surface": "report a problem window",
+    "label": "Remove…",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. Asks before removing a report or receipt from this Mac."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.replace",
+    "surface": "report a problem window",
+    "label": "Replace",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. Captures again and replaces the report's screenshot."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.retry",
+    "surface": "report a problem window",
+    "label": "Retry",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. After Couldn't deliver: the same bytes and event ID, once more, by the person's choice."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.runtime-c04f66588c7c",
+    "surface": "report a problem window",
+    "label": null,
+    "expression": "model . playing ? \"Pause\" : \"Play\"",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. Play or Pause the voice note on this Mac. Runtime label: Play, or Pause while playing. Runtime label from model . playing ? \"Pause\" : \"Play\"; no rendered text assumed.",
+    "kind": "action",
+    "belongsTo": "app"
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.save-a-copy",
+    "surface": "report a problem window",
+    "label": "Save a copy…",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. Save a copy of the draft when Send was refused for room: a new folder with context.json, screenshot.png and voice.wav."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.save-a-copy.2",
+    "surface": "report a problem window",
+    "label": "Save a copy…",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. Replaces Send report in a build without a reporting inbox (Preview and local builds without the developer override)."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.save-a-copy.3",
+    "surface": "report a problem window",
+    "label": "Save a copy…",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. Save a copy of a frozen report from its receipt."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.send-again",
+    "surface": "report a problem window",
+    "label": "Send again",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. After Couldn't confirm delivery: the same report under a new event ID, only when chosen."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.send-report",
+    "surface": "report a problem window",
+    "label": "Send report",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. The primary action: freezes this report in the outbox, then delivers it automatically. It authorises this report's upload and retries only."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.stop-recording",
+    "surface": "report a problem window",
+    "label": "Stop recording",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. Stops and keeps the voice note; the same words as stopping any recording."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.transcribe",
+    "surface": "report a problem window",
+    "label": "Transcribe",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. Shown only when the selected speech engine is already ready and idle; never downloads or switches engines, and Send never waits for it."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.DisclosureGroup.details",
+    "surface": "report a problem window",
+    "label": "Details",
+    "kind": "action",
+    "belongsTo": "app",
+    "aliasOf": "LocalVoice.DemoLibraryView.DemoLibraryView.DisclosureGroup.details",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. Shared wording for revealing exact details: here, the context.json that is sent."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Label.runtime-64041f706138",
+    "surface": "report a problem window",
+    "label": null,
+    "expression": "model . available ? \"This report goes privately to the Workbench team.\" : \"Nothing is sent from this build.\"",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. The inclusion summary's heading: This report goes privately to the Workbench team, or Nothing is sent from this build. Runtime label from model . available ? \"This report goes privately to the Workbench team.\" : \"Nothing is sent from this build.\"; no rendered text assumed.",
+    "kind": "status",
+    "belongsTo": "app"
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Label.runtime-edb465624291",
+    "surface": "report a problem window",
+    "label": null,
+    "expression": "note",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. A quiet line after an action that worked, such as Save a copy. Runtime label from note; no rendered text assumed.",
+    "kind": "status",
+    "belongsTo": "app"
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.TextField.your-email-address",
+    "surface": "report a problem window",
+    "label": "Your email address",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. Email me about this (optional): a reply address inside this report only."
+  },
+  {
+    "id": "LocalVoice.BugReportView.ReportProblemButton.Button.report-a-problem",
+    "surface": "problem recovery",
+    "label": "Report a problem…",
+    "kind": "action",
+    "belongsTo": "app",
+    "aliasOf": "LocalVoice.main.AppDelegate.addItem.report-a-problem",
+    "note": "The same door, under the same name, beside a recoverable Dictate problem banner and a Snap failure notice (#296). It opens the same window with the problem's typed code, never its words, and is not shown on timed success notices."
+  },
+  {
     "id": "LocalVoice.CaptureHistoryView.TranscriptHistoryRow.Button.open-in-dictate",
     "surface": "history page",
     "label": "Open in Dictate",
@@ -1435,6 +1641,14 @@
     "kind": "action",
     "belongsTo": "present",
     "note": "Option: live strip action, the one way to end what is running from Home (#134 W9)."
+  },
+  {
+    "id": "LocalVoice.main.AppDelegate.addItem.report-a-problem",
+    "surface": "app menu bar",
+    "label": "Report a problem…",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Option of the app's Help menu, decided by the Report a problem build brief (docs/bug-reporting.md, #296): opens the one modeless Report a problem window. Not a toolbar tool, sidebar place or captured-work library; its draft and outbox are the brief's deliberate exception to History."
   },
   {
     "id": "StageKit.PersonaLibraryView.PersonaLibraryView.Button.me",

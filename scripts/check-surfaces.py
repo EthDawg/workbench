@@ -188,6 +188,10 @@ ENTRY_POINTS = [
     ('LocalVoice/HistorySelectionControls.swift', 'HandoffResultPreview', 'history page', 'doors'),
     ('LocalVoice/HistorySelectionControls.swift', 'HistorySelectionControls', 'history page', 'doors'),
     ('LocalVoice/HistorySelectionControls.swift', 'TranscriptMetadataEditor', 'history page', 'doors'),
+    # Report a problem (#296): the composer window that Help and a Dictate or Snap problem open,
+    # and the one door beside those problems.
+    ('LocalVoice/BugReportView.swift', 'BugReportView', 'report a problem window', 'controls'),
+    ('LocalVoice/BugReportView.swift', 'ReportProblemButton', 'problem recovery', 'controls'),
     ('LocalVoice/DemoLibraryView.swift', 'DemoLibraryView', 'Library Resources', 'controls'),
     ('LocalVoice/DemoLibraryView.swift', 'DemoResourceEditor', 'Library resource editor', 'controls'),
 ]

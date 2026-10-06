@@ -139,7 +139,9 @@ enum SurfaceGallery {
         var pages: [Page]; var entries: [Entry]; var menus: [Listing]; var placement: [PlacementCheck] = []
         /// Home's review and the floating toolbar's switch, checked with the pass's own models (#134).
         var checks: [String] = []
-        var scope = "full" }
+        var scope = "full"
+        /// Report a problem's composer in each state (#296).
+        var reports: [Shot] = [] }
 
     /// Parent process: the two appearances render at once in isolated passes, then the contact sheet.
     static func run(output: URL) throws {
@@ -207,7 +209,7 @@ enum SurfaceGallery {
         if !wrongPicker.isEmpty {
             throw VoiceError.message("The Saved Prompts picker's panel is not the size of its content in \(wrongPicker.count) states (\(wrongPicker.joined(separator: "; "))). See \(output.appendingPathComponent("index.html").path).")
         }
-        let renders = passes.reduce(0) { $0 + $1.panels.count + $1.toolbar.count + $1.pickers.count + $1.pages.reduce(0) { $0 + $1.shots.count } }
+        let renders = passes.reduce(0) { $0 + $1.panels.count + $1.toolbar.count + $1.pickers.count + $1.reports.count + $1.pages.reduce(0) { $0 + $1.shots.count } }
         print("SURFACE_GALLERY_OK: \(renders) renders, \(passes[0].entries.count) entries, \(flags) flags in \(output.path)")
     }
 
@@ -531,6 +533,13 @@ private struct HistoryNativeAcceptanceView: View {
         if ProcessInfo.processInfo.environment["WORKBENCH_RESOURCES_GALLERY_ONLY"] == "1" { return try renderResources(to: output) }
         if ProcessInfo.processInfo.environment["WORKBENCH_FOUNDATION_OWNERSHIP_GALLERY_ONLY"] == "1" { return try renderFoundationOwnership(to: output) }
         if ProcessInfo.processInfo.environment["WORKBENCH_READ_RETIREMENT_GALLERY_ONLY"] == "1" { return try renderReadRetirement(to: output) }
+        if ProcessInfo.processInfo.environment["WORKBENCH_REPORT_GALLERY_ONLY"] == "1" {
+            var pass = SurfaceGallery.Pass(theme: theme, panels: [], toolbar: [], host: [], pickers: [], pickerHost: [],
+                pages: [.init(route: "dictate", title: "Dictate", fallsThrough: false, shots: [try renderDictateProblemDoor(to: output)])],
+                entries: entries().filter { $0.route == "dictate" }, menus: [], placement: [])
+            pass.reports = try renderBugReports(to: output)
+            return pass
+        }
         if SurfaceGallery.desktopOnly { return try renderDesktopOnly(to: output) }
         if ProcessInfo.processInfo.environment["WORKBENCH_HOME_GALLERY_ONLY"] == "1" { return try renderHomeOnly(to: output) }
         if ProcessInfo.processInfo.environment["WORKBENCH_TOOLBAR_GALLERY_ONLY"] == "1" {
@@ -596,8 +605,11 @@ private struct HistoryNativeAcceptanceView: View {
         for (route, shot) in try renderScreenAccessOff(to: output) {
             if let index = pages.firstIndex(where: { $0.route == route }) { pages[index].shots.append(shot) }
         }
-        return SurfaceGallery.Pass(theme: theme, panels: panels, toolbar: toolbar, host: host, pickers: pickers + pickerShots, pickerHost: pickerHost,
-                                   pages: pages, entries: entries() + menuEntries, menus: listings, placement: placement, checks: checks)
+        if let dictate = pages.firstIndex(where: { $0.route == "dictate" }) { pages[dictate].shots.append(try renderDictateProblemDoor(to: output)) }
+        var pass = SurfaceGallery.Pass(theme: theme, panels: panels, toolbar: toolbar, host: host, pickers: pickers + pickerShots, pickerHost: pickerHost,
+                                       pages: pages, entries: entries() + menuEntries, menus: listings, placement: placement, checks: checks)
+        pass.reports = try renderBugReports(to: output)
+        return pass
     }
 
     // MARK: Saved Prompts picker
@@ -3833,7 +3845,8 @@ extension SurfacePass {
                        "Copy build details": "Copies build details", "Hide Workbench": "Hides Workbench", "Quit Workbench": "Quits Workbench",
                        "Close Window": "Closes the front window", "Open Workbench": "Opens Home on its current page",
                        "Show floating toolbar": "Shows the toolbar between actions", "Hide floating toolbar": "Hides the toolbar between actions", "Focus floating toolbar": "Moves keyboard focus to the toolbar",
-                       "Restore menu-bar icon": "Shows the icon and the toolbar", "Workbench Guide": "Opens the web guide"]
+                       "Restore menu-bar icon": "Shows the icon and the toolbar", "Workbench Guide": "Opens the web guide",
+                       "Report a problem…": "Opens the Report a problem window"]
         return shell.makeMainMenu().main.items.compactMap(\.submenu).filter { ["Workbench", "Window", "Help"].contains($0.title) }.flatMap { menu in
             menu.items.filter { !$0.isSeparatorItem && $0.submenu == nil }.map { item in
                 let label = "\(menu.title) › \(item.title)"
@@ -3887,7 +3900,7 @@ private struct SurfaceIndex {
         h1{font-size:24px;margin:0 0 4px}h2{font-size:18px;margin:32px 0 8px;border-bottom:1px solid var(--line);padding-bottom:6px}h3{font-size:15px;margin:22px 0 4px}
         p,li{color:var(--muted)}.flag{color:var(--flag)}.ok{color:var(--ok)}code{font:12px ui-monospace,monospace}
         .row{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start}figure{margin:0}figcaption{font-size:12px;color:var(--muted)}
-        img{display:block;max-width:100%;height:auto;border:1px solid var(--line);border-radius:6px}.panel img{width:328px}.picker img{width:452px}.page img{width:560px}.toolbar img{width:auto;max-height:72px}
+        img{display:block;max-width:100%;height:auto;border:1px solid var(--line);border-radius:6px}.panel img{width:328px}.picker img{width:452px}.page img{width:560px}.report img{width:480px}.toolbar img{width:auto;max-height:72px}
         pre{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:10px 12px;overflow-x:auto;font-size:12px}
         table{border-collapse:collapse;width:100%}td,th{text-align:left;border-bottom:1px solid var(--line);padding:5px 8px;vertical-align:top}th{font-weight:600}
         .menus{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
@@ -3943,6 +3956,13 @@ private struct SurfaceIndex {
         for (index, shot) in light.pickers.enumerated() {
             html += "<h3>\(esc(shot.title))</h3><p>\(esc(shot.detail))</p><div class=\"row picker\">" + figure(shot, "Light")
                 + (index < dark.pickers.count ? figure(dark.pickers[index], "Dark") : "") + "</div>"
+        }
+        if !light.reports.isEmpty {
+            html += "<h2>Report a problem</h2><p>Help › Report a problem… and the same door beside a Dictate or Snap problem open this window (#296). Drawn from a synthetic report folder with a stubbed network session that is never started: nothing is captured, recorded or sent.</p>"
+            for (index, shot) in light.reports.enumerated() {
+                html += "<h3>\(esc(shot.title))</h3><p>\(esc(shot.detail))</p><div class=\"row report\">" + figure(shot, "Light")
+                    + (index < dark.reports.count ? figure(dark.reports[index], "Dark") : "") + "</div>"
+            }
         }
         html += "<h2>Options menus</h2><div class=\"menus\">" + light.menus.map { "<div><h3>\(esc($0.title))</h3><pre>\(esc($0.lines.joined(separator: "\n")))</pre></div>" }.joined() + "</div>"
         html += "<h2>Pages</h2><p>The top of each page, with the window at its default size and at its minimum size.</p>"
@@ -4054,5 +4074,129 @@ private struct UpdateNativeAcceptanceView: View {
             }
             Spacer()
         }.padding(24).workbenchTheme()
+    }
+}
+
+// MARK: Report a problem
+
+/// A recorder that never records, so the composer's microphone refusal can be drawn.
+@MainActor private final class GalleryVoiceRecorder: BugReportRecording {
+    var isRecording: Bool { false }
+    var elapsed: TimeInterval { 0 }
+    var onFinish: (() -> Void)?
+    func start(to url: URL) throws { throw VoiceError.message("The gallery never records.") }
+    func stop() {}
+}
+
+extension SurfacePass {
+    /// The composer in each state the brief names, from a synthetic report folder inside this
+    /// pass's temporary home. Its network session is a stub that is never started.
+    func renderBugReports(to output: URL) throws -> [SurfaceGallery.Shot] {
+        let base = home.appendingPathComponent("Report gallery", isDirectory: true)
+        let clock = Date(timeIntervalSince1970: 1_791_349_200)
+        let destination = BugReportDestination(dsn: BugReportChecks.dsn, verifier: BugReportChecks.verifier, environment: "production", isOverride: false)
+        let screenshot = try galleryScreenshot()
+        var shots: [SurfaceGallery.Shot] = []
+        func composer(_ id: String, sending: Bool = true) -> BugReportModel {
+            let store = BugReportStore(root: base.appendingPathComponent(id, isDirectory: true), now: { clock }, availableCapacity: { nil })
+            let transport = BugReportTransport(store: store, session: BugReportTransport.session(protocols: [BugReportStub.self]),
+                                               client: "workbench-mac/gallery", now: { clock }, random: { 0.5 })
+            var services = BugReportModel.Services()
+            services.build = { BugReportChecks.build }
+            services.now = { clock }
+            services.announce = { _ in }
+            services.microphoneStatus = { .denied }
+            return BugReportModel(store: store, transport: transport, destination: sending ? destination : nil,
+                                  recorder: GalleryVoiceRecorder(), services: services)
+        }
+        func fill(_ model: BugReportModel, voice: Bool = true) throws {
+            model.open(origin: BugReportOrigin(surface: .snap, errorCode: "snap.capture_failed"))
+            model.explanation = "I chose Region in Snap and the selector closed before I could drag. It happened twice after reconnecting my display."
+            model.replyEmail = "sam@example.com"
+            try model.setScreenshot(screenshot)
+            if voice { try model.setVoice(BugReportMedia.syntheticWAV(seconds: 12)) }
+            model.persist()
+        }
+        /// One frozen report in the given delivery state, under an empty composer.
+        func receipt(_ id: String, _ change: (inout BugReportDelivery) -> Void, active: Bool = false) throws -> BugReportModel {
+            let model = composer(id)
+            try fill(model, voice: false)
+            model.send()
+            guard var delivery = model.store.deliveries().first else { throw VoiceError.message("The gallery report was not frozen.") }
+            change(&delivery)
+            try model.store.save(delivery)
+            if delivery.evidenceRemoved { model.store.removeEvidence(delivery.id) }
+            model.transport.reload()
+            if active { model.transport.active = [delivery.id] }
+            model.open(origin: .help)
+            return model
+        }
+        func shot(_ model: BugReportModel, _ id: String, _ title: String, _ detail: String, details: Bool = false) throws {
+            let view = NSHostingView(rootView: BugReportView(model: model, scrolls: false, expandDetails: details).frame(width: 480))
+            let height = max(360, ceil(view.fittingSize.height))
+            let window = offscreenWindow(size: NSSize(width: 480, height: height), styleMask: [.titled, .closable, .miniaturizable])
+            window.title = "Report a problem"
+            window.contentView = view
+            defer { window.contentView = nil; window.close() }
+            settle(view)
+            let frame = view.superview ?? view
+            shots.append(try save(try snapshot(frame), id: id, title: title, detail: detail, file: "report-\(id)-\(theme).png", to: output))
+        }
+
+        let empty = composer("empty"); empty.open(origin: .help)
+        try shot(empty, "empty", "Empty, from Help", "Nothing is captured or requested on opening. Send report waits for words, a screenshot or a voice note.")
+        let filled = composer("filled"); try fill(filled)
+        try shot(filled, "filled", "Words, screenshot and voice note", "Replace and Remove beside the exact image; Play and Remove beside the voice note; the summary names what goes.")
+        try shot(filled, "details", "Details", "Details shows the exact context.json that is sent: build, OS, the Snap problem's code and the screenshot's size.", details: true)
+        let long = composer("over-limit"); long.open(origin: .help)
+        long.explanation = String(repeating: "The window flickers when I switch spaces. ", count: 52)
+        try shot(long, "over-limit", "Description over the limit", "Nothing is cut: the counter and the reason show, and Send report waits until the description is shorter.")
+        let microphone = composer("microphone-off"); try fill(microphone, voice: false)
+        let refused = Task { await microphone.toggleRecording() }
+        try wait("microphone refusal") { microphone.problem != nil }
+        refused.cancel()
+        try shot(microphone, "microphone-off", "Microphone access off", "Words and the screenshot stay usable; Microphone Settings… opens the Mac's setting.")
+        try shot(try receipt("sending", { _ in }, active: true), "sending", "Sending…", "The report is frozen in the outbox before any network; the composer is ready for another.")
+        try shot(try receipt("waiting", { $0.problem = .offline; $0.attempts = 1; $0.nextAttemptAt = clock.addingTimeInterval(40) }), "waiting",
+                 "Waiting for connection", "Saved on this Mac; it sends by itself when the Mac is back online, even after a restart.")
+        try shot(try receipt("sent", { $0.state = .sent; $0.sentAt = clock; $0.verifyUntil = clock.addingTimeInterval(900); $0.nextAttemptAt = clock.addingTimeInterval(15) }),
+                 "sent", "Sent · report ID", "Sentry accepted the envelope; the verifier has not confirmed it yet.")
+        try shot(try receipt("received", { $0.state = .received; $0.sentAt = clock; $0.receivedAt = clock; $0.nextAttemptAt = nil; $0.evidenceRemoved = true }),
+                 "received", "Received · report ID", "Only the verifier's readback says Received. The local copy is gone; the receipt explains retention and deletion.")
+        try shot(try receipt("failed", { $0.state = .failed; $0.problem = .unauthorized; $0.status = 401; $0.nextAttemptAt = nil }),
+                 "failed", "Couldn't deliver", "A refusal that retrying the same bytes cannot fix by itself: Retry and Save a copy…, with no automatic loop.")
+        try shot(try receipt("unconfirmed", { $0.state = .unconfirmed; $0.problem = .notFound; $0.sentAt = clock; $0.nextAttemptAt = nil }),
+                 "unconfirmed", "Couldn't confirm delivery", "The verifier never found it within 15 minutes. Send again uses a new event ID for the same report, only when chosen.")
+        let unavailable = composer("unavailable", sending: false); try fill(unavailable)
+        try shot(unavailable, "unavailable", "A build without a reporting inbox", "Preview and local builds have no DSN unless the developer override is set: Send is replaced by Save a copy….")
+        return shots
+    }
+
+    /// A synthetic screenshot: a window with a sidebar and a toolbar, nothing real.
+    private func galleryScreenshot() throws -> BugReportImage {
+        let width = 1440, height = 900
+        let space = CGColorSpace(name: CGColorSpace.sRGB)!
+        let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0, space: space,
+                                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        context.setFillColor(CGColor(red: 0.30, green: 0.45, blue: 0.62, alpha: 1)); context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        context.setFillColor(CGColor(red: 0.97, green: 0.97, blue: 0.98, alpha: 1)); context.fill(CGRect(x: 160, y: 120, width: 1120, height: 680))
+        context.setFillColor(CGColor(red: 0.90, green: 0.91, blue: 0.93, alpha: 1)); context.fill(CGRect(x: 160, y: 120, width: 240, height: 680))
+        context.setFillColor(CGColor(red: 0.85, green: 0.86, blue: 0.88, alpha: 1)); context.fill(CGRect(x: 160, y: 756, width: 1120, height: 44))
+        context.setFillColor(CGColor(red: 0.16, green: 0.58, blue: 0.49, alpha: 1)); context.fill(CGRect(x: 460, y: 560, width: 420, height: 120))
+        context.setFillColor(CGColor(red: 0.10, green: 0.10, blue: 0.12, alpha: 1)); context.fill(CGRect(x: 600, y: 60, width: 240, height: 36))
+        return try BugReportMedia.image(try BugReportMedia.encodePNG(context.makeImage()!), scale: 2, sourceLimit: BugReportLimits.importBytes)
+    }
+
+    /// Dictate's problem banner with Report a problem… beside it, carrying the problem's code.
+    func renderDictateProblemDoor(to output: URL) throws -> SurfaceGallery.Shot {
+        let kept = model.page
+        defer { model.dismissError(); model.page = kept }
+        model.report("Recording stopped. Original audio was kept for retry. The input device was disconnected.", on: .dictate, code: "dictate.recording_stopped")
+        let window = homeWindow(size: SurfaceGallery.sizes[1].size)
+        defer { window.contentViewController = nil; window.close() }
+        let (rep, drawn) = try renderPage("dictate", in: window)
+        return try save(rep, id: "problem-door", title: "Dictate problem with Report a problem…, \(Int(drawn.width)) × \(Int(drawn.height)) pt",
+                        detail: "The same door as Help › Report a problem…, beside a recoverable problem; it opens the composer with dictate.recording_stopped.",
+                        file: "page-dictate-problem-door-\(theme).png", to: output)
     }
 }
