@@ -229,35 +229,48 @@ enum BugReportEnvelope {
             "sdk": ["name": feedbackSource, "version": version]]
     }
 
-    /// What the verifier compares with the attachments Sentry stored.
-    static func verifierAttachments(_ items: [BugReportEnvelopeItem]) -> [[String: Any]] {
+    /// What the verifier compares with the attachments Sentry stored, kept with the delivery so a
+    /// report whose local copy is gone can still be checked.
+    static func verifierFiles(_ items: [BugReportEnvelopeItem]) -> [BugReportVerifiedFile] {
         items.filter { $0.type == "attachment" }.compactMap { item in
-            item.filename.map { ["name": $0, "size": item.payload.count, "sha256": BugReportText.sha256(item.payload)] }
+            item.filename.map { BugReportVerifiedFile(name: $0, size: item.payload.count, sha256: BugReportText.sha256(item.payload)) }
         }
     }
 
     // MARK: Rate limits
 
-    /// Seconds before feedback or its attachments may be sent again, from X-Sentry-Rate-Limits
-    /// (any status) or, on 429, Retry-After. Nil when nothing limits this report.
-    static func rateLimit(status: Int, rateLimits: String?, retryAfter: String?, now: Date) -> TimeInterval? {
-        var longest: TimeInterval?
+    /// What X-Sentry-Rate-Limits (any status) or, on 429, Retry-After says about this report.
+    struct RateLimit: Equatable {
+        /// Seconds before the report may be sent again.
+        var wait: TimeInterval
+        /// Only the attachment category is limited: the feedback event itself went through, so the
+        /// report counts as Sent and the verifier decides whether its files arrived.
+        var attachmentsOnly: Bool
+    }
+
+    static func rateLimit(status: Int, rateLimits: String?, retryAfter: String?, now: Date) -> RateLimit? {
+        var feedback: TimeInterval?, attachment: TimeInterval?
         for quota in (rateLimits ?? "").split(separator: ",") {
             let fields = quota.trimmingCharacters(in: .whitespaces).split(separator: ":", omittingEmptySubsequences: false)
             guard let first = fields.first, let seconds = Double(first.trimmingCharacters(in: .whitespaces)), seconds.isFinite, seconds >= 0 else { continue }
             let categories = fields.count > 1 ? fields[1].split(separator: ";").map { $0.trimmingCharacters(in: .whitespaces) } : []
-            guard categories.isEmpty || categories.contains("feedback") || categories.contains("attachment") else { continue }
-            longest = max(longest ?? 0, seconds)
+            if categories.isEmpty || categories.contains("feedback") { feedback = max(feedback ?? 0, seconds) }
+            else if categories.contains("attachment") { attachment = max(attachment ?? 0, seconds) }
         }
-        if let longest { return min(86_400, max(1, longest)) }
+        if let feedback { return RateLimit(wait: min(86_400, max(1, max(feedback, attachment ?? 0))), attachmentsOnly: false) }
+        if status != 429, let attachment { return RateLimit(wait: min(86_400, max(1, attachment)), attachmentsOnly: true) }
         guard status == 429 else { return nil }
-        if let retryAfter = retryAfter?.trimmingCharacters(in: .whitespaces) {
-            if let seconds = Double(retryAfter), seconds.isFinite { return min(86_400, max(1, seconds)) }
-            let formatter = DateFormatter()
-            formatter.locale = Locale(identifier: "en_US_POSIX"); formatter.timeZone = TimeZone(identifier: "GMT")
-            formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
-            if let date = formatter.date(from: retryAfter) { return min(86_400, max(1, date.timeIntervalSince(now))) }
-        }
-        return 60
+        return RateLimit(wait: retryAfterSeconds(retryAfter, now: now) ?? 60, attachmentsOnly: false)
+    }
+
+    /// Retry-After as seconds or an HTTP date, bounded to a day.
+    static func retryAfterSeconds(_ retryAfter: String?, now: Date) -> TimeInterval? {
+        guard let retryAfter = retryAfter?.trimmingCharacters(in: .whitespaces) else { return nil }
+        if let seconds = Double(retryAfter), seconds.isFinite { return min(86_400, max(1, seconds)) }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX"); formatter.timeZone = TimeZone(identifier: "GMT")
+        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+        if let date = formatter.date(from: retryAfter) { return min(86_400, max(1, date.timeIntervalSince(now))) }
+        return nil
     }
 }

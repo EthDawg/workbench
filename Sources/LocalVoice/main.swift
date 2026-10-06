@@ -117,9 +117,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         model.meetings.hostAdmission = { [weak self] in
             guard let self else { return MeetingHostAdmission(closing: true) }
             return MeetingHostAdmission(recognition: self.model.recognition,
-                captureProblem: self.bugReports?.recording == true ? .busy("Finish the problem report's voice note before starting a meeting.")
-                    : self.model.phase == .idle && !self.readback.blocksDictation && !self.shortcutsSuspended
-                    ? nil : .busy("Finish Dictate or Snap & Talk before starting a meeting."), closing: self.terminating)
+                captureProblem: self.bugReportMicrophoneBusy.map { .busy($0) }
+                    ?? (self.model.phase == .idle && !self.readback.blocksDictation && !self.shortcutsSuspended
+                    ? nil : .busy("Finish Dictate or Snap & Talk before starting a meeting.")), closing: self.terminating)
         }
         model.meetings.mayPlayRecording = { [weak self] in
             guard let self, !self.terminating else { return false }
@@ -173,8 +173,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             guard let self else { return "Workbench is unavailable." }
             if self.readback.blocksDictation { return "Finish the current Snap & Talk capture, narration and transcription queue before starting ordinary dictation." }
             if self.model.meetings.isBusy { return "Finish the meeting recording or transcription before starting Dictate." }
-            if self.bugReports?.recording == true { return "Finish the problem report's voice note before starting Dictate." }
-            if self.bugReports?.transcribing == true { return "Wait for the voice note's transcript to finish before starting Dictate." }
+            if let reason = self.bugReportMicrophoneBusy { return reason }
             return CaptureInputPolicy.canStart(isPresenting: self.stage.isPresenting, hasExternalMacTarget: target != nil, delivery: self.model.preferences.delivery)
                 ? nil : "Choose Copy to clipboard to capture a thought, or focus a Mac text field. To enter text on your phone, use its keyboard or Dictation button."
         }
@@ -182,7 +181,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             guard let self else { return "Workbench is unavailable." }
             if self.shortcutsSuspended { return "Finish changing the shortcut before starting Snap & Talk." }
             if self.snap.isCapturing { return "Finish the current Snap before starting Snap & Talk." }
-            if self.bugReports?.isBusy == true { return "Finish the problem report's screenshot or voice note before starting Snap & Talk." }
+            if let reason = self.bugReportMicrophoneBusy { return reason }
+            if self.bugReports?.capturing == true { return "Finish the problem report's screenshot before starting Snap & Talk." }
             return self.model.phase == .idle && !self.model.meetings.isBusy
                 ? nil : "Finish the current dictation or meeting before starting Snap & Talk narration."
         }

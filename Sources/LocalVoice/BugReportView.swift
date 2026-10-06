@@ -197,6 +197,8 @@ struct BugReportView: View {
             TextField("Your email address", text: $model.replyEmail)
                 .textFieldStyle(.roundedBorder).textContentType(.emailAddress)
                 .accessibilityLabel("Email me about this (optional)")
+            Text("If you add your email, the team sees it with your report so they can reply.")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if let problem = model.emailProblem { Text(problem).font(.caption).foregroundStyle(.red) }
         }
     }
@@ -224,7 +226,7 @@ struct BugReportView: View {
         guard model.available else {
             return "This is context.json. Save a copy puts it in a new folder with your screenshot and voice note. No other files, titles, names or history from this Mac are included."
         }
-        var text = "This is context.json, sent with your words, screenshot and voice note to the team's private Sentry inbox, where reports are kept for 30 days. No other files, titles, names or history from this Mac are included. The report number is replaced when you send."
+        var text = "This is context.json, sent with your words, screenshot and voice note to the team's private Sentry inbox, where reports are kept for up to 90 days. No other files, titles, names or history from this Mac are included. The report number is replaced when you send."
         if model.destination?.isOverride == true { text += " Test build: reports go to the preview environment." }
         return text
     }
@@ -238,6 +240,11 @@ struct BugReportView: View {
                 Text(problem).font(.callout).fixedSize(horizontal: false, vertical: true)
                 switch model.problemAction {
                 case .chooseImage: Button("Choose image…") { model.chooseImage() }.controlSize(.small)
+                case .screenAccess:
+                    HStack(spacing: 8) {
+                        Button("Choose image…") { model.chooseImage() }
+                        Button("Open System Settings…") { model.services.openScreenCaptureSettings() }
+                    }.controlSize(.small)
                 case .microphoneSettings: Button("Microphone Settings…") { model.services.openMicrophoneSettings() }.controlSize(.small)
                 case .saveCopy, nil: EmptyView()
                 }
@@ -258,12 +265,15 @@ struct BugReportView: View {
                     Button("Save a copy…") { model.saveDraftCopy() }.disabled(!model.canSubmit)
                 }
                 Spacer()
+                // Command-Return, never plain Return: Return in the email field must not send, because
+                // pressing Send is the consent to upload.
                 if model.available {
                     Button("Send report") { model.send() }
-                        .keyboardShortcut(.defaultAction).disabled(!model.canSend)
+                        .keyboardShortcut(Self.sendShortcut).disabled(!model.canSend)
+                        .help("Send report (⌘Return)")
                 } else {
                     Button("Save a copy…") { model.saveDraftCopy() }
-                        .keyboardShortcut(.defaultAction).disabled(!model.canSubmit)
+                        .keyboardShortcut(Self.sendShortcut).disabled(!model.canSubmit)
                 }
             }
         }
@@ -306,9 +316,11 @@ struct BugReportView: View {
     }
     private func removalMessage(_ receipt: BugReportReceipt) -> String {
         receipt.tone == .done
-            ? "The Workbench team's copy stays for 30 days. To have it deleted sooner, send a report that asks and quotes \(BugReportText.shortID(receipt.id))."
+            ? "The Workbench team's copy is kept for up to 90 days. To have it deleted sooner, send a report that asks and quotes \(BugReportText.shortID(receipt.id))."
             : "Its words, screenshot and voice note are deleted from this Mac. If Workbench was already sending it, the team may still receive it."
     }
+
+    static let sendShortcut = KeyboardShortcut(.return, modifiers: .command)
 
     static func time(_ seconds: TimeInterval) -> String {
         let whole = max(0, Int(seconds.rounded(.down)))
@@ -366,7 +378,21 @@ final class BugReportWindowController: NSWindowController, NSWindowDelegate {
 
 // MARK: Host wiring
 
+/// One microphone rule for every other recorder while a report holds the microphone or the engine.
+enum BugReportAdmission {
+    static func microphone(recording: Bool, transcribing: Bool) -> String? {
+        if recording { return "Finish the problem report's voice note first." }
+        if transcribing { return "Wait for the problem report's transcript to finish first." }
+        return nil
+    }
+}
+
 extension AppDelegate {
+    /// Dictate, Meetings and Snap & Talk all ask this before taking the microphone.
+    var bugReportMicrophoneBusy: String? {
+        BugReportAdmission.microphone(recording: bugReports?.recording == true, transcribing: bugReports?.transcribing == true)
+    }
+
     /// The one report owner: the edition's report folder, delivery and the shared admissions.
     func makeBugReports() -> BugReportModel {
         let build = WorkbenchBuild()

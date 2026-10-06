@@ -67,6 +67,10 @@ final class BugReportModel: ObservableObject {
         var now: () -> Date = Date.init
         /// Why a screenshot cannot start now, such as another capture in progress.
         var screenshotAdmission: () -> String? = { nil }
+        /// Screen Recording, read passively: the composer never prompts mid-report, and never
+        /// captures without it (macOS would return only the desktop picture).
+        var screenCaptureGranted: () -> Bool = { CGPreflightScreenCaptureAccess() }
+        var openScreenCaptureSettings: () -> Void = { NSWorkspace.shared.open(ScreenCaptureAccess.settingsURL) }
         /// Region capture with only the report window hidden. Nil when cancelled.
         var captureScreenshot: @MainActor () async throws -> BugReportImage? = { nil }
         var cancelScreenshot: () -> Void = {}
@@ -87,7 +91,8 @@ final class BugReportModel: ObservableObject {
         /// Reads the edition's destination again when the composer opens; nil keeps the initial one.
         var currentDestination: (() -> BugReportDestination?)?
     }
-    enum ProblemAction: Equatable { case chooseImage, microphoneSettings, saveCopy }
+    enum ProblemAction: Equatable { case chooseImage, screenAccess, microphoneSettings, saveCopy }
+    static let screenAccessOff = "Screen Recording is off for Workbench, so it can't take a screenshot. Choose an image you already have, or allow Workbench under Privacy & Security › Screen Recording."
 
     let store: BugReportStore
     let transport: BugReportTransport
@@ -177,7 +182,7 @@ final class BugReportModel: ObservableObject {
 
     /// The exact context.json this draft would freeze now, pretty-printed for Details.
     var detailsJSON: String {
-        guard let draft = currentDraft() else { return "" }
+        guard let draft = currentDraft().map(refreshed) else { return "" }
         var manifest = manifest(for: draft, reportID: "00000000-0000-4000-8000-000000000000", screenshot: nil, voice: nil)
         // Descriptors are computed once per file, not on every keystroke.
         manifest.attachments = [screenshot != nil ? screenshotDescriptor : nil, voiceSeconds != nil ? voiceDescriptor : nil].compactMap { $0 }
@@ -195,7 +200,7 @@ final class BugReportModel: ObservableObject {
 
     func receipt(_ delivery: BugReportDelivery) -> BugReportReceipt {
         let short = delivery.shortID
-        let keeps = "The team keeps reports for 30 days. To have it deleted sooner, send a report that asks and quotes \(short)."
+        let keeps = "The team keeps reports for up to 90 days. To have it deleted sooner, send a report that asks and quotes \(short)."
         if transport.active.contains(delivery.id), [.waiting, .sending].contains(delivery.state) {
             return .init(id: delivery.id, title: "Sending…", detail: "Saved on this Mac until it's delivered.", tone: .progress, actions: [.saveCopy, .remove])
         }
@@ -218,9 +223,10 @@ final class BugReportModel: ObservableObject {
         case .received:
             return .init(id: delivery.id, title: "Received · \(short)", detail: "The Workbench team has your report. " + keeps, tone: .done, actions: [.remove])
         case .unconfirmed:
-            return .init(id: delivery.id, title: "Couldn't confirm delivery",
-                         detail: "The team's inbox didn't confirm report \(short) arrived. Send again sends the same report once more.",
-                         tone: .problem, actions: [.sendAgain, .saveCopy, .remove])
+            let detail = delivery.problem == .uncertain
+                ? "Workbench lost touch with the team's inbox while sending report \(short), so it may already have arrived. Send again sends it once more."
+                : "The team's inbox didn't confirm report \(short) arrived. Send again sends the same report once more."
+            return .init(id: delivery.id, title: "Couldn't confirm delivery", detail: detail, tone: .problem, actions: [.sendAgain, .saveCopy, .remove])
         case .failed:
             let detail: String
             var actions: [BugReportReceipt.Action] = [.retry, .saveCopy, .remove]
@@ -265,6 +271,17 @@ final class BugReportModel: ObservableObject {
         transport.reload()
     }
 
+    /// The draft as it would be sent now: the running build and the current permission,
+    /// recognition and active-tool facts, keeping the origin's surface and problem code.
+    private func refreshed(_ draft: BugReportDraft) -> BugReportDraft {
+        var draft = draft
+        draft.build = services.build()
+        var context = services.context(draft.origin)
+        context.surface = draft.context.surface; context.errorCode = draft.context.errorCode
+        draft.context = context
+        return draft
+    }
+
     private func currentDraft() -> BugReportDraft? {
         guard var draft else { return nil }
         draft.explanation = explanation
@@ -298,6 +315,7 @@ final class BugReportModel: ObservableObject {
     func addScreenshot() async {
         guard !capturing, !recording else { return }
         if let reason = services.screenshotAdmission() { show(reason, nearEvidence: true); return }
+        guard services.screenCaptureGranted() else { show(Self.screenAccessOff, action: .screenAccess, nearEvidence: true); return }
         capturing = true; services.onBusyChange()
         problem = nil; problemAction = nil; note = nil
         defer { capturing = false; services.onBusyChange() }
@@ -460,7 +478,7 @@ final class BugReportModel: ObservableObject {
     /// Freezes this draft into one envelope in the outbox, then starts delivery. The click
     /// authorises this report's upload and retries, nothing more.
     func send() {
-        guard canSend, let destination, let draft = currentDraft() else { return }
+        guard canSend, let destination, let draft = currentDraft().map(refreshed) else { return }
         sending = true
         defer { sending = false }
         problem = nil; problemAction = nil; note = nil
@@ -473,7 +491,8 @@ final class BugReportModel: ObservableObject {
             let envelope = try BugReportEnvelope.frozen(manifest: manifestData, screenshot: files.screenshot, voice: files.voice,
                                                         eventID: eventID, destination: destination, timestamp: now)
             try store.freeze(envelope: envelope, delivery: BugReportDelivery(id: reportID, eventID: eventID, destination: destination,
-                envelopeSHA256: BugReportText.sha256(envelope), envelopeBytes: envelope.count, contents: draft.contents,
+                envelopeSHA256: BugReportText.sha256(envelope), envelopeBytes: envelope.count,
+                files: BugReportEnvelope.verifierFiles(try BugReportEnvelope.parse(envelope).items), contents: draft.contents,
                 state: .waiting, nextAttemptAt: now, createdAt: now))
             // The report is in the outbox; the draft is done.
             try? store.clearDraft()
@@ -493,7 +512,7 @@ final class BugReportModel: ObservableObject {
 
     /// Save a copy of the draft: a new folder with context.json, screenshot.png and voice.wav.
     func saveDraftCopy() {
-        guard canSubmit, let draft = currentDraft() else { return }
+        guard canSubmit, let draft = currentDraft().map(refreshed) else { return }
         do {
             let files = try evidence()
             let reportID = BugReportManifest.newReportID()

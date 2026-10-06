@@ -24,6 +24,14 @@
     "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. The fallback when capture is refused or fails: a chosen PNG or JPEG, re-encoded without metadata."
   },
   {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.choose-image.2",
+    "surface": "report a problem window",
+    "label": "Choose image…",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. With Screen Recording off, the fallback beside Open System Settings…: a chosen PNG or JPEG, re-encoded without metadata."
+  },
+  {
     "id": "LocalVoice.BugReportView.BugReportView.Button.keep",
     "surface": "report a problem window",
     "label": "Keep",
@@ -39,6 +47,14 @@
     "belongsTo": "app",
     "aliasOf": "LocalVoice.CapturePanel.DictationResultView.Button.microphone-settings",
     "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. The same words as Dictate's refusal, opening the same Privacy & Security pane beside the refused voice note (Fit rule 2)."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.open-system-settings",
+    "surface": "report a problem window",
+    "label": "Open System Settings…",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. Beside Screen Recording off when adding a screenshot: the same words as Snap's, opening Privacy & Security › Screen Recording. The composer never prompts for access mid-report."
   },
   {
     "id": "LocalVoice.BugReportView.BugReportView.Button.record-voice-note",

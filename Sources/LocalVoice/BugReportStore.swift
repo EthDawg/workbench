@@ -31,6 +31,14 @@ struct BugReportDraft: Codable, Equatable {
     }
 }
 
+/// One attachment as the verifier compares it with what Sentry stored.
+struct BugReportVerifiedFile: Codable, Equatable {
+    var name: String
+    var size: Int
+    var sha256: String
+    var object: [String: Any] { ["name": name, "size": size, "sha256": sha256] }
+}
+
 /// A frozen report's delivery, the only file in its folder that changes.
 struct BugReportDelivery: Codable, Equatable, Identifiable {
     enum State: String, Codable {
@@ -49,6 +57,9 @@ struct BugReportDelivery: Codable, Equatable, Identifiable {
     }
     enum Problem: String, Codable {
         case offline, busy, rateLimited, tooLarge, rejected, unauthorized, secureConnection, unreadable, mismatch, notFound
+        /// An earlier attempt may have reached Sentry more than 55 minutes ago, past its
+        /// one-hour duplicate filter, so the same event ID is not sent again by itself.
+        case uncertain
     }
     /// The report ID, also the folder's name.
     var id: String
@@ -58,6 +69,8 @@ struct BugReportDelivery: Codable, Equatable, Identifiable {
     var destination: BugReportDestination
     var envelopeSHA256: String
     var envelopeBytes: Int
+    /// The attachments' names, sizes and SHA-256, kept here so checking never depends on the envelope.
+    var files: [BugReportVerifiedFile]
     /// `text`, `screenshot` and `voice`, for the receipt's line.
     var contents: [String]
     var state: State
@@ -65,6 +78,9 @@ struct BugReportDelivery: Codable, Equatable, Identifiable {
     var status: Int?
     var attempts = 0
     var nextAttemptAt: Date?
+    /// The first attempt for this event ID that may have reached Sentry (a lost reply, a time-out or a
+    /// server error). Attempts that never connected do not count.
+    var mayHaveArrivedAt: Date?
     var createdAt: Date
     var sentAt: Date?
     var verifyAttempts = 0
@@ -79,6 +95,10 @@ struct BugReportDelivery: Codable, Equatable, Identifiable {
 
     var shortID: String { BugReportText.shortID(id) }
     var isUnsent: Bool { [.waiting, .sending, .failed, .unconfirmed].contains(state) }
+    /// Delivered, and nothing more will be asked about it: its local copy may go to make room.
+    var isSettled: Bool {
+        state == .received || (state == .sent && nextAttemptAt == nil && !verifyAtLaunch)
+    }
 }
 
 @MainActor
@@ -192,7 +212,7 @@ final class BugReportStore {
             return use.entries + 1 <= limits.entries && use.bytes + bytes <= limits.bytes
         }
         if !fits() {
-            for delivery in deliveries().reversed() where !delivery.evidenceRemoved && [.sent, .received].contains(delivery.state) {
+            for delivery in deliveries().reversed() where !delivery.evidenceRemoved && delivery.isSettled {
                 removeEvidence(delivery.id)
                 if fits() { break }
             }
@@ -228,12 +248,10 @@ final class BugReportStore {
 
     /// Saves a delivery only while its report is still in the outbox, so a late result can never
     /// bring back a report removed from this Mac.
-    @discardableResult
-    func save(_ delivery: BugReportDelivery) throws -> Bool {
+    func save(_ delivery: BugReportDelivery) throws {
         let folder = outboxFolder.appendingPathComponent(delivery.id, isDirectory: true)
-        guard self.delivery(delivery.id) != nil else { return false }
+        guard self.delivery(delivery.id) != nil else { return }
         try BugReportFiles.writeDurably(try Self.encode(delivery), to: folder.appendingPathComponent("delivery.json"))
-        return true
     }
 
     func envelope(_ id: String) throws -> Data {
@@ -271,10 +289,10 @@ final class BugReportStore {
         var receipts = 0
         for delivery in deliveries() {
             let delivered = delivery.receivedAt ?? delivery.sentAt
-            if !delivery.isUnsent, !delivery.evidenceRemoved, let delivered, now.timeIntervalSince(delivered) > limits.sentEvidence {
+            if delivery.isSettled, !delivery.evidenceRemoved, let delivered, now.timeIntervalSince(delivered) > limits.sentEvidence {
                 removeEvidence(delivery.id)
             }
-            guard !delivery.isUnsent else { continue }
+            guard delivery.isSettled else { continue }
             receipts += 1
             if receipts > limits.receiptCount || now.timeIntervalSince(delivered ?? delivery.createdAt) > limits.receipts { try? remove(delivery.id) }
         }

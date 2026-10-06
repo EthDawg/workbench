@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import ImageIO
+import SwiftUI
 import UniformTypeIdentifiers
 
 /// `LocalVoice --check-bug-report [docs/bug-reporting-schema.md]` (#296): the manifest against the
@@ -86,6 +87,7 @@ enum BugReportChecks {
         let schemaText: String
         let fixtureText: String
         if let document {
+            repository = document.deletingLastPathComponent().deletingLastPathComponent()
             let blocks = try String(contentsOf: document, encoding: .utf8).components(separatedBy: "```json").dropFirst()
                 .compactMap { $0.components(separatedBy: "```").first }
             try expect(blocks.count >= 2, "the schema document has a schema and a synthetic input")
@@ -236,6 +238,9 @@ enum BugReportChecks {
 
     // MARK: Configuration
 
+    /// The checkout the schema document came from, for source checks of the app's wiring.
+    nonisolated(unsafe) static var repository = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+
     @MainActor static func configurationChecks(root: URL) throws -> [String] {
         let real = "https://a839282de76ebabd96a4cacae63ba2eb@o4512211018121216.ingest.us.sentry.io/4512211067011072"
         let parsed = BugReportDSN(real, allowLoopbackHTTP: false)
@@ -276,15 +281,34 @@ enum BugReportChecks {
 
         // Rate limits: X-Sentry-Rate-Limits on any status, Retry-After on 429.
         let now = Date(timeIntervalSince1970: 1_791_349_200)
-        try expect(BugReportEnvelope.rateLimit(status: 200, rateLimits: nil, retryAfter: nil, now: now) == nil, "200 without a limit")
-        try expect(BugReportEnvelope.rateLimit(status: 200, rateLimits: "60:transaction:key, 2700:default;error;security:organization", retryAfter: nil, now: now) == nil, "unrelated categories")
-        try expect(BugReportEnvelope.rateLimit(status: 200, rateLimits: "60:transaction:key, 120:feedback:project:quota", retryAfter: nil, now: now) == 120, "feedback category")
-        try expect(BugReportEnvelope.rateLimit(status: 200, rateLimits: "30:attachment:org", retryAfter: nil, now: now) == 30, "attachment category")
-        try expect(BugReportEnvelope.rateLimit(status: 200, rateLimits: "45::organization", retryAfter: nil, now: now) == 45, "empty categories mean all")
-        try expect(BugReportEnvelope.rateLimit(status: 429, rateLimits: nil, retryAfter: "90", now: now) == 90, "Retry-After seconds")
-        try expect(BugReportEnvelope.rateLimit(status: 429, rateLimits: nil, retryAfter: "Thu, 01 Oct 2026 21:02:00 GMT", now: Date(timeIntervalSince1970: 1_790_888_400)) == 120, "Retry-After date")
-        try expect(BugReportEnvelope.rateLimit(status: 429, rateLimits: nil, retryAfter: nil, now: now) == 60, "429 without headers waits 60 s")
-        return ["configuration: Stable-only DSN (production), override for Preview/local (preview), endpoint/auth from the real DSN form, rate-limit parsing"]
+        typealias Limit = BugReportEnvelope.RateLimit
+        func limit(_ status: Int, _ header: String?, _ retry: String? = nil, at time: Date = now) -> Limit? {
+            BugReportEnvelope.rateLimit(status: status, rateLimits: header, retryAfter: retry, now: time)
+        }
+        try expect(limit(200, nil) == nil, "200 without a limit")
+        try expect(limit(200, "60:transaction:key, 2700:default;error;security:organization") == nil, "unrelated categories")
+        try expect(limit(200, "60:transaction:key, 120:feedback:project:quota") == Limit(wait: 120, attachmentsOnly: false), "feedback category")
+        try expect(limit(200, "30:attachment:org") == Limit(wait: 30, attachmentsOnly: true), "only the attachment category: the event went through")
+        try expect(limit(200, "30:attachment:org, 10:feedback:org") == Limit(wait: 30, attachmentsOnly: false), "attachment with feedback")
+        try expect(limit(200, "45::organization") == Limit(wait: 45, attachmentsOnly: false), "empty categories mean all")
+        try expect(limit(429, nil, "90") == Limit(wait: 90, attachmentsOnly: false), "Retry-After seconds")
+        try expect(limit(429, nil, "Thu, 01 Oct 2026 21:02:00 GMT", at: Date(timeIntervalSince1970: 1_790_888_400))?.wait == 120, "Retry-After date")
+        try expect(limit(429, nil) == Limit(wait: 60, attachmentsOnly: false) && limit(429, "30:attachment:org") == Limit(wait: 60, attachmentsOnly: false),
+                   "429 without a feedback limit waits for Retry-After or 60 s")
+        try expect(BugReportTransport.session().configuration.timeoutIntervalForResource >= 1_800, "an upload may take 30 minutes on a slow uplink")
+        try expect(BugReportView.sendShortcut == KeyboardShortcut(.return, modifiers: .command), "Send is Command-Return; plain Return in the email field never sends")
+        // Every other recorder asks one microphone rule while a report records or transcribes.
+        try expect(BugReportAdmission.microphone(recording: true, transcribing: false) != nil && BugReportAdmission.microphone(recording: false, transcribing: true) != nil
+                   && BugReportAdmission.microphone(recording: false, transcribing: false) == nil, "the report's microphone rule")
+        do {
+            let main = try String(contentsOf: repository.appendingPathComponent("Sources/LocalVoice/main.swift"), encoding: .utf8)
+            for owner in ["model.microphoneStartFailure = {", "model.meetings.hostAdmission = {", "readback.mayBeginCapture = {"] {
+                guard let start = main.range(of: owner) else { throw VoiceError.message("Report a problem check failed: \(owner) not found in main.swift") }
+                let body = main[start.upperBound...].prefix(900)
+                try expect(body.contains("bugReportMicrophoneBusy"), "\(owner) asks the report's microphone rule")
+            }
+        }
+        return ["configuration: Stable-only DSN (production), override for Preview/local (preview), endpoint/auth from the real DSN form, rate-limit scopes, 30-minute uploads, Command-Return, one microphone rule"]
     }
 
     // MARK: Envelope
@@ -397,6 +421,48 @@ enum BugReportChecks {
         try expect(state(h, id).nextAttemptAt == h.clock.now + 120 && state(h, id).problem == .rateLimited, "429 waits for Retry-After")
         try expect(h.model.receipts.first?.title == "Sending…", "receipt while asked to wait: Sending…")
 
+        // 200 limiting only attachments: the event went through, so it is Sent and the verifier decides.
+        (h, id) = try frozen("attachments-limited")
+        sentry.script = [.status(200, ["X-Sentry-Rate-Limits": "60:attachment:organization"])]
+        await h.transport.runDue()
+        try expect(state(h, id).state == .sent, "a 200 limiting only attachments is Sent, never resent under the same event ID")
+
+        // A lost reply may have arrived: after 55 minutes the same event ID is not sent again by itself.
+        (h, id) = try frozen("lost-then-late")
+        sentry.script = [.lostResponse]
+        await h.transport.runDue()
+        try expect(state(h, id).state == .sending && state(h, id).problem == .busy && state(h, id).mayHaveArrivedAt == h.clock.now,
+                   "a lost reply retries with backoff and starts the duplicate clock")
+        sentry.script = [.failure(.notConnectedToInternet)]
+        h.clock.advance(state(h, id).nextAttemptAt!.timeIntervalSince(h.clock.now)); await h.transport.runDue()
+        h.clock.advance(56 * 60)
+        let beforeLate = sentry.bodies.count
+        await h.transport.runDue()
+        try expect(state(h, id).state == .unconfirmed && state(h, id).problem == .uncertain && sentry.bodies.count == beforeLate,
+                   "56 minutes after a possible arrival, nothing is resent by itself")
+        try expect(h.model.receipts.first?.title == "Couldn't confirm delivery" && h.model.receipts.first?.detail.contains("may already have arrived") == true
+                   && h.model.receipts.first?.actions.first == .sendAgain, "the receipt explains and offers Send again")
+        let lateEvent = state(h, id).eventID
+        h.model.perform(.sendAgain, on: id)
+        await h.transport.runDue()
+        try expect(state(h, id).state == .sent && state(h, id).eventID != lateEvent && sentry.lastEventID == state(h, id).eventID, "Send again goes under a new event ID")
+
+        // Failures before any connection never start that clock: a report offline for hours still goes by itself.
+        (h, id) = try frozen("offline-hours")
+        sentry.script = [.failure(.cannotFindHost)]
+        await h.transport.runDue()
+        try expect(state(h, id).mayHaveArrivedAt == nil && state(h, id).state == .waiting, "no connection, no duplicate clock")
+        h.clock.advance(3 * 3_600)
+        await h.transport.runDue()
+        try expect(state(h, id).state == .sent, "sent by itself three hours later")
+
+        // A time-out mid-upload is not offline: it may have arrived, so it backs off as busy.
+        (h, id) = try frozen("timed-out")
+        sentry.script = [.failure(.timedOut)]
+        await h.transport.runDue()
+        try expect(state(h, id).state == .sending && state(h, id).problem == .busy && state(h, id).mayHaveArrivedAt != nil
+                   && h.model.receipts.first?.title == "Sending…", "a time-out backs off as busy, not offline")
+
         // 413, 401, 400 and a TLS failure stop, with no loop.
         for (name, reply, problem) in [("413", FakeSentry.Reply.status(413, [:]), BugReportDelivery.Problem.tooLarge),
                                        ("401", .status(401, [:]), .unauthorized), ("403", .status(403, [:]), .unauthorized),
@@ -458,7 +524,7 @@ enum BugReportChecks {
         let sent = sentry.bodies.count
         await h.transport.runDue()
         try expect(state(h, id).state == .failed && state(h, id).problem == .unreadable && sentry.bodies.count == sent, "changed bytes are refused, not sent")
-        return ["transport: 200, 200+feedback limit, 429 Retry-After, 413/401/403/400/TLS without loops, Retry, offline then relaunch with the same event and bytes, 5xx backoff, removal in flight, changed bytes"]
+        return ["transport: 200, 200+feedback limit, 200+attachment-only limit is Sent, 429 Retry-After, 413/401/403/400/TLS without loops, Retry, offline then relaunch with the same event and bytes, no automatic resend 55 minutes after a possible arrival, time-out as busy, 5xx backoff, removal in flight, changed bytes"]
     }
 
     // MARK: Verifier
@@ -564,24 +630,58 @@ enum BugReportChecks {
         delivery = h.store.delivery(id)!
         try expect(delivery.state == .sent && delivery.nextAttemptAt != nil, "422 and a non-JSON answer keep Sent and check again")
 
-        // No answer for the whole window: Sent stays, with one more check at the next launch.
+        // A lost network never ends checking: only an HTTP answer counts against the window.
         let clock = Clock()
         (h, id) = try await frozen("unreachable", clock: clock)
-        answers = Array(repeating: nil, count: 60)
-        for _ in 0..<60 where h.store.delivery(id)?.nextAttemptAt != nil { clock.advance(60); await h.transport.runDue() }
+        answers = Array(repeating: nil, count: 40)
+        for _ in 0..<40 { clock.advance(60); await h.transport.runDue() }
         delivery = h.store.delivery(id)!
-        try expect(delivery.state == .sent && delivery.nextAttemptAt == nil && delivery.verifyAtLaunch && !delivery.evidenceRemoved
-                   && clock.now.timeIntervalSince(delivery.sentAt!) >= BugReportTransport.verifyWindow, "an unreachable verifier leaves a truthful Sent for about 16 minutes")
+        try expect(delivery.state == .sent && delivery.nextAttemptAt != nil && !delivery.verifyAtLaunch
+                   && clock.now.timeIntervalSince(delivery.sentAt!) > BugReportTransport.verifyWindow, "40 minutes without a network still checks")
         try expect(h.model.receipts.first?.title == "Sent · \(BugReportText.shortID(id))", "receipt stays Sent")
-        answers = ["received"]
+        try expect((delivery.nextAttemptAt!.timeIntervalSince(clock.now)) <= BugReportTransport.verifyBackoffCap
+                   && (1...30).allSatisfy { BugReportTransport.backoff($0, random: 1, cap: BugReportTransport.verifyBackoffCap) <= 300 }, "checks are at most five minutes apart")
+        // Connectivity returning checks a Sent report at once.
+        h.transport.connectivity(false); h.transport.connectivity(true)
+        try expect(h.store.delivery(id)?.nextAttemptAt == clock.now, "a restored connection checks Sent reports now")
+        // The first HTTP answer after the window ends checking, with one more at the next launch.
+        answers = ["pending"]
+        await h.transport.runDue()
+        delivery = h.store.delivery(id)!
+        try expect(delivery.state == .sent && delivery.nextAttemptAt == nil && delivery.verifyAtLaunch, "an answer after the window ends checking for now")
+        // At launch: a network failure does not use up that check; the next answer does.
         clock.advance(86_400)
+        answers = [nil, "received"]
         let relaunched = harness(root.appendingPathComponent("unreachable"), clock: clock)
         relaunched.transport.start(watchConnectivity: false)
-        await relaunched.transport.runDue()
         relaunched.transport.stop()
+        await relaunched.transport.attempt(id)
+        delivery = relaunched.store.delivery(id)!
+        try expect(delivery.state == .sent && delivery.nextAttemptAt != nil, "a failed launch check is tried again")
+        clock.advance(delivery.nextAttemptAt!.timeIntervalSince(clock.now))
+        await relaunched.transport.runDue()
         try expect(relaunched.store.delivery(id)?.state == .received && elapsed() == Int(clock.now.timeIntervalSince(delivery.sentAt!)),
-                   "the next launch checks once more")
-        return ["verifier: first check at 15 s with elapsed_seconds, pending then received, mismatch and not_found are Couldn't confirm delivery, Send again resets the count, 503/422/non-JSON/unreachable stay Sent, one more check at launch"]
+                   "the launch check finds it Received")
+
+        // The file list lives in delivery.json: checking works without the envelope, and an empty
+        // list is this Mac's error, never a reason to poll.
+        (h, id) = try await frozen("files")
+        delivery = h.store.delivery(id)!
+        try expect(delivery.files.map(\.name) == ["context.json", "screenshot.png", "voice.wav"] && delivery.files.allSatisfy { $0.size > 0 && $0.sha256.count == 64 },
+                   "the verifier's file list is saved at freeze")
+        try FileManager.default.removeItem(at: h.store.outboxFolder.appendingPathComponent(id).appendingPathComponent("report.envelope"))
+        answers = ["received"]; let asked = requests.count
+        h.clock.advance(15); await h.transport.runDue()
+        try expect(requests.count == asked + 1 && (requests.last?["attachments"] as? [[String: Any]])?.count == 3
+                   && h.store.delivery(id)?.state == .received, "checking needs no local envelope")
+        (h, id) = try await frozen("no-files")
+        delivery = h.store.delivery(id)!; delivery.files = []; try h.store.save(delivery)
+        let before = requests.count
+        h.clock.advance(15); await h.transport.runDue()
+        delivery = h.store.delivery(id)!
+        try expect(requests.count == before && delivery.state == .sent && delivery.nextAttemptAt == nil && delivery.verifierState == "local_error_no_files",
+                   "an empty file list stops checking without asking")
+        return ["verifier: first check at 15 s with elapsed_seconds, pending then received, mismatch and not_found are Couldn't confirm delivery, Send again resets the count, 503/422/non-JSON/unreachable stay Sent, a lost network never ends checking, checks at most 5 minutes apart and on reconnection, one more check at launch, file list kept in delivery.json"]
     }
 
     // MARK: Outbox, draft and Save a copy
@@ -657,11 +757,51 @@ enum BugReportChecks {
         h.model.saveDraftCopy()
         try expect(try FileManager.default.contentsOfDirectory(atPath: exports.path).count == countBefore + 1, "the refused draft can be saved as a copy")
         var oldest = h.store.deliveries().last!
-        oldest.state = .sent; oldest.sentAt = h.clock.now
+        oldest.state = .sent; oldest.sentAt = h.clock.now; oldest.nextAttemptAt = nil
         try h.store.save(oldest)
         h.model.send()
         try expect(h.store.deliveries().count == 3 && h.store.delivery(oldest.id)?.evidenceRemoved == true && h.model.problem == nil,
                    "a delivered report's local copy makes room; unsent reports are kept")
+
+        // With a verifier: a Sent report still being checked keeps its copy; a settled one makes room.
+        let checked = BugReportDestination(dsn: dsn, verifier: verifier, environment: "production", isOverride: false)
+        h = harness(root.appendingPathComponent("quota-verifier"), destination: checked, limits: limits, folder: exports)
+        for _ in 0..<2 { try fill(h.model, screenshot: false, voice: false); h.model.send() }
+        var pair = h.store.deliveries()
+        var checking = pair[1], settled = pair[0]
+        checking.state = .sent; checking.sentAt = h.clock.now; checking.verifyUntil = h.clock.now + 960; checking.nextAttemptAt = h.clock.now + 15
+        settled.state = .sent; settled.sentAt = h.clock.now; settled.nextAttemptAt = nil
+        try h.store.save(checking); try h.store.save(settled)
+        try fill(h.model, screenshot: false, voice: false); h.model.send()
+        try expect(h.store.delivery(checking.id)?.evidenceRemoved == false && h.store.delivery(settled.id)?.evidenceRemoved == true
+                   && h.store.deliveries().count == 3, "only a settled Sent report's copy makes room")
+        pair = h.store.deliveries()
+        try fill(h.model, screenshot: false, voice: false); h.model.send()
+        try expect(h.model.problemAction == .saveCopy && h.store.delivery(checking.id)?.evidenceRemoved == false, "a report still being checked is never evicted")
+
+        // Send uses the running build and current facts, keeping the origin's surface and code.
+        var facts = BugReportContext(); facts.microphone = .denied; facts.screenCapture = .authorized; facts.activeTools = [.timer]
+        h = harness(root.appendingPathComponent("refresh"), folder: exports)
+        try fill(h.model, screenshot: false, voice: false)
+        var newer = build; newer.version = "2.6.0"; newer.build = "20261008000000"
+        h.model.services.build = { newer }
+        h.model.services.context = { origin in var context = facts; context.surface = .home; context.errorCode = "dictate.failed"; _ = origin; return context }
+        h.model.send()
+        let sentManifest = try JSONSerialization.jsonObject(with: try BugReportEnvelope.parse(try h.store.envelope(h.store.deliveries()[0].id)).items[1].payload) as! [String: Any]
+        let sentContext = sentManifest["context"] as? [String: Any], sentBuild = sentManifest["build"] as? [String: Any]
+        try expect(sentBuild?["version"] as? String == "2.6.0" && (sentContext?["permissions"] as? [String: String])?["microphone"] == "denied"
+                   && sentContext?["active_tools"] as? [String] == ["timer"], "Send refreshes build, permissions and active tools")
+        try expect(sentContext?["surface"] as? String == "snap" && sentContext?["error_code"] as? String == "snap.capture_failed", "and keeps the origin's surface and problem code")
+
+        // Add screenshot never captures without Screen Recording, and never prompts.
+        h = harness(root.appendingPathComponent("screen-off"), folder: exports)
+        var captured = false
+        h.model.services.screenCaptureGranted = { false }
+        h.model.services.captureScreenshot = { captured = true; return nil }
+        h.model.open(origin: .help)
+        await h.model.addScreenshot()
+        try expect(!captured && h.model.problemAction == .screenAccess && h.model.problem == BugReportModel.screenAccessOff && !h.model.capturing,
+                   "Screen Recording off offers Choose image… and Open System Settings… without capturing")
         var bytes = BugReportStore.Limits(); bytes.bytes = 1_024
         h = harness(root.appendingPathComponent("bytes"), limits: bytes)
         try fill(h.model)
@@ -696,7 +836,7 @@ enum BugReportChecks {
         h.clock.advance(200 * 86_400)
         h.store.prune()
         try expect(h.store.delivery(unsent) != nil, "pruning never removes an unsent report")
-        return ["outbox: 0700/0600, draft resume and origin rules, over-limit text kept, Save a copy without overwrite, entry/byte/disk quota with the draft kept, delivered copies make room, no-DSN build"]
+        return ["outbox: 0700/0600, draft resume and origin rules, over-limit text kept, Save a copy without overwrite, entry/byte/disk quota with the draft kept, only settled copies make room (with a verifier), Send refreshes facts, Screen Recording preflight, no-DSN build"]
     }
 }
 
