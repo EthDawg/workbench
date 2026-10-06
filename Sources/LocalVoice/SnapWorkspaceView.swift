@@ -59,7 +59,7 @@ struct SnapWorkspaceView: View {
             }
             if !model.screenAccessGranted { screenAccessCard }
             if model.screenshotRedirectPaused {
-                ScreenAttentionNote("macOS now saves screenshots somewhere else, so Workbench stopped collecting them. Turn Keep new screenshots off the Desktop off, then on, to collect them again.", font: .caption)
+                WorkbenchNote("macOS now saves screenshots somewhere else, so Workbench stopped collecting them. Turn Keep new screenshots off the Desktop off, then on, to collect them again.", font: .caption)
             }
             Divider()
             HStack {
@@ -73,7 +73,7 @@ struct SnapWorkspaceView: View {
                     ForEach(model.problems, id: \.self) { Text($0).font(.caption).textSelection(.enabled) }
                     Button("Reload history") { model.requestRefresh() }
                 } label: {
-                    ScreenAttentionNote("\(model.problems.count) Snap record\(model.problems.count == 1 ? "" : "s") couldn’t be read", selectable: false)
+                    WorkbenchNote("\(model.problems.count) Snap record\(model.problems.count == 1 ? "" : "s") couldn’t be read", selectable: false)
                 }
             }
             if let notice = model.notice { Text(notice).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }

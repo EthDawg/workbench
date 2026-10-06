@@ -175,10 +175,10 @@ struct ReadbackView: View {
                     Button("New session…") { model.createSession() }.buttonStyle(.borderedProminent)
                         .disabled(model.newSessionStyleProblem != nil)
                     Button("Open session…") { model.openSession() }
-                }.screenCard()
+                }.workbenchCard()
                 if let problem = model.newSessionStyleProblem {
                     VStack(alignment: .leading, spacing: 8) {
-                        ScreenAttentionNote(problem)
+                        WorkbenchNote(problem)
                         Button("Choose a session skill…") { sheet = .settings }
                     }
                 }
@@ -293,7 +293,7 @@ struct ReadbackView: View {
     @ViewBuilder private var workspaceNotices: some View {
         if model.hasUnsavedNarration {
             HStack {
-                ScreenAttentionNote("A narration edit couldn’t be saved.")
+                WorkbenchNote("A narration edit couldn’t be saved.")
                 Spacer()
                 Button("Review unsaved edit") { model.reviewUnsavedNarration() }
             }.padding(.horizontal, 24).padding(.bottom, 12)
@@ -317,7 +317,7 @@ struct ReadbackView: View {
         }
         if let failure = model.shortcutFailure {
             HStack {
-                ScreenAttentionNote(failure, symbol: "keyboard", font: .caption)
+                WorkbenchNote(failure, symbol: "keyboard", font: .caption)
                 Spacer()
                 Button("Change shortcut…") { model.onEditShortcut?() }
             }.padding(.horizontal, 24).padding(.bottom, 12)
@@ -425,7 +425,7 @@ struct ReadbackView: View {
                     .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 10)).clipped()
             }
             if let imageResult { Text(imageResult).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
-            if let failure = section.failure { ScreenAttentionNote(failure) }
+            if let failure = section.failure { WorkbenchNote(failure) }
             if section.status == .ready {
                 HStack {
                     WorkbenchSectionTitle(section.audio == nil ? "Notes" : "Narration")
@@ -442,7 +442,7 @@ struct ReadbackView: View {
                     .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Workbench.border))
                     .accessibilityLabel(section.audio == nil ? "Notes for section \(number)" : "Narration for section \(number)")
                 if let failure = model.transcriptSaveFailures[section.id] {
-                    ScreenAttentionNote(failure)
+                    WorkbenchNote(failure)
                     HStack {
                         Button("Retry save") { model.retryTranscriptSave(section.id) }
                         Button("Copy text") { copyResult = TextDelivery.copy(model.transcriptDrafts[section.id] ?? "") == nil ? "Text could not be copied." : "Copied" }
@@ -488,7 +488,7 @@ struct ReadbackView: View {
                 Button("Open session…") { dismissThen { model.openSession() } }.disabled(model.isRecording)
             }
             if model.newSessionStyleProblem != nil {
-                ScreenAttentionNote("The skill for new sessions is unavailable. Choose another in Snap & Talk settings.")
+                WorkbenchNote("The skill for new sessions is unavailable. Choose another in Snap & Talk settings.")
             }
             Divider()
             WorkbenchSectionTitle("Recent sessions")
@@ -554,7 +554,7 @@ struct ReadbackView: View {
                 }.pickerStyle(.menu)
                 Text("Each new session keeps a copy. Existing sessions keep their chosen skill.").font(.caption).foregroundStyle(.secondary)
                 Button("Manage packs…") { dismissThen(onOpenPacks) }
-                if let problem = model.newSessionStyleProblem { ScreenAttentionNote(problem, font: .caption) }
+                if let problem = model.newSessionStyleProblem { WorkbenchNote(problem, font: .caption) }
                 else if let notice = model.skillPackNotice { Text(notice).font(.caption).foregroundStyle(.secondary) }
             }
             Divider()
@@ -698,29 +698,6 @@ struct ReadbackThumbnail: View {
     }
 }
 
-/// A sentence that asks for attention: primary words, so they keep their contrast, with only
-/// the symbol in the attention colour (docs/desktop.md § Status).
-struct ScreenAttentionNote: View {
-    let text: String
-    var symbol = "exclamationmark.triangle.fill"
-    var font: Font = .callout
-    var selectable = true
-    init(_ text: String, symbol: String = "exclamationmark.triangle.fill", font: Font = .callout, selectable: Bool = true) {
-        self.text = text; self.symbol = symbol; self.font = font; self.selectable = selectable
-    }
-    var body: some View {
-        Label {
-            if selectable {
-                Text(text).foregroundStyle(.primary).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
-            } else {
-                Text(text).foregroundStyle(.primary).fixedSize(horizontal: false, vertical: true)
-            }
-        } icon: {
-            Image(systemName: symbol).foregroundStyle(Workbench.attention).accessibilityHidden(true)
-        }.font(font)
-    }
-}
-
 /// The live microphone level beside Recording narration, as the toolbar's trace shows it.
 struct NarrationLevel: View {
     let level: Double
@@ -729,15 +706,5 @@ struct NarrationLevel: View {
             .overlay(alignment: .leading) { Capsule().fill(Color.red).frame(width: 40 * max(0.05, min(1, level)), height: 4) }
             .animation(.linear(duration: 0.1), value: level)
             .accessibilityHidden(true)
-    }
-}
-
-extension View {
-    /// The page kit's card (docs/desktop.md § Page kit) around content that has no title row:
-    /// 12 pt corners, 16 pt inside, the control surface with a hairline.
-    func screenCard() -> some View {
-        padding(Workbench.tilePadding).frame(maxWidth: .infinity, alignment: .leading)
-            .background(Workbench.surface, in: RoundedRectangle(cornerRadius: Workbench.tileRadius))
-            .overlay(RoundedRectangle(cornerRadius: Workbench.tileRadius).strokeBorder(Workbench.border))
     }
 }
