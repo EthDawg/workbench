@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import ImageIO
 import StageKit
 import SwiftUI
 
@@ -21,6 +22,8 @@ struct ReadbackView: View {
     @State private var discardEdit: UUID?
     @State private var copyResult: String?
     @State private var imageResult: String?
+    /// Cancel discards a narration; past a few seconds it asks first, because Stop keeps it.
+    @State private var confirmCancelNarration = false
     @Environment(\.pageSectionFrames) private var sectionFrames
     /// Only the isolated gallery supplies presentation values; live controls read their owner.
     private var capturePresentation: CapturePresentation?
@@ -44,9 +47,14 @@ struct ReadbackView: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
                     if engine.preparing { ProgressView().controlSize(.small) }
-                    Label(engine.line, systemImage: engine.needsAttention ? "exclamationmark.triangle" : "waveform")
-                        .font(.caption).foregroundStyle(engine.needsAttention ? .orange : .secondary)
-                        .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                    // Orange words fail contrast on a light page: only the symbol carries attention.
+                    Label {
+                        Text(engine.line).foregroundStyle(engine.needsAttention ? Color.primary : Color.secondary)
+                    } icon: {
+                        Image(systemName: engine.needsAttention ? "exclamationmark.triangle.fill" : "waveform")
+                            .foregroundStyle(engine.needsAttention ? Workbench.attention : Color.secondary)
+                    }
+                        .font(.caption).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
                     if engine.needsAttention { Button("Retry model", action: onRetryModel).buttonStyle(.link).font(.caption) }
                     Button("Models…", action: onOpenModels).buttonStyle(.link).font(.caption)
                         .help("Choose the speech model in Settings › Models")
@@ -79,7 +87,7 @@ struct ReadbackView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            WorkbenchPageHeader("readback") {
+            WorkbenchPageHeader("readback", summary: "Capture a screen, say what matters, and hand the story off.") {
                 Button("Sessions…") { sheet = .sessions }
                     .accessibilityIdentifier("readback.sessions")
                 Button("Settings…") { sheet = .settings }
@@ -117,13 +125,17 @@ struct ReadbackView: View {
             }
             Button("Keep editing", role: .cancel) { discardEdit = nil }
         } message: { Text("Copy the text first if you need it. Saved screenshots, audio and original transcription stay intact.") }
+        .confirmationDialog("Discard this narration?", isPresented: $confirmCancelNarration) {
+            Button("Discard", role: .destructive) { model.cancelNarration() }
+            Button("Keep recording", role: .cancel) {}
+        } message: { Text("Stop narration keeps it. Discarding removes this recording; the screenshot and any earlier narration stay.") }
         .sheet(item: $sheet, onDismiss: {
             let action = afterSheet; afterSheet = nil; action?()
         }) { destination in
             switch destination {
-            case .sessions: sheetContent("Sessions") { sessionChoices }
-            case .settings: sheetContent("Snap & Talk settings") { settings }
-            case .deleted: sheetContent("Recently Deleted") { recentlyDeleted }
+            case .sessions: sheetContent("Sessions", dismiss: "Close") { sessionChoices }
+            case .settings: sheetContent("Snap & Talk settings", dismiss: "Done") { settings }
+            case .deleted: sheetContent("Recently Deleted", dismiss: "Close") { recentlyDeleted }
             case .ordering:
                 if let root = model.sessionURL { ReadbackOrderingView(model: model, sessionURL: root) }
             }
@@ -142,12 +154,13 @@ struct ReadbackView: View {
     // Native file panels and navigation start after the current sheet has closed.
     private func dismissThen(_ action: @escaping () -> Void) { afterSheet = action; sheet = nil }
 
-    private func sheetContent<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+    /// Close leaves a list; Done finishes the settings it changed.
+    private func sheetContent<Content: View>(_ title: String, dismiss: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text(title).font(.title2.weight(.semibold)).accessibilityAddTraits(.isHeader)
                 Spacer()
-                Button("Done") { sheet = nil }.keyboardShortcut(.defaultAction)
+                Button(dismiss) { sheet = nil }.keyboardShortcut(.defaultAction)
             }.padding(24)
             Divider()
             ScrollView { content().padding(24).frame(maxWidth: .infinity, alignment: .leading) }
@@ -156,22 +169,16 @@ struct ReadbackView: View {
 
     private var emptyState: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                VStack(alignment: .leading, spacing: 10) {
-                    Image(systemName: "rectangle.dashed.badge.record").font(.system(size: 32)).foregroundStyle(Workbench.accent)
-                    Text("Capture a screen. Tell its story.").font(.title2.weight(.semibold))
-                    Text("Build a session of screenshots and narration, review it, then hand it off to your assistant.")
-                        .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    HStack {
-                        Button("New session…") { model.createSession() }.buttonStyle(.borderedProminent)
-                            .disabled(model.newSessionStyleProblem != nil)
-                        Button("Open session…") { model.openSession() }
-                    }.padding(.top, 4)
-                }.padding(24).frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Workbench.surface, in: RoundedRectangle(cornerRadius: 12))
+            VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
+                WorkbenchEmptyState(symbol: "rectangle.dashed.badge.record", title: "Capture a screen. Tell its story.",
+                                    detail: "Build a session of screenshots and narration, review it, then hand it off to your assistant.") {
+                    Button("New session…") { model.createSession() }.buttonStyle(.borderedProminent)
+                        .disabled(model.newSessionStyleProblem != nil)
+                    Button("Open session…") { model.openSession() }
+                }.screenCard()
                 if let problem = model.newSessionStyleProblem {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(problem).foregroundStyle(.orange)
+                        ScreenAttentionNote(problem)
                         Button("Choose a session skill…") { sheet = .settings }
                     }
                 }
@@ -207,7 +214,7 @@ struct ReadbackView: View {
                 }
                 Divider()
                 Text("Copies instructions. You share the session.")
-            } label: { Label("Hand off…", systemImage: "arrow.up.forward.app") }
+            } label: { Label("Hand off", systemImage: "arrow.up.forward.app") }
                 .disabled(!model.canHandOffSession || isRecording || isCapturing)
                 .help(model.sessionProcessingCount > 0 ? "Wait for this session's narration to finish transcribing." : "Review the session, or copy instructions and open your assistant. Nothing is sent automatically.")
                 .accessibilityIdentifier("readback.handoff")
@@ -220,16 +227,18 @@ struct ReadbackView: View {
                 Button("Show in Finder") { model.revealSession() }.disabled(model.currentSessionProblem != nil)
                 Button("Close session") { model.closeSession() }.disabled(model.isRecording)
             } label: { Image(systemName: "ellipsis.circle") }
-                .menuStyle(.borderlessButton).fixedSize().accessibilityLabel("Session actions")
+                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().accessibilityLabel("Session actions")
         }.padding(.horizontal, Workbench.pagePadding).padding(.bottom, 14)
     }
+
+    private var elapsed: Double { capturePresentation?.elapsed ?? model.recordingElapsed }
 
     private var sessionSummary: String {
         let count = model.activeSections.count
         let base = "\(count) \(count == 1 ? "section" : "sections")"
         if model.sessionProcessingCount > 0 { return base + " · \(model.sessionProcessingCount) transcribing" }
         let failed = model.activeSections.filter { $0.status == .failed }.count
-        if failed > 0 { return base + " · \(failed) need review" }
+        if failed > 0 { return base + " · " + (failed == 1 ? "1 needs a retry" : "\(failed) need a retry") }
         return base
     }
 
@@ -238,10 +247,15 @@ struct ReadbackView: View {
         HStack(spacing: 12) {
             if isRecording {
                 Image(systemName: "record.circle").foregroundStyle(.red)
-                Text("Narrating").font(.body.weight(.medium))
-                Text(time(capturePresentation?.elapsed ?? model.recordingElapsed)).monospacedDigit().foregroundStyle(.secondary)
+                // The rail's and the toolbar's words for this state, with the toolbar's live level.
+                Text("Recording narration").font(.body.weight(.medium))
+                Text(time(elapsed)).monospacedDigit().foregroundStyle(.secondary)
+                NarrationLevel(level: capturePresentation == nil ? model.recordingLevel : 0.55)
                 Spacer(minLength: 8)
-                Button("Cancel") { model.cancelNarration() }
+                // Stop keeps; Cancel discards, so a long narration asks first (Escape too).
+                Button("Cancel") { if elapsed > 10 { confirmCancelNarration = true } else { model.cancelNarration() } }
+                    .keyboardShortcut(.cancelAction)
+                    .help("Discard this narration. The screenshot stays.")
                 Button("Stop narration") { model.stopNarration() }.buttonStyle(.borderedProminent)
                     .accessibilityIdentifier("readback.stop")
             } else if isCapturing {
@@ -252,7 +266,8 @@ struct ReadbackView: View {
             } else {
                 Picker("Capture area", selection: $captureMode) {
                     ForEach(SnapCapture.Mode.allCases) { Text($0.title).tag($0) }
-                }.pickerStyle(.segmented).labelsHidden().frame(width: 225)
+                // Its natural width, so the control starts on the page's column rather than centred in a frame.
+                }.pickerStyle(.segmented).labelsHidden().fixedSize()
                 Button {
                     Task { await model.captureNewSection(fromEditor: true, mode: captureMode) }
                 } label: { Label("Capture & narrate", systemImage: "camera.viewfinder") }
@@ -266,10 +281,11 @@ struct ReadbackView: View {
                         .disabled(model.currentSessionProblem != nil)
                 }
             }
-        }.controlSize(.regular).padding(.horizontal, 16).padding(.vertical, 12)
-            .frame(maxWidth: .infinity, minHeight: 56)
-            .background(Workbench.surface, in: RoundedRectangle(cornerRadius: 10))
-            .padding(.horizontal, Workbench.pagePadding).padding(.bottom, 16)
+        // On the page itself, so its controls start on the 24 pt column with the header's;
+        // the height stays fixed while recording replaces the capture choices.
+        }.controlSize(.regular)
+            .frame(maxWidth: .infinity, minHeight: 40)
+            .padding(.horizontal, Workbench.pagePadding).padding(.bottom, 12)
             .accessibilityElement(children: .contain).accessibilityLabel("Capture controls")
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { sectionFrames?("readback.capture-controls", $0) }
     }
@@ -277,32 +293,31 @@ struct ReadbackView: View {
     @ViewBuilder private var workspaceNotices: some View {
         if model.hasUnsavedNarration {
             HStack {
-                Label("Narration changes haven’t saved.", systemImage: "exclamationmark.triangle").font(.callout).foregroundStyle(.orange)
+                ScreenAttentionNote("A narration edit couldn’t be saved.")
                 Spacer()
                 Button("Review unsaved edit") { model.reviewUnsavedNarration() }
             }.padding(.horizontal, 24).padding(.bottom, 12)
         }
         if !model.isRecording && !model.isCapturing && model.currentSessionProblem == nil && !model.permissionsReady {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Label(model.captureAccessMessage ?? "Review capture access.",
-                      systemImage: "lock").font(.callout).foregroundStyle(.secondary)
-                Spacer(minLength: 8)
-                Button("Open System Settings…") {
-                    if model.screenPermissionGranted { model.openMicrophoneSettings() } else { model.openScreenRecordingSettings() }
-                }
-                Button("Check access") { Task { await model.preflightPermissions() } }
+            // Snap's card: what is off, what still works, then its buttons below the words.
+            CaptureAccessCard(title: accessTitle, symbol: model.screenPermissionGranted ? "mic.slash" : "rectangle.dashed.badge.record",
+                              detail: accessDetail,
+                              reopenHint: model.suggestsReopenForScreenAccess && !model.screenPermissionGranted ? ScreenCaptureAccess.reopenHint : nil,
+                              footnote: model.screenPermissionGranted ? nil : "Allow Workbench under Privacy & Security › Screen Recording. macOS may ask you to quit and reopen Workbench afterwards. If your organisation manages this Mac, it may keep screen capture off.") {
                 if !model.screenPermissionGranted || model.microphonePermission == .notDetermined {
                     Button("Request capture access") { Task { await model.requestCaptureAccess() } }
                         .disabled(model.isRequestingCaptureAccess)
                 }
-            }.padding(.horizontal, 24).padding(.bottom, 12)
-            if model.suggestsReopenForScreenAccess && !model.screenPermissionGranted {
-                Text(ScreenCaptureAccess.reopenHint).font(.callout).padding(.horizontal, 24).padding(.bottom, 12)
-            }
+                Button("Check access") { Task { await model.preflightPermissions() } }
+                Spacer(minLength: 8)
+                Button("Open System Settings…") {
+                    if model.screenPermissionGranted { model.openMicrophoneSettings() } else { model.openScreenRecordingSettings() }
+                }.help(model.screenPermissionGranted ? "Privacy & Security › Microphone. Workbench changes no setting itself." : "Privacy & Security › Screen Recording. Workbench changes no setting itself.")
+            }.padding(.horizontal, Workbench.pagePadding).padding(.bottom, 12)
         }
         if let failure = model.shortcutFailure {
             HStack {
-                Label(failure, systemImage: "keyboard.badge.exclamationmark").font(.caption).foregroundStyle(.orange)
+                ScreenAttentionNote(failure, symbol: "keyboard", font: .caption)
                 Spacer()
                 Button("Change shortcut…") { model.onEditShortcut?() }
             }.padding(.horizontal, 24).padding(.bottom, 12)
@@ -310,6 +325,27 @@ struct ReadbackView: View {
         if let notice = model.notice, notice != model.permissionsProblem {
             Text(notice).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true).padding(.horizontal, 24).padding(.bottom, 12)
+        }
+    }
+
+    private var accessTitle: String {
+        if model.isRequestingCaptureAccess { return "Finish the request in macOS" }
+        if !model.screenPermissionGranted { return "Screen Recording is off for Workbench" }
+        switch model.microphonePermission {
+        case .notDetermined: return "Narration needs the microphone"
+        case .restricted: return "The microphone is restricted on this Mac"
+        default: return "Microphone is off for Workbench"
+        }
+    }
+    private var accessDetail: String {
+        if model.isRequestingCaptureAccess { return model.captureAccessMessage ?? "" }
+        if !model.screenPermissionGranted {
+            return "Capture & narrate needs it to take a screenshot. Your sessions, screenshots and narration stay here, and you can add Snaps you already have."
+        }
+        switch model.microphonePermission {
+        case .notDetermined: return "Request capture access when you want to record narration. Your sessions and screenshots stay here, and you can type notes."
+        case .restricted: return "macOS reports it as restricted, so narration can’t record. Your sessions and screenshots stay here, and you can type notes."
+        default: return "Narration needs it to record. Your sessions and screenshots stay here, and you can type notes."
         }
     }
 
@@ -321,14 +357,20 @@ struct ReadbackView: View {
                         ForEach(Array(model.activeSections.enumerated()), id: \.element.id) { index, section in
                             Button { model.reviewSection(section.id) } label: {
                                 VStack(alignment: .leading, spacing: 5) {
-                                    ReadbackThumbnail(root: model.sessionURL, relative: section.screenshot, revision: section.capturedAt)
+                                    ReadbackThumbnail(root: model.sessionURL, relative: section.screenshot, revision: section.capturedAt, maxPixelSize: 400)
                                         .frame(maxWidth: .infinity).frame(height: 76).clipped()
-                                        .background(Color.black.opacity(0.04), in: RoundedRectangle(cornerRadius: 6))
+                                        .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))
                                     HStack(spacing: 6) {
                                         Text("Section \(index + 1)").font(.caption.weight(.medium))
                                         Spacer(minLength: 0)
-                                        Image(systemName: statusSymbol(section.status))
-                                            .foregroundStyle(section.status == .failed ? Color.orange : Color.secondary)
+                                        // A ready section needs no mark; only one that is not ready shows why.
+                                        if section.status != .ready {
+                                            Image(systemName: statusSymbol(section.status))
+                                                .foregroundStyle(section.status == .failed ? Workbench.attention : Color.secondary)
+                                        }
+                                    }
+                                    if let words = firstLine(model.transcriptDrafts[section.id]) {
+                                        Text(words).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                                     }
                                 }.padding(8).contentShape(Rectangle())
                             }.buttonStyle(WorkbenchNavigationStyle(selected: model.reviewedSectionID == section.id))
@@ -359,8 +401,9 @@ struct ReadbackView: View {
             HStack {
                 Text("Section \(number) of \(model.activeSections.count)").font(.headline).accessibilityAddTraits(.isHeader)
                 Spacer()
-                Label(section.status.title, systemImage: statusSymbol(section.status))
-                    .font(.caption).foregroundStyle(section.status == .failed ? .orange : .secondary)
+                WorkbenchStatusBadge(text: section.status.title,
+                                     tone: section.status == .failed ? .attention : section.status == .ready ? .done : .neutral,
+                                     symbol: section.status == .failed ? "exclamationmark.triangle.fill" : statusSymbol(section.status))
                 Menu {
                     Button("View image") { CaptureImagePreview.shared.show(preview(section, number: number), collection: activeImages) }
                     if let onSaveImageToLibrary {
@@ -374,17 +417,15 @@ struct ReadbackView: View {
                     Divider()
                     Button("Move to Recently Deleted") { model.deleteSection(section.id) }.disabled(changing)
                 } label: { Image(systemName: "ellipsis.circle") }
-                    .menuStyle(.borderlessButton).fixedSize().accessibilityLabel("Actions for section \(number)")
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().accessibilityLabel("Actions for section \(number)")
             }
             CapturePreviewButton(ReadbackItemNames.view(sectionNumber: number), item: { preview(section, number: number) }, collection: { activeImages }) {
-                ReadbackThumbnail(root: model.sessionURL, relative: section.screenshot, revision: section.capturedAt)
+                ReadbackThumbnail(root: model.sessionURL, relative: section.screenshot, revision: section.capturedAt, maxPixelSize: 1600)
                     .frame(maxWidth: .infinity).frame(height: 250)
-                    .background(Color.black.opacity(0.04), in: RoundedRectangle(cornerRadius: 10)).clipped()
+                    .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 10)).clipped()
             }
             if let imageResult { Text(imageResult).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
-            if let failure = section.failure {
-                Text(failure).font(.callout).foregroundStyle(.orange).textSelection(.enabled)
-            }
+            if let failure = section.failure { ScreenAttentionNote(failure) }
             if section.status == .ready {
                 HStack {
                     WorkbenchSectionTitle(section.audio == nil ? "Notes" : "Narration")
@@ -401,7 +442,7 @@ struct ReadbackView: View {
                     .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Workbench.border))
                     .accessibilityLabel(section.audio == nil ? "Notes for section \(number)" : "Narration for section \(number)")
                 if let failure = model.transcriptSaveFailures[section.id] {
-                    Text(failure).font(.callout).foregroundStyle(.orange).textSelection(.enabled)
+                    ScreenAttentionNote(failure)
                     HStack {
                         Button("Retry save") { model.retryTranscriptSave(section.id) }
                         Button("Copy text") { copyResult = TextDelivery.copy(model.transcriptDrafts[section.id] ?? "") == nil ? "Text could not be copied." : "Copied" }
@@ -447,8 +488,7 @@ struct ReadbackView: View {
                 Button("Open session…") { dismissThen { model.openSession() } }.disabled(model.isRecording)
             }
             if model.newSessionStyleProblem != nil {
-                Text("The skill for new sessions is unavailable. Choose another in Snap & Talk settings.")
-                    .font(.callout).foregroundStyle(.orange)
+                ScreenAttentionNote("The skill for new sessions is unavailable. Choose another in Snap & Talk settings.")
             }
             Divider()
             WorkbenchSectionTitle("Recent sessions")
@@ -475,7 +515,7 @@ struct ReadbackView: View {
                     }.buttonStyle(WorkbenchNavigationStyle()).disabled(model.isRecording)
                     if problem != nil {
                         HStack {
-                            Text("Folder unavailable").font(.caption).foregroundStyle(.orange)
+                            WorkbenchStatusBadge(text: "Folder unavailable", tone: .attention, symbol: "folder.badge.questionmark")
                             Spacer()
                             Button("Locate…") {
                                 if inSheet { dismissThen { model.locateSession(url) } } else { model.locateSession(url) }
@@ -514,14 +554,14 @@ struct ReadbackView: View {
                 }.pickerStyle(.menu)
                 Text("Each new session keeps a copy. Existing sessions keep their chosen skill.").font(.caption).foregroundStyle(.secondary)
                 Button("Manage packs…") { dismissThen(onOpenPacks) }
-                if let problem = model.newSessionStyleProblem { Text(problem).font(.caption).foregroundStyle(.orange) }
+                if let problem = model.newSessionStyleProblem { ScreenAttentionNote(problem, font: .caption) }
                 else if let notice = model.skillPackNotice { Text(notice).font(.caption).foregroundStyle(.secondary) }
             }
             Divider()
             VStack(alignment: .leading, spacing: 12) {
                 WorkbenchSectionTitle("Capture access")
                 permission("Screen Recording", granted: model.screenPermissionGranted) { model.openScreenRecordingSettings() }
-                permission("Microphone", granted: model.microphonePermission == .authorized) { model.openMicrophoneSettings() }
+                permission("Microphone", granted: model.microphonePermission == .authorized, notAsked: model.microphonePermission == .notDetermined) { model.openMicrophoneSettings() }
                 Button("Check access") { Task { await model.preflightPermissions() } }
                 if !model.screenPermissionGranted || model.microphonePermission == .notDetermined {
                     Button("Request capture access") { Task { await model.requestCaptureAccess() } }
@@ -541,18 +581,19 @@ struct ReadbackView: View {
         }
     }
 
-    private func permission(_ title: String, granted: Bool, action: @escaping () -> Void) -> some View {
+    /// macOS's own distinctions, as Home's Permissions rows say them; only Off is orange.
+    private func permission(_ title: String, granted: Bool, notAsked: Bool = false, action: @escaping () -> Void) -> some View {
         HStack {
-            Label(title, systemImage: granted ? "checkmark.circle" : "lock").foregroundStyle(granted ? Color.secondary : Color.primary)
+            Text(title)
             Spacer()
-            if granted { Text("Allowed").font(.caption).foregroundStyle(.secondary) }
-            Button("Open settings", action: action)
+            WorkbenchStatusBadge(text: granted ? "Allowed" : notAsked ? "Not asked yet" : "Off", tone: granted ? .done : notAsked ? .neutral : .attention)
+            Button("Open System Settings…", action: action)
         }
     }
 
     private func unavailableSession(_ problem: String) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Session folder unavailable", systemImage: "folder.badge.questionmark").font(.title3.bold())
+            Label("Session folder unavailable", systemImage: "folder.badge.questionmark").font(.title3.weight(.semibold))
             Text(problem).foregroundStyle(.secondary).textSelection(.enabled)
             Text("Locate its folder or reconnect the drive to continue. Removing it from Recents leaves its files intact.")
                 .font(.callout).foregroundStyle(.secondary)
@@ -572,18 +613,26 @@ struct ReadbackView: View {
             Text("Restore a section to put its screenshot and narration back in the session.")
                 .font(.callout).foregroundStyle(.secondary)
             ForEach(model.deletedSections) { section in
-                HStack {
+                HStack(spacing: 12) {
                     CapturePreviewButton(ReadbackItemNames.viewDeleted(section), item: { preview(section, number: nil) }, collection: { deletedImages }) {
-                        ReadbackThumbnail(root: model.sessionURL, relative: section.screenshot, revision: section.capturedAt)
+                        ReadbackThumbnail(root: model.sessionURL, relative: section.screenshot, revision: section.capturedAt, maxPixelSize: 400)
                             .frame(width: 100, height: 60).clipped()
+                            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))
                     }
-                    VStack(alignment: .leading) {
-                        Text(section.displayName).font(.callout)
-                        if let deletedAt = section.deletedAt { Text(deletedAt.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary) }
+                    // Named by when it was captured and what was said, not by the display it came from.
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Section from \(section.capturedAt.formatted(date: .abbreviated, time: .shortened))").font(.callout.weight(.medium))
+                        if let words = firstLine(model.transcriptDrafts[section.id]) {
+                            Text(words).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        if let deletedAt = section.deletedAt {
+                            Text("Deleted \(deletedAt.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(.secondary)
+                        }
                     }
                     Spacer()
                     Button("Restore") { model.restoreSection(section.id) }
                 }.padding(10).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Workbench.border))
             }
             Button("Empty Recently Deleted…", role: .destructive) { confirmEmptyTrash = true }
                 .disabled(model.deletedSections.isEmpty)
@@ -595,6 +644,15 @@ struct ReadbackView: View {
     private var activeImages: [CaptureImagePreviewItem] { model.activeSections.enumerated().map { preview($0.element, number: $0.offset + 1) } }
     private var deletedImages: [CaptureImagePreviewItem] { model.deletedSections.map { preview($0, number: nil) } }
     private func preview(_ section: ReadbackSection, number: Int?) -> CaptureImagePreviewItem { .section(section, number: number, session: model.sessionURL) }
+    /// The first words of a narration or note, for a row's second line.
+    private func firstLine(_ text: String?) -> String? {
+        guard let text else { return nil }
+        for line in text.split(whereSeparator: \.isNewline) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if !trimmed.isEmpty { return trimmed }
+        }
+        return nil
+    }
     private func statusSymbol(_ status: ReadbackSectionStatus) -> String {
         switch status {
         case .needsNarration: "mic.badge.plus"
@@ -607,17 +665,79 @@ struct ReadbackView: View {
     }
 }
 
+/// A section's screenshot, decoded away from the main thread at the size it is shown, as
+/// SnapThumbnail does: a full-size screenshot never decodes in a view's body.
 struct ReadbackThumbnail: View {
     let root: URL?
     let relative: String
     let revision: Date
+    var maxPixelSize: Int = 1024
+    private struct Key: Equatable { var path: String?; var relative: String; var revision: Date; var size: Int }
+    private enum Load { case loading, loaded(NSImage), missing }
+    @State private var load = Load.loading
     var body: some View {
         Group {
-            if let root, let url = try? ReadbackStore.safeURL(root: root, relative: relative), let image = NSImage(contentsOf: url) {
-                Image(nsImage: image).resizable().scaledToFit()
-            } else {
-                Image(systemName: "photo.badge.exclamationmark").font(.title).foregroundStyle(.secondary)
+            switch load {
+            case .loaded(let image): Image(nsImage: image).resizable().scaledToFit()
+            case .missing: Image(systemName: "photo.badge.exclamationmark").font(.title).foregroundStyle(.secondary)
+            case .loading: Color.clear
             }
         }.accessibilityLabel("Snap & Talk screenshot")
+            .task(id: Key(path: root?.path, relative: relative, revision: revision, size: maxPixelSize)) {
+                guard let root, let url = try? ReadbackStore.safeURL(root: root, relative: relative) else { load = .missing; return }
+                let size = maxPixelSize
+                let image = await Task.detached(priority: .utility) { () -> NSImage? in
+                    guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+                          let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true,
+                            kCGImageSourceThumbnailMaxPixelSize: size, kCGImageSourceCreateThumbnailWithTransform: true] as CFDictionary) else { return nil }
+                    return NSImage(cgImage: cgImage, size: .zero)
+                }.value
+                guard !Task.isCancelled else { return }
+                load = image.map(Load.loaded) ?? .missing
+            }
+    }
+}
+
+/// A sentence that asks for attention: primary words, so they keep their contrast, with only
+/// the symbol in the attention colour (docs/desktop.md § Status).
+struct ScreenAttentionNote: View {
+    let text: String
+    var symbol = "exclamationmark.triangle.fill"
+    var font: Font = .callout
+    var selectable = true
+    init(_ text: String, symbol: String = "exclamationmark.triangle.fill", font: Font = .callout, selectable: Bool = true) {
+        self.text = text; self.symbol = symbol; self.font = font; self.selectable = selectable
+    }
+    var body: some View {
+        Label {
+            if selectable {
+                Text(text).foregroundStyle(.primary).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+            } else {
+                Text(text).foregroundStyle(.primary).fixedSize(horizontal: false, vertical: true)
+            }
+        } icon: {
+            Image(systemName: symbol).foregroundStyle(Workbench.attention).accessibilityHidden(true)
+        }.font(font)
+    }
+}
+
+/// The live microphone level beside Recording narration, as the toolbar's trace shows it.
+struct NarrationLevel: View {
+    let level: Double
+    var body: some View {
+        Capsule().fill(Color.primary.opacity(0.1)).frame(width: 40, height: 4)
+            .overlay(alignment: .leading) { Capsule().fill(Color.red).frame(width: 40 * max(0.05, min(1, level)), height: 4) }
+            .animation(.linear(duration: 0.1), value: level)
+            .accessibilityHidden(true)
+    }
+}
+
+extension View {
+    /// The page kit's card (docs/desktop.md § Page kit) around content that has no title row:
+    /// 12 pt corners, 16 pt inside, the control surface with a hairline.
+    func screenCard() -> some View {
+        padding(Workbench.tilePadding).frame(maxWidth: .infinity, alignment: .leading)
+            .background(Workbench.surface, in: RoundedRectangle(cornerRadius: Workbench.tileRadius))
+            .overlay(RoundedRectangle(cornerRadius: Workbench.tileRadius).strokeBorder(Workbench.border))
     }
 }

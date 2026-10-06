@@ -59,8 +59,7 @@ struct SnapWorkspaceView: View {
             }
             if !model.screenAccessGranted { screenAccessCard }
             if model.screenshotRedirectPaused {
-                Text("macOS now saves screenshots somewhere else, so Workbench stopped collecting them. Turn Keep new screenshots off the Desktop off, then on, to collect them again.")
-                    .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                ScreenAttentionNote("macOS now saves screenshots somewhere else, so Workbench stopped collecting them. Turn Keep new screenshots off the Desktop off, then on, to collect them again.", font: .caption)
             }
             Divider()
             HStack {
@@ -70,10 +69,12 @@ struct SnapWorkspaceView: View {
                     .pickerStyle(.segmented).labelsHidden().frame(width: 175)
             }
             if !model.problems.isEmpty {
-                DisclosureGroup("\(model.problems.count) Snap record\(model.problems.count == 1 ? " needs" : "s need") attention") {
+                DisclosureGroup {
                     ForEach(model.problems, id: \.self) { Text($0).font(.caption).textSelection(.enabled) }
                     Button("Reload history") { model.requestRefresh() }
-                }.foregroundStyle(.orange)
+                } label: {
+                    ScreenAttentionNote("\(model.problems.count) Snap record\(model.problems.count == 1 ? "" : "s") couldn’t be read", selectable: false)
+                }
             }
             if let notice = model.notice { Text(notice).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
             if model.visibleItems.isEmpty {
@@ -85,7 +86,7 @@ struct SnapWorkspaceView: View {
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 205, maximum: 310), spacing: 12)], spacing: 12) {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 205, maximum: 310), spacing: 12, alignment: .top)], spacing: 12) {
                         ForEach(model.visibleItems) { item in card(item) }
                     }.padding(.vertical, 4)
                 }
@@ -120,27 +121,16 @@ struct SnapWorkspaceView: View {
     /// Region, Window and Screen need Screen Recording (#112). Everything already
     /// saved keeps working, and an image the person already has can still come in.
     private var screenAccessCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label("Screen Recording is off for Workbench", systemImage: "rectangle.dashed.badge.record")
-                .font(.callout.weight(.semibold))
-            Text("Region, Window and Screen need it to capture. Your Snaps stay here to view, copy, edit and hand off, and you can add an image you already have.")
-                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            HStack {
-                Button("Paste image") { model.pasteImage() }.disabled(model.isBusy)
-                Button("Import image…") { model.importImage() }.disabled(model.isBusy)
-                Spacer(minLength: 8)
-                Button("Open System Settings…") { model.openScreenRecordingSettings() }
-                    .help("Privacy & Security › Screen Recording. Workbench changes no setting itself.")
-            }
-            if model.suggestsReopenForScreenAccess {
-                Text(ScreenCaptureAccess.reopenHint).font(.callout.weight(.medium)).fixedSize(horizontal: false, vertical: true)
-            }
-            Text("Allow Workbench under Privacy & Security › Screen Recording. macOS may ask you to quit and reopen Workbench afterwards. If your organisation manages this Mac, it may keep screen capture off.")
-                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-        }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
-            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.orange.opacity(0.25)))
-            .accessibilityElement(children: .contain)
+        CaptureAccessCard(title: "Screen Recording is off for Workbench", symbol: "rectangle.dashed.badge.record",
+                          detail: "Region, Window and Screen need it to capture. Your Snaps stay here to view, copy, edit and hand off, and you can add an image you already have.",
+                          reopenHint: model.suggestsReopenForScreenAccess ? ScreenCaptureAccess.reopenHint : nil,
+                          footnote: "Allow Workbench under Privacy & Security › Screen Recording. macOS may ask you to quit and reopen Workbench afterwards. If your organisation manages this Mac, it may keep screen capture off.") {
+            Button("Paste image") { model.pasteImage() }.disabled(model.isBusy)
+            Button("Import image…") { model.importImage() }.disabled(model.isBusy)
+            Spacer(minLength: 8)
+            Button("Open System Settings…") { model.openScreenRecordingSettings() }
+                .help("Privacy & Security › Screen Recording. Workbench changes no setting itself.")
+        }
     }
 
     private var emptyTitle: String {
@@ -196,16 +186,18 @@ struct SnapWorkspaceView: View {
                 Toggle("Select \(item.title)", isOn: Binding(get: { selectedIDs.contains(item.id) }, set: { value in
                     if value { selectedIDs.insert(item.id) } else { selectedIDs.remove(item.id) }
                 })).labelsHidden().toggleStyle(.checkbox)
-                Text(item.source.title).font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 if item.edit != SnapEdit() { Image(systemName: "pencil").font(.caption).accessibilityLabel("Edited; original preserved") }
             }
             // The image opens read-only, archived or not; Edit… is its own action.
             CapturePreviewButton("View \(item.title)", item: { .snap(item, store: model.store) }, collection: { model.visibleItems.map { .snap($0, store: model.store) } }) {
+                // A faint mat, so a tall or wide capture's letterboxing reads as intended.
                 SnapThumbnail(model: model, item: item).frame(height: 118).frame(maxWidth: .infinity)
+                    .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 6))
             }
-            Text(item.title).font(.callout.weight(.semibold)).lineLimit(2).frame(height: 34, alignment: .topLeading)
-            Text(item.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary)
+            Text(item.title).font(.callout.weight(.semibold)).lineLimit(2, reservesSpace: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text("\(item.source.title) · \(item.createdAt.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(.secondary).lineLimit(1)
             if !item.tags.isEmpty { Text(item.tags.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
             HStack {
                 Button("Copy") { model.copy(item.id) }.controlSize(.small)
@@ -218,11 +210,11 @@ struct SnapWorkspaceView: View {
                     Button("View image") { CaptureImagePreview.shared.show(.snap(item, store: model.store), collection: model.visibleItems.map { .snap($0, store: model.store) }) }
                     Divider()
                     Button("Export image…") { model.export(item.id) }
+                    // Edit… is the card's own button, so the menu holds only what the card does not show.
                     if item.archivedAt == nil {
-                        Button("Edit…") { model.edit(item.id) }
                         Button("Archive") { model.archive([item.id], archived: true) }
                     } else { Button("Restore") { model.archive([item.id], archived: false) } }
-                } label: { Image(systemName: "ellipsis") }.menuStyle(.borderlessButton).fixedSize().accessibilityLabel("Actions for \(item.title)")
+                } label: { Image(systemName: "ellipsis.circle") }.menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().accessibilityLabel("Actions for \(item.title)")
             }
         }.padding(12).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 10))
             .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(selectedIDs.contains(item.id) ? Workbench.accent : Workbench.border, lineWidth: selectedIDs.contains(item.id) ? 2 : 1))
@@ -249,5 +241,32 @@ struct SnapThumbnail: View {
                 return NSImage(cgImage: cgImage, size: .zero)
             }.value
         }
+    }
+}
+
+/// Snap's and Snap & Talk's card for capture access that is off: what stopped, what still
+/// works, then its buttons below the words, so a long sentence never squeezes them.
+struct CaptureAccessCard<Actions: View>: View {
+    let title: String
+    let symbol: String
+    let detail: String
+    var reopenHint: String?
+    var footnote: String?
+    @ViewBuilder var actions: () -> Actions
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(title, systemImage: symbol).font(.callout.weight(.semibold))
+            Text(detail).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            HStack { actions() }.padding(.top, 2)
+            if let reopenHint {
+                Text(reopenHint).font(.callout.weight(.medium)).fixedSize(horizontal: false, vertical: true)
+            }
+            if let footnote {
+                Text(footnote).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        }.padding(Workbench.tilePadding).frame(maxWidth: .infinity, alignment: .leading)
+            .background(Workbench.attention.opacity(0.08), in: RoundedRectangle(cornerRadius: Workbench.tileRadius))
+            .overlay(RoundedRectangle(cornerRadius: Workbench.tileRadius).strokeBorder(Workbench.attention.opacity(0.25)))
+            .accessibilityElement(children: .contain)
     }
 }
