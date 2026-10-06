@@ -6,7 +6,9 @@ import Foundation
 ///
 /// The rules, in the order they apply:
 ///
-/// 1. Secure fields are excluded; empty or whitespace-only dictation is returned as it is.
+/// 1. Secure fields never reach the rules: delivery reads no value for them, so the
+///    field-based entry returns nil and the words go in as dictated. Empty or
+///    whitespace-only dictation is returned as it is.
 /// 2. Spaces and tabs at the dictated edges are dropped, so the field decides the spacing.
 /// 3. Leading space when the previous character is a letter, digit, emoji or closing
 ///    punctuation (`. , ; : ! ? ) ] } %`, a closing quote, or a straight quote that an
@@ -15,10 +17,13 @@ import Foundation
 ///    opening quote. Never a double space.
 /// 4. Trailing space when the next character is a letter, digit, emoji, `( [ {` or an
 ///    opening quote. None before whitespace, a line break or `, . ; : ! ? ) ] }`.
-/// 5. Sentence start = start of field, after a line break, or after `. ! ?` (closing
-///    quotes and brackets may follow) plus whitespace. There the first word is
-///    capitalised only when it is all lowercase letters and ends at a space or clause
-///    punctuation; `iPhone`, `github.com`, `e.g.` and code keep their spelling.
+/// 5. Sentence start = start of field, after a line break (a line holding only list or
+///    quote markers such as `- * + • > # [ ] 1. 1)` still counts), or after `. ! ?`
+///    (closing quotes and brackets may follow) plus whitespace. A full stop that ends
+///    a title or Latin abbreviation (`Dr. Mr. Mrs. Ms. Prof. St. Mt. vs. e.g. i.e. cf.
+///    approx.`) does not end a sentence. There the first word is capitalised only when
+///    it is all lowercase letters and ends at a space or clause punctuation; `iPhone`,
+///    `github.com`, `e.g.` and code keep their spelling.
 /// 6. Mid-sentence lowercasing applies only when the first token is a single
 ///    Title-case word (one capital, then lowercase letters, apostrophes or hyphens)
 ///    ending at a space or clause punctuation, is not `I` or a contraction of it, is not
@@ -26,16 +31,16 @@ import Foundation
 ///    the field or later in the dictation. Names the recogniser capitalised at the
 ///    start of an utterance are indistinguishable from `The`, so the dictionary and the
 ///    field's own spelling are the evidence; everything else keeps the dictated spelling:
-///    all-caps acronyms, numbers, URLs, code, `McDonald`, `O'Brien`.
+///    all-caps acronyms, numbers, URLs, code, `McDonald`, `O'Brien`, and a title
+///    abbreviation such as `Dr.`.
 /// 7. One final full stop is dropped when the sentence continues after it (the next
 ///    character, past spaces, is a lowercase letter or digit) or the field already ends
-///    it there (`. , ; : ! ?`). A full stop before a line break or a capital stays.
+///    it there (`. , ; : ! ?`). A full stop before a line break or a capital stays, and
+///    so does one that belongs to an abbreviation (`Dr.`, `etc.`).
 ///
 /// Decisions are reported as values so checks can assert on them without the text.
 enum InsertionBoundary {
-    enum FieldKind: Equatable { case text, secure }
     struct Context: Equatable {
-        var kind: FieldKind = .text
         /// The dictionary's written spellings: a first word matching one keeps its capital.
         var dictionaryTerms: [String] = []
     }
@@ -44,14 +49,15 @@ enum InsertionBoundary {
         case notAPlainWord
         /// Capitals beyond the first, or none where one would be added: `NASA`, `McDonald`, `O'Brien`, `iPhone`.
         case notOneTitleCaseWord, pronounI, dictionaryTerm, capitalisedElsewhere
+        /// A title or Latin abbreviation with its full stop: `Dr.`, `e.g.`.
+        case abbreviation
     }
     enum Decision: Equatable, CustomStringConvertible {
-        case secureFieldExcluded, nothingToInsert, trimmedEdges
+        case nothingToInsert, trimmedEdges
         case leadingSpace, trailingSpace
         case sentenceStart, capitalised, lowercased, kept(KeepReason), droppedFullStop
         var description: String {
             switch self {
-            case .secureFieldExcluded: return "secure field, text unchanged"
             case .nothingToInsert: return "nothing to insert"
             case .trimmedEdges: return "edge spaces dropped"
             case .leadingSpace: return "space before"
@@ -75,7 +81,6 @@ enum InsertionBoundary {
     /// `before` and `after` are the field's text either side of the caret, or
     /// around the selection being replaced.
     static func fit(before: String, after: String, dictated: String, context: Context = .init()) -> Fit {
-        guard context.kind != .secure else { return Fit(prefix: "", body: dictated, suffix: "", decisions: [.secureFieldExcluded]) }
         var decisions: [Decision] = []
         let edges = CharacterSet(charactersIn: " \t")
         var body = dictated.trimmingCharacters(in: edges)
@@ -86,7 +91,8 @@ enum InsertionBoundary {
 
         var prefix = ""
         if let previous = before.last, let first = body.first, !first.isNewline, !closing.contains(first),
-           previous.isLetter || previous.isNumber || isEmoji(previous) || closesBefore(before) {
+           previous.isLetter || previous.isNumber || isEmoji(previous) || closesBefore(before)
+           || !previous.isWhitespace && isMarkerLine(before) {
             prefix = " "; decisions.append(.leadingSpace)
         }
 
@@ -98,6 +104,8 @@ enum InsertionBoundary {
                 if first.isLowercase, token.word.allSatisfy({ $0.isLowercase || $0 == "'" || $0 == "’" || $0 == "-" }) {
                     body = first.uppercased() + body.dropFirst(); decisions.append(.capitalised)
                 } else if first.isLowercase { decisions.append(.kept(.notOneTitleCaseWord)) }
+            } else if body[token.range.upperBound...].first == ".", isAbbreviation(token.word) {
+                decisions.append(.kept(.abbreviation))
             } else if let reason = keepReason(token.word, context: context, before: before, after: after, rest: body[token.range.upperBound...]) {
                 decisions.append(.kept(reason))
             } else if first.isUppercase {
@@ -113,6 +121,7 @@ enum InsertionBoundary {
             suffix = " "; decisions.append(.trailingSpace)
         }
         if body.hasSuffix("."), !body.hasSuffix(".."), body.dropLast().last.map({ $0.isLetter || $0.isNumber }) == true,
+           !isAbbreviation(wordEnding(body.dropLast()), dictated: true),
            let continues = after.drop(while: { $0 == " " || $0 == "\t" }).first,
            continues.isLowercase || continues.isNumber || ".,;:!?".contains(continues) {
             body.removeLast(); decisions.append(.droppedFullStop)
@@ -172,11 +181,54 @@ enum InsertionBoundary {
             index = before.index(before: index)
         }
         guard index > before.startIndex else { return true }
+        if isMarkerLine(before[..<index]) { return true }
         while index > before.startIndex, ["\"", "'", "”", "’", ")", "]", "}", "»"].contains(before[before.index(before: index)]) {
             index = before.index(before: index)
         }
         guard index > before.startIndex else { return false }
-        return terminal.contains(before[before.index(before: index)])
+        let last = before[before.index(before: index)]
+        guard terminal.contains(last) else { return false }
+        return last != "." || !isAbbreviation(wordEnding(before[..<before.index(before: index)]))
+    }
+
+    // MARK: Markers and abbreviations
+
+    private static let markers: Set<String> = ["-", "*", "+", "•", "·", "–", "—", ">", "[]", "[x]", "[X]", "□", "☐", "☑", "✓", "✔"]
+    /// The current line holds only list or quote markers, each a separate token: the
+    /// caret is at the start of the item. Lines longer than a few markers never qualify,
+    /// so a long single-line field is not rescanned.
+    static func isMarkerLine<Text: StringProtocol>(_ before: Text) -> Bool {
+        var start = before.endIndex, length = 0
+        while start > before.startIndex, !before[before.index(before: start)].isNewline {
+            start = before.index(before: start); length += 1
+            if length > 16 { return false }
+        }
+        let line = before[start...].replacingOccurrences(of: "[ ]", with: "[]")
+        let tokens = line.split(whereSeparator: \.isWhitespace)
+        guard !tokens.isEmpty else { return false }
+        return tokens.allSatisfy { token in
+            if markers.contains(String(token)) { return true }
+            if token.count <= 6, token.allSatisfy({ $0 == "#" }) { return true }
+            guard let last = token.last, last == "." || last == ")", token.count <= 4 else { return false }
+            return token.dropLast().allSatisfy(\.isNumber)
+        }
+    }
+    private static let abbreviations: Set<String> = ["dr", "mr", "mrs", "ms", "prof", "st", "mt", "vs", "e.g", "i.e", "cf", "approx"]
+    /// Titles and Latin abbreviations that rarely end a sentence. `etc.` often does,
+    /// so it only protects its own dictated full stop.
+    private static func isAbbreviation<Text: StringProtocol>(_ word: Text, dictated: Bool = false) -> Bool {
+        let lowered = word.lowercased()
+        return abbreviations.contains(lowered) || dictated && lowered == "etc"
+    }
+    /// The run of letters and inner full stops that ends `text`: `e.g` in `see e.g`.
+    private static func wordEnding<Text: StringProtocol>(_ text: Text) -> Text.SubSequence {
+        var start = text.endIndex, length = 0
+        while start > text.startIndex, length < 8 {
+            let character = text[text.index(before: start)]
+            guard character.isLetter || character == "." && start < text.endIndex else { break }
+            start = text.index(before: start); length += 1
+        }
+        return text[start...]
     }
 
     // MARK: First word

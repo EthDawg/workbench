@@ -103,8 +103,28 @@ enum InsertionBoundaryChecks {
         Case(name: "a bulleted cleanup keeps its inner line breaks", before: "List:", after: "", dictated: "• Apples\n• Pears", expected: " • Apples\n• Pears", decisions: [.leadingSpace, .kept(.notAPlainWord)]),
         Case(name: "whitespace-only dictation is unchanged", before: "foo", after: "bar", dictated: "   ", expected: "   ", decisions: [.nothingToInsert]),
         Case(name: "empty dictation is unchanged", before: "foo", after: "bar", dictated: "", expected: "", decisions: [.nothingToInsert]),
-        Case(name: "a secure field is excluded", before: "foo", after: "bar", dictated: "Secret", expected: "Secret", decisions: [.secureFieldExcluded],
-             context: .init(kind: .secure)),
+        // List and quote markers: the caret is at the start of the item.
+        Case(name: "a Title-case word at the start of a bullet keeps its capital", before: "Shopping\n- ", after: "", dictated: "Buy milk",
+             expected: "Buy milk", decisions: [.sentenceStart]),
+        Case(name: "a lowercase word at the start of a bullet is capitalised", before: "Shopping\n• ", after: "", dictated: "buy milk",
+             expected: "Buy milk", decisions: [.sentenceStart, .capitalised]),
+        Case(name: "an asterisk bullet starts a sentence", before: "Shopping\n* ", after: "", dictated: "Buy milk", expected: "Buy milk"),
+        Case(name: "a task marker starts a sentence", before: "Todo\n- [ ] ", after: "", dictated: "Call Mark", expected: "Call Mark", decisions: [.sentenceStart]),
+        Case(name: "a quote marker starts a sentence", before: "Quote\n> ", after: "", dictated: "Hello", expected: "Hello", decisions: [.sentenceStart]),
+        Case(name: "a numbered item with a bracket starts a sentence", before: "1) ", after: "", dictated: "First", expected: "First", decisions: [.sentenceStart]),
+        Case(name: "a heading marker starts a sentence", before: "## ", after: "", dictated: "Results", expected: "Results", decisions: [.sentenceStart]),
+        Case(name: "a bullet without its space gains one", before: "Notes\n-", after: "", dictated: "Buy milk", expected: " Buy milk", decisions: [.leadingSpace, .sentenceStart]),
+        Case(name: "a dash inside prose is not a marker", before: "the plan - ", after: "", dictated: "The folder", expected: "the folder", decisions: [.lowercased]),
+        Case(name: "a line with words before the dash is mid-sentence", before: "see\nalso - ", after: "", dictated: "The folder", expected: "the folder", decisions: [.lowercased]),
+        Case(name: "a bullet item that already has words is mid-sentence", before: "- bring ", after: "", dictated: "The folder", expected: "the folder", decisions: [.lowercased]),
+        // Abbreviations.
+        Case(name: "a Latin abbreviation in the field does not end the sentence", before: "fruit, e.g. ", after: "", dictated: "the apple",
+             expected: "the apple", decisions: []),
+        Case(name: "a title in the field does not end the sentence", before: "Ask Dr. ", after: "", dictated: "Who", expected: "who", decisions: [.lowercased]),
+        Case(name: "a dictated title keeps its capital and full stop", before: "see ", after: " smith", dictated: "Dr.", expected: "Dr.", decisions: [.kept(.abbreviation)]),
+        Case(name: "a dictated etc keeps its full stop mid-sentence", before: "apples, ", after: " and more", dictated: "etc.", expected: "etc."),
+        Case(name: "a dictated title at a sentence start keeps its full stop", before: "", after: " smith is here", dictated: "Dr.", expected: "Dr.", decisions: [.sentenceStart]),
+        Case(name: "a dictated sentence ending in a title keeps the full stop before a lowercase word", before: "", after: " then", dictated: "ask Dr.", expected: "Ask Dr."),
         Case(name: "inside a word, both sides get a space", before: "hel", after: "lo", dictated: "x", expected: " x "),
         Case(name: "a digit before gets a space", before: "Room 5", after: "", dictated: "is free", expected: " is free"),
         Case(name: "a digit after gets a space", before: "", after: "5 apples", dictated: "buy", expected: "Buy "),
@@ -137,7 +157,8 @@ enum InsertionBoundaryChecks {
         try check(whole?.text == "Hello", "replacing the whole field is a sentence start")
         let caret = InsertionBoundary.fit(dictated: "Hello", value: "🙂 prefix OLD suffix", selection: NSRange(location: 10, length: 3))
         try check(caret?.text == "hello", "UTF-16 selection offsets past an emoji split the field correctly")
-        try check(InsertionBoundary.fit(dictated: "x", value: nil, selection: NSRange(location: 0, length: 0)) == nil, "an unreadable value gives no fit")
+        try check(InsertionBoundary.fit(dictated: "x", value: nil, selection: NSRange(location: 0, length: 0)) == nil,
+                  "an unreadable value gives no fit: a secure field reads as nil, so its words go in as dictated")
         try check(InsertionBoundary.fit(dictated: "x", value: "ab", selection: nil) == nil, "a missing selection gives no fit")
         try check(InsertionBoundary.fit(dictated: "x", value: "ab", selection: NSRange(location: 3, length: 0)) == nil, "a selection past the end gives no fit")
         try check(InsertionBoundary.fit(dictated: "x", value: "😀", selection: NSRange(location: 1, length: 0)) == nil, "a split surrogate gives no fit")
@@ -145,9 +166,18 @@ enum InsertionBoundaryChecks {
         // Sentence detection on its own.
         for (text, expected) in [("", true), ("   ", true), ("Done. ", true), ("Done.", true), ("Done!", true), ("Why? ", true),
                                  ("Line\n", true), ("Line\n\t ", true), ("He said \"no.\" ", true), ("(Done.) ", true),
-                                 ("Done, ", false), ("Done ", false), ("Done", false), ("Done; ", false), ("e.g. ", true), ("Wait… ", false)] {
+                                 ("Done, ", false), ("Done ", false), ("Done", false), ("Done; ", false), ("Wait… ", false),
+                                 ("e.g. ", false), ("Dr. ", false), ("Mt. ", false), ("etc. ", true), ("PhD. ", true),
+                                 ("- ", true), ("-", true), ("Shopping\n- [ ] ", true), ("1) ", true), ("## ", true), ("a - b - ", false),
+                                 ("the plan - ", false), ("- bring ", false), ("[ ", false), ("####### ", false)] {
             try check(InsertionBoundary.isSentenceStart(text) == expected, "sentence start for \(text.debugDescription) is \(expected)")
         }
+        try check(!InsertionBoundary.isMarkerLine(String(repeating: "-", count: 17)), "a long line of dashes is not a marker line")
+        try check(InsertionBoundary.isMarkerLine("text\n- - -") && !InsertionBoundary.isMarkerLine("text - - -"), "markers are judged on the current line only")
+        let singleLine = String(repeating: "word ", count: 200_000) + "- "
+        let lineStarted = Date()
+        try check(!InsertionBoundary.isSentenceStart(singleLine) && Date().timeIntervalSince(lineStarted) < 0.1,
+                  "a 1 MB single line is not rescanned for markers")
         // A large field is scanned once, not once per occurrence.
         let large = String(repeating: "The end. ", count: 20_000) + "and "
         let started = Date()
