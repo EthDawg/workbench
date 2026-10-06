@@ -340,7 +340,8 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     private var neuralPreview: NeuralSpeechRenderer?
     private var neuralPreviewPlayer: AVAudioPlayer?
     private var voiceObservers: [AnyCancellable] = []
-    private var voiceRefresh: Task<Void, Never>?
+    /// Set once a saved choice needed the `say` list; it then stays in the catalogue.
+    private var sayVoicesWanted = false
     private var peakPower: Float = -160
     private var destination: TextDelivery.Target? {
         didSet { oldValue?.opaqueEditor?.end(); liveDictation?.end(); liveDictation = nil }
@@ -420,9 +421,9 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         refreshNeuralVoices()
         voiceObservers = [
             NotificationCenter.default.publisher(for: AVSpeechSynthesizer.availableVoicesDidChangeNotification)
-                .receive(on: RunLoop.main).sink { [weak self] _ in self?.refreshVoices(inBackground: true) },
+                .receive(on: RunLoop.main).sink { [weak self] _ in MacVoiceCatalog.forgetSayVoices(); self?.refreshVoices() },
             NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
-                .sink { [weak self] _ in self?.refreshVoices(inBackground: true) }
+                .sink { [weak self] _ in self?.refreshVoices() }
         ]
         loaded = true
         restoreCaptureRecovery()
@@ -1364,19 +1365,19 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         }
         return "No Mac voice is installed. Add one in \(MacVoiceCatalog.settingsTitle) settings."
     }
-    /// Loads installed voices. Launch waits for them; later refreshes (a voice
-    /// added in Settings, or returning to the app) run off the main thread.
-    func refreshVoices(inBackground: Bool = false) {
+    /// Lists installed voices by identifier: at launch, when macOS reports a
+    /// voice change and on returning to the app (a voice added in Settings
+    /// appears without a relaunch). It runs on the main thread, about 80 ms
+    /// measured, because off it AVFoundation logs an Accessibility fault per
+    /// call. The `say` list is read once, and only when the saved choice is an
+    /// older name or a voice only `say` can speak (#140).
+    func refreshVoices() {
         let language = MacVoiceCatalog.preferredLanguage
-        guard inBackground else { applyVoices(MacVoiceCatalog.installed(preferredLanguage: language), language: language); return }
-        guard voiceRefresh == nil else { return }
-        voiceRefresh = Task.detached(priority: .utility) { [weak self] in
-            let voices = MacVoiceCatalog.installed(preferredLanguage: language)
-            await self?.applyVoices(voices, language: language)
+        var voices = MacVoiceCatalog.installed(preferredLanguage: language)
+        if sayVoicesWanted || MacVoiceCatalog.needsSayVoices(for: voice, in: voices, preferredLanguage: language) {
+            sayVoicesWanted = true
+            voices = MacVoiceCatalog.installed(preferredLanguage: language, sayVoices: MacVoiceCatalog.sayVoices())
         }
-    }
-    private func applyVoices(_ voices: [MacVoice], language: String) {
-        voiceRefresh = nil
         if voices != macVoices { macVoices = voices }
         if language != voiceLanguage { voiceLanguage = language }
     }

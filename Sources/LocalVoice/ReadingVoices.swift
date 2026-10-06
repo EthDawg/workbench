@@ -81,25 +81,65 @@ enum MacVoiceCatalog {
     /// The person's speech language, such as `en-AU`.
     static var preferredLanguage: String { AVSpeechSynthesisVoice.currentLanguageCode() }
 
+    /// A voice as `say -v ?` lists it: its identifier, the name `say` accepts
+    /// and its locale as a BCP 47 tag.
+    typealias SayVoice = (id: String, name: String, language: String)
+
     /// Installed voices for English and the person's own language, best first.
-    static func installed(preferredLanguage: String = preferredLanguage) -> [MacVoice] {
+    /// Every entry comes from an installed identifier that
+    /// `AVSpeechSynthesisVoice(identifier:)` constructs without a language or
+    /// name lookup. `sayVoices` adds the names `say` lists, and the voices only
+    /// `say` can speak, when a saved choice needs them (see `sayVoices()`).
+    static func installed(preferredLanguage: String = preferredLanguage, sayVoices: [SayVoice] = []) -> [MacVoice] {
         let voices = AVSpeechSynthesisVoice.speechVoices().compactMap { voice -> MacVoice? in
             guard !voice.voiceTraits.contains(.isPersonalVoice), relevant(voice.language, preferredLanguage: preferredLanguage) else { return nil }
             return MacVoice(id: voice.identifier, name: voice.name, language: voice.language, quality: MacVoice.Quality(voice.quality),
                             isNovelty: voice.voiceTraits.contains(.isNoveltyVoice))
         }
-        let sayVoices = NSSpeechSynthesizer.availableVoices.compactMap { identifier -> (id: String, name: String, language: String)? in
+        let say = sayVoices.filter { relevant($0.language, preferredLanguage: preferredLanguage) }
+        return ordered(merging(voices, sayVoices: say), preferredLanguage: preferredLanguage)
+    }
+
+    /// Whether a saved choice can only be an older name or a voice only `say`
+    /// can speak, so the `say` list is worth asking for.
+    static func needsSayVoices(for saved: String, in voices: [MacVoice], preferredLanguage: String) -> Bool {
+        if case .missing = resolve(saved, in: voices, preferredLanguage: preferredLanguage) { return true }
+        return false
+    }
+
+    /// How many times this process has asked `NSSpeechSynthesizer` about voices.
+    nonisolated(unsafe) private(set) static var sayScanCount = 0
+    nonisolated(unsafe) private static var sayVoiceCache: [SayVoice]?
+
+    /// The voices `say` lists, read once per process and kept until
+    /// `forgetSayVoices()`. Main thread only: `NSSpeechSynthesizer` is AppKit,
+    /// and asked from a Swift concurrency context it logs an Accessibility
+    /// fault per voice and runs ten times slower (7.7 s against 0.8 s for 185
+    /// voices on a 2026 Mac). Reading the attributes of the Siri-era voices
+    /// that only `say` keeps (Aman, Aru, Ona, Tara) makes AppKit look each one
+    /// up by language and name, which logs six `AFLocalization` errors apiece;
+    /// that is why the list is read only when a saved choice needs it.
+    @MainActor
+    static func sayVoices() -> [SayVoice] {
+        if let sayVoiceCache { return sayVoiceCache }
+        sayScanCount += 1
+        let voices = NSSpeechSynthesizer.availableVoices.compactMap { identifier -> SayVoice? in
             let attributes = NSSpeechSynthesizer.attributes(forVoice: identifier)
             guard let name = attributes[.name] as? String, let locale = attributes[.localeIdentifier] as? String else { return nil }
-            let language = locale.replacingOccurrences(of: "_", with: "-")
-            return relevant(language, preferredLanguage: preferredLanguage) ? (identifier.rawValue, name, language) : nil
+            return (identifier.rawValue, name, locale.replacingOccurrences(of: "_", with: "-"))
         }
-        return ordered(merging(voices, sayVoices: sayVoices), preferredLanguage: preferredLanguage)
+        sayVoiceCache = voices
+        return voices
     }
+
+    /// Reads the `say` list again at the next `sayVoices()`, after macOS reports
+    /// that the installed voices changed.
+    @MainActor
+    static func forgetSayVoices() { sayVoiceCache = nil }
 
     /// Earlier builds saved the names `say` lists. Attach them so those choices
     /// keep working, and keep the few voices only `say` can speak.
-    static func merging(_ voices: [MacVoice], sayVoices: [(id: String, name: String, language: String)]) -> [MacVoice] {
+    static func merging(_ voices: [MacVoice], sayVoices: [SayVoice]) -> [MacVoice] {
         var voices = voices
         for say in sayVoices {
             let quality = MacVoice.Quality(identifier: say.id)
@@ -151,11 +191,38 @@ enum MacVoiceCatalog {
         let name = baseName(saved)
         let candidates = voices.filter { $0.name == saved || $0.name == name }
         guard !candidates.isEmpty else { return .missing(saved) }
+        // `say` tells same-name voices apart by accent ("Eddy (English (UK))")
+        // or tier ("Daniel (Enhanced)"); the name alone meant the compact one.
+        if let descriptor = sayDescriptor(in: saved) {
+            if let accent = candidates.first(where: { sayDescriptor(for: $0.language) == descriptor }) { return .installed(accent) }
+            if let tier = candidates.first(where: { $0.quality.label == descriptor.lowercased() }) { return .installed(tier) }
+        }
         // A bare name exists in several accents: prefer the person's own, then
         // the quality `say` used for it.
         return .installed(candidates.sorted { lhs, rhs in
             (affinity(lhs, preferredLanguage), lhs.quality.rawValue, lhs.id) < (affinity(rhs, preferredLanguage), rhs.quality.rawValue, rhs.id)
         }[0])
+    }
+
+    /// What `say -v ?` appends to a name that several languages share:
+    /// "English (UK)" for en-GB, "Japanese (Japan)" for ja-JP. Measured against
+    /// every shared name on macOS 26.5.1 (137 of 137); only the UK and US
+    /// short forms differ from the locale names.
+    static func sayDescriptor(for language: String) -> String {
+        let parts = normalized(language).split(separator: "-").map(String.init)
+        let english = Locale(identifier: "en")
+        guard let code = parts.first else { return language }
+        let languageName = english.localizedString(forLanguageCode: code) ?? code
+        guard let region = parts.dropFirst().last else { return languageName }
+        let regionName = ["US": "US", "GB": "UK"][region] ?? english.localizedString(forRegionCode: region) ?? region
+        return "\(languageName) (\(regionName))"
+    }
+
+    /// "Eddy (English (UK))" → "English (UK)"; a plain name has none.
+    private static func sayDescriptor(in name: String) -> String? {
+        guard let open = name.firstIndex(of: "("), name.hasSuffix(")") else { return nil }
+        let inner = name[name.index(after: open)..<name.index(before: name.endIndex)]
+        return inner.isEmpty ? nil : String(inner)
     }
 
     /// For a fresh install: the best quality in the person's language, then
