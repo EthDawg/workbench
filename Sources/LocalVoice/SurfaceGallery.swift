@@ -806,7 +806,32 @@ enum SurfaceGallery {
         let generalShot = try save(general, id: "state-before-first-dictation", title: "General before the first dictation, minimum window, \(Int(generalSize.width)) × \(Int(generalSize.height)) pt",
                                    detail: "Nothing dictated yet: Show me a first dictation sits beside Dictate settings… and opens Home on the guide.",
                                    file: "page-settings-state-before-first-dictation-\(theme).png", to: output)
-        return [("library", [libraryShot]), ("models", [modelsShot]), ("settings", [generalShot])]
+        // Models while the app downloads a writing model (#134 follow-up): the saved choice is Ollama in
+        // this pass's isolated preferences, the download is presentation only, and Cancel clears it.
+        let cleanupStore = CleanupConfigurationStore()
+        let savedCleanup = UserDefaults.standard.data(forKey: CleanupConfigurationStore.key)
+        try cleanupStore.save(.init(naturalProvider: .ollama, model: "gemma3:1b"))
+        model.cleanupModels.presentDownload("gemma3:1b", fraction: 0.42)
+        defer {
+            model.cleanupModels.cancel()
+            if let savedCleanup { UserDefaults.standard.set(savedCleanup, forKey: CleanupConfigurationStore.key) }
+            else { UserDefaults.standard.removeObject(forKey: CleanupConfigurationStore.key) }
+        }
+        let (download, downloadSize) = try renderPage("models", in: window)
+        guard model.cleanupModels.downloadLine == "Downloading gemma3:1b · 42%" else { throw VoiceError.message("Rendering Models changed the writing model's download line.") }
+        let downloadShot = try save(download, id: "state-writing-model-download", title: "Models during a writing model download, minimum window, \(Int(downloadSize.width)) × \(Int(downloadSize.height)) pt",
+                                    detail: "Synthetic Ollama download of gemma3:1b at 42%: the app owns it, Cancel is explicit, and the same line shows on Home and Dictate.",
+                                    file: "page-models-state-writing-model-download-\(theme).png", to: output)
+        // The same line under Dictate's engine line and on Home's readiness banner.
+        let (dictate, dictateSize) = try renderPage("dictate", in: window)
+        let dictateShot = try save(dictate, id: "state-writing-model-download", title: "Dictate during a writing model download, minimum window, \(Int(dictateSize.width)) × \(Int(dictateSize.height)) pt",
+                                   detail: "Downloading gemma3:1b · 42% under the speech model and text style line, beside Models….",
+                                   file: "page-dictate-state-writing-model-download-\(theme).png", to: output)
+        let (homeDownload, homeSize) = try renderPage("home", in: window)
+        let homeShot = try save(homeDownload, id: "state-writing-model-download", title: "Home during a writing model download, minimum window, \(Int(homeSize.width)) × \(Int(homeSize.height)) pt",
+                                detail: "The engine banner carries Downloading gemma3:1b · 42% under the speech model's line.",
+                                file: "page-home-state-writing-model-download-\(theme).png", to: output)
+        return [("library", [libraryShot]), ("models", [modelsShot, downloadShot]), ("settings", [generalShot]), ("dictate", [dictateShot]), ("home", [homeShot])]
     }
 
     // MARK: Read states
@@ -1769,11 +1794,21 @@ enum SurfaceGallery {
     /// live data or provider runs. Recording is a presentation-only override in the same view.
     func renderSnapTalkStates(to output: URL) throws -> [SurfaceGallery.Shot] {
         var shots: [SurfaceGallery.Shot] = []
-        for state in ["review", "processing", "recovery", "unavailable", "unsaved", "recording", "settings", "sessions", "deleted"] {
+        for state in ["review", "processing", "recovery", "unavailable", "unsaved", "recording", "settings", "sessions", "deleted", "narration", "narration-not-ready"] {
             let base = home.appendingPathComponent("SnapTalk gallery \(theme) \(state)")
             let root = try Self.makeSession(in: base, count: 39)
             var manifest = try ReadbackStore.load(from: root)
             if state == "processing" { manifest.sections[0].status = .queued }
+            // A section saved without narration: Record narration sits beside the speech model's line
+            // and its Models… door, and says so when the model could not be prepared (#134 follow-up).
+            if state.hasPrefix("narration") {
+                manifest.sections[0].audio = nil; manifest.sections[0].originalTranscript = nil; manifest.sections[0].transcript = nil
+            }
+            if state == "narration-not-ready" {
+                model.ready = false; model.preparing = false; model.modelFailure = "Check your connection and try again."
+                model.modelMessage = "The speech model couldn’t be prepared"
+            }
+            defer { if state == "narration-not-ready" { model.ready = true; model.modelFailure = nil; model.modelMessage = RecognitionConfiguration().summary } }
             if state == "recovery" {
                 manifest.sections[0].status = .failed
                 manifest.sections[0].failure = "Transcription stopped. Your screenshot and original recording are saved; retry when ready."
