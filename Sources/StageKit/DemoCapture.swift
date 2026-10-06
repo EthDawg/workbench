@@ -19,11 +19,23 @@ struct CaptureRecovery {
     func candidate(in sources: [DemoSource]) -> String? {
         if let desiredID { return sources.contains { $0.id == desiredID } ? desiredID : nil }
         // Nothing chosen yet: the one phone or tablet screen on the Mac is shown and
-        // remembered, so a plugged-in phone appears without a hunt for a Source menu.
-        // A plain video device (a capture card, a camera) still needs a choice, and
-        // two screens always do. Losing the remembered device never opens another.
+        // remembered, so a plugged-in phone appears without a hunt for a Source menu,
+        // whatever plain cameras are also there (a work Mac's display camera, Camo, a
+        // capture card). A plain video device is never shown by itself, and two screens
+        // always wait for a choice. Losing the remembered device never opens another.
         let screens = sources.filter(\.isScreen)
-        return sources.count == 1 && screens.count == 1 ? screens[0].id : nil
+        return screens.count == 1 ? screens[0].id : nil
+    }
+}
+
+/// Which surface draws through a preview layer. If macOS refuses a second connection
+/// to the phone's screen, the stage, which the audience sees, keeps the picture.
+enum PreviewSurface: Equatable {
+    case stage, page
+    /// Where a new layer goes among the current ones: stages before pages, newest first
+    /// within each, which is also the order a new session wires them in.
+    static func insertionIndex(for surface: PreviewSurface, among current: [PreviewSurface]) -> Int {
+        surface == .stage ? 0 : (current.firstIndex(of: .page) ?? current.count)
     }
 }
 
@@ -110,7 +122,11 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     /// page's preview and the stage. Newest first, so a stage opened later is wired
     /// before the preview behind it; if macOS refuses a second connection, the surface
     /// in front keeps the picture. Touched only on the capture queue.
-    private final class LayerSlot { weak var layer: AVCaptureVideoPreviewLayer?; init(_ layer: AVCaptureVideoPreviewLayer) { self.layer = layer } }
+    private final class LayerSlot {
+        weak var layer: AVCaptureVideoPreviewLayer?
+        let surface: PreviewSurface
+        init(_ layer: AVCaptureVideoPreviewLayer, surface: PreviewSurface) { self.layer = layer; self.surface = surface }
+    }
     private var layers: [LayerSlot] = []
     /// Every capture change runs here. Checks reach it to deliver a synthetic frame as AVFoundation would.
     let queue = DispatchQueue(label: "StageMark.device-preview", qos: .userInitiated)
@@ -138,6 +154,8 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     private let deliveryLock = NSLock()
     private var pendingDelivery = false
     private var deliveryToken = -1
+    /// macOS interrupted the session for another app; it resumes by itself when that app lets go.
+    private var sessionInterrupted = false
 
     init(root: URL, hardware: CaptureHardware = SystemCaptureHardware()) {
         preference = root.appendingPathComponent("demo-source.json")
@@ -149,28 +167,33 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     }
     /// A layer for one surface. It shows the running session at once and every
     /// later one; a surface that goes away releases it.
-    func makePreviewLayer() -> AVCaptureVideoPreviewLayer {
+    func makePreviewLayer(for surface: PreviewSurface) -> AVCaptureVideoPreviewLayer {
         let layer = AVCaptureVideoPreviewLayer()
         layer.videoGravity = .resizeAspect; layer.masksToBounds = true
         queue.async { [weak self] in
             guard let self else { return }
             layers.removeAll { $0.layer == nil }
-            layers.insert(LayerSlot(layer), at: 0)
+            layers.insert(LayerSlot(layer, surface: surface), at: PreviewSurface.insertionIndex(for: surface, among: layers.map(\.surface)))
             guard let session, let port = session.inputs.first?.ports.first(where: { $0.mediaType == .video }) else { return }
             session.beginConfiguration()
-            attach(layer, to: session, port: port)
+            attach(layer, surface: surface, to: session, port: port)
             session.commitConfiguration()
         }
         return layer
     }
-    /// On the capture queue. A layer already on this session is left alone.
-    private func attach(_ layer: AVCaptureVideoPreviewLayer, to session: AVCaptureSession, port: AVCaptureInput.Port) {
+    /// On the capture queue. A layer already on this session is left alone. When macOS
+    /// refuses another connection, a stage layer takes it from the page's preview, never
+    /// the other way round, so the window shared in a call keeps the phone.
+    private func attach(_ layer: AVCaptureVideoPreviewLayer, surface: PreviewSurface, to session: AVCaptureSession, port: AVCaptureInput.Port) {
         guard layer.session !== session else { return }
         layer.setSessionWithNoConnection(session)
         let connection = AVCaptureConnection(inputPort: port, videoPreviewLayer: layer)
         if connection.isVideoMirroringSupported {
             connection.automaticallyAdjustsVideoMirroring = false; connection.isVideoMirrored = false
         }
+        if session.canAddConnection(connection) { session.addConnection(connection); return }
+        guard surface == .stage else { layer.session = nil; return }
+        for slot in layers where slot.surface == .page && slot.layer !== layer && slot.layer?.session === session { slot.layer?.session = nil }
         if session.canAddConnection(connection) { session.addConnection(connection) } else { layer.session = nil }
     }
     /// Lets this process see iPhone and iPad screens as capture devices. Process-wide
@@ -184,6 +207,8 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     func start() {
         queue.async { [weak self] in
             guard let self, !enabled else { return }; enabled = true; runToken += 1
+            // A fresh run tries at once: an earlier run's back-off never delays Present or Reconnect.
+            retryAfter = .distantPast; retryDelay = 2
             hardware.startDiscovery { [weak self] in self?.refresh() }
             let center = NotificationCenter.default
             for name in [AVCaptureDevice.wasConnectedNotification, AVCaptureDevice.wasDisconnectedNotification] {
@@ -203,6 +228,24 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
                         publish(id.map { .interrupted($0, error.map(CaptureFault.init)) } ?? .idle)
                     }
                     discover()
+                }
+            })
+            // Another app (QuickTime Player, iPhone Mirroring) taking the screen interrupts the
+            // session; macOS restarts it when the other app lets go, and the words follow.
+            observers.append(center.addObserver(forName: AVCaptureSession.wasInterruptedNotification, object: nil, queue: nil) { [weak self] notification in
+                guard let interrupted = notification.object as? AVCaptureSession else { return }
+                self?.queue.async { [weak self] in
+                    guard let self, enabled, session === interrupted, let id = activeID else { return }
+                    sessionInterrupted = true
+                    publish(.failed(id, .busy, CaptureFault(domain: "AVCaptureSession interrupted", code: 0)))
+                }
+            })
+            observers.append(center.addObserver(forName: AVCaptureSession.interruptionEndedNotification, object: nil, queue: nil) { [weak self] notification in
+                guard let resumed = notification.object as? AVCaptureSession else { return }
+                self?.queue.async { [weak self] in
+                    guard let self, enabled, session === resumed, sessionInterrupted, let id = activeID else { return }
+                    sessionInterrupted = false; lastFrame = .distantPast; startedAt = Date()
+                    publish(.connecting(id))
                 }
             })
             wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: nil) { [weak self] _ in self?.reconnect() }
@@ -243,9 +286,10 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
             // The remembered device survives a stop: the page and the stage share one capture
             // that starts again when either needs it.
             enabled = false; runToken += 1; waitingForPermission = false
+            retryAfter = .distantPast; retryDelay = 2
             recovery.invalidateSession(); stopSession(); publish(.idle)
             sourceIDs.removeAll()
-            DispatchQueue.main.async { [weak self] in self?.sources = [] }
+            publishSources([])
             timer?.cancel(); timer = nil
             observers.forEach(NotificationCenter.default.removeObserver); observers.removeAll()
             if let wakeObserver { NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver); self.wakeObserver = nil }
@@ -253,19 +297,32 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
             if let completion { DispatchQueue.main.async(execute: completion) }
         }
     }
+    /// Publishes a change of phase only, so the two-second health check repeating the same
+    /// answer never makes the page or the stage lay out again. A stall keeps `live`: the
+    /// stage holds the phone's last frame while the words go to the controls and the page.
     private func publish(_ phase: CapturePhase) {
+        guard phase != lastPublished else { return }
         lastPublished = phase
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.phase = phase
-            if case .live = phase {} else { live = false }
+            switch phase {
+            case .live, .stalled: break
+            default: live = false
+            }
         }
+    }
+    private var lastSources: [DemoSource] = []
+    private func publishSources(_ choices: [DemoSource]) {
+        guard choices != lastSources else { return }
+        lastSources = choices
+        DispatchQueue.main.async { [weak self] in self?.sources = choices }
     }
     private func discover() {
         guard enabled else { return }
         let choices = hardware.sources()
         sourceIDs = Set(choices.map(\.id))
-        DispatchQueue.main.async { [weak self] in self?.sources = choices }
+        publishSources(choices)
         if let activeID, !sourceIDs.contains(activeID) {
             stopSession(); publish(.interrupted(activeID))
         }
@@ -306,9 +363,10 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         }
         retryAfter = Date().addingTimeInterval(retryDelay); retryDelay = min(30, retryDelay * 2)
         publish(.connecting(id))
+        // Frames arrive in the device's own format: only their size is read, from the format
+        // description, so nothing is converted per frame.
         let output = AVCaptureVideoDataOutput()
         output.alwaysDiscardsLateVideoFrames = true
-        output.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
         output.setSampleBufferDelegate(self, queue: queue)
         // The token and output are set before the session runs, so its first frame is accepted.
         activeID = id; activeToken = recovery.generation; activeOutput = output
@@ -317,7 +375,8 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         do {
             let opened = try hardware.openSession(id, output: output) { [self] session, port in
                 layers.removeAll { $0.layer == nil }
-                for slot in layers { if let layer = slot.layer { attach(layer, to: session, port: port) } }
+                // Stages first, so the window shared in a call is wired before any page preview.
+                for slot in layers { if let layer = slot.layer { attach(layer, surface: slot.surface, to: session, port: port) } }
             }
             guard let opened else { stopSession(); publish(.failed(id, .couldNotStart)); return }
             session = opened
@@ -334,12 +393,17 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         recovery.invalidateSession()
         deliveryLock.lock(); deliveryToken = -1; deliveryLock.unlock()
         session?.stopRunning(); layers.forEach { $0.layer?.session = nil }; session = nil; activeID = nil; activeOutput = nil
+        sessionInterrupted = false
         DispatchQueue.main.async { [weak self] in self?.live = false; self?.dimensions = .zero; self?.heldDeviceID = nil }
     }
     private func checkHealth() {
         guard enabled else { return }
         guard let activeID else { discover(); return }
-        if !hardware.isConnected(activeID) { stopSession(); discover(); return }
+        // The device went away under a running session: say so before looking again, so a
+        // frozen "Showing iPhone" never outlives the phone.
+        if !hardware.isConnected(activeID) { stopSession(); publish(.interrupted(activeID)); discover(); return }
+        // An interruption for another app is not a stall; macOS resumes the session when it ends.
+        if sessionInterrupted { return }
         // A phone screen takes about ten seconds to deliver its first frame while the
         // session negotiates (measured on 6 October 2026: 10.2 s). Only a feed that has
         // flowed and then gone quiet for five seconds is stalled; before the first frame

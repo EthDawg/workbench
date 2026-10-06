@@ -551,6 +551,7 @@ struct TestRunner {
         let phonePresentation = PhonePresentationTests()
         let phoneLink = PhoneLinkTests()
         let phoneEnd = PhoneEndTests()
+        let phoneCapture = PhoneCaptureTests()
         let gentleMotion = GentleMotionTests()
         let ambientScenes = AmbientSceneTests()
         let viewportFit = ViewportFitTests()
@@ -635,6 +636,15 @@ struct TestRunner {
             ("phone End: a late permission answer stays ended", phoneEnd.testEndWithAPendingPermissionStaysEndedWhenTheAnswerArrivesLate),
             ("phone End: a late frame neither goes live nor reopens", phoneEnd.testALateFrameAfterEndNeitherGoesLiveNorReopens),
             ("phone End: stale stage steps cannot take the phone back", phoneEnd.testTheStagesStepsAfterEndCannotTakeThePhoneBack),
+            ("phone End: a fresh visit or a re-plug resumes, End's own reopening does not", phoneEnd.testEndedResumesOnAFreshVisitOrWhenThePhoneIsPluggedInAgain),
+            ("phone capture: the one phone screen is adopted beside a camera", phoneCapture.testTheOnePhoneScreenIsAdoptedBesideACamera),
+            ("phone capture: Present and Reconnect after End try at once", phoneCapture.testPresentAfterEndTriesAtOnce),
+            ("phone capture: a disconnect found by the health check is said", phoneCapture.testADisconnectFoundByTheHealthCheckIsSaid),
+            ("phone capture: a stall keeps the last frame and says so beside it", phoneCapture.testAStallKeepsTheLastFrameAndSaysSoBesideIt),
+            ("phone capture: another app's interruption is named and recovers", phoneCapture.testAnInterruptionByAnotherAppSaysSoAndRecovers),
+            ("phone capture: the page's preview outlives a brief cover", phoneCapture.testThePagesPreviewOutlivesABriefCover),
+            ("phone capture: an unchanged answer is not republished", phoneCapture.testAnUnchangedAnswerIsNotRepublished),
+            ("phone capture: the stage is wired before the page", phoneCapture.testTheStageIsWiredBeforeThePagesPreview),
             ("persona sessions: empty return and visible feedback", personaSessions.testEmptySetCanBeRevisitedAndLiveFailuresStayVisible),
             ("persona sessions: opt-in archive migration", personaSessions.testOptInMigrationBacksUpExactArchiveAndPreservesLegacyPlacement),
             ("persona sessions: independent placed copies", personaSessions.testTwoInstancesOwnIndependentGeometryVisibilityLockAndOrder),

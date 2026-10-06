@@ -248,11 +248,23 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
     /// The live owner of the phone's state, mirroring that capture.
     let phoneLink: PhoneLinkMonitor
     private var pageVisible = false
+    /// The page left the screen less than `pageHideGrace` ago. Its preview keeps the session
+    /// meanwhile, so covering the window or pressing Present from elsewhere does not restart
+    /// the phone's ten-second handshake. End still lets go at once.
+    private var pageLingering = false
+    private var pageLinger: DispatchWorkItem?
+    /// How long the page's preview keeps the phone after the page leaves the screen. Checks shorten it.
+    var pageHideGrace: TimeInterval = 60
+    private var pageInUse: Bool { pageVisible || pageLingering }
     /// Workbench let go of the phone: the presentation ended, or an Apple app was opened for
     /// it. Capture stays off, whatever the page shows, until a deliberate action takes it back:
-    /// Present, Reconnect, or showing a screen. Covering, uncovering, revisiting the page or
-    /// a late permission, discovery or frame callback never does.
+    /// Present, Reconnect or showing a screen; after End also a fresh visit to the Present page
+    /// or plugging the phone in again. Covering or uncovering the page and a late permission,
+    /// discovery or frame callback never do.
     private var released: PhoneLinkSignals.Release?
+    /// End reopens the scenes window when the stage has its own controls; that opening is
+    /// End's own, not the person returning to the page.
+    private var endIsReopeningPage = false
     /// Present starts in a window unless the person chose full screen, kept with the scenes.
     @Published private(set) var startsFullScreen = false
     private var presentPreferencesURL: URL { root.appendingPathComponent("present-preferences.json") }
@@ -267,10 +279,36 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
     /// rather than taking the device from the page or the presentation.
     var heldDeviceID: String? { capture.heldDeviceID }
     /// The Present page is on screen (its preview is visible), so the phone can show there.
+    /// Leaving the screen keeps the preview's session for `pageHideGrace` before letting go.
     func setPageVisible(_ visible: Bool) {
         guard pageVisible != visible else { return }
         pageVisible = visible
+        pageLinger?.cancel(); pageLinger = nil
+        if visible {
+            pageLingering = false
+        } else {
+            endIsReopeningPage = false
+            pageLingering = true
+            let linger = DispatchWorkItem { [weak self] in
+                guard let self else { return }
+                pageLingering = false; pageLinger = nil; reconsiderCapture()
+            }
+            pageLinger = linger
+            DispatchQueue.main.asyncAfter(deadline: .now() + pageHideGrace, execute: linger)
+        }
         reconsiderCapture()
+    }
+    /// The person opened the Present page (a fresh visit, not the window being uncovered):
+    /// after End, the preview may show the phone again.
+    func presentPageOpened() {
+        if endIsReopeningPage { endIsReopeningPage = false; return }
+        guard released == .ended else { return }
+        setReleased(nil); reconsiderCapture()
+    }
+    /// The phone was plugged in again after End, which is as deliberate as Reconnect.
+    private func phoneConnectedAgain() {
+        guard released == .ended else { return }
+        setReleased(nil); reconsiderCapture()
     }
     private func setReleased(_ value: PhoneLinkSignals.Release?) {
         guard released != value else { return }
@@ -305,7 +343,7 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
     }
     private var captureWanted: Bool {
         guard released == nil, !shuttingDown, captureEnabled else { return false }
-        return presentation?.showsPhone == true || (pageVisible && selected?.showsPhone == true)
+        return presentation?.showsPhone == true || (pageInUse && selected?.showsPhone == true)
     }
     /// The capture runs only in the app, or under a check's synthetic hardware.
     private let captureEnabled: Bool
@@ -318,7 +356,7 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
         let wanted = captureWanted
         MainActor.assumeIsolated {
             phoneLink.setCapturing(wanted)
-            phoneLink.setActive(!shuttingDown && (wanted || presentation != nil || (pageVisible && selected?.showsPhone == true)))
+            phoneLink.setActive(!shuttingDown && (wanted || presentation != nil || (pageInUse && selected?.showsPhone == true)))
         }
         if wanted { capture.start(); completion?() } else { capture.stop(completion: completion) }
     }
@@ -348,14 +386,15 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
     /// `captureHardware` stands in for AVFoundation in checks, so the capture, the page and the
     /// stage run their real callbacks against synthetic devices, permission answers and frames.
     init(root: URL? = nil, readOnlyReason: String? = nil, systemIntegrationEnabled: Bool = true, personaVoice: PersonaVoiceAccess? = nil,
-         personaPanels: (() -> any PersonaSessionDisplaying)? = nil, personaCamera: PersonaLiveCamera? = nil, captureHardware: CaptureHardware? = nil) {
+         personaPanels: (() -> any PersonaSessionDisplaying)? = nil, personaCamera: PersonaLiveCamera? = nil, captureHardware: CaptureHardware? = nil,
+         usbWatch: USBWatching? = nil) {
         let root = root ?? Workbench.supportDirectory(component: "StageMark").appendingPathComponent("Scenes")
         self.root = root
         self.systemIntegrationEnabled = systemIntegrationEnabled
         captureEnabled = systemIntegrationEnabled || captureHardware != nil
         syntheticCapture = captureHardware != nil
         capture = captureHardware.map { DemoCapture(root: root, hardware: $0) } ?? DemoCapture(root: root)
-        phoneLink = MainActor.assumeIsolated { PhoneLinkMonitor() }
+        phoneLink = MainActor.assumeIsolated { usbWatch.map { PhoneLinkMonitor(usb: $0) } ?? PhoneLinkMonitor() }
         if let data = try? Data(contentsOf: self.root.appendingPathComponent("present-preferences.json")),
            let preferences = try? JSONDecoder().decode(PresentPreferences.self, from: data) {
             startsFullScreen = preferences.fullScreen
@@ -363,7 +402,10 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
         self.personas = PersonaLibrary(root: self.root, readOnlyReason: readOnlyReason, sessionPanelFactory: personaPanels,
                                        sessionHUDEnabled: personaPanels == nil, voice: personaVoice, camera: personaCamera)
         super.init()
-        MainActor.assumeIsolated { phoneLink.mirror(capture) }
+        MainActor.assumeIsolated {
+            phoneLink.mirror(capture)
+            phoneLink.onNewConnection = { [weak self] in self?.phoneConnectedAgain() }
+        }
         // Persona's camera keeps clear of the device a presentation is showing.
         personas.camera.deviceInUse = { [weak self] in self?.heldDeviceID }
         if let readOnlyReason {
@@ -487,7 +529,7 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
             guard let self else { return }
             presentation = nil; objectWillChange.send()
             reconsiderCapture()
-            if usesSharedControls != true { show() }
+            if usesSharedControls != true { endIsReopeningPage = released == .ended; show() }
         }
         presentation = presenter
         objectWillChange.send()
@@ -511,6 +553,7 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
     func shutdown() {
         personas.shutdown()
         shuttingDown = true; pageVisible = false
+        pageLinger?.cancel(); pageLinger = nil; pageLingering = false
         MainActor.assumeIsolated { sceneSync?.shutdown() }
         presentation?.onEnd = nil; presentation?.end(); presentation = nil
         capture.stop()

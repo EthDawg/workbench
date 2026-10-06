@@ -404,7 +404,16 @@ private struct DemoStageContent: View {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var pendingNativeApp: NativePresentationApp?
     @FocusState private var focusedControl: Control?
-    private var status: PhoneLinkStatus { phoneLink.status }
+    /// The phone has been on this stage. After that the device frame never carries words:
+    /// a stall keeps the last frame and a disconnect leaves the clean scene, while the
+    /// controls, the menu, the page and the toolbar say what happened.
+    @State private var phoneHasShown = false
+    /// The stage is shared in a call, so its words name devices by kind, never by the
+    /// person's own device name.
+    private var status: PhoneLinkStatus { phoneLink.sharedStatus }
+    private var sourceNames: [String: String] {
+        Dictionary(phoneLink.signals.anonymised.sources.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+    }
     private var liveScene: DemoScene {
         var value = scene
         if controls.fitToSource, capture.dimensions.height > 0 {
@@ -416,7 +425,7 @@ private struct DemoStageContent: View {
     }
     private var sourceName: String {
         guard scene.showsPhone else { return "Saved scene" }
-        return capture.sources.first(where: { $0.id == capture.selectedID })?.name ?? "Phone"
+        return capture.selectedID.flatMap { sourceNames[$0] } ?? "Phone"
     }
     private var inwardChevron: String {
         switch controls.placement.anchor {
@@ -433,7 +442,7 @@ private struct DemoStageContent: View {
                 DemoStageSurface(scene: liveScene, image: backdrop, logo: logo, hand: hand, persona: persona, ambience: ambience, capture: capture, live: capture.live)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .onTapGesture { if controls.policy.isExpanded { controls.close() } }
-                if scene.showsPhone && !capture.live {
+                if scene.showsPhone && !capture.live && !phoneHasShown {
                     // The device frame says what is true and the one next step, where the phone will appear.
                     let viewport = ViewportGeometry(scene: liveScene, size: geometry.size).screen
                     VStack(spacing: 12) {
@@ -475,7 +484,8 @@ private struct DemoStageContent: View {
                 .animation(reduceMotion || controls.dragFrame != nil ? nil : .easeOut(duration: 0.16), value: controls.policy.isExpanded)
                 }
             }.background(.black).coordinateSpace(name: "presentation-controls")
-                .onAppear { controls.start() }
+                .onAppear { controls.start(); if capture.live { phoneHasShown = true } }
+                .onChange(of: capture.live) { _, live in if live { phoneHasShown = true } }
                 .onDisappear { controls.stop() }
                 .onChange(of: geometry.size) { _, _ in controls.stop() }
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in
@@ -594,10 +604,11 @@ private struct DemoStageContent: View {
                 ScrollView {
                     VStack(spacing: 8) {
                         ForEach(capture.sources) { source in
+                            let name = sourceNames[source.id] ?? (source.isScreen ? "Phone" : "Video device")
                             Button {
-                                perform(.showSource(id: source.id, title: source.name)); controls.choosingSource = false
+                                perform(.showSource(id: source.id, title: name)); controls.choosingSource = false
                             } label: {
-                                HStack { Image(systemName: source.isScreen ? "iphone" : "video"); Text(source.name); Spacer(); if capture.selectedID == source.id { Image(systemName: "checkmark") } }
+                                HStack { Image(systemName: source.isScreen ? "iphone" : "video"); Text(name); Spacer(); if capture.selectedID == source.id { Image(systemName: "checkmark") } }
                             }.buttonStyle(.bordered)
                         }
                     }
@@ -627,7 +638,7 @@ private struct DemoStageSurface: NSViewRepresentable {
     let ambience: AmbientSceneImages?
     let capture: DemoCapture
     let live: Bool
-    func makeNSView(context: Context) -> DemoStageSurfaceView { DemoStageSurfaceView(previewLayer: capture.makePreviewLayer()) }
+    func makeNSView(context: Context) -> DemoStageSurfaceView { DemoStageSurfaceView(previewLayer: capture.makePreviewLayer(for: .stage)) }
     func updateNSView(_ view: DemoStageSurfaceView, context: Context) {
         view.configure(scene: scene, backdrop: image, logo: logo, hand: hand, persona: persona, ambience: ambience)
         view.viewportScene = scene; view.isLive = live

@@ -179,7 +179,8 @@ final class PersonaWorkspaceTests {
             var onUSB = PhoneLinkSignals(); onUSB.usb = [.init(name: "iPhone", kind: .iPhone, productID: 0x12A8)]
             var restricted = PhoneLinkSignals(); restricted.access = .restricted
             var twoScreens = PhoneLinkSignals()
-            twoScreens.sources = [.init(id: "a", name: "Sample iPhone", isScreen: true), .init(id: "b", name: "Capture card", isScreen: false)]
+            // Two phone screens: a camera beside one phone is no longer a choice (#285, 7 October 2026).
+            twoScreens.sources = [.init(id: "a", name: "Sample iPhone", isScreen: true), .init(id: "b", name: "Sample iPad", isScreen: true)]
             for (name, signals) in [("present-phone-none", PhoneLinkSignals()), ("present-phone-on-usb", onUSB), ("present-phone-restricted", restricted), ("present-phone-choose", twoScreens)] {
                 scenes.phoneLink.fixture = signals
                 try render(DemoScenesView(model: scenes), size: CGSize(width: 1085, height: 780), to: directory.appendingPathComponent(name + ".png"))

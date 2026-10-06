@@ -227,6 +227,9 @@ struct DemoScenesView: View {
         }
         }
         .background(Workbench.background).tint(Workbench.accent).workbenchTheme()
+        // Opening the page is a fresh visit: after End its preview may show the phone again.
+        // Uncovering the window is not; that only reports visibility.
+        .onAppear { model.presentPageOpened() }
         .onChange(of: model.selectedID) { _, _ in adjustingPersona = false }
         .sheet(isPresented: $showingHelp, onDismiss: {
             guard let app = pendingNativeApp else { return }
@@ -553,7 +556,7 @@ private struct SceneCanvas: NSViewRepresentable {
     let loadAmbience: (DemoScene) -> AmbientSceneImages?
     let visibility: (Bool) -> Void
     let update: (DemoScene) -> DemoScene?
-    func makeNSView(context: Context) -> SceneCanvasView { SceneCanvasView(previewLayer: capture.makePreviewLayer()) }
+    func makeNSView(context: Context) -> SceneCanvasView { SceneCanvasView(previewLayer: capture.makePreviewLayer(for: .page)) }
     func updateNSView(_ view: SceneCanvasView, context: Context) {
         view.onVisibility = visibility
         view.layoutEditing = editing; view.previewCovered = covered

@@ -54,13 +54,19 @@ public struct PhoneLinkSignals: Equatable {
     public var capturing = false
     public init() {}
 
-    /// The same facts with every device's own name replaced by its kind, so a report never
-    /// carries a personal name such as "Ethan’s iPhone", not even inside the status words.
+    /// The same facts with every device's own name replaced by its kind, so a report or the
+    /// stage in a call never carries a personal name such as "Ethan’s iPhone", not even inside
+    /// the status words. A second source of the same kind is numbered ("iPhone 2").
     /// Identifiers stay for matching and are never printed.
     public var anonymised: PhoneLinkSignals {
         var copy = self
         copy.usb = usb.map { .init(name: $0.noun, kind: $0.kind, productID: $0.productID) }
-        copy.sources = sources.map { .init(id: $0.id, name: $0.isScreen ? PhoneLink.noun(for: $0, usb: usb) : "Video device", isScreen: $0.isScreen) }
+        var seen: [String: Int] = [:]
+        copy.sources = sources.map { source in
+            let kind = source.isScreen ? PhoneLink.capitalised(PhoneLink.noun(for: source, usb: usb)) : "Video device"
+            seen[kind, default: 0] += 1
+            return .init(id: source.id, name: seen[kind] == 1 ? kind : "\(kind) \(seen[kind]!)", isScreen: source.isScreen)
+        }
         return copy
     }
 }
@@ -176,9 +182,13 @@ public enum PhoneLink {
     /// phase, then permission, then what is available and what was remembered.
     public static func status(_ signals: PhoneLinkSignals) -> PhoneLinkStatus {
         let sources = signals.sources
+        // Only phone and tablet screens count as screens; a display camera, Camo or a capture
+        // card beside them never turns the one phone into a choice.
+        let screens = sources.filter(\.isScreen)
         let remembered = signals.rememberedID.flatMap { id in sources.first { $0.id == id } }
         let active = signals.phase.deviceID.flatMap { id in sources.first { $0.id == id } }
-        let noun = Self.noun(for: active ?? remembered ?? (sources.count == 1 ? sources[0] : nil), usb: signals.usb)
+        let lone = screens.count == 1 ? screens[0] : (sources.count == 1 ? sources[0] : nil)
+        let noun = Self.noun(for: active ?? remembered ?? lone, usb: signals.usb)
         let Noun = Self.capitalised(noun)
         switch signals.phase {
         case .live:
@@ -232,7 +242,7 @@ public enum PhoneLink {
             // The capture reconnects a remembered screen by itself; idle between attempts reads as
             // connecting. With no session allowed, the screen is simply there for Present.
             if signals.capturing { return .init(phase: .connecting, title: "Connecting to \(noun)…", detail: nil, step: nil) }
-            return .init(phase: .available, title: "\(noun) ready", detail: "Present shows \(remembered.name).", step: nil)
+            return .init(phase: .available, title: "\(Noun) ready", detail: "Present shows \(remembered.name).", step: nil)
         }
         if sources.isEmpty {
             if case .failed = signals.usbProbe {
@@ -255,17 +265,22 @@ public enum PhoneLink {
                 : "Reconnect it, or choose another screen."
             return .init(phase: .waitingForRemembered, title: "Waiting for your remembered \(remembered)", detail: detail, step: .chooseSource)
         }
-        if sources.count == 1 {
-            // The one phone screen is adopted by the capture itself; a plain video device waits for a choice.
-            if sources[0].isScreen {
-                if signals.capturing { return .init(phase: .connecting, title: "Connecting to \(noun)…", detail: nil, step: nil) }
-                return .init(phase: .available, title: "\(noun) ready", detail: "Present shows \(sources[0].name).", step: nil)
-            }
-            return .init(phase: .screenFound, title: "\(sources[0].name) found",
-                         detail: "Show it, and Workbench remembers it. Only phone and tablet screens appear by themselves.",
-                         step: .showSource(id: sources[0].id, title: "Show \(sources[0].name)"))
+        if screens.count == 1 {
+            // The one phone screen is adopted by the capture itself, whatever cameras are also here.
+            if signals.capturing { return .init(phase: .connecting, title: "Connecting to \(noun)…", detail: nil, step: nil) }
+            return .init(phase: .available, title: "\(Noun) ready", detail: "Present shows \(screens[0].name).", step: nil)
         }
-        return .init(phase: .chooseScreen, title: "\(sources.count) screens available",
+        if screens.isEmpty {
+            // Plain video devices only: one is offered with a click, several wait for a choice.
+            if sources.count == 1 {
+                return .init(phase: .screenFound, title: "\(sources[0].name) found",
+                             detail: "Show it, and Workbench remembers it. Only phone and tablet screens appear by themselves.",
+                             step: .showSource(id: sources[0].id, title: "Show \(sources[0].name)"))
+            }
+            return .init(phase: .chooseScreen, title: "\(sources.count) video sources available",
+                         detail: "None of them is a phone screen. Choose which one to show.", step: .chooseSource)
+        }
+        return .init(phase: .chooseScreen, title: "\(screens.count) screens available",
                      detail: "Choose which one to show.", step: .chooseSource)
     }
 
@@ -273,19 +288,22 @@ public enum PhoneLink {
     static func capitalised(_ noun: String) -> String {
         noun.hasPrefix("i") ? noun : noun.prefix(1).uppercased() + noun.dropFirst()
     }
-    /// A short noun for the words: the kind of device when it is known, never a serial.
+    /// A short noun for the words: the kind of device when it is known, never a serial. For a
+    /// screen the USB bus names the model, so it comes first; the person's own device name
+    /// ("Ethan’s iPad") is only a fallback when the bus is empty or holds several kinds.
     static func noun(for source: PhoneLinkSignals.ScreenSource?, usb: [PhoneLinkSignals.USBDevice]) -> String {
         if let source {
+            if source.isScreen, Set(usb.map(\.kind)).count == 1, let device = usb.first { return device.noun }
             for candidate in ["iPhone", "iPad", "iPod touch"] where source.name.localizedCaseInsensitiveContains(candidate) { return candidate }
-            if source.isScreen, let device = usb.first { return device.noun }
             return source.isScreen ? "phone" : "device"
         }
         return usb.first?.noun ?? "phone"
     }
 
-    /// The words a report carries: the status of the same facts with device names
-    /// replaced by their kinds (`PhoneLinkSignals.anonymised`).
-    public static func reportStatus(_ signals: PhoneLinkSignals) -> PhoneLinkStatus { status(signals.anonymised) }
+    /// The words for anything another person may see, the stage shared in a call and a
+    /// report: the status of the same facts with device names replaced by their kinds
+    /// (`PhoneLinkSignals.anonymised`).
+    public static func sharedStatus(_ signals: PhoneLinkSignals) -> PhoneLinkStatus { status(signals.anonymised) }
 
     /// Facts for a report, with no serial number, device identifier or personal device
     /// name. The same text backs Copy connection details and the `--phone-link` receipt.
@@ -327,9 +345,9 @@ public enum PhoneLink {
         case .waitingForAccess: phase = "waiting for the permission prompt"
         case .connecting: phase = "connecting"
         case .live(_, let size): phase = "live \(Int(size.width))×\(Int(size.height))"
-        case .stalled: phase = "stalled, no frames for 5 s"
+        case .stalled: phase = "stalled, no frame for 5 s after frames had flowed (the first frame gets 15 s)"
         case .interrupted: phase = "interrupted"
-        case .failed(_, .busy, _): phase = "could not start, device busy"
+        case .failed(_, .busy, _): phase = "device in use by another app"
         case .failed(_, .couldNotOpen, _): phase = "could not open the device"
         case .failed(_, .couldNotStart, _): phase = "the session did not start"
         }
@@ -497,12 +515,15 @@ public final class PhoneLinkMonitor: ObservableObject {
     /// a stale look cannot bring back devices or a failure while Present is not in use.
     func receiveUSB(_ result: USBProbeResult) {
         guard running else { return }
+        // A first look that finds the phone is not a new connection; one after an empty look is.
+        let wasEmpty = mirrored.usbProbe == .checked && mirrored.usb.isEmpty
         update {
             switch result {
             case .success(let devices): $0.usb = devices; $0.usbProbe = .checked
             case .failure(let failure): $0.usb = []; $0.usbProbe = .failed(failure.code)
             }
         }
+        if wasEmpty, case .success(let devices) = result, !devices.isEmpty { onNewConnection?() }
     }
     /// Mirror the capture's own facts: the sources it sees, the device it remembers
     /// and the phase of its session. The capture may be stopped; its facts still hold.
@@ -565,8 +586,11 @@ public final class PhoneLinkMonitor: ObservableObject {
 
     /// Facts for a report, with no identifiers or personal device names.
     public func diagnostic(build: String) -> String { PhoneLink.diagnostic(signals, build: build) }
-    /// The status words a report carries: device names replaced by their kinds.
-    public var reportStatus: PhoneLinkStatus { PhoneLink.reportStatus(signals) }
+    /// The words for the stage shared in a call and for a report: device names replaced by their kinds.
+    public var sharedStatus: PhoneLinkStatus { PhoneLink.sharedStatus(signals) }
+    /// The phone was plugged in again after the bus was seen without it, which counts as a
+    /// deliberate action (Present's owner takes the phone back after End).
+    var onNewConnection: (() -> Void)?
 
     /// Like `observe`, but also runs the one capture session headless, so a Mac can
     /// prove that frames arrive, and at what size, without opening a window. The
@@ -582,7 +606,7 @@ public final class PhoneLinkMonitor: ObservableObject {
         monitor.setCapturing(true)
         var last: PhoneLinkStatus?
         // The receipt keeps the report's words, so no personal device name reaches it.
-        let subscription = monitor.$signals.map(PhoneLink.reportStatus).sink { status in
+        let subscription = monitor.$signals.map(PhoneLink.sharedStatus).sink { status in
             guard status != last else { return }
             last = status; onChange(status.title + (status.detail.map { " — " + $0 } ?? ""))
         }
@@ -603,7 +627,7 @@ public final class PhoneLinkMonitor: ObservableObject {
         subscription.cancel()
         let frames = firstFrame.map { String(format: "Frames: first after %.1f s, %d×%d", $0, Int(size.width), Int(size.height)) }
             ?? "Frames: none within \(Int(seconds)) s"
-        let final = (signals: monitor.signals, status: monitor.reportStatus, report: monitor.diagnostic(build: build) + "\n" + frames, firstFrame: firstFrame, size: size)
+        let final = (signals: monitor.signals, status: monitor.sharedStatus, report: monitor.diagnostic(build: build) + "\n" + frames, firstFrame: firstFrame, size: size)
         monitor.setActive(false)
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in capture.stop { continuation.resume() } }
         return final
@@ -622,7 +646,7 @@ public final class PhoneLinkMonitor: ObservableObject {
             monitor.update { $0.rememberedID = id }
         }
         var last: PhoneLinkStatus?
-        let subscription = monitor.$signals.map(PhoneLink.reportStatus).sink { status in
+        let subscription = monitor.$signals.map(PhoneLink.sharedStatus).sink { status in
             guard status != last else { return }
             last = status; onChange(status.title + (status.detail.map { " — " + $0 } ?? ""))
         }
@@ -639,7 +663,7 @@ public final class PhoneLinkMonitor: ObservableObject {
         }
         subscription.cancel()
         // Read everything before stopping: stopping the bus watch clears its devices.
-        let final = (signals: monitor.signals, status: monitor.reportStatus, report: monitor.diagnostic(build: build))
+        let final = (signals: monitor.signals, status: monitor.sharedStatus, report: monitor.diagnostic(build: build))
         monitor.setActive(false)
         return final
     }

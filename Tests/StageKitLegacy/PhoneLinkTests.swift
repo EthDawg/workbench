@@ -55,11 +55,19 @@ final class PhoneLinkTests {
         XCTAssertEqual(found.title, "Capture card found")
         XCTAssertEqual(found.step, .showSource(id: "cap-2", title: "Show Capture card"))
         XCTAssertTrue(found.detail?.contains("remembers") == true)
+        // A display camera, Camo or a capture card beside the phone does not make it a choice.
+        let besideCamera = PhoneLink.status(signals { $0.usb = [phone]; $0.sources = [card, screen]; $0.capturing = true })
+        XCTAssertEqual(besideCamera.phase, .connecting)
+        XCTAssertEqual(besideCamera.title, "Connecting to iPhone…")
+        XCTAssertEqual(PhoneLink.status(signals { $0.usb = [phone]; $0.sources = [card, screen] }).title, "iPhone ready")
+        // A ready screen whose kind is unknown still starts its title with a capital.
+        XCTAssertEqual(PhoneLink.status(signals { $0.sources = [.init(id: "s", name: "Screen 00008030", isScreen: true)] }).title, "Phone ready")
         // The capture's own rule behind the words.
         var recovery = CaptureRecovery()
         XCTAssertEqual(recovery.candidate(in: [DemoSource(id: screen.id, name: screen.name, isScreen: true)]), screen.id, "One phone screen is adopted")
         XCTAssertTrue(recovery.candidate(in: [DemoSource(id: card.id, name: card.name, isScreen: false)]) == nil, "One plain video device is not")
-        XCTAssertTrue(recovery.candidate(in: [DemoSource(id: screen.id, name: screen.name, isScreen: true), DemoSource(id: card.id, name: card.name, isScreen: false)]) == nil, "Two sources need a choice")
+        XCTAssertEqual(recovery.candidate(in: [DemoSource(id: screen.id, name: screen.name, isScreen: true), DemoSource(id: card.id, name: card.name, isScreen: false)]), screen.id, "A camera beside the phone is no choice")
+        XCTAssertTrue(recovery.candidate(in: [DemoSource(id: screen.id, name: screen.name, isScreen: true), DemoSource(id: "udid-2", name: "iPad", isScreen: true)]) == nil, "Two screens need a choice")
         _ = recovery.select(screen.id)
         XCTAssertEqual(recovery.candidate(in: [DemoSource(id: card.id, name: card.name, isScreen: false), DemoSource(id: screen.id, name: screen.name, isScreen: true)]), screen.id)
         recovery.invalidateSession()
@@ -68,10 +76,13 @@ final class PhoneLinkTests {
     }
 
     func testSeveralScreensAskForAChoiceAndARememberedAbsentPhoneWaits() {
-        let several = PhoneLink.status(signals { $0.sources = [screen, card] })
+        let several = PhoneLink.status(signals { $0.sources = [screen, .init(id: "udid-2", name: "Test iPad", isScreen: true), card] })
         XCTAssertEqual(several.phase, .chooseScreen)
-        XCTAssertEqual(several.title, "2 screens available")
+        XCTAssertEqual(several.title, "2 screens available", "Only screens are counted")
         XCTAssertEqual(several.step, .chooseSource)
+        let cameras = PhoneLink.status(signals { $0.sources = [card, .init(id: "cam", name: "Display camera", isScreen: false)] })
+        XCTAssertEqual(cameras.phase, .chooseScreen)
+        XCTAssertEqual(cameras.title, "2 video sources available", "Cameras are never called screens")
         let waiting = PhoneLink.status(signals { $0.sources = [card]; $0.rememberedID = screen.id; $0.usb = [phone] })
         XCTAssertEqual(waiting.phase, .waitingForRemembered)
         XCTAssertEqual(waiting.title, "Waiting for your remembered iPhone")
@@ -211,9 +222,17 @@ final class PhoneLinkTests {
         settle()
         XCTAssertEqual(monitor.signals.usbProbe, .failed(Int32(bitPattern: 0xE00002BC)))
         XCTAssertEqual(monitor.status.phase, .usbUnavailable)
+        var connections = 0
+        monitor.onNewConnection = { connections += 1 }
         watch.onChange?(.success([phone]))
         settle()
         XCTAssertEqual(monitor.status.phase, .phoneOnUSB)
+        XCTAssertEqual(connections, 0, "Finding the phone after a failed look is not a new connection")
+        watch.onChange?(.success([phone])); settle()
+        XCTAssertEqual(connections, 0, "nor is finding it still there")
+        watch.onChange?(.success([])); settle()
+        watch.onChange?(.success([phone])); settle()
+        XCTAssertEqual(connections, 1, "Plugged in again after the bus was seen without it is")
         monitor.setActive(false)
         XCTAssertFalse(watch.running)
         watch.onChange?(.success([phone]))
@@ -268,12 +287,15 @@ final class PhoneLinkTests {
             }
             let report = PhoneLink.diagnostic(value, build: "b")
             XCTAssertFalse(report.contains("Ethan"), "No personal name reaches a report: \(report)")
-            let reported = PhoneLink.reportStatus(value)
+            let reported = PhoneLink.sharedStatus(value)
             XCTAssertFalse((reported.title + (reported.detail ?? "") + (reported.step?.title ?? "")).contains("Ethan"), "nor the receipt's status words")
             XCTAssertEqual(reported.phase, words.phase, "The report's words describe the same state")
         }
         let report = PhoneLink.diagnostic(cases[3], build: "b")
         XCTAssertTrue(report.contains("Screen sources: iPhone (screen), Video device (video)"))
+        // Two phones of one kind stay apart without their names, on the stage as in a report.
+        let two = signals { $0.sources = [screen, .init(id: "udid-7", name: "Ethan’s other iPhone", isScreen: true)] }.anonymised
+        XCTAssertEqual(two.sources.map(\.name), ["iPhone", "iPhone 2"])
         XCTAssertTrue(PhoneLink.diagnostic(cases[0], build: "b").contains("USB: iPhone (product 0x12A8)"))
     }
 
@@ -294,6 +316,7 @@ final class PhoneLinkTests {
 
     func testNounsFollowTheDeviceNotTheSerial() {
         XCTAssertEqual(PhoneLink.noun(for: .init(id: "x", name: "Ethan’s iPad", isScreen: true), usb: []), "iPad")
+        XCTAssertEqual(PhoneLink.noun(for: .init(id: "x", name: "Ethan’s iPad", isScreen: true), usb: [phone]), "iPhone", "The bus names the model before the person's own device name")
         XCTAssertEqual(PhoneLink.noun(for: .init(id: "x", name: "Screen 00008030", isScreen: true), usb: [phone]), "iPhone")
         XCTAssertEqual(PhoneLink.noun(for: .init(id: "x", name: "Capture card", isScreen: false), usb: []), "device")
         XCTAssertEqual(PhoneLink.noun(for: nil, usb: []), "phone")
