@@ -588,6 +588,7 @@ final class LauncherButton: ToolbarIconButton {
     override func performClick(_ sender: Any?) { guard isEnabled else { return }; dismissHint(); open?() }
     override func keyDown(with event: NSEvent) {
         if keyCycle?.handle(event, from: self) == true { return }
+        if event.isARepeat, [36, 49, 76, 125].contains(event.keyCode) { return }
         if event.keyCode == 53 { escape?() }
         else if isEnabled, [36, 49, 76, 125].contains(event.keyCode) { open?() }
         else { super.keyDown(with: event) }
@@ -655,6 +656,7 @@ private struct ToolbarAccessoryButton: NSViewRepresentable {
         }
         override func keyDown(with event: NSEvent) {
             if keyCycle?.handle(event, from: self) == true { return }
+            if event.isARepeat, [36, 49, 76, 125].contains(event.keyCode) { return }
             if event.keyCode == 53 { escape?() }
             else if isEnabled, [36, 49, 76, 125].contains(event.keyCode) { open?() }
             else { super.keyDown(with: event) }

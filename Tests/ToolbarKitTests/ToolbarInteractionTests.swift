@@ -292,6 +292,38 @@ final class ToolbarInteractionTests: XCTestCase {
         }
     }
 
+    @MainActor func testMenuActivationKeysIgnoreRepeatsAfterMenuCloses() throws {
+        _ = NSApplication.shared
+        var opened = 0
+        let state = ToolbarViewState(name: "repeat", tier: .revealed, anchor: .bottom, mode: .draw, accessory: .tools)
+        let row = ToolbarRow(state: state, openAccessory: { _ in opened += 1 }, openChooser: { _ in opened += 1 })
+        let view = NSHostingView(rootView: row)
+        let window = NSWindow(contentRect: NSRect(origin: .zero, size: view.fittingSize), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false; window.contentView = view
+        defer { window.contentView = nil; window.close() }
+        view.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        let buttons = descendants(view).compactMap { $0 as? NSButton }.filter { ["toolbar.launcher", "toolbar.accessory"].contains($0.accessibilityIdentifier()) }
+        XCTAssertEqual(buttons.count, 2)
+        for button in buttons {
+            for key: UInt16 in [36, 49, 76, 125] {
+                func event(repeated: Bool) -> NSEvent {
+                    NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+                        windowNumber: window.windowNumber, context: nil, characters: "", charactersIgnoringModifiers: "", isARepeat: repeated, keyCode: key)!
+                }
+                let before = opened
+                button.keyDown(with: event(repeated: false))
+                XCTAssertEqual(opened, before + 1, "Initial activation opens once")
+                for _ in 0..<5 { button.keyDown(with: event(repeated: true)) }
+                XCTAssertEqual(opened, before + 1, "A held key cannot reopen a dismissed menu")
+                button.keyDown(with: event(repeated: false))
+                XCTAssertEqual(opened, before + 2, "A fresh press still opens")
+            }
+            let before = opened; button.performClick(nil)
+            XCTAssertEqual(opened, before + 1, "Accessibility activation remains available")
+        }
+    }
+
     @MainActor func testMouseUpContributesTheFinalDragPosition() {
         _ = NSApplication.shared
         let button = LauncherButton(frame: NSRect(x: 0, y: 0, width: 48, height: 40))

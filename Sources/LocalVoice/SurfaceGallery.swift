@@ -355,7 +355,8 @@ private struct HistoryNativeAcceptanceView: View {
         let preferences = VoicePreferences.load(reserving: StageShortcutSettings.migrationReservations(defaults: stageDefaults))
         // The bounded Home pass keeps real synthetic recovery pending throughout the visit.
         // This must not become a Home task or be cleared merely by navigating.
-        if SurfaceGallery.desktopOnly || ProcessInfo.processInfo.environment["WORKBENCH_HOME_GALLERY_ONLY"] == "1" {
+        if SurfaceGallery.desktopOnly || ProcessInfo.processInfo.environment["WORKBENCH_HOME_GALLERY_ONLY"] == "1"
+            || ProcessInfo.processInfo.environment["WORKBENCH_FOUNDATION_OWNERSHIP_GALLERY_ONLY"] == "1" {
             let directory = Workbench.supportDirectory(component: "LocalVoice")
                 .appendingPathComponent("CaptureRecovery", isDirectory: true)
             // verifiedHome already checks the store root before any model is created. Keep
@@ -517,6 +518,7 @@ private struct HistoryNativeAcceptanceView: View {
     }
 
     func render(to output: URL) throws -> SurfaceGallery.Pass {
+        if ProcessInfo.processInfo.environment["WORKBENCH_FOUNDATION_OWNERSHIP_GALLERY_ONLY"] == "1" { return try renderFoundationOwnership(to: output) }
         if ProcessInfo.processInfo.environment["WORKBENCH_READ_RETIREMENT_GALLERY_ONLY"] == "1" { return try renderReadRetirement(to: output) }
         if SurfaceGallery.desktopOnly { return try renderDesktopOnly(to: output) }
         if ProcessInfo.processInfo.environment["WORKBENCH_HOME_GALLERY_ONLY"] == "1" { return try renderHomeOnly(to: output) }
@@ -589,7 +591,7 @@ private struct HistoryNativeAcceptanceView: View {
 
     // MARK: Saved Prompts picker
 
-    /// Present's Saved Prompts picker, from synthetic prompts, at its 420-point width and at
+    /// Library's Saved Prompts picker, from synthetic prompts, at its 420-point width and at
     /// standard and larger text. The panel's placement and focus are covered by --check-core and
     /// need a pointer on the installed app; nothing here opens a window on screen.
     func renderPickerStates(to output: URL) throws -> [SurfaceGallery.Shot] {
@@ -663,7 +665,7 @@ private struct HistoryNativeAcceptanceView: View {
 
     /// The production picker, `PromptPickerController`, opened as the toolbar host check drives
     /// the toolbar: its panel is invisible, ignores the pointer, takes no keyboard focus and
-    /// watches no clicks. It opens over a bottom-docked Prompts button with synthetic prompts,
+    /// watches no clicks. It opens over a synthetic bottom-edge anchor with synthetic prompts,
     /// narrows to one row, gains a status line, shows that line's Details, then lists every prompt
     /// again. Each time its panel must be the size its content wants, within the display, as
     /// measured by a twin view that sizes its own window. The picker's renders above size their
@@ -1653,6 +1655,25 @@ private struct HistoryNativeAcceptanceView: View {
 
     /// A bounded pass for desktop Home changes. It uses the same isolated fixtures and actual
     /// SwiftUI views as the full gallery, including History's draft/selection preservation check.
+    func renderFoundationOwnership(to output: URL) throws -> SurfaceGallery.Pass {
+        var pass = try renderHomeOnly(to: output)
+        pass.scope = "foundation-ownership"
+        for (name, size) in SurfaceGallery.sizes {
+            let window = homeWindow(size: size)
+            defer { window.contentViewController = nil; window.close() }
+            for route in ["library", "personas", "present"] {
+                guard let index = pass.pages.firstIndex(where: { $0.route == route }) else { continue }
+                let (rep, drawn) = try renderPage(route, in: window)
+                pass.pages[index].shots.append(try save(rep, id: name,
+                    title: "\(name) window, \(Int(drawn.width)) × \(Int(drawn.height)) pt",
+                    detail: "Production page: Library owns Saved Prompts, Persona owns Me, and Present keeps scene preparation.",
+                    file: "page-\(route)-\(name)-\(theme).png", to: output))
+            }
+        }
+        pass.pickers = try renderPickerStates(to: output)
+        return pass
+    }
+
     func renderHomeOnly(to output: URL) throws -> SurfaceGallery.Pass {
         try HomeJourneyChecks.run()
         try WorkbenchPageChecks.run()
@@ -1784,7 +1805,7 @@ private struct HistoryNativeAcceptanceView: View {
         defer { window.contentView = nil; window.close() }
         host.setFrameSize(host.fittingSize); window.setContentSize(host.fittingSize); settle(host)
         shots.append(try save(try snapshot(host), id: "profile", title: "Local profile", detail: "Photo choice is explicit; opening this sheet requests no access.",
-                             file: "home-profile-\(theme).png", to: output))
+                             file: "persona-profile-\(theme).png", to: output))
         return shots
     }
 
@@ -2389,9 +2410,9 @@ private struct HistoryNativeAcceptanceView: View {
             }
         }
         // A mode switch while the row is open changes its width with no reveal or collapse, so
-        // the host hears of it only through the row's own report: Present's Prompts widen the row.
+        // the host hears of it only through the row's own report: Draw's Tools widen the row.
         controls.toolbar.send(.holdBegan(.keyboard)); twinControls.toolbar.send(.holdBegan(.keyboard))
-        for (from, to) in [(ToolbarMode.dictate, ToolbarMode.present), (.present, .dictate)] {
+        for (from, to) in [(ToolbarMode.dictate, ToolbarMode.draw), (.draw, .dictate)] {
             model.toolbarMode = from
             waitForToolbar(host, controls, tier: .revealed, content: content)
             model.toolbarMode = to
@@ -3091,7 +3112,7 @@ private struct HistoryNativeAcceptanceView: View {
     }
 
     /// Each tool's one accessory (#134 part B) in the real host, docked at bottom centre. Revealed
-    /// with nothing live, Draw shows Tools and Present Prompts, each with its chevron, and no other
+    /// with nothing live, Draw shows Tools with its chevron, and no other
     /// tool shows one: Dictate, Read and Snap never do, Snap & Talk only with a session open, and
     /// Persona only with a live copy, which the gallery never shows over the Mac. Tools holds Draw's
     /// drawing choices; Persona's More opens Persona's page instead; and with a session open,
@@ -3344,7 +3365,8 @@ private struct HistoryNativeAcceptanceView: View {
                  action("Settings · General", "Keep open / Position…", "Uses the toolbar's existing preference and placement owner"),
                  action("Persona workspace", "Live copy controls", "Appearance, size, lock, position, replace, update, visibility and explicit layout saving"),
                  action("Present workspace", "Live presentation", "Controls the running snapshot while saved scene preparation stays separate"),
-                 action("Present workspace", "Saved Prompts…", "The same picker and delivery owner as the pill's Prompts")]
+                 action("Library", "Saved Prompts…", "Copies complete prompts through Library's copy owner, with no external insertion target"),
+                 action("Persona workspace", "Me…", "Opens the existing local profile editor without starting a camera")]
         for tool in WorkbenchControlTool.allCases {
             let options = "\(tool.title) · Options"
             switch tool {
@@ -3394,8 +3416,7 @@ private struct HistoryNativeAcceptanceView: View {
         list += [page("Home sidebar", "Update button, when an update is waiting", "settings")]
         // Home opens four workspaces. Capturing begins only from the chosen workspace.
         list += [page(home, "Start here · Dictate", "dictate"), page(home, "Start here · Meetings", "meeting"),
-                 page(home, "Start here · Snap", "snap"), page(home, "Start here · Snap & Talk", "readback"),
-                 action(home, "Me · Your profile", "Opens local photo and Persona preparation"),
+                 page(home, "Start here · Snap & Talk", "readback"), page(home, "Start here · Present", "present"),
                  action("Home sidebar", "Expand or collapse sidebar · Control-Command-S", "Keeps the chosen sidebar width"),
                  E(surface: home, label: "Recent work · a transcript's title", leads: "Page: history, showing that transcript", route: "history"),
                  E(surface: home, label: "Recent work · a result's title", leads: "Page: history, revealing that task", route: "history"),
@@ -3546,7 +3567,7 @@ private struct SurfaceIndex {
             html += "<h3>\(esc(shot.title))</h3><p>\(esc(shot.detail))</p><div class=\"row toolbar\">" + figure(shot, "Light")
                 + (index < dark.toolbar.count ? figure(dark.toolbar[index], "Dark") : "") + "</div>"
         }
-        html += "<h2>Saved Prompts picker</h2><p>Present's Prompts accessory and the glyph menu's Saved Prompts… open this picker. Its states are drawn at its 420-point width on the window background from synthetic prompts; its keyboard and choices are covered by --check-core. The production panel (<code>PromptPickerController</code>) is then opened invisibly over a bottom-docked Prompts button, narrowed to one row, given a status line and its Details, and widened to every prompt again. Each time its panel is compared with what its content wants.</p>"
+        html += "<h2>Saved Prompts picker</h2><p>Library's Saved Prompts… opens this picker. Its states are drawn at its 420-point width on the window background from synthetic prompts; its keyboard, complete Copy and failure feedback are covered by --check-core. In the full pass, the production panel (<code>PromptPickerController</code>) is also opened invisibly over a synthetic bottom-edge anchor and compared with its content's requested size. Native focus return and dismissal remain separate acceptance.</p>"
         if light.pickerHost.isEmpty { html += light.scope == "desktop" ? "<p>Omitted by the bounded desktop pass.</p>" : "<p>The production panel was not opened: this Mac reported no display.</p>" }
         else {
             html += "<table><tr><th>State</th><th>Panel</th><th>Content wants</th><th>Panel heard its content</th><th>Check</th></tr>"

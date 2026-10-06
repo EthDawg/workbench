@@ -927,16 +927,17 @@ final class PersonaLibrary: NSObject, ObservableObject {
     /// nil while the camera owns the slot, so live controls never offer a hidden
     /// card's appearance as though it were the source on screen.
     var selectedLiveCopy: PersonaLiveCopy? {
-        if let session { return session.selectedInstanceID.map { .overlay($0, group: session.currentGroupID) } }
+        if let session { return session.selectedInstanceID.map { .overlay($0, group: session.currentGroupID, generation: overlayGeneration) } }
         guard liveSource == .artwork else { return nil }
-        return shownCard.map { .card($0.copyID) }
+        return shownCard.map { .card($0.copyID, generation: overlayGeneration) }
     }
     /// The look an explicit live copy shows now; nil once that copy is gone.
     func liveShape(of copy: PersonaLiveCopy) -> PersonaAppearance.Shape? {
+        guard copy.generation == overlayGeneration else { return nil }
         switch copy {
-        case .card(let id):
+        case .card(let id, _):
             return session == nil && shownCard?.copyID == id ? shownCard?.appearance : nil
-        case .overlay(let id, let group):
+        case .overlay(let id, let group, _):
             guard sessionState.currentGroupID == group else { return nil }
             return sessionState.instances.first { $0.id == id }?.shape
         }
@@ -945,10 +946,11 @@ final class PersonaLibrary: NSObject, ObservableObject {
     /// Show Again, or a set's copy while the set is hidden or the copy itself is.
     /// nil once that copy is no longer live.
     func liveCopyHidden(_ copy: PersonaLiveCopy) -> Bool? {
+        guard copy.generation == overlayGeneration else { return nil }
         switch copy {
-        case .card(let id):
+        case .card(let id, _):
             return session == nil && shownCard?.copyID == id ? !artworkVisible : nil
-        case .overlay(let id, let group):
+        case .overlay(let id, let group, _):
             guard sessionState.currentGroupID == group, let instance = sessionState.instances.first(where: { $0.id == id }) else { return nil }
             return sessionState.phase == .paused || !instance.visible
         }
@@ -957,11 +959,12 @@ final class PersonaLibrary: NSObject, ObservableObject {
     /// toolbar. A copy that is no longer live is left alone; no other copy and no
     /// saved persona changes.
     func setLiveShape(_ shape: PersonaAppearance.Shape, for copy: PersonaLiveCopy) {
+        guard copy.generation == overlayGeneration else { return }
         switch copy {
-        case .card(let id):
+        case .card(let id, _):
             guard session == nil, shownCard?.copyID == id else { return }
             setShownShape(shape)
-        case .overlay(let id, let group):
+        case .overlay(let id, let group, _):
             guard session != nil, sessionState.currentGroupID == group else { return }
             performOverlayAction(.shape(id, shape))
         }
@@ -1819,7 +1822,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
                 }
             })
             // This shown copy only, drawn from its frozen source; the current look is checked.
-            if let copy = shownCard.map({ PersonaLiveCopy.card($0.copyID) }) {
+            if let copy = shownCard.map({ PersonaLiveCopy.card($0.copyID, generation: generation) }) {
                 menu.addSubmenu("Appearance", items: PersonaAppearance.Shape.allCases.map { shape in
                     StageMenuAction(shape.title, checked: shape == self.liveShape(of: copy)) { [weak self] in
                         guard let self, self.overlayGeneration == generation else { return }

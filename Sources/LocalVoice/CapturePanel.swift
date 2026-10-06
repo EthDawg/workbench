@@ -41,7 +41,6 @@ final class CaptureHUDControls: ObservableObject {
     private var rowMeasured = false
     private var observation: AnyCancellable?
     var releaseKeyboardFocus: (() -> Void)?
-    var promptDestination: (() -> TextDelivery.Target?)?
     var cancelDrag: (() -> Void)?
     var focusFirstControl: (() -> Void)?
     var dragActions = ToolbarDragActions()
@@ -287,10 +286,6 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         controls.releaseKeyboardFocus = { [weak self] in self?.releaseKeyboardFocus() }
         panel.escape = { [weak controls] in controls?.endKeyboardInteraction() }
         controls.resultPending = { [weak self] in self?.revealableResult() != nil }
-        controls.promptDestination = { [weak self] in
-            guard let self else { return nil }
-            return self.window?.isKeyWindow == true ? self.keyboardTarget : TextDelivery.capture()
-        }
         controls.dragActions = ToolbarDragActions(begin: { [weak self] in self?.beginDragging() },
             move: { [weak self] in self?.previewDragging() }, end: { [weak self] in self?.finishDragging() },
             cancel: { [weak self] in self?.cancelDragging() }, isCancelled: { [weak self] in self?.dragging != true },

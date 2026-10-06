@@ -148,8 +148,8 @@ final class ToolbarNativeTests: XCTestCase {
         _ = NSApplication.shared
         let plain = NSHostingView(rootView: ToolbarRow(state: ToolbarViewState(name: "plain", tier: .revealed, mode: .draw))).fittingSize
         XCTAssertEqual(plain, NSSize(width: ToolbarLayout.standardWidth, height: ToolbarLayout.rowHeight))
-        let accessory = NSHostingView(rootView: ToolbarRow(state: ToolbarViewState(name: "prompts", tier: .revealed, mode: .present, accessory: .prompts))).fittingSize
-        var waiting = ToolbarViewState(name: "prompts-in-more", tier: .revealed, mode: .present, accessory: .prompts)
+        let accessory = NSHostingView(rootView: ToolbarRow(state: ToolbarViewState(name: "tools", tier: .revealed, mode: .draw, accessory: .tools))).fittingSize
+        var waiting = ToolbarViewState(name: "tools-in-more", tier: .revealed, mode: .draw, accessory: .tools)
         waiting.showsAccessory = false
         let without = NSHostingView(rootView: ToolbarRow(state: waiting)).fittingSize.width
         XCTAssertEqual(accessory.width - without, ToolbarLayout.accessoryWidth + ToolbarLayout.gap, accuracy: 0.5)
@@ -240,7 +240,7 @@ final class ToolbarNativeTests: XCTestCase {
         _ = NSApplication.shared
         for scale in [CGFloat(1), 1.35] {
             for anchor in ToolbarAnchor.allCases {
-                let view = laidOut(ToolbarRow(state: ToolbarViewState(name: "launcher", tier: .revealed, anchor: anchor, mode: .present, accessory: .prompts), textScale: scale))
+                let view = laidOut(ToolbarRow(state: ToolbarViewState(name: "launcher", tier: .revealed, anchor: anchor, mode: .draw, accessory: .tools), textScale: scale))
                 let launcher = try XCTUnwrap(buttons(view).first { $0.accessibilityIdentifier() == "toolbar.launcher" })
                 let frame = launcher.convert(launcher.bounds, to: view)
                 XCTAssertEqual(anchor.isVertical ? frame.height : frame.width, ToolbarLayout.launcherWidth, "\(anchor) at \(scale)")
@@ -255,7 +255,7 @@ final class ToolbarNativeTests: XCTestCase {
     @MainActor func testARightHandRowReversesItsSlots() {
         _ = NSApplication.shared
         func order(_ anchor: ToolbarAnchor) -> [String] {
-            let view = laidOut(ToolbarRow(state: ToolbarViewState(name: "order", tier: .revealed, anchor: anchor, mode: .present, accessory: .prompts)))
+            let view = laidOut(ToolbarRow(state: ToolbarViewState(name: "order", tier: .revealed, anchor: anchor, mode: .draw, accessory: .tools)))
             return buttons(view).filter { $0.accessibilityIdentifier().hasPrefix("toolbar.") }
                 .sorted { $0.convert($0.bounds, to: view).minX < $1.convert($1.bounds, to: view).minX }
                 .map { $0.accessibilityIdentifier() }

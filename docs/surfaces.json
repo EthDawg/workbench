@@ -570,13 +570,12 @@
     "note": "Existing contextual \"Turn off\" label inside library; shared wording, not a separate capability."
   },
   {
-    "id": "LocalVoice.PresentWorkspaceView.PresentPromptButton.button-title.view",
-    "surface": "Present workspace",
+    "id": "LocalVoice.LibraryPromptButton.LibraryPromptButton.button-title.view",
+    "surface": "Library",
     "label": "Saved Prompts…",
     "kind": "action",
-    "belongsTo": "present",
-    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
-    "aliasOf": "present"
+    "belongsTo": "library",
+    "note": "Quality (#279): existing prompt picker moved from Present to Library, its existing resource owner. Complete Copy with no inferred external insertion target."
   },
   {
     "id": "LocalVoice.PromptPicker.PromptPickerView.Button.open-library",
@@ -1429,12 +1428,12 @@
     "note": "Option: live strip action, the one way to end what is running from Home (#134 W9)."
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.me",
-    "surface": "window home",
-    "label": "Me",
+    "id": "StageKit.PersonaLibraryView.PersonaLibraryView.Button.me",
+    "surface": "Persona workspace",
+    "label": "Me…",
     "kind": "action",
     "belongsTo": "persona",
-    "note": "Home entry to the requested local Me profile, backed by an ordinary saved Persona; no account or duplicate library."
+    "note": "Quality (#279): same local Me profile editor moved from Home to Persona; existing ID/artwork retained and opening starts no camera."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.models",
@@ -1586,13 +1585,14 @@
     "note": "Opens the prepared workspace only; never starts capture, playback, processing or a new session. Desktop cohesion requested 30 September 2026."
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.workspaceCard.snap",
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.workspaceCard.present",
     "surface": "window home",
-    "label": "Snap",
-    "page": "snap",
-    "kind": "capability",
-    "belongsTo": "snap",
-    "note": "Opens the prepared workspace only; never starts capture, playback, processing or a new session. Desktop cohesion requested 30 September 2026."
+    "label": "Present",
+    "page": "present",
+    "kind": "action",
+    "belongsTo": "present",
+    "aliasOf": "present",
+    "note": "Foundation A (#279): compact Home route to existing Present preparation. Navigation starts nothing; Snap remains in the sidebar and toolbar."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.workspaceCard.snap-talk",
@@ -3530,15 +3530,6 @@
     "aliasOf": "persona"
   },
   {
-    "id": "ToolbarCore.ToolbarViewState.ToolbarAccessory.title.prompts",
-    "surface": "floating toolbar accessory",
-    "label": "Prompts",
-    "case": "prompts",
-    "kind": "option",
-    "belongsTo": "present",
-    "note": "Present's one accessory (#134, #159): the one Saved Prompts picker, which More's Saved Prompts… also opens."
-  },
-  {
     "id": "ToolbarCore.ToolbarViewState.ToolbarAccessory.title.review",
     "surface": "floating toolbar accessory",
     "label": "Review",
@@ -4290,5 +4281,13 @@
     "kind": "action",
     "belongsTo": "library",
     "note": "Conditional recovery for the retired Read draft: inspect the precise problem, retry preservation, or reveal the unchanged saved source."
+  },
+  {
+    "id": "StageKit.PersonaLibraryView.PersonaLibraryView.Button.use-in-scene",
+    "surface": "Persona workspace",
+    "label": "Use in scene",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Existing scene chooser callback, now included by the Persona route scanner while registering Me. Uses the selected saved Persona in the preparing scene and starts nothing."
   }
 ]

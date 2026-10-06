@@ -49,6 +49,7 @@ struct DemoLibraryView: View {
                 // Library's title and switcher name this section, so it opens on its summary (#134).
                 Text("Find a prompt, video, deck, or demo link by product or persona.").foregroundStyle(.secondary)
                 Spacer()
+                LibraryPromptButton(model: model).fixedSize().frame(height: 26)
                 Menu {
                     Button("New prompt") { library.newPrompt() }
                     Button("New link") { library.draft = DemoResource(kind: .link) }
@@ -237,9 +238,8 @@ struct DemoLibraryView: View {
                     primaryActionButton(item)
                     if item.kind == .link { Button("Copy link") { library.copy(item) } }
                 }
-                // How the toolbar's Prompts delivers, kept here with the prompts rather than in the picker (#159).
                 if item.kind == .prompt {
-                    Text("While presenting, the toolbar's Prompts types this into the field you clicked, or pastes it once where typing isn't supported. It never submits. Without Accessibility approval, it copies the prompt for ⌘V.")
+                    Text("Copy the complete prompt, then paste it into your chosen app with ⌘V. Nothing is submitted automatically.")
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }

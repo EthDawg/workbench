@@ -152,7 +152,7 @@ final class ToolbarActivityChooserTests: XCTestCase {
         for anchor in ToolbarAnchor.allCases {
             for mode in ToolbarMode.allCases {
                 let state = ToolbarViewState(name: "native-pill", tier: .revealed, anchor: anchor, mode: mode,
-                    accessory: mode == .present ? .prompts : mode == .persona ? .personaPicker : nil,
+                    accessory: mode == .persona ? .personaPicker : nil,
                     quickControl: mode == .present ? .presentationView : mode == .persona ? .nextPersona : nil)
                 let host = NSHostingView(rootView: ToolbarRow(state: state)); host.frame.size = host.fittingSize
                 let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
