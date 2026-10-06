@@ -82,7 +82,7 @@ struct DemoScenesView: View {
                             Button("Duplicate scene") { model.duplicate() }
                             Button("Delete scene…", role: .destructive) { removalRequest = SceneRemovalRequest(scenes: [scene]) }
                         } label: { Image(systemName: "ellipsis.circle") }.menuStyle(.borderlessButton).fixedSize()
-                            .accessibilityLabel("Scene options")
+                            .accessibilityLabel("Scene actions")
                     }
                     if let image = model.image(for: scene) {
                         SceneCanvas(scene: scene, image: image, logoImage: model.logoImage(for: scene), handImage: model.handImage(for: scene), personaImage: model.personaImage(for: scene), editable: !model.isSceneReadOnly(scene),
@@ -211,7 +211,9 @@ struct DemoScenesView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 10) {
                         presentButton
+                        #if !APP_STORE
                         presentOptions
+                        #endif
                         Spacer(minLength: 0)
                         Text(model.usesSharedControls ? "Share the Workbench presentation window in your call. Command-/ focuses the floating toolbar."
                              : "Share the Workbench presentation window in your call. Esc ends it.")
@@ -282,15 +284,15 @@ struct DemoScenesView: View {
             #endif
         }.fixedSize()
     }
+    #if !APP_STORE
     private var presentOptions: some View {
         Menu("Options") {
-            #if !APP_STORE
             Toggle("Start full screen", isOn: Binding(get: { model.startsFullScreen }, set: { model.setStartsFullScreen($0) }))
             Divider()
             Button("Export image…") { model.exportPNG() }
-            #endif
         }.fixedSize().accessibilityLabel("Present options")
     }
+    #endif
     /// What is true about the phone, inside the frame where it will appear.
     private func phoneFrameStatus(scene: DemoScene, in size: CGSize) -> some View {
         let status = phoneLink.status

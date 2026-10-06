@@ -38,7 +38,7 @@ private struct PhonePresentationFixtureView: View {
         var value = PhoneLinkSignals()
         switch phase {
         case 1: value.usb = [.init(name: "iPhone", kind: .iPhone, productID: 0x12A8)]
-        case 2: value.usb = [.init(name: "iPhone", kind: .iPhone, productID: 0x12A8)]; value.sources = [.init(id: "one", name: "QA iPhone", isScreen: true)]
+        case 2: value.sources = [.init(id: "one", name: "QA capture card", isScreen: false)]
         case 3: value.access = .restricted
         default: break
         }
@@ -51,7 +51,7 @@ private struct PhonePresentationFixtureView: View {
                 .foregroundStyle(.secondary)
             Toggle("Simulate an active Workbench presentation", isOn: $isPresenting)
             Picker("Synthetic state", selection: $phase) {
-                Text("Nothing on USB").tag(0); Text("Phone on USB").tag(1); Text("Screen found").tag(2); Text("Video restricted").tag(3)
+                Text("Nothing on USB").tag(0); Text("Phone on USB").tag(1); Text("Video device found").tag(2); Text("Video restricted").tag(3)
             }
             Button("Can’t see your phone?") { showingHelp = true }
             Text(result).accessibilityIdentifier("handoff-result")

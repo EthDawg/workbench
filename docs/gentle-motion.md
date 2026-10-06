@@ -1,5 +1,7 @@
 # Gentle background motion
 
+**Superseded · 6 October 2026.** Gentle motion and the animated desktop are retired from the Mac app. The scene editor and the stage show still backdrops, the three authored starters make still scenes, and `DesktopMotion.swift` with its Pause, Resume and Stop controls is removed. `MovingSceneView` stays as the still renderer, and saved `gentleMotion` and `ambience` fields still load, so no scene changes. The record below describes the 15 September implementation and is kept as history. [Phone presenting](phone-presenting.md) now owns Present, and the [rebuild ledger](research/2026-10-06-present-rebuild.md) records why motion was retired and what would bring it back.
+
 Implemented in source, 15 September 2026. The [visual contract](../site/handbook/contract.json) owns Mac capability status and lifecycle; [the mobile specification](ios-preview.md) owns iPhone/iPad behaviour. This is not a claim that the public signed download or App Store build includes the change.
 
 ## The experience

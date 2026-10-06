@@ -81,10 +81,7 @@ private struct SceneStarterCard: View {
                         .overlay(Image(systemName: "photo"))
                 }
                 HStack {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(starter.name).font(.subheadline.weight(.medium))
-                        if starter.ambientPreset != nil { Label("Quiet motion", systemImage: "wind").font(.caption).foregroundStyle(.secondary) }
-                    }
+                    Text(starter.name).font(.subheadline.weight(.medium))
                     Spacer(minLength: 4)
                     Image(systemName: "plus.circle.fill").foregroundStyle(Workbench.accent)
                 }.padding(12)
