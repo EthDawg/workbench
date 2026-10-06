@@ -1066,11 +1066,13 @@
     "note": "Returns to the current Dictate draft without replacing it."
   },
   {
-    "id": "LocalVoice.Workbench.WorkbenchAppearancePicker.Picker.suite-appearance",
+    "id": "LocalVoice.Workbench.WorkbenchAppearancePicker.Picker.appearance",
     "surface": "settings page",
-    "label": "Suite appearance",
+    "label": "Appearance",
     "kind": "setting",
-    "belongsTo": "settings"
+    "belongsTo": "settings",
+    "aliasOf": "settings",
+    "note": "Renamed from Suite appearance to Appearance, macOS's own word for System, Light or Dark (7 Oct 2026, Settings › General as a grouped form). Shares the word with Persona's card Appearance by intent: each sits in its own owner's settings and means that owner's look."
   },
   {
     "id": "LocalVoice.WorkbenchControlTool.WorkbenchControlState.hover-title.operation",

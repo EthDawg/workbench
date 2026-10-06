@@ -58,6 +58,13 @@ struct WorkbenchHome: View {
     static let subpages: [(id: String, page: String, title: String)] = [
         ("dictionary", "dictate", "Your dictionary")]
 
+    /// The sidebar's footer: "Stable 2.4.1", "Preview 2.4.1 · local" for a build from source, or
+    /// "Local build" when there is no version at all.
+    static func footer(_ build: WorkbenchBuild) -> String {
+        guard build.info["CFBundleShortVersionString"] is String else { return "Local build" }
+        return "\(build.edition) \(build.version)" + (build.released ? "" : " · local")
+    }
+
     /// App-wide settings stay reachable below the sidebar's scrolling groups.
     static let pinnedPage = "settings"
     /// What the floating toolbar's one switch does, wherever it appears (#134).
@@ -138,7 +145,7 @@ struct WorkbenchHome: View {
                         if let home = Self.navItems.first(where: { $0.id == "home" }) { navItem(home, current: current) }
                         ForEach(Self.sidebarGroups, id: \.title) { group in
                             // The group's name and the collapsed rule share one slot of one height.
-                            Text(group.title).font(.caption.weight(.medium)).foregroundStyle(.secondary)
+                            Text(group.title).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
                                 .sidebarName(hidden: collapsed)
                                 .accessibilityAddTraits(.isHeader)
                                 .padding(.leading, SidebarMetrics.rowInset).padding(.top, 14).padding(.bottom, 4)
@@ -155,7 +162,9 @@ struct WorkbenchHome: View {
                     Divider().padding(.vertical, 6)
                     navItem(settings, current: current)
                 }
-                Text(updates.build.label).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary)
+                // One line: the edition and version, or Local build for an unpackaged build.
+                Text(Self.footer(updates.build)).font(.caption2).monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
+                    .help(updates.build.label)
                     .sidebarName(hidden: collapsed, width: SidebarMetrics.buildLabelWidth)
                     .padding(.leading, SidebarMetrics.rowInset).padding(.top, 8)
             }.padding(.horizontal, SidebarMetrics.inset).padding(.vertical, 14)
@@ -341,25 +350,26 @@ struct WorkbenchHome: View {
                     }
                 }.padding(Workbench.pagePadding).frame(maxWidth: .infinity, alignment: .leading) }
             default:
-                ScrollView { VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
+                // One grouped form, as System Settings lays out preferences: each setting a row,
+                // switches throughout, and what a setting does in its section's footer.
+                Form {
                     // Saved drawing settings that could not be read or saved, and login, belong to
                     // General: the menu-bar panel's Open Settings… leads to these words (#134).
                     if let notice = stage.notice(on: .general) {
-                        WorkbenchNote(notice)
+                        Section { WorkbenchNote(notice) }
                     }
-                    VStack(alignment: .leading, spacing: 8) {
-                        WorkbenchSectionTitle("Appearance")
-                        WorkbenchAppearancePicker().fixedSize()
-                    }
+                    Section { WorkbenchAppearancePicker() }
                     // The one floating-toolbar switch the panel, the Window menu and the toolbar's own
-                    // Hide toolbar share (#134), with the toolbar's own choices grouped under it.
-                    VStack(alignment: .leading, spacing: 8) {
+                    // Hide toolbar share (#134), with the toolbar's own choices beneath it.
+                    Section {
                         Toggle("Floating toolbar", isOn: $model.floatingToolbarVisible).toggleStyle(.switch)
-                            .help(WorkbenchHome.floatingToolbarHelp)
                             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { sectionFrames?("settings.toolbar.visibility", $0) }
-                        ToolbarSettingsView(model: model).padding(.leading, 18)
+                        ToolbarSettingsView(model: model)
+                    } footer: {
+                        Text(WorkbenchHome.floatingToolbarHelp + " Drag the toolbar to move it, or choose a position here.")
+                            .font(.caption).foregroundStyle(.secondary)
                     }
-                    VStack(alignment: .leading, spacing: 6) {
+                    Section {
                         // On means registered with macOS. macOS may still want the person to approve
                         // it in Login Items; then the switch stays on and says so (docs/desktop.md).
                         Toggle("Open Workbench at login", isOn: Binding(get: { loginEnabled || loginNeedsApproval }, set: { value in
@@ -368,23 +378,23 @@ struct WorkbenchHome: View {
                             catch { loginError = error.localizedDescription }
                             readLoginItem()
                         })).toggleStyle(.switch)
-                        Text("Workbench starts in the menu bar; its window opens when you need it.")
-                            .font(.caption).foregroundStyle(.secondary)
                         if loginNeedsApproval {
                             HStack(spacing: 8) {
                                 WorkbenchNote("macOS needs your approval in System Settings › General › Login Items.", font: .caption)
+                                Spacer(minLength: 8)
                                 Button("Open Login Items…") { SMAppService.openSystemSettingsLoginItems() }.controlSize(.small)
                             }
                         }
                         if let loginError { WorkbenchNote(loginError, font: .caption) }
-                    }.onAppear(perform: readLoginItem)
-                        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in readLoginItem() }
-                    Divider()
-                    WorkbenchUpdateSettings()
-                    Divider()
+                    } footer: {
+                        Text("Workbench starts in the menu bar; its window opens when you need it.").font(.caption).foregroundStyle(.secondary)
+                    }
+                    .onAppear(perform: readLoginItem)
+                    .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in readLoginItem() }
+                    Section { WorkbenchUpdateSettings() } header: { Text("Updates") }
                     // Each capability keeps its options on its own page: Meetings holds Detect Meetings
-                    // & Calls and Read its voice, so General names only Dictate's door (#134).
-                    VStack(alignment: .leading, spacing: 8) {
+                    // & Calls, so General names only Dictate's door (#134).
+                    Section {
                         HStack(spacing: 12) {
                             // Opens Dictate on its options and focuses them (#134).
                             Button("Dictate settings…") { model.focusRequest = PageFocusRequest(target: .dictateOptions); model.page = "dictate" }
@@ -393,14 +403,13 @@ struct WorkbenchHome: View {
                                 Button("Show me a first dictation") { model.preferences.firstDictationGuide = .offered; model.page = "home" }
                             }
                         }
-                        Text("Delivery, text style, shortcut, activation and your dictionary.").font(.caption).foregroundStyle(.secondary)
+                    } footer: {
+                        Text("Delivery, text style, shortcut, activation and your dictionary."
+                             + (Workbench.isPreview ? " Workbench and Workbench Preview keep separate libraries; your previous Voice and StageMark data remains in place." : ""))
+                            .font(.caption).foregroundStyle(.secondary)
                     }
-                    if Workbench.isPreview {
-                        Text("Workbench and Workbench Preview keep separate libraries. Your previous Voice and StageMark data remains in place.").font(.caption).foregroundStyle(.secondary)
-                    }
-                    Divider()
-                    FounderIntroductionCard(model: introduction, canDismiss: false)
-                }.padding(Workbench.pagePadding).frame(maxWidth: .infinity, alignment: .leading) }
+                    Section { FounderIntroductionCard(model: introduction, canDismiss: false) }
+                }.formStyle(.grouped).frame(maxWidth: 680, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
@@ -419,7 +428,7 @@ struct WorkbenchHome: View {
             keyboard.stopInteraction()
             if item.id == "history" { model.openHistory() } else { model.page = item.id }
         } label: {
-            sidebarRow(item.id, symbol: item.symbol, name: Text(item.title), weight: current == item.id ? .semibold : .regular)
+            sidebarRow(item.id, symbol: item.symbol, name: Text(item.title), weight: current == item.id ? .medium : .regular)
                 .foregroundStyle(current == item.id ? Workbench.accent : .primary)
         }.buttonStyle(WorkbenchNavigationStyle(selected: current == item.id))
             .modifier(SidebarHintTarget(id: item.id, title: item.title, enabled: collapsed, hovered: $hoveredSidebarItem))
@@ -431,7 +440,7 @@ struct WorkbenchHome: View {
     /// Every sidebar row has one shape: its icon on the shared column, then its name.
     private func sidebarRow(_ id: String, symbol: String, name: Text, weight: Font.Weight = .regular) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: symbol).font(.system(size: 15)).frame(width: SidebarMetrics.iconWidth).accessibilityHidden(true)
+            Image(systemName: symbol).font(.system(size: 14)).imageScale(.medium).frame(width: SidebarMetrics.iconWidth).accessibilityHidden(true)
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { sectionFrames?("sidebar." + id, $0) }
             name.font(.system(size: 13, weight: weight)).sidebarName(hidden: collapsed)
         }.padding(.leading, SidebarMetrics.rowInset)

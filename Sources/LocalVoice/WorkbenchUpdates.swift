@@ -256,15 +256,14 @@ struct WorkbenchUpdateSettings: View {
     @ObservedObject private var updates = WorkbenchUpdates.shared
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            WorkbenchSectionTitle("Workbench updates")
             Text(updates.build.label)
             Text("Build \(updates.build.number) · Source \(updates.build.revision.prefix(8))")
                 .font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
             if let summary = updates.releaseSummary { Text(summary).font(.callout).fixedSize(horizontal: false, vertical: true) }
             Text(updates.status).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if updates.build.released {
-                Toggle("Check for updates automatically", isOn: Binding(get: { updates.automaticChecks }, set: updates.setAutomaticChecks))
-                Toggle("Download updates automatically", isOn: Binding(get: { updates.automaticDownloads }, set: updates.setAutomaticDownloads))
+                Toggle("Check for updates automatically", isOn: Binding(get: { updates.automaticChecks }, set: updates.setAutomaticChecks)).toggleStyle(.switch)
+                Toggle("Download updates automatically", isOn: Binding(get: { updates.automaticDownloads }, set: updates.setAutomaticDownloads)).toggleStyle(.switch)
                 Text("Updates wait for your recording or presentation to finish. You can restart when ready or let a downloaded update install when you quit.").font(.caption).foregroundStyle(.secondary)
             }
             HStack {

@@ -108,6 +108,7 @@ Each page moves to the kit in its own small PR, rendered in the surface gallery,
 | --- | --- | --- |
 | Home | As above | Done in the first desktop PR (five iterations and two independent reviews) |
 | Window behaviour | Login launch, remembered frame, ⌘M | Done in the first desktop PR; native login check owed |
+| Sidebar and footer | 24 pt icon column at 14 pt symbols, group labels at 11 pt semibold, selection by tint alone; the update note at most two lines so no page row is cut; the footer one line (“Stable 2.4.1”, or “Local build”) | Done in the chrome PR |
 | Dictate | Already the reference layout: header with Import audio… and Settings…, hero microphone, transcript, Copy text | Kit tokens only |
 | Meetings | Start recording and Copy transcript as the phase's prominent action; card to `WorkbenchTile` radius and padding; drop the 960-point cap | Next |
 | Snap | Literal padding to tokens; empty state to `WorkbenchEmptyState` with Region as the one prominent capture | Next |
@@ -117,7 +118,7 @@ Each page moves to the kit in its own small PR, rendered in the surface gallery,
 | Persona | Frozen beyond kit tokens (mac-foundation §1) | Tokens only |
 | History | Row radius to the kit; one prominent Hand off… in the selection footer | Later |
 | Library | Resources and Packs empty states and radii to the kit; From iPhone retires with #286 | After #286 |
-| Settings | Sections titled with `WorkbenchSectionTitle`; founder card to `WorkbenchTile`; Open Workbench at login explains macOS's approval | Login approval done in the first desktop PR; rest next |
+| Settings | General as one grouped form (switches throughout, Keep open beneath its switch, what each does in the footer); Keyboard lists what is on first in Your keys' order, then Off · N; Workbench's accent, not system blue | Done in the chrome PR (stacked on the first); login approval in the first |
 
 ## Working on a page
 
