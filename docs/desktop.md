@@ -110,9 +110,9 @@ Each page moves to the kit in its own small PR, rendered in the surface gallery,
 | Window behaviour | Login launch, remembered frame, ⌘M | Done in the first desktop PR; native login check owed |
 | Dictate | Already the reference layout: header with Import audio… and Settings…, hero microphone, transcript, Copy text | Kit tokens only |
 | Meetings | Start recording and Copy transcript as the phase's prominent action; card to `WorkbenchTile` radius and padding; drop the 960-point cap | Next |
-| Snap | Literal padding to tokens; empty state to `WorkbenchEmptyState` with Region as the one prominent capture | Next |
-| Snap & Talk | Empty state to `WorkbenchEmptyState` with New session… prominent; header's extra bottom padding removed | Next |
-| Draw (StageKit) | StageKit cannot see the page tokens: move them into the shared `Workbench` namespace, then use `WorkbenchPageHeader` and the kit's card, badge and prominent action | Next, needs the token move first |
+| Snap | Literal padding to tokens; empty state to `WorkbenchEmptyState` with Region as the one prominent capture | Done in the Screen pages PR: cards aligned at the top, one access card shared with Snap & Talk, notes not orange text |
+| Snap & Talk | Empty state to `WorkbenchEmptyState` with New session… prominent; header's extra bottom padding removed | Done in the Screen pages PR: capture strip on the page column, Transcription stopped instead of Needs attention, Cancel confirms after 10 s; pointer pass owed |
+| Draw (StageKit) | StageKit cannot see the page tokens: move them into the shared `Workbench` namespace, then use `WorkbenchPageHeader` and the kit's card, badge and prominent action | Cards, one name per tool (Pointer, Board), text styles and the Timer word set done in the Screen pages PR with StageKit's own hairline; the token move is still next |
 | Present | Owned by #276 / #285 | After #285 lands |
 | Persona | Frozen beyond kit tokens (mac-foundation §1) | Tokens only |
 | History | Row radius to the kit; one prominent Hand off… in the selection footer | Later |
