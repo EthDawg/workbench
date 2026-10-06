@@ -148,3 +148,89 @@ One implementation lead owns the journey. Backend and native changes may be two 
 - Production support contact and responsible maintainer, alert destination and retention/privacy publication.
 
 Native and backend implementation can start from this contract. A production Send control cannot be enabled until these inputs and live acceptance are complete. No code, SDK, cloud service or installed app is changed by the build-brief PR.
+
+## Native implementation notes
+
+Native client on `claude/report-native`, 7 October 2026, built for transport v2: one Sentry envelope per report attempt sent straight to the team's private Sentry project, with a separate delivery verifier, and no first-party intake. Source checks and offscreen renders only. No live send, installed Preview, VoiceOver pass or release acceptance is claimed here.
+
+### Owners
+
+| Owner | What it holds |
+| --- | --- |
+| `BugReportManifest.swift` | The version 1 manifest (`context.json`), safe context enums, text and email rules, upright metadata-free PNG and canonical WAV |
+| `BugReportEnvelope.swift` | Per-edition configuration and developer override, DSN parsing, the frozen envelope, rate-limit parsing |
+| `BugReportStore.swift` | The draft, the outbox, room reservation and Save a copy |
+| `BugReportTransport.swift` | Sentry delivery, retries, the verifier and Send again |
+| `BugReportModel.swift`, `BugReportView.swift` | The composer, receipts, `ReportProblemButton` and AppDelegate wiring; Help is built in `main.swift` |
+| `BugReportChecks.swift` | `--check-bug-report docs/bug-reporting-schema.md`, run in `scripts/test.sh checks` |
+
+### Doors and origin
+
+Help › **Report a problem…** names the Workbench page in front when its window is key, otherwise `help`. The same **Report a problem…** sits in Dictate's problem banner and beside a Snap failure notice. Each carries a typed code chosen where the problem is raised, never read from its words. Dictate codes come from `Attention.code`: `dictate.failed`, `dictate.microphone_unavailable`, `dictate.recording_stopped`, `dictate.speech_not_ready`, `dictate.audio_unreadable`, `dictate.transcription_failed`, `dictate.save_failed` and `dictate.no_speech_repeated`. Any other raise uses `<page>.problem`. Snap codes come from `SnapModel.failureCode`: `snap.capture_failed`, `snap.screen_access_off`, `snap.save_failed`, `snap.export_failed` and `snap.copy_failed`. The menu-bar recovery row, the toolbar's compact result and timed success notices have no door.
+
+Opening a door records context synchronously and starts no capture, recording or permission request. An empty draft takes the newest origin. A started draft keeps its own origin, unless it had no code and the new door has one.
+
+### Configuration
+
+`scripts/release/build_info.py` stamps `WorkbenchReportDSN` and `WorkbenchReportVerifierURL` from `scripts/release/reporting.json` into the **Stable release only**, under environment `production`. Preview and local builds carry neither, and restamping a production component as Preview removes them.
+
+To test from Preview or a local build, set the override with `defaults write com.ethdawg.workbench.preview WorkbenchReportDSNOverride '<dsn>'` and `… WorkbenchReportVerifierOverride '<url>'`, or pass the same keys as launch arguments. A released Stable build ignores it. Plain HTTP is accepted only for loopback hosts. Override reports carry environment `preview`. Each frozen report keeps its own destination, so a later configuration change never redirects it. A build with no DSN replaces Send report with **Save a copy…**.
+
+### Envelope
+
+The outbox stores `{"dsn","event_id"}` as the header line. `sent_at` is added only when the envelope is actually sent, as Sentry's envelope guidance asks of SDKs that store envelopes, so every item byte is identical on every retry. The items are:
+
+1. `{"type":"feedback"}` followed by the event: `event_id`, `timestamp`, `platform: other`, `level: info`, `type: feedback`, `environment`, `release: workbench@<version>+<build>`, `dist`, tags `report_id`, `edition`, `tool`, `schema` and `build`, `contexts.feedback` (`message`, `source: workbench-mac`, and `contact_email` when given), `contexts.os`, `contexts.app` and a `contexts.workbench` copy of the safe manifest facts.
+2. One attachment item each for `context.json` (the exact manifest bytes), `screenshot.png` and `voice.wav`. Each item header has `type`, `length`, `filename`, `content_type` and `attachment_type: event.attachment`.
+
+There is no user, IP, server name, request, breadcrumb or log field. A report with only a screenshot, only a voice note or both uses the fixed message `Screenshot attached`, `Voice note attached` or `Screenshot and voice note attached`. The serialised feedback context is checked against Sentry's 8,192-byte budget before freezing. Requests are `POST` to `https://<host>/api/<project>/envelope/` with `Content-Type: application/x-sentry-envelope` and `X-Sentry-Auth: Sentry sentry_version=7, sentry_key=<key>, sentry_client=workbench-mac/<version>`. Redirects are not followed.
+
+### Delivery and receipts
+
+| Response | Receipt and next step |
+| --- | --- |
+| 2xx with no `X-Sentry-Rate-Limits` entry for `feedback`, `attachment` or all categories | **Sent · short ID**; never sent again |
+| 2xx naming those categories, or 429 | **Sending…**; waits as long as `X-Sentry-Rate-Limits` or `Retry-After` says, or 60 s |
+| 408 or 5xx | **Sending…**; jittered backoff |
+| Network failure or lost response | **Waiting for connection**; same bytes and event ID with jittered backoff, sent at once when the network returns |
+| 400, 401, 403, 404, 413 or TLS failure | **Couldn't deliver**; Retry is the person's choice. A 413 offers only Save a copy and Remove. |
+
+Backoff starts at 5 seconds, doubles to 15 minutes, and jitters over the upper half of each step. `delivery.json` holds the state and next attempt time, so delivery resumes after a relaunch.
+
+The verifier receives `POST {event_id, report_id, attachments:[{name,size,sha256}], sent_at}` at the configured URL. That is the full `/api/v1/verify` endpoint, or an origin that path is added to. The first check comes 15 seconds after Sent, then backs off until 15 minutes after Sent:
+
+- **received** makes the receipt **Received · short ID**. The envelope is deleted and the receipt kept.
+- **mismatch** or **not_found** as the final answer becomes **Couldn't confirm delivery · Send again**. Send again uses a new event ID for the same report ID and `context.json`, and keeps the earlier IDs.
+- **pending**, 503 (which honours `Retry-After`) or no answer leaves **Sent**, which is never downgraded.
+- 405, 413 and 422 stop checking. Sent stays, and the status code is noted in `delivery.json`.
+
+### Outbox
+
+`Application Support/Workbench[ Preview]/Reports/` holds `draft/` and `outbox/<report id>/` (`report.envelope`, `delivery.json`), plus `staging/`. Folders are 0700 and files 0600. Every write goes to a temporary file, is flushed with `F_FULLFSYNC` and is renamed into place. A report is frozen in staging and moved into the outbox in one rename before any network.
+
+The outbox holds at most 20 reports with evidence and 100 MiB including staging, reserved before Send. Delivered reports' local copies are dropped oldest first to make room; unsent reports never are. The disk must keep 8 MiB of headroom. A refusal keeps the draft and offers Save a copy.
+
+A sent report's local copy is kept 30 days, the team's retention, so Save a copy still works. Receipts last 90 days, up to the newest 50. **v2 keeps nothing in Keychain**: there is no per-report capability, which supersedes "scoped receipt tokens in Keychain" in the outbox paragraph above.
+
+Remove from this Mac deletes the folder, and a reply still in flight cannot bring it back. The dialog explains that the team keeps a delivered report for 30 days and that a new report quoting its number asks for earlier deletion. Save a copy makes a new folder `Workbench report <short id>` with `context.json`, `screenshot.png` and `voice.wav`. It never writes into an existing folder.
+
+### Evidence and lifecycle
+
+**Text.** Text over the limit is kept, as Sentry's form guidance asks, and Send waits with a reason. The counter appears from 1,844 code points. Blank means whitespace by either ECMAScript `\s` or Python `isspace`. Email uses the ajv-formats expression, at most 254 ASCII bytes.
+
+**Screenshot.** Region capture uses its own `SnapCapture` and hides only the composer. Snap and Snap & Talk refuse to capture while the composer captures, and the composer refuses while they do. **Choose image…** is the fallback for a PNG or JPEG of at most 25 MB and 40 MP. Every image is re-encoded upright as a PNG without metadata, and scaled down to 8 MiB and 16,384 px if needed. Its scale comes from the display under the pointer.
+
+**Voice note.** It records mono 16 kHz 16-bit with AVAudioRecorder, stops at 60 seconds and is rewritten as a WAV with a 44-byte header and no other chunks. Dictate, Meetings and Snap & Talk share microphone admission with it in both directions. A refused microphone offers **Microphone Settings…**. **Transcribe** appears only when the selected engine is already ready and idle, and **Add to description** appends without replacing typed words.
+
+**Quit and updates.** Quit stops and keeps a recording, cancels a capture and saves the draft. Delivery never holds Quit or an update. Capturing and recording count as busy for the update restart.
+
+### Not verified here
+
+- A real microphone, its permission prompt and denial
+- Real Screen Recording prompts and denial
+- Capture scale on several displays
+- VoiceOver and keyboard order
+- A live Sentry receipt and verifier answer from the signed Stable configuration or the override
+- Signed Preview behaviour
+
+Gallery states render with `WORKBENCH_REPORT_GALLERY_ONLY=1 LocalVoice --render-surfaces DIR`.
