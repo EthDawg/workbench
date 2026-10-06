@@ -29,6 +29,7 @@ struct WorkbenchHome: View {
     @State private var suggestionReview: MetadataSuggestionReview?
     @AppStorage("workbench.sidebarCollapsed.v1") private var sidebarCollapsed = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var greetingPlayed = false
     @State private var showingProfile = false
     @State private var hoveredSidebarItem: String?
     /// Only the offscreen gallery supplies an override; the app keeps the person's choice.
@@ -276,7 +277,8 @@ struct WorkbenchHome: View {
     }
     private var welcome: some View {
         WorkbenchHomePage(model: model, stage: stage, readback: readback, snap: snap, introduction: introduction,
-                          jobs: model.handoffJobs, photos: model.photoHandoff, meetings: model.meetings)
+                          jobs: model.handoffJobs, photos: model.photoHandoff, meetings: model.meetings,
+                          greetingPlayed: $greetingPlayed, openProfile: { keyboard.stopInteraction(); showingProfile = true })
     }
     /// Library holds Resources, Packs and From iPhone as sections of one page, with its switcher
     /// at the top (#134). The route alone chooses the section, so every Library door opens
@@ -521,6 +523,8 @@ struct WorkbenchHomePage: View {
     @ObservedObject var jobs: HandoffJobsModel
     @ObservedObject var photos: PhotoHandoffModel
     @ObservedObject var meetings: MeetingModel
+    var greetingPlayed: Binding<Bool> = .constant(true)
+    var openProfile: () -> Void = {}
     /// Keeps the guide up after the first dictation lands, so where the words
     /// went is seen once; Done or leaving Home ends it.
     @State private var stayInGuide = false
@@ -534,7 +538,24 @@ struct WorkbenchHomePage: View {
         // so it is drawn with the content, as Dictate's is.
         GeometryReader { proxy in ScrollView {
             VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
-                Text("Home").font(.title.weight(.semibold)).accessibilityAddTraits(.isHeader)
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Home").font(.callout.weight(.medium)).foregroundStyle(.secondary)
+                        HomeGreeting(hasPlayed: greetingPlayed)
+                    }
+                    Spacer(minLength: 16)
+                    Button(action: openProfile) {
+                        VStack(spacing: 4) {
+                            Group {
+                                if let image = stage.localProfileImage { Image(nsImage: image).resizable().scaledToFill() }
+                                else { Image(systemName: "person.crop.circle").resizable().scaledToFit().foregroundStyle(.secondary).padding(5) }
+                            }.frame(width: 38, height: 38).clipShape(Circle())
+                                .background(Workbench.surface, in: Circle())
+                            Text("Me").font(.caption)
+                        }.padding(6)
+                    }.buttonStyle(WorkbenchNavigationStyle()).help("Your photo and Me persona")
+                        .accessibilityLabel("Your profile. Photo and Me persona").accessibilityIdentifier("home.profile")
+                }.padding(.bottom, 8)
                 ForEach(journey.sections, id: \.self) { section in
                     switch section {
                     case .currentWork: currentWork

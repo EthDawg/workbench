@@ -266,8 +266,9 @@ struct DemoLibraryView: View {
                     primaryActionButton(item)
                     if item.kind == .link { Button("Copy link") { library.copy(item) } }
                 }
+                // How the toolbar's Prompts delivers, kept here with the prompts rather than in the picker (#159).
                 if item.kind == .prompt {
-                    Text("Copy the complete prompt, then paste it into your chosen app with ⌘V. Nothing is submitted automatically.")
+                    Text("While presenting, the toolbar's Prompts types this into the field you clicked, or pastes it once where typing isn't supported. Saved Prompts… here copies it for ⌘V. Nothing is submitted automatically.")
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }

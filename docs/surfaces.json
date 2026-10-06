@@ -1442,7 +1442,16 @@
     "label": "Me…",
     "kind": "action",
     "belongsTo": "persona",
-    "note": "Quality (#279): same local Me profile editor moved from Home to Persona; existing ID/artwork retained and opening starts no camera."
+    "note": "Quality (#279): the same local Me profile editor, also reachable from Home's Me photo; existing ID/artwork retained and opening starts no camera."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.me",
+    "surface": "window home",
+    "label": "Me",
+    "kind": "action",
+    "belongsTo": "persona",
+    "aliasOf": "persona",
+    "note": "Restored 7 Oct at Ethan's request: Home shows your profile photo and opens the same local Me profile editor as Persona's Me…; opening starts no camera."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.models",
@@ -3529,6 +3538,15 @@
     "belongsTo": "persona",
     "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
     "aliasOf": "persona"
+  },
+  {
+    "id": "ToolbarCore.ToolbarViewState.ToolbarAccessory.title.prompts",
+    "surface": "floating toolbar accessory",
+    "label": "Prompts",
+    "case": "prompts",
+    "kind": "option",
+    "belongsTo": "present",
+    "note": "Present's one accessory (#134, #159): the one Saved Prompts picker, inserting into the field that was in front. Restored 7 Oct after the consolidation removed it without an owner decision; Library's Saved Prompts… stays as the copy-only door."
   },
   {
     "id": "ToolbarCore.ToolbarViewState.ToolbarAccessory.title.review",
