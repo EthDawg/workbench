@@ -69,6 +69,7 @@ final class TextDelivery {
     }
     /// The AX adapter is separate from delivery so checks can represent a lazy
     /// Electron tree and rich-text descendants without inspecting another app.
+    /// The live one reads through `AccessibilityBridge`, like every AX call.
     struct Accessibility {
         var isTrusted: () -> Bool
         var frontmostPID: () -> pid_t?
@@ -79,15 +80,13 @@ final class TextDelivery {
         static var live: Self {
             .init(isTrusted: { AXIsProcessTrusted() }, frontmostPID: { NSWorkspace.shared.frontmostApplication?.processIdentifier },
                   attribute: { element, key in
-                      var value: CFTypeRef?
-                      guard AXUIElementCopyAttributeValue(element, key as CFString, &value) == .success else { return nil }
-                      return value
+                      let (error, value) = AccessibilityBridge.attribute(element, key)
+                      return error == .success ? value : nil
                   }, parameterized: { element, key, parameter in
-                      var value: CFTypeRef?
-                      guard AXUIElementCopyParameterizedAttributeValue(element, key as CFString, parameter, &value) == .success else { return nil }
-                      return value
+                      let (error, value) = AccessibilityBridge.parameterizedAttribute(element, key, parameter)
+                      return error == .success ? value : nil
                   }, setBoolean: { element, key, value in
-                      AXUIElementSetAttributeValue(element, key as CFString, value as CFBoolean) == .success
+                      AccessibilityBridge.setAttribute(element, key, value as CFBoolean) == .success
                   })
         }
     }
@@ -107,7 +106,7 @@ final class TextDelivery {
     static func captureField(_ pid: pid_t, accessibility: Accessibility? = nil) -> AXUIElement? {
         let ax = accessibility ?? .live
         guard ax.isTrusted() else { return nil }
-        let app = AXUIElementCreateApplication(pid)
+        let app = AccessibilityBridge.application(pid)
         // Electron explicitly exposes this opt-in to assistive clients. Only
         // enable a supported, currently disabled tree; never change OS approval
         // or guess a new destination later if this capture is still unreadable.
@@ -116,13 +115,10 @@ final class TextDelivery {
         }
         return focusedField(pid, accessibility: ax)
     }
-    private static func element(_ value: CFTypeRef?) -> AXUIElement? {
-        guard let value, CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
-        return (value as! AXUIElement)
-    }
+    private static func element(_ value: CFTypeRef?) -> AXUIElement? { AccessibilityBridge.element(value) }
     static func focusedField(_ pid: pid_t, accessibility: Accessibility) -> AXUIElement? {
         guard accessibility.isTrusted() else { return nil }
-        var current = element(accessibility.attribute(AXUIElementCreateApplication(pid), kAXFocusedUIElementAttribute))
+        var current = element(accessibility.attribute(AccessibilityBridge.application(pid), kAXFocusedUIElementAttribute))
         var visited: [AXUIElement] = []
         // Rich editors can focus a paragraph or static-text child. Resolve only
         // its nearest text-field ancestor, never siblings or the window's page.
@@ -154,14 +150,7 @@ final class TextDelivery {
         guard let element, ax.attribute(element, kAXSubroleAttribute) as? String != kAXSecureTextFieldSubrole else {
             return .init(value: nil, selection: nil)
         }
-        var selection: NSRange?
-        if let raw = ax.attribute(element, kAXSelectedTextRangeAttribute), CFGetTypeID(raw) == AXValueGetTypeID() {
-            let value = raw as! AXValue
-            var range = CFRange()
-            if AXValueGetType(value) == .cfRange, AXValueGetValue(value, .cfRange, &range), range.location >= 0, range.length >= 0 {
-                selection = NSRange(location: range.location, length: range.length)
-            }
-        }
+        let selection = AccessibilityBridge.range(ax.attribute(element, kAXSelectedTextRangeAttribute))
         return .init(value: textValue(element, accessibility: ax), selection: selection)
     }
     private static func textValue(_ element: AXUIElement, accessibility ax: Accessibility) -> String? {
@@ -174,8 +163,7 @@ final class TextDelivery {
         guard let count = ax.attribute(element, kAXNumberOfCharactersAttribute) as? Int,
               (0...1_000_000).contains(count) else { return value }
         if count == 0 { return value ?? "" }
-        var range = CFRange(location: 0, length: count)
-        guard let parameter = AXValueCreate(.cfRange, &range) else { return nil }
+        guard let parameter = AccessibilityBridge.value(NSRange(location: 0, length: count)) else { return nil }
         return plain(ax.parameterized(element, kAXStringForRangeParameterizedAttribute, parameter))
             ?? plain(ax.parameterized(element, kAXAttributedStringForRangeParameterizedAttribute, parameter))
             ?? value

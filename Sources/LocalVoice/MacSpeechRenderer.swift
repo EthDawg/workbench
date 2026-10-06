@@ -40,7 +40,7 @@ final class MacSpeechRenderer: NSObject, AVSpeechSynthesizerDelegate, ReadingRen
 
     func start(voiceIdentifier: String, rate: Float) throws {
         guard !stopped, synthesizer == nil else { return }
-        guard let voice = AVSpeechSynthesisVoice(identifier: voiceIdentifier) else {
+        guard let voice = AccessibilityBridge.speechVoice(identifier: voiceIdentifier) else {
             fail(VoiceError.message("This voice is no longer installed. Choose another voice."))
             throw failure!
         }

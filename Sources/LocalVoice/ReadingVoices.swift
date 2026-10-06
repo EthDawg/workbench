@@ -82,17 +82,17 @@ enum MacVoiceCatalog {
     static var preferredLanguage: String { AVSpeechSynthesisVoice.currentLanguageCode() }
 
     /// Installed voices for English and the person's own language, best first.
+    /// Both listings are Accessibility framework calls, so they go through the bridge.
     static func installed(preferredLanguage: String = preferredLanguage) -> [MacVoice] {
-        let voices = AVSpeechSynthesisVoice.speechVoices().compactMap { voice -> MacVoice? in
-            guard !voice.voiceTraits.contains(.isPersonalVoice), relevant(voice.language, preferredLanguage: preferredLanguage) else { return nil }
+        let voices = AccessibilityBridge.speechVoices().compactMap { voice -> MacVoice? in
+            guard !voice.traits.contains(.isPersonalVoice), relevant(voice.language, preferredLanguage: preferredLanguage) else { return nil }
             return MacVoice(id: voice.identifier, name: voice.name, language: voice.language, quality: MacVoice.Quality(voice.quality),
-                            isNovelty: voice.voiceTraits.contains(.isNoveltyVoice))
+                            isNovelty: voice.traits.contains(.isNoveltyVoice))
         }
-        let sayVoices = NSSpeechSynthesizer.availableVoices.compactMap { identifier -> (id: String, name: String, language: String)? in
-            let attributes = NSSpeechSynthesizer.attributes(forVoice: identifier)
-            guard let name = attributes[.name] as? String, let locale = attributes[.localeIdentifier] as? String else { return nil }
+        let sayVoices = AccessibilityBridge.sayVoices().compactMap { voice -> (id: String, name: String, language: String)? in
+            guard let name = voice.attributes[.name] as? String, let locale = voice.attributes[.localeIdentifier] as? String else { return nil }
             let language = locale.replacingOccurrences(of: "_", with: "-")
-            return relevant(language, preferredLanguage: preferredLanguage) ? (identifier.rawValue, name, language) : nil
+            return relevant(language, preferredLanguage: preferredLanguage) ? (voice.identifier.rawValue, name, language) : nil
         }
         return ordered(merging(voices, sayVoices: sayVoices), preferredLanguage: preferredLanguage)
     }

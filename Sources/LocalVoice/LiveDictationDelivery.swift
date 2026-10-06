@@ -158,18 +158,16 @@ extension LiveDictationDelivery.System {
         }
         return .init(read: read, canReplaceSelection: {
             guard let element = target.element,
-                  AXUIElementSetMessagingTimeout(element, 0.03) == .success else { return false }
-            var range = DarwinBoolean(false), text = DarwinBoolean(false)
-            return AXUIElementIsAttributeSettable(element, kAXSelectedTextRangeAttribute as CFString, &range) == .success && range.boolValue
-                && AXUIElementIsAttributeSettable(element, kAXSelectedTextAttribute as CFString, &text) == .success && text.boolValue
+                  AccessibilityBridge.setMessagingTimeout(element, 0.03) == .success else { return false }
+            return AccessibilityBridge.isAttributeSettable(element, kAXSelectedTextRangeAttribute)
+                && AccessibilityBridge.isAttributeSettable(element, kAXSelectedTextAttribute)
         }, select: { selection in
-            guard let element = target.element, AXUIElementSetMessagingTimeout(element, 0.03) == .success else { return false }
-            var range = CFRange(location: selection.location, length: selection.length)
-            guard let value = AXValueCreate(.cfRange, &range) else { return false }
-            return AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, value) == .success
+            guard let element = target.element, AccessibilityBridge.setMessagingTimeout(element, 0.03) == .success,
+                  let value = AccessibilityBridge.value(selection) else { return false }
+            return AccessibilityBridge.setAttribute(element, kAXSelectedTextRangeAttribute, value) == .success
         }, replaceSelection: { text in
-            guard let element = target.element, AXUIElementSetMessagingTimeout(element, 0.03) == .success else { return false }
-            return AXUIElementSetAttributeValue(element, kAXSelectedTextAttribute as CFString, text as CFString) == .success
+            guard let element = target.element, AccessibilityBridge.setMessagingTimeout(element, 0.03) == .success else { return false }
+            return AccessibilityBridge.setAttribute(element, kAXSelectedTextAttribute, text as CFString) == .success
         }, observe: { invalidate, check in
             guard let input = NSEvent.addGlobalMonitorForEvents(matching: OpaqueEditorDestination.inputEvents, handler: { event in
                 if event.type == .keyDown, shortcut.enabled, VoiceShortcut(event: event) == shortcut { return }
@@ -197,7 +195,7 @@ private final class LiveDictationAXBudget {
     private(set) var valid = true
     private func read(_ element: AXUIElement, _ body: () -> (AXError, CFTypeRef?)) -> CFTypeRef? {
         let remaining = deadline - ProcessInfo.processInfo.systemUptime
-        guard valid, remaining > 0, AXUIElementSetMessagingTimeout(element, Float(min(0.02, remaining))) == .success else { valid = false; return nil }
+        guard valid, remaining > 0, AccessibilityBridge.setMessagingTimeout(element, Float(min(0.02, remaining))) == .success else { valid = false; return nil }
         let (error, result) = body()
         guard ProcessInfo.processInfo.systemUptime < deadline else { valid = false; return nil }
         if error == .success { return result }
@@ -206,12 +204,8 @@ private final class LiveDictationAXBudget {
     }
     var accessibility: TextDelivery.Accessibility {
         var ax = TextDelivery.Accessibility.live
-        ax.attribute = { element, key in self.read(element) {
-            var value: CFTypeRef?; let error = AXUIElementCopyAttributeValue(element, key as CFString, &value); return (error, value)
-        } }
-        ax.parameterized = { element, key, parameter in self.read(element) {
-            var value: CFTypeRef?; let error = AXUIElementCopyParameterizedAttributeValue(element, key as CFString, parameter, &value); return (error, value)
-        } }
+        ax.attribute = { element, key in self.read(element) { AccessibilityBridge.attribute(element, key) } }
+        ax.parameterized = { element, key, parameter in self.read(element) { AccessibilityBridge.parameterizedAttribute(element, key, parameter) } }
         return ax
     }
 }
@@ -220,38 +214,30 @@ private final class LiveDictationAXBudget {
 /// verify expected state. Global input monitoring catches even an away-and-back user edit.
 @MainActor
 private final class LiveDictationAXObserver {
-    private var observer: AXObserver?
-    private let app: AXUIElement
-    private let element: AXUIElement
+    private var observation: AccessibilityBridge.Observation?
     private let invalidate: () -> Void
     private let check: () -> Void
     init?(target: TextDelivery.Target, invalidate: @escaping () -> Void, check: @escaping () -> Void) {
         guard let element = target.element else { return nil }
-        self.app = AXUIElementCreateApplication(target.app.processIdentifier); self.element = element
         self.invalidate = invalidate; self.check = check
-        var observer: AXObserver?
-        guard AXObserverCreate(target.app.processIdentifier, { _, _, notification, context in
+        let app = AccessibilityBridge.application(target.app.processIdentifier)
+        guard let observation = AccessibilityBridge.Observation(pid: target.app.processIdentifier, callback: { _, _, notification, context in
             guard let context else { return }
             MainActor.assumeIsolated {
                 let owner = Unmanaged<LiveDictationAXObserver>.fromOpaque(context).takeUnretainedValue()
                 if notification as String == kAXFocusedUIElementChangedNotification { owner.invalidate() }
                 else { owner.check() }
             }
-        }, &observer) == .success, let observer else { return nil }
-        self.observer = observer
+        }) else { return nil }
+        self.observation = observation
         let context = Unmanaged.passUnretained(self).toOpaque()
-        AXUIElementSetMessagingTimeout(app, 0.03); AXUIElementSetMessagingTimeout(element, 0.03)
-        guard AXObserverAddNotification(observer, app, kAXFocusedUIElementChangedNotification as CFString, context) == .success,
-              AXObserverAddNotification(observer, element, kAXValueChangedNotification as CFString, context) == .success,
-              AXObserverAddNotification(observer, element, kAXSelectedTextChangedNotification as CFString, context) == .success else { end(); return nil }
-        CFRunLoopAddSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(observer), .commonModes)
+        _ = AccessibilityBridge.setMessagingTimeout(app, 0.03); _ = AccessibilityBridge.setMessagingTimeout(element, 0.03)
+        guard observation.add(app, kAXFocusedUIElementChangedNotification, context: context),
+              observation.add(element, kAXValueChangedNotification, context: context),
+              observation.add(element, kAXSelectedTextChangedNotification, context: context) else { end(); return nil }
     }
     func end() {
-        guard let observer else { return }
-        CFRunLoopRemoveSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(observer), .commonModes)
-        AXObserverRemoveNotification(observer, app, kAXFocusedUIElementChangedNotification as CFString)
-        AXObserverRemoveNotification(observer, element, kAXValueChangedNotification as CFString)
-        AXObserverRemoveNotification(observer, element, kAXSelectedTextChangedNotification as CFString)
-        self.observer = nil
+        let observation = observation; self.observation = nil
+        observation?.end()
     }
 }
