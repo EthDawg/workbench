@@ -66,7 +66,7 @@ actor PackAuthorizationFixture: PackHTTPClient {
 @MainActor enum PackLibraryChecks {
     static func run() async throws {
         let root = URL(fileURLWithPath: "/private/tmp/Workbench-PackChecks-" + UUID().uuidString)
-        let domain = "Workbench.PackChecks." + UUID().uuidString
+        let domain = root.appendingPathComponent("Preferences").path
         let preferences = UserDefaults(suiteName: domain)!
         defer { preferences.removePersistentDomain(forName: domain); try? FileManager.default.removeItem(at: root) }
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
