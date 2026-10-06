@@ -2800,14 +2800,6 @@
     "note": "Option of Persona: an explicit switch opens the chosen camera and releases the old one; a workspace source choice alone starts nothing."
   },
   {
-    "id": "StageKit.Persona.PersonaLibrary.NSMenuItem.voice-colour",
-    "surface": "Persona menu",
-    "label": "Voice Colour",
-    "kind": "option",
-    "belongsTo": "persona",
-    "note": "Option within Persona's voice framing (Ethan, 1 Oct): the ring's colour, shown while React to my voice is on. The same presets, Black and picker as Draw's Ink Colour."
-  },
-  {
     "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.camera",
     "surface": "floating toolbar Persona picker",
     "label": "Camera",
@@ -2822,15 +2814,6 @@
     "kind": "action",
     "belongsTo": "persona",
     "note": "Quality: cancellation ends only the current permission or startup request and drops late replies."
-  },
-  {
-    "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.choose-colour",
-    "surface": "Persona menu",
-    "label": "Choose Colour…",
-    "kind": "option",
-    "belongsTo": "persona",
-    "note": "Option: macOS's colour picker for a voice ring colour outside the presets, worded as Draw's Ink Colour menu words it (Ethan, 1 Oct: the same UI as Draw).",
-    "aliasOf": "draw"
   },
   {
     "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.end-camera",
@@ -2869,6 +2852,23 @@
     "kind": "action",
     "belongsTo": "persona",
     "note": "Option of Persona: the existing click-through lock applies to the camera bubble, while its move and resize handles remain usable."
+  },
+  {
+    "id": "StageKit.Persona.PersonaLibrary.NSMenuItem.voice-colour",
+    "surface": "Persona menu",
+    "label": "Voice Colour",
+    "kind": "option",
+    "belongsTo": "persona",
+    "note": "Option within Persona's voice framing (Ethan, 1 Oct): the ring's colour, shown while React to my voice is on. The same presets, Black and picker as Draw's Ink Colour."
+  },
+  {
+    "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.choose-colour",
+    "surface": "Persona menu",
+    "label": "Choose Colour…",
+    "kind": "option",
+    "belongsTo": "persona",
+    "note": "Option: macOS's colour picker for a voice ring colour outside the presets, worded as Draw's Ink Colour menu words it (Ethan, 1 Oct: the same UI as Draw).",
+    "aliasOf": "draw"
   },
   {
     "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.react-to-my-voice-uses-microphone",
