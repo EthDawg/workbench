@@ -190,14 +190,18 @@ For a first download, add the short instruction to unzip, move the app to Applic
 
 ### Publish the prepared release
 
-After integrating the verified source into `main`, package that exact clean commit and publish:
+After integrating the verified source into `main`, package that exact clean commit. Keep its final signed package and prepared feed immutable even if development advances. Publish from a current reviewed tooling checkout, using the absolute path to the prepared directory:
 
 ```sh
-python3 scripts/release/publish_update.py --prepared .build/publish/VERSION-BUILD \
+python3 scripts/release/publish_update.py --prepared /absolute/path/to/prepared/VERSION-BUILD \
   --notes /path/to/release-notes.md
 ```
 
-This requires the existing maintainer `gh` login. It rechecks the signed/notarized app and both update signatures, and refuses an existing release, a tag pointing to different source, mismatched version/download/checksum records, or a source other than current main. It uploads a draft, reads back its archive, publishes, verifies the unauthenticated public download digest, then stages `site/updates/EDITION.xml` and the corresponding download record. Commit/deploy that site change together with `bash scripts/deploy-site.sh`; the website build derives matching download links from the record. Verify the live signed feed and download links after deployment. Other-edition feeds remain unchanged. A failed step does not authorise overwriting an existing release: inspect the recorded GitHub state before a deliberate recovery.
+This requires the existing maintainer `gh` login. It rechecks the signed/notarized app and both update signatures, and refuses an existing release, a tag pointing to different source, mismatched version/download/checksum records, or a source that was not itself an integrated main commit.
+
+The source must equal GitHub’s current main SHA or appear on its first-parent history; merely being a merged feature-branch ancestor is insufficient. For an earlier pinned source, it fetches the exact API-verified main commit from the canonical repository without moving the checkout, local refs or `FETCH_HEAD`. Local replacement refs and graft files cannot alter that ancestry check. Missing or shallow history, invalid SHAs and verification failures stop publication. Use a full checkout for earlier pins; do not rebuild or change the prepared receipt just because main advanced.
+
+Once those checks pass, it uploads a draft, reads back its archive, publishes, verifies the unauthenticated public download digest, then stages `site/updates/EDITION.xml` and the corresponding download record. Commit/deploy that site change together with `bash scripts/deploy-site.sh`; the website build derives matching download links from the record. Verify the live signed feed and download links after deployment. Other-edition feeds remain unchanged. A failed step does not authorise overwriting an existing release: inspect the recorded GitHub state before a deliberate recovery.
 
 Sparkle helpers are copied with symlinks intact and signed inside-out with their original entitlements preserved. The package includes Sparkle's license. Public builds require signed feeds and verification before archive extraction. Both Preview and production now use monotonically increasing UTC build numbers; their marketing versions remain separate human-facing labels. Preview is a separate identity, so production promotion requires a separately signed/notarized production artifact and its own native acceptance.
 

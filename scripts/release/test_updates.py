@@ -1,9 +1,14 @@
 import copy
+from contextlib import contextmanager, redirect_stdout
+import io
 import hashlib
 import json
+import os
 from pathlib import Path
 import tempfile
 import plistlib
+import shutil
+import subprocess
 import unittest
 from unittest.mock import patch
 import xml.etree.ElementTree as ET
@@ -225,5 +230,320 @@ class UpdatesTests(unittest.TestCase):
                             publish_update.publish(prepared, prepared/'notes.md')
                         remote.assert_not_called()
                         self.assertEqual(previous.read_bytes(), original)
+
+
+# Keep the Git graph and traversal real. Only the canonical network boundary is
+# redirected to a disposable local repository; no live release or signer is used.
+REAL_RUN = subprocess.run
+
+
+class ReleaseHistoryFixture:
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.directory = Path(temporary.name)
+        self.remote = self.directory/'remote'
+        self.remote.mkdir()
+        self.git('init', '-q', '-b', 'main', directory=self.remote)
+        self.git('config', 'user.email', 'release-test@example.invalid', directory=self.remote)
+        self.git('config', 'user.name', 'Synthetic release test', directory=self.remote)
+        self.initial = self.commit('initial main')
+        self.git('switch', '-qc', 'feature', directory=self.remote)
+        self.feature = self.commit('feature tip')
+        self.git('switch', '-q', 'main', directory=self.remote)
+        self.previous = self.commit('prior integrated main')
+        self.git('merge', '--no-ff', '-qm', 'integrate feature', 'feature', directory=self.remote)
+        self.integrated = self.git('rev-parse', 'HEAD', directory=self.remote)
+        self.git('switch', '-qc', 'unmerged', self.previous, directory=self.remote)
+        self.unmerged = self.commit('unmerged feature')
+        self.git('switch', '-q', 'main', directory=self.remote)
+        tree = self.git('rev-parse', 'HEAD^{tree}', directory=self.remote)
+        self.divergent = self.git('commit-tree', tree, '-m', 'unrelated root', directory=self.remote)
+        self.checkout = self.directory/'checkout'
+        self.git('clone', '-q', '--no-hardlinks', str(self.remote), str(self.checkout), directory=self.directory)
+        # Main advances after the tooling clone. The verification must fetch this
+        # exact commit rather than trust checkout HEAD or origin/main.
+        self.current = self.commit('newer integrated main')
+        self.git('remote', 'set-url', 'origin', 'https://invalid.example/stale')
+        self.fetch_head = self.checkout/'.git/FETCH_HEAD'
+        self.fetch_head.write_text('Synthetic pre-existing FETCH_HEAD; preserve exactly\n')
+        self.fetches = []
+
+    def git(self, *args, directory=None):
+        result = REAL_RUN(['git', '-C', str(directory or self.checkout), *args],
+                          check=True, capture_output=True, text=True)
+        return result.stdout.strip()
+
+    def commit(self, message):
+        self.git('commit', '--allow-empty', '-qm', message, directory=self.remote)
+        return self.git('rev-parse', 'HEAD', directory=self.remote)
+
+    def git_boundary(self, command, *args, **kwargs):
+        if command[0] == 'git' and 'fetch' in command:
+            self.fetches.append(command)
+            self.assertEqual(command[-2], 'https://github.com/Ship-Work/workbench.git')
+            command = [*command[:-2], str(self.remote), command[-1]]
+            kwargs.setdefault('stdout', subprocess.PIPE)
+            kwargs.setdefault('stderr', subprocess.PIPE)
+        return REAL_RUN(command, *args, **kwargs)
+
+    @contextmanager
+    def source_boundary(self, response=None):
+        response = response if response is not None else json.dumps({'commit': {'sha': self.current}})
+        with patch.object(publish_update, 'ROOT', self.checkout), \
+             patch.object(publish_update, 'gh', return_value=response), \
+             patch.object(publish_update.subprocess, 'run', side_effect=self.git_boundary):
+            yield
+
+    def checkout_state(self):
+        return (self.git('rev-parse', 'HEAD'), self.git('symbolic-ref', 'HEAD'),
+                self.git('for-each-ref', '--format=%(refname) %(objectname)'),
+                self.fetch_head.read_bytes())
+
+
+class IntegratedSourceTests(ReleaseHistoryFixture, unittest.TestCase):
+    def test_current_main_needs_no_local_history_or_fetch(self):
+        with self.source_boundary():
+            publish_update.verify_integrated_source(self.current)
+        self.assertEqual(self.fetches, [])
+
+    def test_real_fetch_accepts_prior_main_without_moving_checkout_refs_or_fetch_head(self):
+        before = self.checkout_state()
+        # Prove the latest main object is absent before this real local fetch.
+        missing = REAL_RUN(['git', '-C', str(self.checkout), 'cat-file', '-e', self.current],
+                           capture_output=True)
+        self.assertNotEqual(missing.returncode, 0)
+        with self.source_boundary():
+            for source in (self.initial, self.previous, self.integrated):
+                publish_update.verify_integrated_source(source)
+        self.assertEqual(self.checkout_state(), before)
+        self.assertEqual(self.git('cat-file', '-t', self.current), 'commit')
+        for command in self.fetches:
+            self.assertEqual(command[-1], self.current)
+            for option in ('--no-replace-objects', '--no-tags', '--no-write-fetch-head', '--no-recurse-submodules'):
+                self.assertIn(option, command)
+
+    def test_merged_feature_tip_unmerged_and_divergent_sources_are_not_main_states(self):
+        # This tip passes a broad ancestry check, but was never itself main.
+        self.git('merge-base', '--is-ancestor', self.feature, self.integrated)
+        with self.source_boundary():
+            for source in (self.feature, self.unmerged, self.divergent):
+                with self.subTest(source=source), self.assertRaisesRegex(RuntimeError, 'first-parent'):
+                    publish_update.verify_integrated_source(source)
+
+    def test_local_replacement_cannot_promote_a_feature_tip(self):
+        self.git('fetch', '--no-tags', str(self.remote), self.current)
+        self.git('replace', '--graft', self.current, self.feature)
+        self.assertIn(self.feature, self.git('rev-list', '--first-parent', self.current).splitlines())
+        with self.source_boundary(), self.assertRaisesRegex(RuntimeError, 'first-parent'):
+            publish_update.verify_integrated_source(self.feature)
+
+    def test_default_graft_file_cannot_promote_feature_or_hide_integrated_source(self):
+        self.git('fetch', '--no-tags', str(self.remote), self.current)
+        (self.checkout/'.git/info/grafts').write_text(f'{self.current} {self.feature}\n')
+        # Make the default graft path active even if the test runner inherited one.
+        with patch.dict(os.environ):
+            os.environ.pop('GIT_GRAFT_FILE', None)
+            self.assertIn(self.feature, self.git('--no-replace-objects', 'rev-list',
+                                                '--first-parent', self.current).splitlines())
+            with self.source_boundary():
+                publish_update.verify_integrated_source(self.previous)
+                with self.assertRaisesRegex(RuntimeError, 'first-parent'):
+                    publish_update.verify_integrated_source(self.feature)
+
+    def test_inherited_graft_file_cannot_promote_feature_or_hide_integrated_source(self):
+        self.git('fetch', '--no-tags', str(self.remote), self.current)
+        grafts = self.directory/'inherited-synthetic-grafts'
+        grafts.write_text(f'{self.current} {self.feature}\n')
+        with patch.dict(os.environ, {'GIT_GRAFT_FILE': str(grafts)}):
+            self.assertIn(self.feature, self.git('--no-replace-objects', 'rev-list',
+                                                '--first-parent', self.current).splitlines())
+            with self.source_boundary():
+                publish_update.verify_integrated_source(self.previous)
+                with self.assertRaisesRegex(RuntimeError, 'first-parent'):
+                    publish_update.verify_integrated_source(self.feature)
+
+    def test_invalid_source_and_main_hashes_fail_closed(self):
+        for source in (None, '', 'main', '0'*40, 'a'*39, '--all'):
+            with self.subTest(source=source), self.source_boundary(), self.assertRaisesRegex(RuntimeError, 'exact commit'):
+                publish_update.verify_integrated_source(source)
+        for response in ('not json', '{}', 'null', '{"commit":{}}', '{"commit":{"sha":null}}',
+                         '{"commit":{"sha":"main"}}', json.dumps({'commit': {'sha': '0'*40}})):
+            with self.subTest(response=response), self.source_boundary(response), self.assertRaises(RuntimeError):
+                publish_update.verify_integrated_source(self.previous)
+        self.assertEqual(self.fetches, [])
+
+    def test_remote_and_fetch_failures_cannot_use_cached_history(self):
+        with self.source_boundary(), patch.object(publish_update, 'gh', side_effect=subprocess.CalledProcessError(1, ['gh'])):
+            with self.assertRaisesRegex(RuntimeError, 'Cannot verify'):
+                publish_update.verify_integrated_source(self.previous)
+        for error in (subprocess.CalledProcessError(1, ['git']), subprocess.TimeoutExpired(['git'], 120)):
+            def failed_fetch(command, *args, **kwargs):
+                if 'fetch' in command:
+                    raise error
+                return self.git_boundary(command, *args, **kwargs)
+            with self.subTest(error=type(error).__name__), self.source_boundary(), \
+                 patch.object(publish_update.subprocess, 'run', side_effect=failed_fetch):
+                with self.assertRaisesRegex(RuntimeError, 'Cannot verify integrated'):
+                    publish_update.verify_integrated_source(self.previous)
+        # A syntactically valid but unavailable remote hash also fails at real Git.
+        with self.source_boundary(json.dumps({'commit': {'sha': 'f'*40}})):
+            with self.assertRaisesRegex(RuntimeError, 'Cannot verify integrated'):
+                publish_update.verify_integrated_source(self.previous)
+
+    def test_missing_commit_object_refuses_prior_source(self):
+        def incomplete_history(command, *args, **kwargs):
+            if 'rev-list' in command:
+                # Lose a real parent after fetching; rev-list must report failure,
+                # not let an earlier or partial list establish integration.
+                object_path = self.checkout/'.git/objects'/self.previous[:2]/self.previous[2:]
+                self.assertTrue(object_path.is_file())
+                object_path.unlink()
+                kwargs.setdefault('stderr', subprocess.PIPE)
+            return self.git_boundary(command, *args, **kwargs)
+        with self.source_boundary(), patch.object(publish_update.subprocess, 'run', side_effect=incomplete_history):
+            with self.assertRaisesRegex(RuntimeError, 'Cannot verify integrated'):
+                publish_update.verify_integrated_source(self.initial)
+
+    def test_incomplete_shallow_history_is_refused(self):
+        (self.checkout/'.git/shallow').write_text(self.integrated+'\n')
+        with self.source_boundary(), self.assertRaisesRegex(RuntimeError, 'complete main history'):
+            publish_update.verify_integrated_source(self.previous)
+
+
+class PinnedPublicationTests(ReleaseHistoryFixture, unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        config = json.loads((build_info.ROOT/'scripts/release/updates.json').read_text())
+        (self.checkout/'scripts/release').mkdir(parents=True)
+        (self.checkout/'scripts/release/updates.json').write_text(json.dumps(config))
+        self.prepared = self.directory/'immutable-prepared'
+        self.prepared.mkdir()
+        self.archive = self.prepared/'Workbench.zip'
+        self.archive.write_bytes(b'synthetic immutable archive; signing boundary mocked')
+        self.receipt = dict(archive=self.archive.name, tag='v2.0.0', channel='production',
+                            version='2.0.0', build='10', source=self.previous,
+                            sha256=hashlib.sha256(self.archive.read_bytes()).hexdigest(),
+                            download_url='https://github.com/Ship-Work/workbench/releases/download/v2.0.0/Workbench.zip',
+                            feed_url=config['feed_base']+'/production.xml')
+        self.save_receipt()
+        (self.prepared/'SHA256SUMS.txt').write_text(f"{self.receipt['sha256']}  {self.archive.name}\n")
+        self.prepared_feed = self.prepared/'production.xml'
+        self.write_feed(self.prepared_feed, '10')
+        self.destination = self.checkout/'site/updates'
+        self.destination.mkdir(parents=True)
+        self.previous_feed = self.destination/'production.xml'
+        self.write_feed(self.previous_feed, '9')
+        self.previous_record = self.destination/'production.json'
+        self.previous_record.write_text('{"synthetic":"previous published record"}\n')
+        self.release_listing = [[]]
+        self.tag_refs = []
+        self.remote_calls = []
+
+    def save_receipt(self):
+        (self.prepared/'release.json').write_text(json.dumps(self.receipt))
+
+    def write_feed(self, path, build):
+        rss = ET.Element('rss')
+        item = ET.SubElement(ET.SubElement(rss, 'channel'), 'item')
+        for field, value in [('version', build), ('shortVersionString', '2.0.0'), ('minimumSystemVersion', '14.0')]:
+            ET.SubElement(item, prepare_update.SPARKLE+field).text = value
+        ET.SubElement(item, 'enclosure', {'url': self.receipt['download_url'],
+            'length': str(self.archive.stat().st_size), prepare_update.SPARKLE+'edSignature': 'fixture-signature'})
+        ET.ElementTree(rss).write(path)
+
+    def github(self, *args):
+        self.remote_calls.append(args)
+        if args == ('api', 'repos/Ship-Work/workbench/releases', '--paginate', '--slurp'):
+            return json.dumps(self.release_listing)
+        if args == ('api', 'repos/Ship-Work/workbench/branches/main'):
+            return json.dumps({'commit': {'sha': self.current}})
+        if args == ('api', 'repos/Ship-Work/workbench/git/matching-refs/tags/v2.0.0'):
+            return json.dumps(self.tag_refs)
+        if args[:2] == ('release', 'download'):
+            shutil.copy2(self.archive, Path(args[args.index('--dir')+1])/self.archive.name)
+        elif args[:2] not in [('release', 'create'), ('release', 'upload'), ('release', 'edit')]:
+            raise AssertionError(f'Unexpected GitHub call: {args}')
+        return ''
+
+    def publication_command(self, command, *args, **kwargs):
+        if str(command[0]).endswith('/sign_update'):
+            return subprocess.CompletedProcess(command, 0)
+        return self.git_boundary(command, *args, **kwargs)
+
+    @contextmanager
+    def publication_boundary(self):
+        with patch.object(publish_update, 'ROOT', self.checkout), \
+             patch.object(prepare_update, 'verify_package'), \
+             patch.object(publish_update.subprocess, 'run', side_effect=self.publication_command), \
+             patch.object(publish_update, 'gh', side_effect=self.github), \
+             patch.object(publish_update.urllib.request, 'urlopen', return_value=io.BytesIO(self.archive.read_bytes())), \
+             redirect_stdout(io.StringIO()):
+            yield
+
+    def publication_state(self):
+        return self.previous_feed.read_bytes(), self.previous_record.read_bytes()
+
+    def assert_no_release_writes(self, before):
+        self.assertFalse(any(call[0] == 'release' for call in self.remote_calls))
+        self.assertEqual(self.publication_state(), before)
+
+    def test_prior_integrated_package_keeps_exact_target_receipt_and_bytes(self):
+        original = {path.name: path.read_bytes() for path in self.prepared.iterdir()}
+        checkout_before = self.checkout_state()
+        with self.publication_boundary():
+            publish_update.publish(self.prepared, self.prepared/'notes.md')
+        create = next(call for call in self.remote_calls if call[:2] == ('release', 'create'))
+        self.assertEqual(create[create.index('--target')+1], self.previous)
+        self.assertEqual(json.loads(self.previous_record.read_text())['source'], self.previous)
+        self.assertEqual(self.previous_feed.read_bytes(), original['production.xml'])
+        self.assertEqual({path.name: path.read_bytes() for path in self.prepared.iterdir()}, original)
+        self.assertEqual(self.checkout_state(), checkout_before)
+
+    def test_unintegrated_source_stops_before_release_writes_or_feed_changes(self):
+        before = self.publication_state()
+        for source in (self.feature, self.unmerged, self.divergent):
+            with self.subTest(source=source):
+                self.remote_calls.clear()
+                self.receipt['source'] = source
+                self.save_receipt()
+                with self.publication_boundary(), self.assertRaisesRegex(RuntimeError, 'first-parent'):
+                    publish_update.publish(self.prepared, self.prepared/'notes.md')
+                self.assert_no_release_writes(before)
+
+    def test_failed_source_fetch_stops_before_release_writes_or_feed_changes(self):
+        before = self.publication_state()
+        def failed_fetch(command, *args, **kwargs):
+            if 'fetch' in command:
+                raise subprocess.TimeoutExpired(command, 120)
+            return self.publication_command(command, *args, **kwargs)
+        with self.publication_boundary(), patch.object(publish_update.subprocess, 'run', side_effect=failed_fetch):
+            with self.assertRaisesRegex(RuntimeError, 'Cannot verify integrated'):
+                publish_update.publish(self.prepared, self.prepared/'notes.md')
+        self.assert_no_release_writes(before)
+
+    def test_pin_does_not_bypass_existing_tag_or_duplicate_release(self):
+        before = self.publication_state()
+        self.tag_refs = [{'ref': 'refs/tags/v2.0.0', 'object': {'type': 'commit', 'sha': self.current}}]
+        with self.publication_boundary(), self.assertRaisesRegex(RuntimeError, 'tag points to different source'):
+            publish_update.publish(self.prepared, self.prepared/'notes.md')
+        self.assert_no_release_writes(before)
+        self.tag_refs = []
+        self.release_listing = [[{'tag_name': 'v2.0.0'}]]
+        self.remote_calls.clear()
+        with self.publication_boundary(), self.assertRaisesRegex(RuntimeError, 'already exists'):
+            publish_update.publish(self.prepared, self.prepared/'notes.md')
+        self.assert_no_release_writes(before)
+
+    def test_pin_does_not_bypass_equal_or_newer_published_build(self):
+        for build in ('10', '11'):
+            with self.subTest(build=build):
+                self.write_feed(self.previous_feed, build)
+                before = self.publication_state()
+                with self.publication_boundary(), self.assertRaisesRegex(RuntimeError, 'same or newer feed'):
+                    publish_update.publish(self.prepared, self.prepared/'notes.md')
+                self.assertEqual(self.remote_calls, [])
+                self.assert_no_release_writes(before)
+
 
 if __name__ == '__main__': unittest.main()
