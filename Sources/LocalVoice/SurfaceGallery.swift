@@ -2284,12 +2284,37 @@ private struct HistoryNativeAcceptanceView: View {
         try shot("results", "History, Results", "A running task with Stop above the list, then completed, failed and Ready tasks, each with what it was made from.",
                  snaps: snap, door: HistoryDoor(filter: .results))
         try shot("transcripts", "History, Transcripts", "As Dictate's History… opens it.", snaps: snap, door: HistoryDoor(filter: .transcripts))
+        // A problem History owns: primary words with an orange symbol at the top of the page (#279).
+        model.report("Workbench couldn’t move the recording for this synthetic interview to the Trash. The transcript is kept; try Remove again from its row.", on: .history)
+        try shot("error", "History, a removal that did not finish", "The page's own problem in primary words with an orange symbol; red stays for recording and removal.",
+                 snaps: snap, door: HistoryDoor(filter: .transcripts))
+        model.dismissError()
+        shots.append(try renderHistoryLargerText(to: output))
 
         jobs.cancel()
         try wait("the running task to stop") { !jobs.isBusy }
         library.setSelected([])
         shots.append(try renderResultReuse(to: output))
         return shots
+    }
+
+    /// History at 1.35 times its text in the minimum window's content column, drawn as Home's
+    /// larger-text render is: rows, links and the More menu must wrap and grow together.
+    func renderHistoryLargerText(to output: URL) throws -> SurfaceGallery.Shot {
+        let scale: CGFloat = 1.35, size = NSSize(width: SurfaceGallery.sizes[1].size.width - 216, height: SurfaceGallery.sizes[1].size.height)
+        model.historyDoor = HistoryDoor(filter: .transcripts); model.page = "history"
+        let page = HistoryView(model: model, snap: snap, applySuggestedMetadata: { _, _ in })
+            .frame(width: size.width / scale, height: size.height / scale).scaleEffect(scale, anchor: .topLeading)
+            .frame(width: size.width, height: size.height, alignment: .topLeading)
+            .background(Workbench.background).tint(Workbench.accent).workbenchTheme()
+        let host = NSHostingView(rootView: page)
+        let window = offscreenWindow(size: size, styleMask: [.borderless])
+        window.contentView = host
+        defer { window.contentView = nil; window.close() }
+        settle(host, seconds: 1)
+        return try save(try snapshot(host), id: "state-larger-text", title: "History at 1.35 times the text size, minimum window's content column",
+                        detail: "Transcripts drawn 1.35 times larger in the same column: the date line, links and More grow together and nothing clips.",
+                        file: "page-history-state-larger-text-\(theme).png", to: output)
     }
 
     /// Mount native result actions in an invisible window, as the real History
