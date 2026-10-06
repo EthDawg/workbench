@@ -452,8 +452,9 @@ public final class PhoneLinkMonitor: ObservableObject {
             monitor.refresh()
         }
         subscription.cancel()
-        let report = monitor.diagnostic(build: build)
+        // Read everything before stopping: stopping the bus watch clears its devices.
+        let final = (signals: monitor.signals, status: monitor.status, report: monitor.diagnostic(build: build))
         monitor.setActive(false)
-        return (monitor.signals, monitor.status, report)
+        return final
     }
 }

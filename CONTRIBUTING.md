@@ -109,7 +109,7 @@ Record simulator model/OS and actual test results in the PR. Physical speech ava
 | StageKit's public boundary | `Sources/StageKit/StageKitController.swift` |
 | Drawing, boards, timer and presentation | `Sources/StageKit/AppCoordinator.swift`, `DemoScenes.swift`, `DemoPresentation.swift` |
 | Presentation control visibility and keyboard reveal | `Sources/StageKit/PresentationControls.swift`, `Tests/StageKitLegacy/DemoModeTests.swift` |
-| Device capture and Apple alternatives | `Sources/StageKit/DemoCapture.swift`, `NativePresentationApps.swift` |
+| The phone's link, capture and help | `Sources/StageKit/PhoneLink.swift`, `DemoCapture.swift`, `PhoneConnectionHelp.swift` |
 | Identity, appearance and legacy-data import | `Sources/LocalVoice/Workbench.swift`, `Sources/StageKit/Workbench.swift` |
 | Packaging and Preview install | `scripts/build.sh`, `scripts/release/preview.py`, `scripts/release/config.json` |
 | Mobile navigation, text and local state | `Mobile/Workbench/WorkbenchApp.swift`, `TextWorkspaces.swift`, `MobileDocument.swift`, `MobileStore.swift` |

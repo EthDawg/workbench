@@ -670,15 +670,6 @@
     "aliasOf": "present"
   },
   {
-    "id": "LocalVoice.PresentWorkspaceView.PresentWorkspaceView.Button.switch-to-browser-tab",
-    "surface": "Present workspace",
-    "label": "Switch to Browser Tab…",
-    "kind": "action",
-    "belongsTo": "present",
-    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
-    "aliasOf": "present"
-  },
-  {
     "id": "LocalVoice.PromptPicker.PromptPickerView.Button.open-library",
     "surface": "Saved Prompts picker",
     "label": "Open Library…",
@@ -1376,6 +1367,15 @@
     "belongsTo": "timer"
   },
   {
+    "id": "LocalVoice.WorkbenchDesktopChrome.WorkbenchUpdateSidebar.Button.runtime-e9b18abfdfc4",
+    "surface": "window sidebar",
+    "label": null,
+    "expression": "updates . buttonTitle",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Existing sidebar update action: a version, short release benefit and one routine install/restart choice. Preserves the current page; exceptional releases open native review."
+  },
+  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchClipboardShelf.Button.copy-again",
     "surface": "quick panel status rows",
     "label": "Copy again",
@@ -1467,15 +1467,6 @@
     "note": "Requested sidebar collapse/expand control. Its tooltip and accessibility label name the current action; Control-Command-S performs the same local navigation setting.",
     "kind": "action",
     "belongsTo": "app"
-  },
-  {
-    "id": "LocalVoice.WorkbenchDesktopChrome.WorkbenchUpdateSidebar.Button.runtime-e9b18abfdfc4",
-    "surface": "window sidebar",
-    "label": null,
-    "expression": "updates . buttonTitle",
-    "kind": "action",
-    "belongsTo": "settings",
-    "note": "Existing sidebar update action: a version, short release benefit and one routine install/restart choice. Preserves the current page; exceptional releases open native review."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Button.show-me-a-first-dictation",
@@ -2551,15 +2542,6 @@
     "aliasOf": "present"
   },
   {
-    "id": "StageKit.DemoPresentation.DemoPresentation.LiveSettings.Button.reconnect",
-    "surface": "Present live window",
-    "label": "Reconnect",
-    "kind": "action",
-    "belongsTo": "present",
-    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
-    "aliasOf": "present"
-  },
-  {
     "id": "StageKit.DemoPresentation.DemoPresentation.LiveSettings.Button.show-presentation-window",
     "surface": "Present live window",
     "label": "Show presentation window",
@@ -2569,36 +2551,9 @@
     "aliasOf": "present"
   },
   {
-    "id": "StageKit.DemoPresentation.DemoPresentation.LiveSettings.Button.source-connection-help",
-    "surface": "Present live window",
-    "label": "Source & connection help…",
-    "kind": "action",
-    "belongsTo": "present",
-    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
-    "aliasOf": "present"
-  },
-  {
     "id": "StageKit.DemoPresentation.DemoPresentation.LiveSettings.Toggle.full-screen",
     "surface": "Present live window",
     "label": "Full screen",
-    "kind": "setting",
-    "belongsTo": "present",
-    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
-    "aliasOf": "present"
-  },
-  {
-    "id": "StageKit.DemoPresentation.DemoPresentation.LiveSettings.Toggle.match-device-proportions",
-    "surface": "Present live window",
-    "label": "Match device proportions",
-    "kind": "setting",
-    "belongsTo": "present",
-    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
-    "aliasOf": "present"
-  },
-  {
-    "id": "StageKit.DemoPresentation.DemoPresentation.LiveSettings.Toggle.pause-background-motion",
-    "surface": "Present live window",
-    "label": "Pause background motion",
     "kind": "setting",
     "belongsTo": "present",
     "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
@@ -2632,6 +2587,14 @@
     "aliasOf": "present"
   },
   {
+    "id": "StageKit.DemoPresentation.DemoPresentation.StageMenuAction.can-t-see-your-phone",
+    "surface": "Present menu",
+    "label": "Can’t See Your Phone?…",
+    "kind": "action",
+    "belongsTo": "present",
+    "note": "Quality (#276): replaces Source & Connection Help… and the two End Preview & Open items with one help sheet: the live status, three checks, Check in QuickTime Player, the ways to show a phone in a call without the stage, and Copy connection details. Shown only while the phone is not on the stage; the page, the stage controls and the source sheet use the same words, in sentence case."
+  },
+  {
     "id": "StageKit.DemoPresentation.DemoPresentation.StageMenuAction.compact",
     "surface": "Present menu",
     "label": "Compact",
@@ -2653,14 +2616,6 @@
     "belongsTo": "present"
   },
   {
-    "id": "StageKit.DemoPresentation.DemoPresentation.StageMenuAction.iPhoneMirroring",
-    "surface": "Present menu",
-    "label": "End Preview & Open iPhone Mirroring",
-    "case": "iPhoneMirroring",
-    "kind": "action",
-    "belongsTo": "present"
-  },
-  {
     "id": "StageKit.DemoPresentation.DemoPresentation.StageMenuAction.large",
     "surface": "Present menu",
     "label": "Large",
@@ -2668,25 +2623,10 @@
     "belongsTo": "present"
   },
   {
-    "id": "StageKit.DemoPresentation.DemoPresentation.StageMenuAction.match-device-proportions",
-    "surface": "Present menu",
-    "label": "Match Device Proportions",
-    "kind": "action",
-    "belongsTo": "present"
-  },
-  {
     "id": "StageKit.DemoPresentation.DemoPresentation.StageMenuAction.medium",
     "surface": "Present menu",
     "label": "Medium",
     "kind": "option",
-    "belongsTo": "present"
-  },
-  {
-    "id": "StageKit.DemoPresentation.DemoPresentation.StageMenuAction.quickTime",
-    "surface": "Present menu",
-    "label": "End Preview & Open QuickTime Player",
-    "case": "quickTime",
-    "kind": "action",
     "belongsTo": "present"
   },
   {
@@ -2699,25 +2639,18 @@
     "note": "Existing contextual \"Reconnect\" label inside present; shared wording, not a separate capability."
   },
   {
-    "id": "StageKit.DemoPresentation.DemoPresentation.StageMenuAction.runtime-f4f4aad1a8e8",
+    "id": "StageKit.DemoPresentation.DemoPresentation.StageMenuAction.runtime-79dc140e1be9",
     "surface": "Present menu",
     "label": null,
-    "expression": "controls . motionPaused ? \"Play Background Motion\" : \"Pause Background Motion\"",
+    "expression": "step . title",
+    "note": "Quality (#276): the phone status’s one next step from PhoneLink (Show and the source’s name, Choose screen…, Reconnect or Open Camera settings), the same step the Present page and the stage controls offer. Open Camera settings only opens System Settings; nothing is changed for the person.",
     "kind": "action",
-    "belongsTo": "present",
-    "note": "Runtime label from controls . motionPaused ? \"Play Background Motion\" : \"Pause Background Motion\"; no rendered text assumed."
+    "belongsTo": "present"
   },
   {
     "id": "StageKit.DemoPresentation.DemoPresentation.StageMenuAction.show-presentation-window",
     "surface": "Present menu",
     "label": "Show Presentation Window",
-    "kind": "action",
-    "belongsTo": "present"
-  },
-  {
-    "id": "StageKit.DemoPresentation.DemoPresentation.StageMenuAction.source-connection-help",
-    "surface": "Present menu",
-    "label": "Source & Connection Help…",
     "kind": "action",
     "belongsTo": "present"
   },
