@@ -314,6 +314,23 @@
     "note": "Existing control moved from the Handoffs page onto History's task card: reviews an assistant's suggested details for the task's transcript over History. The host presents the review, so the doors check counts it (#137)."
   },
   {
+    "id": "LocalVoice.HistorySelectionControls.HandoffResultPreview.Button.copy-result",
+    "surface": "history page",
+    "label": "Copy result",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Quality (#137): copies the exact reviewed result with the shared clipboard receipt, whose Review returns to this task. No paste or original edit."
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.HandoffResultPreview.Button.read-aloud",
+    "surface": "history page",
+    "label": "Read aloud",
+    "kind": "option",
+    "belongsTo": "read",
+    "aliasOf": "LocalVoice.CaptureHistoryView.TranscriptHistoryRow.Button.read-aloud",
+    "note": "Option of Read (#137): opens the exact reviewed assistant result through the existing reading import decision, preserving a different draft until Replace reading or Keep current. Playback never starts automatically."
+  },
+  {
     "id": "LocalVoice.HistorySelectionControls.HistorySelectionControls.Button.hand-off",
     "surface": "history page",
     "label": "Hand off…",

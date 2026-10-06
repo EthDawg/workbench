@@ -1892,6 +1892,17 @@ private struct HistoryNativeAcceptanceView: View {
         jobs.cancel()
         try wait("the running task to stop") { !jobs.isBusy }
         library.setSelected([])
+        // The production result body, with exact synthetic words and its two
+        // reuse actions. Parent History fixtures cover its full task card.
+        let preview = NSHostingView(rootView: HandoffResultPreview(
+            text: "Follow-up for Sam\n\nWe agreed to review the pilot on Friday.\nSam will share the revised notes before the review.",
+            context: "Synthetic follow-up", copyText: {}, readAloud: {}).padding(16).workbenchTheme())
+        preview.frame = NSRect(x: 0, y: 0, width: 620, height: 230)
+        preview.appearance = NSAppearance(named: theme == "dark" ? .darkAqua : .aqua)
+        settle(preview)
+        shots.append(try save(snapshot(preview), id: "state-result-reuse", title: "History, saved result reuse",
+            detail: "The reviewed assistant result has Copy result and Read aloud. Both use these exact words; reading starts only from Read.",
+            file: "page-history-state-result-reuse-\(theme).png", to: output))
         return shots
     }
 
@@ -3478,6 +3489,7 @@ private struct HistoryNativeAcceptanceView: View {
                  E(surface: "Handoff review", label: "Copy instructions or Start task", leads: "Page: history, revealing the task it prepared", route: "history"),
                  page("Remember correction", "Open Dictionary", "dictionary"),
                  page("History page", "Transcript · More… · Open in Dictate", "dictate"), page("History page", "Transcript · More… · Read aloud", "speak"),
+                 page("History page", "Result · Read aloud", "speak"),
                  action("History page", "Connections…", "Shows provider connections over History"),
                  action("History page", "Hand off…", "Opens the handoff review for the selected items"),
                  action("History page", "Result · Review suggested details…", "Reviews an assistant's suggested details for the task's transcript"),

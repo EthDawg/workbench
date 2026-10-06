@@ -225,15 +225,15 @@ struct HandoffJobCard<MadeFrom: View>: View {
     var focus: FocusState<UUID?>.Binding
     var voiceOverFocus: AccessibilityFocusState<UUID?>.Binding
     var applySuggestedMetadata: ((HandoffJob, String) -> Void)?
+    var query = ""
+    var copyResult: (HandoffJob, String) -> Void = { _, _ in }
+    var readAloud: (String) -> Void = { _ in }
     @ViewBuilder var madeFrom: MadeFrom
     @State private var showingOthers = false
-    @State private var loadedResult: (id: UUID, text: String?)?
 
     var body: some View {
         let files = jobs.files(job)
-        // Unknown until the folder has been read; a known unreadable result
-        // disables its actions and says so.
-        let resultReady = job.status == .completed && files?.resultReadable != false
+        let resultReady = job.status == .completed && files?.resultReadable == true
         let context = Self.context(job)
         let others = jobs.otherReviewJobs(job)
         VStack(alignment: .leading, spacing: 8) {
@@ -251,8 +251,7 @@ struct HandoffJobCard<MadeFrom: View>: View {
             madeFrom
             Text(job.detail).font(.callout)
             if job.status == .completed && files?.resultReadable == false {
-                Label("The saved result is missing or can’t be read. The task folder was kept; Show selected files opens it.",
-                      systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.orange)
+                resultProblem(files)
             }
             if let key = job.reviewKey, jobs.currentReviewDigest?(key) != nil {
                 HStack {
@@ -296,7 +295,7 @@ struct HandoffJobCard<MadeFrom: View>: View {
                 DisclosureGroup("Other tasks for this review (\(others.count))", isExpanded: $showingOthers) {
                     ForEach(others) { previous in
                         let previousContext = Self.context(previous)
-                        let readable = previous.status == .completed && jobs.files(previous)?.resultReadable != false
+                        let readable = previous.status == .completed && jobs.files(previous)?.resultReadable == true
                         VStack(alignment: .leading, spacing: 6) {
                             Text(previous.createdAt.formatted(date: .abbreviated, time: .shortened) + " · " + previous.status.title)
                                 .accessibilityLabel("Earlier task, \(previous.title), \(previous.status.title), "
@@ -304,10 +303,20 @@ struct HandoffJobCard<MadeFrom: View>: View {
                                 .focusable(revealed == previous.id).focused(focus, equals: previous.id)
                                 .accessibilityFocused(voiceOverFocus, equals: previous.id)
                             Text(previous.detail).foregroundStyle(.secondary)
+                            if !query.isEmpty && jobs.matchesResult(previous, query: query, includingGrouped: false) {
+                                Text("Matches search").foregroundStyle(Workbench.accent)
+                            }
+                            if previous.status == .completed && jobs.files(previous)?.resultReadable == false {
+                                resultProblem(jobs.files(previous))
+                            }
                             HStack {
                                 Button("Show selected files") { jobs.showInputs(previous) }
                                     .accessibilityLabel("Show selected files, " + previousContext)
                                 if previous.status == .completed {
+                                    Button(expanded == previous.id ? "Hide result" : "Read result") {
+                                        expanded = expanded == previous.id ? nil : previous.id
+                                    }.disabled(!readable && expanded != previous.id)
+                                        .accessibilityLabel((expanded == previous.id ? "Hide result, " : "Read result, ") + previousContext)
                                     Button("Open saved result") { jobs.showResult(previous) }.disabled(!readable)
                                         .accessibilityLabel("Open saved result, " + previousContext)
                                     Button("Use as current review") { jobs.publishReview(previous, replacingChanges: true) }
@@ -316,6 +325,7 @@ struct HandoffJobCard<MadeFrom: View>: View {
                                 }
                                 startAction(previous)
                             }
+                            if expanded == previous.id && previous.status == .completed { resultPreview(previous) }
                         }.font(.caption).padding(.vertical, 4).padding(.horizontal, 6)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(revealed == previous.id ? Workbench.accent : .clear, lineWidth: 2))
@@ -323,28 +333,39 @@ struct HandoffJobCard<MadeFrom: View>: View {
                     }
                 }
             }
-            if expanded == job.id {
-                if let loaded = loadedResult, loaded.id == job.id {
-                    if let result = loaded.text {
-                        Text(result).textSelection(.enabled).font(.system(.body, design: .monospaced))
-                            .frame(maxWidth: .infinity, alignment: .leading).padding(12).background(Workbench.background)
-                        if let applySuggestedMetadata, jobs.isMetadataSuggestion(job) {
-                            Button("Review suggested details…") { applySuggestedMetadata(job, result) }
-                        }
-                    } else {
-                        Text("The saved result could not be read. Show selected files opens the task folder.").font(.caption).foregroundStyle(.orange)
-                    }
-                } else { ProgressView().controlSize(.small) }
-            }
+            if expanded == job.id && job.status == .completed { resultPreview(job) }
         }
-        // A grouped task that a door reveals opens its group.
+        // A grouped task revealed by a door or matching a search opens its group.
         .onChange(of: revealed, initial: true) {
             if let revealed, revealed != job.id, others.contains(where: { $0.id == revealed }) { showingOthers = true }
         }
-        .task(id: expanded == job.id ? job.updatedAt : nil) {
-            guard expanded == job.id else { loadedResult = nil; return }
-            loadedResult = (job.id, await jobs.loadResult(job))
+        .onChange(of: query, initial: true) { showMatchingGroup(others) }
+        .onChange(of: jobs.taskFiles) { showMatchingGroup(others) }
+    }
+
+    private func showMatchingGroup(_ others: [HandoffJob]) {
+        if !query.isEmpty && others.contains(where: { jobs.matchesResult($0, query: query, includingGrouped: false) }) {
+            showingOthers = true
         }
+    }
+
+    private func resultProblem(_ files: HandoffTaskFiles?) -> some View {
+        Label(files?.resultProblem ?? "The saved result is unavailable. Show selected files opens the task folder.",
+              systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.orange)
+    }
+
+    @ViewBuilder private func resultPreview(_ task: HandoffJob) -> some View {
+        // The visible text and action closures take the same immutable cache
+        // value. No file read can replace the words between review and reuse.
+        if let files = jobs.files(task) {
+            if let result = files.resultText {
+                HandoffResultPreview(text: result, context: Self.context(task),
+                    copyText: { copyResult(task, result) }, readAloud: { readAloud(result) })
+                if let applySuggestedMetadata, jobs.isMetadataSuggestion(task) {
+                    Button("Review suggested details…") { applySuggestedMetadata(task, result) }
+                }
+            } else { resultProblem(files) }
+        } else { ProgressView().controlSize(.small) }
     }
 
     /// Names the task an action belongs to, since every card repeats its buttons.
@@ -361,6 +382,28 @@ struct HandoffJobCard<MadeFrom: View>: View {
                     }.disabled(jobs.isBusy || !jobs.canRun(job, with: provider))
                 }
             }.fixedSize().accessibilityLabel((job.status == .ready ? "Start task, " : "Retry, ") + Self.context(job))
+        }
+    }
+}
+
+/// Reuses the exact words currently shown. Read opens its normal import review;
+/// it does not play or replace a current reading without that owner's admission.
+struct HandoffResultPreview: View {
+    let text: String
+    let context: String
+    var copyText: () -> Void
+    var readAloud: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Button("Copy result", action: copyText).accessibilityLabel("Copy result, " + context)
+                Button("Read aloud", action: readAloud).accessibilityLabel("Read aloud, " + context)
+            }.buttonStyle(.borderless).font(.caption)
+                .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            Text(text.isEmpty ? "The saved result has no text." : text)
+                .textSelection(.enabled).font(.body)
+                .frame(maxWidth: .infinity, alignment: .leading).padding(12).background(Workbench.background)
         }
     }
 }

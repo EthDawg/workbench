@@ -761,8 +761,13 @@ struct WorkbenchHomePage: View {
                     }
                     WorkbenchClipboardShelf(receipts: model.clipboardReceipt, unresolved: model.unresolvedDelivery,
                         review: {
-                            let prompt = model.clipboardReceipt.receipt?.source == .prompt
-                            model.clipboardReceipt.dismissHUD(); model.page = prompt ? "library" : "history"
+                            let source = model.clipboardReceipt.receipt?.source
+                            model.clipboardReceipt.dismissHUD()
+                            switch source {
+                            case .prompt: model.page = "library"
+                            case .result(let id): model.openHistory(HistoryDoor(job: id))
+                            default: model.openHistory()
+                            }
                         },
                         showCue: { model.clipboardReceipt.revealHUD() },
                         reviewUnresolved: { _ in model.reviewUnresolvedDelivery() },

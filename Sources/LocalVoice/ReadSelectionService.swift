@@ -10,6 +10,8 @@ struct ReadingSelectionImport: Identifiable, Equatable {
         case selection
         /// Read aloud on a History transcript.
         case transcript
+        /// Read aloud on a saved assistant result in History.
+        case result
         /// Read aloud on a Library item.
         case savedText
         case file
@@ -18,6 +20,7 @@ struct ReadingSelectionImport: Identifiable, Equatable {
             switch self {
             case .selection: return "Selected text"
             case .transcript: return "The transcript"
+            case .result: return "The saved result"
             case .savedText: return "The saved text"
             case .file: return "The text file"
             }
@@ -26,7 +29,7 @@ struct ReadingSelectionImport: Identifiable, Equatable {
         var keepNote: String {
             switch self {
             case .selection: return "Keep current discards only this imported selection."
-            case .transcript: return "Keep current leaves it in History."
+            case .transcript, .result: return "Keep current leaves it in History."
             case .savedText: return "Keep current leaves it in Library."
             case .file: return "Keep current leaves the original file unchanged."
             }
@@ -35,6 +38,7 @@ struct ReadingSelectionImport: Identifiable, Equatable {
             switch self {
             case .selection: return "The imported selection was not saved or sent."
             case .transcript: return "The transcript is still in History."
+            case .result: return "The saved result is still in History."
             case .savedText: return "The saved text is still in Library."
             case .file: return "The original file is unchanged."
             }
@@ -43,6 +47,7 @@ struct ReadingSelectionImport: Identifiable, Equatable {
             switch self {
             case .selection: return "Select some text, then choose Read Selection in Workbench again."
             case .transcript: return "This transcript has no words to read."
+            case .result: return "This saved result has no words to read."
             case .savedText: return "This saved item has no text to read."
             case .file: return "This file has no words to read."
             }

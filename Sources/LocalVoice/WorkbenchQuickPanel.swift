@@ -91,9 +91,13 @@ struct WorkbenchQuickPanel: View {
                     VStack(alignment: .leading, spacing: 5) {
                         WorkbenchClipboardShelf(receipts: receipts, unresolved: model.unresolvedDelivery,
                             review: {
-                                let prompt = receipts.receipt?.source == .prompt
+                                let source = receipts.receipt?.source
                                 receipts.dismissHUD()
-                                if prompt { open("library") } else { model.openHistory(); open("history") }
+                                switch source {
+                                case .prompt: open("library")
+                                case .result(let id): model.openHistory(HistoryDoor(job: id)); open("history")
+                                default: model.openHistory(); open("history")
+                                }
                             },
                             showCue: { model.onCloseMenu?(); receipts.revealHUD() },
                             reviewUnresolved: { entry in

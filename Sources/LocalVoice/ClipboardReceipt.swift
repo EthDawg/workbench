@@ -17,7 +17,7 @@ struct ClipboardReceipt: Identifiable, Equatable {
     /// What was copied, so Review opens where it is kept: History for a
     /// transcript, Library for a prompt.
     var source: Source = .transcript
-    enum Source: Equatable { case transcript, prompt }
+    enum Source: Equatable { case transcript, prompt, result(UUID) }
 }
 
 /// A brief delivery cue. Confirmed insertion stays quiet; clipboard fallback gives
@@ -108,8 +108,11 @@ final class ClipboardReceiptModel: ObservableObject {
             // Accessibility approval. A changed or unreadable field keeps its reason.
             title = "Copied"; detail = TextDelivery.copiedDetail(outcome.failure); symbol = "doc.on.clipboard"
         } else {
-            title = "Transcript ready"
-            detail = "Clipboard changed. Copy the transcript again from Workbench."
+            switch source {
+            case .result: title = "Result ready"; detail = "Clipboard changed. Copy the saved result again from History."
+            case .prompt: title = "Prompt ready"; detail = "Clipboard changed. Copy the prompt again from Library."
+            case .transcript: title = "Transcript ready"; detail = "Clipboard changed. Copy the transcript again from Workbench."
+            }
             symbol = "doc.text"
         }
         receipt = ClipboardReceipt(id: UUID(), title: title, detail: detail, symbolName: symbol,

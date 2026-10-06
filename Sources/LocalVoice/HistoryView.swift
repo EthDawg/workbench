@@ -94,7 +94,8 @@ enum HistoryList {
     static func shown(_ merged: [HistoryEntry], filter: HistoryFilter, query: String,
                       matchTranscripts: ([Transcript], String) -> [Transcript],
                       matchSnap: (SnapItem, String) -> Bool,
-                      resultText: (HandoffJob) -> String) -> [HistoryEntry] {
+                      resultText: (HandoffJob) -> String,
+                      matchResult: ((HandoffJob, String) -> Bool)? = nil) -> [HistoryEntry] {
         let terms = query.split(whereSeparator: \.isWhitespace).map(String.init)
         let showsTranscripts = filter == .all || filter == .transcripts
         var matchingTranscripts: Set<UUID>?
@@ -116,6 +117,7 @@ enum HistoryList {
             case .result(let job):
                 guard filter == .all || filter == .results else { return false }
                 guard !terms.isEmpty else { return true }
+                if let matchResult { return matchResult(job, query) }
                 let text = job.title + "\n" + resultText(job)
                 return terms.allSatisfy { text.localizedCaseInsensitiveContains($0) }
             }
@@ -127,9 +129,10 @@ enum HistoryList {
                         filter: HistoryFilter, query: String,
                         matchTranscripts: ([Transcript], String) -> [Transcript],
                         matchSnap: (SnapItem, String) -> Bool,
-                        resultText: (HandoffJob) -> String) -> [HistoryEntry] {
+                        resultText: (HandoffJob) -> String,
+                        matchResult: ((HandoffJob, String) -> Bool)? = nil) -> [HistoryEntry] {
         shown(merged(transcripts: transcripts, snaps: snaps, results: results), filter: filter, query: query,
-              matchTranscripts: matchTranscripts, matchSnap: matchSnap, resultText: resultText)
+              matchTranscripts: matchTranscripts, matchSnap: matchSnap, resultText: resultText, matchResult: matchResult)
     }
 
     static func availability(of reference: WorkbenchItemReference, transcripts: Set<UUID>,
@@ -273,7 +276,8 @@ struct HistoryView: View {
                                       filter: filter, query: appliedQuery)) {
             HistoryList.shown(stores.merged, filter: filter, query: appliedQuery,
                 matchTranscripts: { library.matching($0, query: $1) }, matchSnap: { snap.matches($0, query: $1) },
-                resultText: { jobs.files($0)?.inputs.task ?? "" })
+                resultText: { jobs.files($0)?.inputs.task ?? "" },
+                matchResult: { jobs.matchesResult($0, query: $1) })
         }
         VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
             header
@@ -413,7 +417,9 @@ struct HistoryView: View {
                         case .result(let job):
                             HandoffJobCard(jobs: jobs, job: job, expanded: $expandedResult, revealed: target?.task,
                                            focus: $focusedTask, voiceOverFocus: $voiceOverTask,
-                                           applySuggestedMetadata: applySuggestedMetadata) {
+                                           applySuggestedMetadata: applySuggestedMetadata, query: appliedQuery,
+                                           copyResult: { model.copySavedResult($1, jobID: $0.id) },
+                                           readAloud: { model.importReading($0, from: .result) }) {
                                 HistoryMadeFrom(jobs: jobs, job: job) {
                                     HistoryList.availability(of: $0, transcripts: stores.transcripts, snaps: stores.snaps)
                                 }

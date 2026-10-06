@@ -1098,8 +1098,11 @@ struct DictationResultView: View {
 
     /// Review opens where the words are kept: Library for a copied prompt, History for a transcript.
     static func review(_ receipt: ClipboardReceipt, model: AppModel) {
-        if receipt.source == .prompt { model.showLibrary() }
-        else { model.openHistory(); model.onShowEditor?("history") }
+        switch receipt.source {
+        case .prompt: model.showLibrary()
+        case .transcript: model.openHistory(); model.onShowEditor?("history")
+        case .result(let id): model.openHistory(HistoryDoor(job: id)); model.onShowEditor?("history")
+        }
     }
 
     private func failureState(_ failure: String, mirrored: Bool) -> some View {
