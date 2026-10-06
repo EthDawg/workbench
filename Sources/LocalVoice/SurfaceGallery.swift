@@ -219,6 +219,10 @@ enum SurfaceGallery {
             }
             let output = URL(fileURLWithPath: arguments[0], isDirectory: true)
             let pass = try SurfacePass(theme: arguments[1], output: output)
+            if arguments.contains("--interactive-updates") {
+                try pass.openInteractiveUpdates(output: output)
+                return 0
+            }
             if arguments.contains("--interactive-history") {
                 try pass.openInteractiveHistory(output: output)
                 return 0
@@ -430,6 +434,33 @@ private struct HistoryNativeAcceptanceView: View {
     /// A native pointer/keyboard pass through the production views. It inherits
     /// the gallery's verified disposable home, preferences and Keychain refusal.
     /// The launcher retains the fixture folder for reproducible external edits.
+    /// The production sidebar action only. No updater is started, and the
+    /// protocol choice writes a synthetic receipt instead of replacing an app.
+    func openInteractiveUpdates(output: URL) throws {
+        #if !APP_STORE
+        let updates = WorkbenchUpdates.shared
+        updates.receiveOffer(version: "9.0.1", buildNumber: "9001", summary: "Follow your words live and keep conversations together.", downloaded: true) { choice in
+            let receipt: [String: Any] = ["choice": choice.rawValue, "page": "unchanged", "synthetic": true]
+            try? JSONSerialization.data(withJSONObject: receipt, options: [.prettyPrinted, .sortedKeys])
+                .write(to: output.appendingPathComponent("update-choice.json"), options: .atomic)
+            updates.finishUpdateSession()
+            updates.status = "Synthetic install choice received once. No app was replaced."
+        }
+        NSApp.setActivationPolicy(.regular)
+        let window = NSWindow(contentViewController: NSHostingController(rootView: UpdateNativeAcceptanceView(updates: updates)))
+        window.title = "Workbench Preview · Synthetic update acceptance"
+        window.styleMask = [.titled, .closable]
+        window.setContentSize(NSSize(width: 670, height: 310)); window.isReleasedWhenClosed = false
+        let menu = NSMenu(), appItem = NSMenuItem(), appMenu = NSMenu(title: "Workbench")
+        let details = NSMenuItem(title: "Copy build details", action: #selector(AppDelegate.copyBuildDetails), keyEquivalent: "")
+        details.target = shell; appMenu.addItem(details)
+        appMenu.addItem(withTitle: "Quit acceptance", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appItem.submenu = appMenu; menu.addItem(appItem); NSApp.mainMenu = menu
+        window.center(); window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
+        withExtendedLifetime(window) { NSApp.run() }
+        #endif
+    }
+
     func openInteractiveHistory(output: URL) throws {
         let transcript = Transcript(id: UUID(uuidString: "5D1C0A1E-0000-4000-8000-000000000099")!,
             date: Date(timeIntervalSince1970: 1_791_200_000),
@@ -1752,6 +1783,25 @@ private struct HistoryNativeAcceptanceView: View {
                     file: "page-home-hint-\(hint)-\(name)-\(theme).png", to: output))
             }
         }
+        #if !APP_STORE
+        let updates = WorkbenchUpdates.shared
+        defer { updates.finishUpdateSession() }
+        updates.receiveOffer(version: "9.0.1", summary: "Follow your words live and keep conversations together.", downloaded: true, reply: { _ in })
+        for collapsed in [false, true] {
+            let window = offscreenWindow(size: SurfaceGallery.sizes[1].size, styleMask: [.titled, .closable, .fullSizeContentView])
+            defer { window.contentViewController = nil; window.close() }
+            window.titlebarAppearsTransparent = true; window.titleVisibility = .hidden
+            window.contentViewController = NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard,
+                readback: sessionReadback, snap: snap, sidebarCollapsed: collapsed, sidebarHint: collapsed ? "update" : nil))
+            window.setContentSize(SurfaceGallery.sizes[1].size)
+            let frame = window.contentView?.superview ?? window.contentView!
+            settle(frame)
+            let suffix = collapsed ? "collapsed" : "expanded"
+            shots.append(try save(try snapshot(frame), id: "update-" + suffix, title: "Available update, " + suffix,
+                detail: "Synthetic release, existing sidebar action. Nothing is checked, downloaded or installed.",
+                file: "page-home-update-\(suffix)-\(theme).png", to: output))
+        }
+        #endif
         let host = NSHostingView(rootView: stage.localProfileView)
         let window = offscreenWindow(size: NSSize(width: 470, height: 370), styleMask: [.borderless])
         window.contentView = host
@@ -3722,4 +3772,27 @@ private final class SilentMeetingCapture: MeetingCapture {
     func requestStop() {}
     var elapsedSeconds: Double { 0 }
     var stopReason: String? { nil }
+}
+
+private struct UpdateNativeAcceptanceView: View {
+    @ObservedObject var updates: WorkbenchUpdates
+    @State private var hovered: String?
+    @State private var busy = false
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("Synthetic update acceptance").font(.title2)
+            Text("The real sidebar action. No network, download or application replacement.").font(.callout)
+            HStack(alignment: .top, spacing: 24) {
+                VStack(alignment: .leading, spacing: 0) {
+                    WorkbenchUpdateSidebar(updates: updates, collapsed: false, hovered: $hovered)
+                }.frame(width: SidebarMetrics.expandedWidth - 2 * SidebarMetrics.inset)
+                VStack(alignment: .leading, spacing: 12) {
+                    Toggle("Simulate active recording", isOn: $busy)
+                        .onChange(of: busy) { _, value in updates.activity = { WorkbenchUpdateActivity(voice: value) } }
+                    Text(updates.status).font(.callout).foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+        }.padding(24).workbenchTheme()
+    }
 }

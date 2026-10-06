@@ -333,6 +333,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 timer: self.stage.hasActiveTimer,
                 interaction: self.shortcutsSuspended || NSApp.modalWindow != nil || NSApp.windows.contains(where: { $0.attachedSheet != nil }))
         }
+        WorkbenchUpdates.shared.showUpdate = { [weak self] in self?.showWindow() }
         WorkbenchUpdates.shared.start()
         setupMenus()
         readSelectionService = ReadSelectionService { [weak self] selection in

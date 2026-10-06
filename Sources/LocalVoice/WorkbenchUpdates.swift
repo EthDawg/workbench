@@ -40,19 +40,29 @@ final class WorkbenchUpdates: NSObject, ObservableObject {
     @Published var automaticChecks = false
     @Published var automaticDownloads = false
     @Published var restartWaiting = false
+    @Published private(set) var releaseSummary: String?
+    @Published private(set) var actionNotice: String?
+    @Published private(set) var installRequested = false
+    @Published private(set) var downloaded = false
+    @Published private(set) var requiresReview = false
+    var showUpdate: () -> Void = {}
     var activity: () -> WorkbenchUpdateActivity = { WorkbenchUpdateActivity() }
     private var deferredInstall: (() -> Void)?
     private(set) var installing = false
     #if !APP_STORE
-    private var controller: SPUStandardUpdaterController?
-    private var observations = Set<AnyCancellable>()
+    private var updater: SPUUpdater?
+    private var driver: WorkbenchUpdateDriver?
+    private var requestedVersion: String?
+    private var requestedBuildNumber: String?
+    private var availableBuildNumber: String?
+    private var offerReply: ((SPUUserUpdateChoice) -> Void)?
     #endif
 
     func start() {
         #if APP_STORE
         status = "Updates are managed by the App Store."
         #else
-        guard controller == nil else { return }
+        guard updater == nil else { return }
         guard build.released else {
             status = "Local development build. Install a published release to receive updates."
             return
@@ -62,39 +72,59 @@ final class WorkbenchUpdates: NSObject, ObservableObject {
             status = "Updates are unavailable in this package. Download the latest release."
             return
         }
-        let controller = SPUStandardUpdaterController(startingUpdater: false, updaterDelegate: self, userDriverDelegate: self)
-        self.controller = controller
-        controller.updater.publisher(for: \.canCheckForUpdates).assign(to: &$enabled)
-        controller.updater.publisher(for: \.automaticallyChecksForUpdates).assign(to: &$automaticChecks)
-        controller.updater.publisher(for: \.automaticallyDownloadsUpdates).assign(to: &$automaticDownloads)
+        let driver = WorkbenchUpdateDriver(owner: self, hostBundle: .main)
+        let updater = SPUUpdater(hostBundle: .main, applicationBundle: .main, userDriver: driver, delegate: self)
+        self.driver = driver; self.updater = updater
+        updater.publisher(for: \.canCheckForUpdates).assign(to: &$enabled)
+        updater.publisher(for: \.automaticallyChecksForUpdates).assign(to: &$automaticChecks)
+        updater.publisher(for: \.automaticallyDownloadsUpdates).assign(to: &$automaticDownloads)
         // No hardware profile, unique identifier or extra feed parameters.
-        controller.updater.sendsSystemProfile = false
-        do { try controller.updater.start(); status = "Updates stay on the \(build.edition) edition." }
-        catch { status = "Could not start updates: \(error.localizedDescription)" }
+        updater.sendsSystemProfile = false
+        do {
+            try updater.start()
+            status = "Updates stay on the \(build.edition) edition."
+            // Sparkle permits an immediate launch check here. Honour the existing
+            // preference and leave every subsequent check to its own scheduler.
+            if updater.automaticallyChecksForUpdates { updater.checkForUpdatesInBackground() }
+        } catch { status = "Could not start updates: \(error.localizedDescription)" }
         #endif
     }
     func setAutomaticChecks(_ value: Bool) {
         #if !APP_STORE
-        controller?.updater.automaticallyChecksForUpdates = value
+        updater?.automaticallyChecksForUpdates = value
         #endif
     }
     func setAutomaticDownloads(_ value: Bool) {
         #if !APP_STORE
-        controller?.updater.automaticallyDownloadsUpdates = value
+        updater?.automaticallyDownloadsUpdates = value
         #endif
     }
     @objc func checkForUpdates(_ sender: Any? = nil) {
         guard !activity().busy else {
             status = "Finish recording, reading, presenting or editing before updating."
+            actionNotice = "Finish your current activity, then update."
             return
         }
-        checkedCurrent = false
+        guard canCheck else { return }
+        checkedCurrent = false; actionNotice = nil
         if let resume = deferredInstall {
             deferredInstall = nil; restartWaiting = false; installing = true
             resume(); return
         }
         #if !APP_STORE
-        if let controller { checking = true; controller.checkForUpdates(sender) }
+        if let reply = offerReply {
+            offerReply = nil; installRequested = true; installing = true
+            status = "Updating Workbench. It will restart when ready."
+            reply(.install)
+        } else {
+            // An automatic download can finish before Sparkle offers its reply.
+            // Carry this click through that resume, for this exact version only.
+            requestedVersion = requiresReview ? nil : availableVersion
+            requestedBuildNumber = availableBuildNumber
+            installRequested = requestedVersion != nil
+            checking = true
+            updater?.checkForUpdates()
+        }
         #endif
     }
     func copyDetails() {
@@ -104,15 +134,44 @@ final class WorkbenchUpdates: NSObject, ObservableObject {
     var panelTitle: String {
         if !build.released { return "Update · Local Build" }
         if restartWaiting { return "Update · Restart Ready" }
+        if installRequested { return "Updating…" }
         if availableVersion != nil { return "Update Ready" }
         if checking { return "Checking for Updates…" }
         if checkedCurrent { return "Update · Current" }
         return canCheck ? "Check for Updates…" : "Update Status Unavailable"
     }
     var buttonTitle: String {
-        restartWaiting ? "Restart to update…" : availableVersion != nil ? "Review update…" : "Check for Updates…"
+        if restartWaiting { return "Restart to update" }
+        if installRequested { return "Updating…" }
+        if let version = availableVersion { return requiresReview ? "Review \(version)…" : "Update to \(version)" }
+        return checking ? "Checking for Updates…" : "Check for Updates…"
     }
-    var canCheck: Bool { enabled || availableVersion != nil || restartWaiting }
+    var sidebarDetail: String {
+        if let actionNotice { return actionNotice }
+        if restartWaiting { return "Ready when your current work is finished." }
+        if installRequested { return "Restarts when ready. Your work is saved first." }
+        if !canCheck { return "Preparing the update in the background…" }
+        return releaseSummary ?? "A new version is ready."
+    }
+    var sidebarHint: String { requiresReview ? buttonTitle : "\(buttonTitle) · Restarts Workbench" }
+    var canCheck: Bool {
+        if restartWaiting { return true }
+        if installRequested { return false }
+        #if !APP_STORE
+        return offerReply != nil || enabled
+        #else
+        return enabled
+        #endif
+    }
+    func finishUpdateSession() {
+        checking = false; installRequested = false
+        #if !APP_STORE
+        offerReply = nil; requestedVersion = nil; requestedBuildNumber = nil; availableBuildNumber = nil
+        #endif
+        if !restartWaiting {
+            availableVersion = nil; releaseSummary = nil; downloaded = false; installing = false
+        }
+    }
     func canTerminate(saveSession: () -> Bool) -> Bool {
         // A postponed update must not intercept an ordinary user Quit. Once
         // Sparkle resumes, recheck activity and save at the final restart gate.
@@ -130,29 +189,54 @@ final class WorkbenchUpdates: NSObject, ObservableObject {
 }
 
 #if !APP_STORE
-extension WorkbenchUpdates: SPUUpdaterDelegate, @preconcurrency SPUStandardUserDriverDelegate {
+extension WorkbenchUpdates: SPUUpdaterDelegate {
     func allowedSystemProfileKeys(for updater: SPUUpdater) -> [String]? { [] }
-    // A refused scheduled check consumes Sparkle's whole check interval. Let
-    // quiet checks proceed; manual actions and final restart keep their gates.
-    var supportsGentleScheduledUpdateReminders: Bool { true }
-    func standardUserDriverShouldHandleShowingScheduledUpdate(_ update: SUAppcastItem, andInImmediateFocus immediateFocus: Bool) -> Bool { false }
-    func standardUserDriverWillHandleShowingUpdate(_ handleShowingUpdate: Bool, forUpdate update: SUAppcastItem, state: SPUUserUpdateState) {
-        availableVersion = update.displayVersionString
-        status = "\(build.edition) \(update.displayVersionString) is available. Update when you are ready."
+    // Quiet checks have no activity veto; actions and the final restart have gates.
+    func receiveOffer(version: String, buildNumber: String? = nil, summary: String?, downloaded: Bool, reply: @escaping (SPUUserUpdateChoice) -> Void) {
+        let continueRequested = requestedVersion == version && requestedBuildNumber == buildNumber
+        requestedVersion = nil; requestedBuildNumber = nil; installRequested = false
+        checking = false; checkedCurrent = false; actionNotice = nil
+        availableVersion = version; releaseSummary = summary; self.downloaded = downloaded; requiresReview = false
+        availableBuildNumber = buildNumber; offerReply = reply
+        status = "\(build.edition) \(version) is ready. Updating will restart Workbench."
+        if continueRequested { checkForUpdates() }
+    }
+    func needsNativeReview() {
+        requestedVersion = nil; requestedBuildNumber = nil; installRequested = false
+    }
+    func continueInstallation(reply: @escaping (SPUUserUpdateChoice) -> Void) -> Bool {
+        guard installRequested else { return false }
+        // The user's Update action already authorised this restart. Sparkle still
+        // calls shouldPostponeRelaunch and AppDelegate still saves before quitting.
+        reply(.install)
+        return true
     }
     func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
-        checking = false; checkedCurrent = false
-        availableVersion = item.displayVersionString
+        checking = false; checkedCurrent = false; actionNotice = nil
+        availableVersion = item.displayVersionString; availableBuildNumber = item.versionString
+        requiresReview = !WorkbenchUpdateDriver.canOfferInline(item)
+        releaseSummary = requiresReview ? nil : WorkbenchUpdateSummary.text(from: item.itemDescription, format: item.itemDescriptionFormat)
     }
+    func updater(_ updater: SPUUpdater, didDownloadUpdate item: SUAppcastItem) { downloaded = true }
     func updaterDidNotFindUpdate(_ updater: SPUUpdater) {
-        availableVersion = nil; checking = false; checkedCurrent = true
-        status = "You have the latest published \(build.edition.lowercased()) version."
+        availableVersion = nil; releaseSummary = nil; checking = false; checkedCurrent = false
+        // didAbortWithError supplies Sparkle's reason. No eligible update is not
+        // necessarily the same as having the latest published version.
+        status = "No compatible update was found."
     }
     func updater(_ updater: SPUUpdater, didAbortWithError error: Error) {
-        checking = false; installing = false
         deferredInstall = nil; restartWaiting = false
-        // Sparkle reports no-update through this callback too.
-        if (error as NSError).code != SUError.noUpdateError.rawValue { checkedCurrent = false; status = "Update check: \(error.localizedDescription)" }
+        finishUpdateSession()
+        let error = error as NSError
+        if error.domain == SUSparkleErrorDomain && error.code == SUError.noUpdateError.rawValue {
+            let reason = (error.userInfo[SPUNoUpdateFoundReasonKey] as? NSNumber)?.intValue
+            checkedCurrent = reason == Int(SPUNoUpdateFoundReason.onLatestVersion.rawValue)
+            status = checkedCurrent ? "You have the latest published \(build.edition.lowercased()) version." :
+                (error.localizedRecoverySuggestion ?? error.localizedDescription)
+        } else {
+            checkedCurrent = false
+            status = "Update check: \(error.localizedDescription)"
+        }
     }
     func updater(_ updater: SPUUpdater, shouldPostponeRelaunchForUpdate item: SUAppcastItem, untilInvokingBlock installHandler: @escaping () -> Void) -> Bool {
         guard activity().busy else { installing = true; return false }
@@ -162,11 +246,8 @@ extension WorkbenchUpdates: SPUUpdaterDelegate, @preconcurrency SPUStandardUserD
         return true
     }
     func updater(_ updater: SPUUpdater, willInstallUpdate item: SUAppcastItem) { installing = true }
-    func standardUserDriverWillFinishUpdateSession() {
-        checking = false
-        if !restartWaiting { availableVersion = nil; installing = false }
-    }
 }
+
 #endif
 
 struct WorkbenchUpdateSettings: View {
@@ -177,6 +258,7 @@ struct WorkbenchUpdateSettings: View {
             Text(updates.build.label)
             Text("Build \(updates.build.number) · Source \(updates.build.revision.prefix(8))")
                 .font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
+            if let summary = updates.releaseSummary { Text(summary).font(.callout).fixedSize(horizontal: false, vertical: true) }
             Text(updates.status).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if updates.build.released {
                 Toggle("Check for updates automatically", isOn: Binding(get: { updates.automaticChecks }, set: updates.setAutomaticChecks))
@@ -186,7 +268,7 @@ struct WorkbenchUpdateSettings: View {
             HStack {
                 Button(updates.buttonTitle) { updates.checkForUpdates() }.disabled(!updates.canCheck)
                 Button("Copy build details") { updates.copyDetails() }
-                Link("Release notes and downloads", destination: URL(string: "https://github.com/EthDawg/workbench/releases")!)
+                Link("Release notes and downloads", destination: URL(string: "https://github.com/Ship-Work/workbench/releases")!)
             }
         }
     }

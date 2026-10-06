@@ -1460,13 +1460,13 @@
     "belongsTo": "app"
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Button.runtime-e9b18abfdfc4",
+    "id": "LocalVoice.WorkbenchDesktopChrome.WorkbenchUpdateSidebar.Button.runtime-e9b18abfdfc4",
     "surface": "window sidebar",
     "label": null,
     "expression": "updates . buttonTitle",
     "kind": "action",
     "belongsTo": "settings",
-    "note": "Runtime label from updates . buttonTitle; no rendered text assumed."
+    "note": "Existing sidebar update action: a version, short release benefit and one routine install/restart choice. Preserves the current page; exceptional releases open native review."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Button.show-me-a-first-dictation",
@@ -2141,7 +2141,7 @@
     "expression": "updates . buttonTitle",
     "kind": "action",
     "belongsTo": "settings",
-    "note": "Runtime label from updates . buttonTitle; no rendered text assumed."
+    "note": "The same updater action as the sidebar; native review is retained for exceptional releases."
   },
   {
     "id": "LocalVoice.WorkbenchUpdates.WorkbenchUpdateSettings.Link.release-notes-and-downloads",
