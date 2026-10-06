@@ -4886,5 +4886,315 @@
     "belongsTo": "library",
     "aliasOf": "library",
     "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.add-a-pack",
+    "surface": "Library Packs",
+    "label": "Add a pack…",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.add-a-pack.2",
+    "surface": "Library Packs",
+    "label": "Add a pack…",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.add-pack",
+    "surface": "Library Packs",
+    "label": "Add pack",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.add-saved-file-to-library",
+    "surface": "Library Packs",
+    "label": "Add saved file to Library",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.cancel",
+    "surface": "Library Packs",
+    "label": "Cancel",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.cancel.2",
+    "surface": "Library Packs",
+    "label": "Cancel",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.cancel.3",
+    "surface": "Library Packs",
+    "label": "Cancel",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.cancel.4",
+    "surface": "Library Packs",
+    "label": "Cancel",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.check-for-updates",
+    "surface": "Library Packs",
+    "label": "Check for updates",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.connect-github",
+    "surface": "Library Packs",
+    "label": "Connect GitHub",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.copy-code-and-open-github",
+    "surface": "Library Packs",
+    "label": "Copy code and open GitHub",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.disconnect",
+    "surface": "Library Packs",
+    "label": "Disconnect",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.done",
+    "surface": "Library Packs",
+    "label": "Done",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.keep-file-only",
+    "surface": "Library Packs",
+    "label": "Keep file only",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.open-source-and-contribute",
+    "surface": "Library Packs",
+    "label": "Open source and contribute",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.reconnect",
+    "surface": "Library Packs",
+    "label": "Reconnect",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.remove-pack",
+    "surface": "Library Packs",
+    "label": "Remove pack",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.remove-pack.b5933e20",
+    "surface": "Library Packs",
+    "label": "Remove pack…",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.reset",
+    "surface": "Library Packs",
+    "label": "Reset",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.runtime-387430b4d4ca",
+    "surface": "Library Packs",
+    "label": null,
+    "expression": "entry . actionTitle",
+    "note": "Use skill, Add scene, Add persona or Save resource for this verified pack entry. Dual-input skills require an explicit destination; personal copies select their owner without Show/Present; saved files return to Resources after verified reference creation.",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library"
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.show-saved-file",
+    "surface": "Library Packs",
+    "label": "Show saved file",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.use-with-snap-talk",
+    "surface": "Library Packs",
+    "label": "Use with Snap & Talk",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.use-with-transcripts",
+    "surface": "Library Packs",
+    "label": "Use with transcripts",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.use-workspace-appearance",
+    "surface": "Library Packs",
+    "label": "Use workspace appearance",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.DisclosureGroup.pack-settings",
+    "surface": "Library Packs",
+    "label": "Pack settings",
+    "kind": "option",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.DisclosureGroup.saved-file-details",
+    "surface": "Library Packs",
+    "label": "Saved file details",
+    "kind": "option",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.DisclosureGroup.workspace-appearance",
+    "surface": "Library Packs",
+    "label": "Workspace appearance",
+    "kind": "option",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Label.runtime-ab530a13e459",
+    "surface": "Library Packs",
+    "label": null,
+    "expression": "message",
+    "note": "Runtime label from message; no rendered text assumed. Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission.",
+    "kind": "status",
+    "belongsTo": "library",
+    "aliasOf": "library"
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Label.workspace-appearance",
+    "surface": "Library Packs",
+    "label": "Workspace appearance",
+    "kind": "status",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Link.pack-owner-setup",
+    "surface": "Library Packs",
+    "label": "Pack owner setup",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Link.runtime-89df3f808764",
+    "surface": "Library Packs",
+    "label": null,
+    "expression": "pack . repository",
+    "note": "Runtime label from pack . repository; no rendered text assumed. Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission.",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library"
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Menu.runtime-e183908a005b",
+    "surface": "Library Packs",
+    "label": null,
+    "expression": "Image ( systemName : \"ellipsis.circle\" )",
+    "note": "Runtime label from Image ( systemName : \"ellipsis.circle\" ); no rendered text assumed. Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission.",
+    "kind": "option",
+    "belongsTo": "library",
+    "aliasOf": "library"
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.TextField.https-github-com-team-pack",
+    "surface": "Library Packs",
+    "label": "https://github.com/team/pack",
+    "kind": "option",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Toggle.keep-packs-up-to-date-automatically",
+    "surface": "Library Packs",
+    "label": "Keep packs up to date automatically",
+    "kind": "option",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
   }
 ]

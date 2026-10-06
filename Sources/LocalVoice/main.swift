@@ -819,6 +819,7 @@ func runCLI(_ args: [String]) async -> Int32 {
             }
         case "--check-readback-pack":
             try await MainActor.run { try ReadbackPackChecks.run() }
+            try await PackLibraryChecks.run()
         case "--check-readback-ordering-ui":
             let output = args.count > 1 ? URL(fileURLWithPath: args[1]) : nil
             try await MainActor.run { try ReadbackOrderingChecks.runNative(output: output) }
