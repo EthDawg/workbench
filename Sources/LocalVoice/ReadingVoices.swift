@@ -85,24 +85,43 @@ enum MacVoiceCatalog {
     /// and its locale as a BCP 47 tag.
     typealias SayVoice = (id: String, name: String, language: String)
 
-    /// Installed voices for English and the person's own language, best first.
-    /// Every entry comes from an installed identifier that
-    /// `AVSpeechSynthesisVoice(identifier:)` constructs without a language or
-    /// name lookup. `sayVoices` adds the names `say` lists, and the voices only
-    /// `say` can speak, when a saved choice needs them (see `sayVoices()`).
+    /// Installed voices for English and the person's own language, best first:
+    /// `listed`, then `catalogue`. Every entry comes from an installed
+    /// identifier that `AVSpeechSynthesisVoice(identifier:)` constructs without
+    /// a language or name lookup. `sayVoices` adds the names `say` lists, and
+    /// the voices only `say` can speak, when a saved choice needs them (see
+    /// `sayVoices()`).
     static func installed(preferredLanguage: String = preferredLanguage, sayVoices: [SayVoice] = []) -> [MacVoice] {
-        let voices = AVSpeechSynthesisVoice.speechVoices().compactMap { voice -> MacVoice? in
+        catalogue(listed(preferredLanguage: preferredLanguage), sayVoices: sayVoices, preferredLanguage: preferredLanguage)
+    }
+
+    /// The voices AVFoundation lists for English and the person's language, in
+    /// its order: the one read of the installed set. It takes 35–90 ms and may
+    /// run on any plain thread (the main run loop, a GCD queue); from a Swift
+    /// task's thread it logs an Accessibility fault.
+    static func listed(preferredLanguage: String = preferredLanguage) -> [MacVoice] {
+        AVSpeechSynthesisVoice.speechVoices().compactMap { voice -> MacVoice? in
             guard !voice.voiceTraits.contains(.isPersonalVoice), relevant(voice.language, preferredLanguage: preferredLanguage) else { return nil }
             return MacVoice(id: voice.identifier, name: voice.name, language: voice.language, quality: MacVoice.Quality(voice.quality),
                             isNovelty: voice.voiceTraits.contains(.isNoveltyVoice))
         }
+    }
+
+    /// The picker's order for `listed` voices, with the `say` names and the
+    /// voices only `say` can speak attached when the list was read. Pure.
+    static func catalogue(_ voices: [MacVoice], sayVoices: [SayVoice] = [], preferredLanguage: String) -> [MacVoice] {
         let say = sayVoices.filter { relevant($0.language, preferredLanguage: preferredLanguage) }
         return ordered(merging(voices, sayVoices: say), preferredLanguage: preferredLanguage)
     }
 
     /// Whether a saved choice can only be an older name or a voice only `say`
-    /// can speak, so the `say` list is worth asking for.
+    /// can speak, so the `say` list is worth asking for. An identifier with a
+    /// language segment names a voice AVFoundation lists; when that voice is
+    /// gone (a removed download), `say` cannot have it either, so the list is
+    /// not read for it. Only the Siri-era identifiers `say` alone keeps
+    /// (`com.apple.voice.Aman`) have no language segment.
     static func needsSayVoices(for saved: String, in voices: [MacVoice], preferredLanguage: String) -> Bool {
+        guard identifierParts(saved) == nil else { return false }
         if case .missing = resolve(saved, in: voices, preferredLanguage: preferredLanguage) { return true }
         return false
     }
@@ -113,12 +132,14 @@ enum MacVoiceCatalog {
 
     /// The voices `say` lists, read once per process and kept until
     /// `forgetSayVoices()`. Main thread only: `NSSpeechSynthesizer` is AppKit,
-    /// and asked from a Swift concurrency context it logs an Accessibility
-    /// fault per voice and runs ten times slower (7.7 s against 0.8 s for 185
-    /// voices on a 2026 Mac). Reading the attributes of the Siri-era voices
-    /// that only `say` keeps (Aman, Aru, Ona, Tara) makes AppKit look each one
-    /// up by language and name, which logs six `AFLocalization` errors apiece;
-    /// that is why the list is read only when a saved choice needs it.
+    /// and asked from a Swift task's thread it logs an Accessibility fault for
+    /// every voice (931 for 186) and takes about twice as long (0.37 s against
+    /// 0.19 s for the attributes on an idle 2026 Mac; up to 1.8 s with other
+    /// work running). Reading the attributes of the Siri-era voices that only
+    /// `say` keeps (Aman, Aru, Ona, Tara) makes AppKit look each one up by
+    /// language and name, which logs six `AFLocalization` errors apiece, after
+    /// twelve for the enumeration; that is why the list is read only when a
+    /// saved choice needs it.
     @MainActor
     static func sayVoices() -> [SayVoice] {
         if let sayVoiceCache { return sayVoiceCache }

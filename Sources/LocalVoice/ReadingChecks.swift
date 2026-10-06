@@ -144,6 +144,19 @@ enum ReadingChecks {
                   && MacVoiceCatalog.needsSayVoices(for: "com.apple.voice.Aman", in: plain, preferredLanguage: "en-AU")
                   && !MacVoiceCatalog.needsSayVoices(for: "Aman", in: bare, preferredLanguage: "en-AU"),
                   "only a choice that can be a voice `say` alone lists asks for it, and once listed it resolves")
+        try check(!MacVoiceCatalog.needsSayVoices(for: "com.apple.voice.premium.en-AU.Matilda", in: plain, preferredLanguage: "en-AU")
+                  && !MacVoiceCatalog.needsSayVoices(for: "com.apple.eloquence.en-AU.Zelda", in: plain, preferredLanguage: "en-AU")
+                  && MacVoiceCatalog.resolve("com.apple.voice.premium.en-AU.Matilda", in: plain, preferredLanguage: "en-AU") == .missing("Matilda"),
+                  "a removed voice's identifier is reported missing without the `say` list, which cannot have it")
+        // Returning to the app lists voices on a GCD queue, not the main thread
+        // and not a Swift task; the picker order is applied on the main thread.
+        let offMain = DispatchGroup(); offMain.enter()
+        nonisolated(unsafe) var listedOffMain: [MacVoice] = []
+        DispatchQueue.global(qos: .utility).async { listedOffMain = MacVoiceCatalog.listed(preferredLanguage: "en-AU"); offMain.leave() }
+        try check(offMain.wait(timeout: .now() + 10) == .success
+                  && MacVoiceCatalog.catalogue(listedOffMain, preferredLanguage: "en-AU") == MacVoiceCatalog.installed(preferredLanguage: "en-AU")
+                  && MacVoiceCatalog.sayScanCount == 0,
+                  "the listing read on the utility queue, ordered on the main thread, is the launch catalogue, without the `say` list")
         try check(MacVoiceCatalog.installed(preferredLanguage: "en-AU").allSatisfy { !$0.sayOnly && $0.legacyNames.isEmpty }
                   && MacVoiceCatalog.sayScanCount == 0, "listing installed voices never asks NSSpeechSynthesizer")
         func fresh(_ language: String, _ catalogue: [MacVoice] = compactCatalogue) -> String? {
