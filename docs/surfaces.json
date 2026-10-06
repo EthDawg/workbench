@@ -2371,6 +2371,15 @@
     "aliasOf": "persona"
   },
   {
+    "id": "StageKit.LocalPersonaProfile.LocalPersonaProfileView.Button.done.2",
+    "surface": "local profile",
+    "label": "Done",
+    "kind": "action",
+    "belongsTo": "persona",
+    "aliasOf": "StageKit.LocalPersonaProfile.LocalPersonaProfileView.Button.done",
+    "note": "The same Done, bound to Escape while the visible Done takes Return, so Escape closes the profile even when no control has keyboard focus (docs/workbench.md Fit rule 5)."
+  },
+  {
     "id": "StageKit.LocalPersonaProfile.LocalPersonaProfileView.Button.edit-appearance",
     "surface": "local profile",
     "label": "Edit appearance…",

@@ -163,7 +163,7 @@ struct PersonaPresentationPreparation: View {
                         let placement = PersonaPlacement(image: persona.image, x: item.placement.x, y: item.placement.y, width: item.placement.width)
                         let frame = PersonaGeometry.rect(placement, imageSize: image.size, in: geometry.size)
                         Image(nsImage: image).resizable().scaledToFit().frame(width: frame.width, height: frame.height)
-                            .overlay { if item.id == selectedID { Rectangle().stroke(Color.accentColor, lineWidth: 1) } }
+                            .overlay { if item.id == selectedID { Rectangle().stroke(Workbench.accent, lineWidth: 1) } }
                             .position(x: frame.midX, y: geometry.size.height - frame.midY).accessibilityHidden(true)
                     }
                 }

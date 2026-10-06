@@ -57,25 +57,33 @@ struct LocalPersonaProfileView: View {
             HStack {
                 Text("Your profile").font(.title2.weight(.semibold))
                 Spacer()
-                Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
+                // Done means one thing on every sheet: Return or Escape, as Transcript review has it.
+                Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
             }
             HStack(spacing: 18) {
+                // A circle with a hairline, as Home's Me shows the same photo.
                 Group {
-                    if let persona, let image = library.renderedImage(for: persona) { Image(nsImage: image).resizable().scaledToFit() }
+                    if let persona, let image = library.renderedImage(for: persona) { Image(nsImage: image).resizable().scaledToFill() }
                     else { Image(systemName: "person.crop.circle").resizable().scaledToFit().foregroundStyle(.secondary).padding(12) }
-                }.frame(width: 88, height: 88).accessibilityHidden(true)
+                }.frame(width: 88, height: 88).clipShape(Circle())
+                    .background(Workbench.surface, in: Circle())
+                    .overlay(Circle().strokeBorder(Workbench.border))
+                    .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Me").font(.title3.weight(.semibold))
                     Text("Use your photo as a Persona when you present.")
                         .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    Text("Saved on this Mac.").font(.caption).foregroundStyle(.secondary)
+                    // Only once there is something saved.
+                    if persona != nil { Text("Saved on this Mac.").font(.caption).foregroundStyle(.secondary) }
                 }
             }
             HStack {
                 Button("Take photo…") {
                     notice = nil; camera.start()
-                }.disabled(library.isReadOnly).help("Allow Camera access, then take and review a photo")
+                }.disabled(library.isReadOnly)
+                    .help("Allow Camera access, then take a photo. It opens in a preview: Use photo saves it as your Me persona; Cancel keeps everything as it was.")
                 Button("Choose photo…") { choosePhoto() }.disabled(library.isReadOnly)
+                    .help("Choose a photo. It opens in a preview: Use photo saves it as your Me persona; Cancel keeps everything as it was.")
                 if let persona {
                     Button("Edit appearance…") { replacement = nil; editors.open(.saved(persona)) }
                         .disabled(library.isReadOnly)
@@ -92,12 +100,19 @@ struct LocalPersonaProfileView: View {
                     dismiss(); openPersona()
                 }.buttonStyle(.link)
             }
-            Text("Taking or choosing a photo opens a preview. Use photo saves it as your Me persona; Cancel keeps everything as it was.")
-                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if let message = notice ?? library.notice {
-                Text(message).font(.callout).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                // Primary words, an orange symbol: orange text is too faint to read on a light sheet.
+                Label {
+                    Text(message).fixedSize(horizontal: false, vertical: true)
+                } icon: {
+                    Image(systemName: "exclamationmark.circle.fill").foregroundStyle(Color.orange).accessibilityHidden(true)
+                }.font(.callout)
             }
         }
+        // Escape is Done too, even when no control has keyboard focus. Both live on the profile
+        // itself, so the camera's own Cancel keeps Escape while it shows.
+        .onExitCommand { dismiss() }
+        .background { Button("Done") { dismiss() }.keyboardShortcut(.cancelAction).hidden() }
     }
     private func choosePhoto() {
         let panel = NSOpenPanel(); panel.allowedContentTypes = LogoImport.contentTypes
