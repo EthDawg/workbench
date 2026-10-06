@@ -219,6 +219,10 @@ enum SurfaceGallery {
             }
             let output = URL(fileURLWithPath: arguments[0], isDirectory: true)
             let pass = try SurfacePass(theme: arguments[1], output: output)
+            if arguments.contains("--interactive-history") {
+                try pass.openInteractiveHistory(output: output)
+                return 0
+            }
             let result = try pass.render(to: output)
             let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             try encoder.encode(result).write(to: output.appendingPathComponent("pass-\(arguments[1]).json"))
@@ -276,6 +280,44 @@ enum SurfaceGallery {
         UserDefaults.standard.setVolatileDomain(arguments, forName: UserDefaults.argumentDomain)
         guard UserDefaults.standard === isolated, UserDefaults.standard.string(forKey: "appearance") == appearance else {
             throw VoiceError.message("Could not isolate preferences.")
+        }
+    }
+}
+
+/// A deliberately bounded native host. History and the reading-replacement
+/// card are the production views; the draft inspector is test instrumentation.
+private struct HistoryNativeAcceptanceView: View {
+    @ObservedObject var model: AppModel
+    @ObservedObject var snap: SnapModel
+    let transcriptID: UUID
+    @State private var inspectDrafts = false
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Synthetic History acceptance").font(.headline)
+                Spacer()
+                Button("Review long transcript") { model.openHistory(HistoryDoor(transcript: transcriptID)) }
+                Toggle("Inspect drafts", isOn: $inspectDrafts).toggleStyle(.checkbox)
+            }.padding(12)
+            if inspectDrafts {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Dictate draft").font(.caption)
+                    Text(model.transcript).textSelection(.enabled)
+                    Text("Read draft").font(.caption)
+                    Text(model.speechText).textSelection(.enabled)
+                    Text("Playback: \(model.playing ? "playing" : "stopped") · Selection: \(model.historyLibrary.selected.count)").font(.caption)
+                }.frame(maxWidth: .infinity, alignment: .leading).padding(12)
+            }
+            if let selection = model.pendingReadingSelection {
+                ReadingSelectionReviewCard(selection: selection,
+                    limitMessage: model.readingLimitMessage(for: selection.text),
+                    replacingDisabled: !model.canReplaceReading,
+                    waitReason: model.canReplaceReading ? nil : AppModel.replaceWaitsForSave,
+                    keep: model.keepCurrentReading, replace: model.replaceReadingWithSelection)
+                    .padding(12)
+            }
+            Divider()
+            HistoryView(model: model, snap: snap, applySuggestedMetadata: { _, _ in })
         }
     }
 }
@@ -383,6 +425,69 @@ enum SurfaceGallery {
         stage.onOpenScenes = { [weak self] in self?.opened.append("present") }
         stage.onOpenPersonas = { [weak self] in self?.opened.append("personas") }
         stage.onEditShortcuts = { [weak self] in self?.opened.append("shortcuts") }
+    }
+
+    /// A native pointer/keyboard pass through the production views. It inherits
+    /// the gallery's verified disposable home, preferences and Keychain refusal.
+    /// The launcher retains the fixture folder for reproducible external edits.
+    func openInteractiveHistory(output: URL) throws {
+        let transcript = Transcript(id: UUID(uuidString: "5D1C0A1E-0000-4000-8000-000000000099")!,
+            date: Date(timeIntervalSince1970: 1_791_200_000),
+            text: (1...24).map { "Section \($0). The project team reviewed the synthetic orchard plan. Keep each decision visible when reviewing a long capture." }.joined(separator: "\n\n") + "\n\nFinal decision: plant the silver apricot orchard.",
+            seconds: 600, rawText: "Original wording marker.\n\n" + (1...24).map { "Original section \($0): um, review the synthetic orchard plan." }.joined(separator: "\n\n"))
+        model.history = [transcript] + Self.history
+        model.transcript = "Unfinished Dictate draft. Preserve this exact wording."
+        model.rawTranscript = model.transcript
+        model.speechText = "Unfinished Read draft. Keep this until I choose Replace."
+        model.historyLibrary.setMetadata(TranscriptMetadata(purpose: .meeting, person: "Avery Example", company: "Synthetic Orchard"), for: transcript.id)
+        model.historyLibrary.setSelected([.init(kind: .transcript, id: Self.history[0].id)])
+        let jobs = model.handoffJobs
+        jobs.runner = HandoffRunner(
+            discover: { SubscriptionConnection(provider: $0, executable: URL(fileURLWithPath: "/usr/bin/false"), version: "synthetic", ready: true, detail: "Synthetic fixture; no process or network.") },
+            run: { _, _, _, _, onSession in
+                onSession("history-native-fixture")
+                return SubscriptionCLIResult(providerSessionID: "history-native-fixture", text: "# Orchard follow-up\n\nThe answer-only search marker is cobalt marmalade.\n\nConfirm the planting date with Avery.\n\nThis is disposable synthetic acceptance content.")
+            })
+        jobs.setEnabled(.codex, true)
+        try wait("the synthetic connection") { jobs.connections[.codex]?.ready == true }
+        let source = HandoffSourceSnapshot(reference: .init(kind: .transcript, id: transcript.id), title: "Orchard meeting", capturedAt: transcript.date,
+            text: transcript.text, originalText: transcript.rawText!, role: .reference)
+        let job = try jobs.prepare(sources: [source], task: "Draft a short orchard follow-up.", skill: TranscriptHandoffSkill.followUp.load())
+        jobs.start(job, provider: .codex)
+        try wait("the synthetic result") { jobs.jobs.first(where: { $0.id == job.id })?.status == .completed }
+        let loading = Task { await jobs.loadTaskFiles(jobs.jobs) }
+        try wait("the saved result") { jobs.jobs.allSatisfy { jobs.files($0) != nil } }
+        _ = loading
+        let evidence = ["home": home.path, "transcript": transcript.id.uuidString,
+                        "job": job.id.uuidString, "result": jobs.folder(job).appendingPathComponent("result.md").path]
+        try JSONSerialization.data(withJSONObject: evidence, options: [.prettyPrinted, .sortedKeys])
+            .write(to: output.appendingPathComponent("history-acceptance.json"), options: .atomic)
+        model.page = "history"
+        model.microphoneStartFailure = { _ in "This acceptance pass does not record audio." }
+        snap.mayBeginCapture = { "This acceptance pass does not capture the screen." }
+        // Only these saved-work views are interactive. The complete shell also
+        // exposes device capture, credential writes and OS settings, whose
+        // owners are intentionally outside this acceptance pass.
+        NSApp.setActivationPolicy(.regular)
+        let window = NSWindow(contentViewController: NSHostingController(rootView:
+            HistoryNativeAcceptanceView(model: model, snap: snap, transcriptID: transcript.id)))
+        window.title = "Workbench Preview · Synthetic History acceptance"
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+        window.setContentSize(SurfaceGallery.sizes[0].size)
+        window.minSize = SurfaceGallery.sizes[1].size
+        window.isReleasedWhenClosed = false
+        let menu = NSMenu(), appItem = NSMenuItem(), appMenu = NSMenu(title: "Workbench")
+        let details = NSMenuItem(title: "Copy build details", action: #selector(AppDelegate.copyBuildDetails), keyEquivalent: "")
+        details.target = shell; appMenu.addItem(details)
+        appMenu.addItem(withTitle: "Quit acceptance", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appItem.submenu = appMenu; menu.addItem(appItem)
+        let editItem = NSMenuItem(), edit = NSMenu(title: "Edit")
+        for (title, action, key) in [("Copy", "copy:", "c"), ("Paste", "paste:", "v"), ("Select All", "selectAll:", "a")] {
+            edit.addItem(withTitle: title, action: NSSelectorFromString(action), keyEquivalent: key)
+        }
+        editItem.submenu = edit; menu.addItem(editItem); NSApp.mainMenu = menu
+        window.center(); window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
+        withExtendedLifetime(window) { NSApp.run() }
     }
 
     func render(to output: URL) throws -> SurfaceGallery.Pass {
