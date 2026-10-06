@@ -1,6 +1,6 @@
 # Bug report protocol schema
 
-Shared build target for the native producer and intake validator described in [Report a problem](bug-reporting.md). This is a contract fixture, not a live customer report or an implemented validator. Extract the first JSON block as `manifest.schema.json`; the second is a synthetic valid text-only input. Use JSON Schema draft 2020-12 with **format assertions enabled**, not only annotations.
+Shared build target for the native producer and the receipt verifier described in [Report a problem](bug-reporting.md). This is a contract fixture, not a live customer report or an implemented validator. Extract the first JSON block as `manifest.schema.json`; the second is a synthetic valid text-only input. Use JSON Schema draft 2020-12 with **format assertions enabled**, not only annotations.
 
 ## Manifest
 
@@ -373,19 +373,33 @@ Shared build target for the native producer and intake validator described in [R
 }
 ```
 
-## Receipt shape
+## Verification request and result
 
-Every successful endpoint returns the same receipt shape with required `schema_version`, `report_id`, `manifest_sha256`, `revision`, `state` and `updated_at`. UUID/hash formats match the manifest; revision is a positive integer, monotonically increasing per report. `state` is one of `uploading`, `accepted`, `forwarding`, `verifying`, `received`, `held`, `removal_pending`, `deleted`, `expired`. Optional `retry_after_seconds` is an integer from 1 to 86400. Optional `failure_code` is one of `incomplete_upload`, `invalid_payload`, `quota_exceeded`, `receiver_unavailable`, `receipt_unconfirmed`, `removal_unconfirmed`, `expired`. Reject unknown keys. Do not return provider credentials, private queue links or reporter content. The all-zero hash below is an illustrative placeholder, not the digest of this fixture.
+Revised 7 October 2026: the app sends the manifest to Sentry as `context.json` and asks the stateless [Report check](../services/report-check/README.md) verifier for receipt. The 6 October gateway receipt (revisions, removal states, failure codes) is superseded.
+
+Request, `POST /api/v1/verify`, at most 4 KiB, strict JSON (unknown and duplicate keys rejected). `event_id` is the Sentry envelope's UUIDv4 as 32 lowercase hex; `report_id` matches the manifest; `attachments` lists one to three of the fixed names with their exact byte counts and SHA-256, and always includes `context.json` (whose own digest is computed over the exact manifest bytes sent); optional `sent_at` is the RFC 3339 time the app received Sentry's 200. The hashes below are illustrative placeholders, not digests of this fixture.
 
 ```json
 {
-  "schema_version": 1,
+  "event_id": "9ec79c33ec9942ab8353589fcb2e04dc",
   "report_id": "a02149ed-36f5-4f10-9a21-10acfe2289b2",
-  "manifest_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
-  "revision": 1,
-  "state": "accepted",
-  "updated_at": "2026-10-06T05:00:02Z",
-  "retry_after_seconds": 5
+  "sent_at": "2026-10-06T05:00:02Z",
+  "attachments": [
+    {
+      "name": "context.json",
+      "size": 512,
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ]
+}
+```
+
+Result, `200` with `Cache-Control: no-store`: exactly `state` (`received`, `pending`, `not_found` or `mismatch`) and `checked_at`. Errors are `405`, `413`, `422` and `503` (with `Retry-After`) and never carry a state. Neither shape carries credentials, private Sentry URLs or reporter content.
+
+```json
+{
+  "state": "received",
+  "checked_at": "2026-10-06T05:00:31Z"
 }
 ```
 
