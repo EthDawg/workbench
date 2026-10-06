@@ -41,7 +41,7 @@ enum LiveDictationDeliveryChecks {
         func owner() -> LiveDictationDelivery? { .init(initial: state, destinationName: "Fixture", system: system) }
         func next() { now += 1 }
     }
-    private struct Failure: Error { let message: String }
+    private struct Failure: LocalizedError { let message: String; var errorDescription: String? { message } }
     static func run() throws {
         var count = 0
         func expect(_ result: Bool, _ message: String) throws {
@@ -56,8 +56,8 @@ enum LiveDictationDeliveryChecks {
         field.next(); live.preview("hello world 🌍")
         try expect(field.state.value == "🙂 prefix hello world 🌍 suffix 👩🏽‍💻", "provisional replacement does not append duplicate words")
         try expect(field.copies.isEmpty, "preview leaves clipboard alone")
-        let finished = live.finish("Hello, world! 🌍", restoreClipboard: true)
-        try expect(finished.wasPasted && field.state.value == "🙂 prefix hello, world! 🌍 suffix 👩🏽‍💻", "final cleanup replaces owned span and fits mid-sentence (#14)")
+        let finished = live.finish("Yes, world! 🌍", restoreClipboard: true)
+        try expect(finished.wasPasted && field.state.value == "🙂 prefix yes, world! 🌍 suffix 👩🏽‍💻", "final cleanup replaces owned span and fits mid-sentence (#14)")
         try expect(field.copies.isEmpty && field.stops == 1, "preserved clipboard and observer teardown")
         live.preview("late")
         try expect(field.replaceCalls == 3, "late previews cannot mutate a finished field")

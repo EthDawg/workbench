@@ -13,6 +13,7 @@ enum InsertionBoundaryChecks {
         var context = InsertionBoundary.Context()
     }
     private static let dictionary = InsertionBoundary.Context(dictionaryTerms: ["Mark", "Snap & Talk"])
+    private static let willIsAName = InsertionBoundary.Context(dictionaryTerms: ["Will"])
     private static let cases: [Case] = [
         // The issue's own examples.
         Case(name: "joins a word boundary on both sides", before: "Please bring", after: "tomorrow", dictated: "The blue folder",
@@ -21,8 +22,14 @@ enum InsertionBoundaryChecks {
              expected: "the blue folder", decisions: [.lowercased, .droppedFullStop]),
         Case(name: "a dictionary name keeps its capital mid-sentence", before: "I spoke to ", after: " yesterday", dictated: "Mark",
              expected: "Mark", decisions: [.kept(.dictionaryTerm)], context: dictionary),
-        Case(name: "a name the dictionary does not know follows the sentence", before: "I spoke to ", after: " yesterday", dictated: "Mark",
-             expected: "mark", decisions: [.lowercased]),
+        Case(name: "a name the dictionary does not know keeps its capital", before: "I spoke to ", after: " yesterday", dictated: "Mark",
+             expected: "Mark", decisions: [.kept(.notAnEverydayWord)]),
+        Case(name: "a product name keeps its capital mid-sentence", before: "open it in ", after: "", dictated: "Google Docs",
+             expected: "Google Docs", decisions: [.kept(.notAnEverydayWord)]),
+        Case(name: "a first name before an everyday word keeps its capital", before: "I saw ", after: "", dictated: "Sarah yesterday",
+             expected: "Sarah yesterday", decisions: [.kept(.notAnEverydayWord)]),
+        Case(name: "a verb the recogniser capitalised keeps its capital", before: "and then ", after: "", dictated: "Send it to me",
+             expected: "Send it to me", decisions: [.kept(.notAnEverydayWord)]),
         Case(name: "a product name the field already capitalises mid-sentence stays", before: "We use Workbench daily. I told ", after: " about it", dictated: "Workbench",
              expected: "Workbench", decisions: [.kept(.capitalisedElsewhere)]),
         Case(name: "a product name capitalised later in the dictation stays", before: "we use ", after: "", dictated: "Workbench daily, and Workbench rocks",
@@ -57,12 +64,19 @@ enum InsertionBoundaryChecks {
         Case(name: "a number keeps the spelling", before: "about ", after: "", dictated: "5 people", expected: "5 people", decisions: [.kept(.notAPlainWord)]),
         Case(name: "a letter joined to a digit keeps the spelling", before: "with ", after: "", dictated: "A4 paper", expected: "A4 paper", decisions: [.kept(.notAPlainWord)]),
         Case(name: "a word joined to punctuation keeps the spelling", before: "say ", after: "", dictated: "Hello,world", expected: "Hello,world", decisions: [.kept(.notAPlainWord)]),
-        Case(name: "a Title-case word before a comma is lowercased", before: "say ", after: "", dictated: "Hello, world", expected: "hello, world", decisions: [.lowercased]),
+        Case(name: "a greeting before a comma is not an everyday word", before: "say ", after: "", dictated: "Hello, world", expected: "Hello, world", decisions: [.kept(.notAnEverydayWord)]),
         Case(name: "a single-letter article is lowercased", before: "bring ", after: "", dictated: "A folder", expected: "a folder", decisions: [.lowercased]),
-        Case(name: "a hyphenated Title-case word is lowercased", before: "the ", after: "", dictated: "Mid-sentence case", expected: "mid-sentence case"),
+        Case(name: "an everyday word before a comma is lowercased", before: "bring it ", after: "", dictated: "Now, please", expected: "now, please", decisions: [.lowercased]),
+        Case(name: "a hyphenated Title-case word is kept", before: "the ", after: "", dictated: "Mid-sentence case", expected: "Mid-sentence case", decisions: [.kept(.notAnEverydayWord)]),
         Case(name: "a Title-case contraction is lowercased", before: "I think ", after: "", dictated: "Don't", expected: "don't"),
+        Case(name: "It's is lowercased", before: "I think ", after: "", dictated: "It's fine", expected: "it's fine", decisions: [.lowercased]),
+        Case(name: "a curly apostrophe is still the same contraction", before: "I think ", after: "", dictated: "It\u{2019}s fine", expected: "it\u{2019}s fine", decisions: [.lowercased]),
+        Case(name: "We'll is lowercased", before: "and ", after: "", dictated: "We'll see", expected: "we'll see", decisions: [.lowercased]),
+        Case(name: "That is lowercased", before: "I know ", after: "", dictated: "That one", expected: "that one", decisions: [.lowercased]),
+        Case(name: "Will is lowercased as a modal", before: "he ", after: "", dictated: "Will go", expected: "will go", decisions: [.lowercased]),
+        Case(name: "Will keeps its capital as a dictionary name", before: "ask ", after: "", dictated: "Will go", expected: "Will go", decisions: [.kept(.dictionaryTerm)], context: willIsAName),
         Case(name: "a multi-word dictionary term keeps its capital", before: "open ", after: "", dictated: "Snap & Talk now", expected: "Snap & Talk now", decisions: [.kept(.dictionaryTerm)], context: dictionary),
-        Case(name: "a dictionary term is matched exactly, not by prefix", before: "open ", after: "", dictated: "Marker pens", expected: "marker pens", decisions: [.lowercased], context: dictionary),
+        Case(name: "a dictionary term is matched exactly, not by prefix", before: "open ", after: "", dictated: "Marker pens", expected: "Marker pens", decisions: [.kept(.notAnEverydayWord)], context: dictionary),
         Case(name: "a dictated opening quote keeps the words inside it", before: "He said", after: "", dictated: "\"Hello there\"", expected: " \"Hello there\"", decisions: [.leadingSpace, .kept(.notAPlainWord)]),
         // Punctuation either side.
         Case(name: "no space before a full stop", before: "Thanks", after: ".", dictated: "a lot", expected: " a lot", decisions: [.leadingSpace]),
@@ -155,8 +169,8 @@ enum InsertionBoundaryChecks {
         try check(withSpace?.text == " the folder", "replacing a selection that took the leading space restores it")
         let whole = InsertionBoundary.fit(dictated: "hello", value: "old words", selection: NSRange(location: 0, length: 9))
         try check(whole?.text == "Hello", "replacing the whole field is a sentence start")
-        let caret = InsertionBoundary.fit(dictated: "Hello", value: "🙂 prefix OLD suffix", selection: NSRange(location: 10, length: 3))
-        try check(caret?.text == "hello", "UTF-16 selection offsets past an emoji split the field correctly")
+        let caret = InsertionBoundary.fit(dictated: "This", value: "🙂 prefix OLD suffix", selection: NSRange(location: 10, length: 3))
+        try check(caret?.text == "this", "UTF-16 selection offsets past an emoji split the field correctly")
         try check(InsertionBoundary.fit(dictated: "x", value: nil, selection: NSRange(location: 0, length: 0)) == nil,
                   "an unreadable value gives no fit: a secure field reads as nil, so its words go in as dictated")
         try check(InsertionBoundary.fit(dictated: "x", value: "ab", selection: nil) == nil, "a missing selection gives no fit")

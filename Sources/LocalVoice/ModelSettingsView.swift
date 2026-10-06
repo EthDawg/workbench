@@ -124,8 +124,12 @@ struct ModelSettingsView: View {
             ready = await engine.isReady; status = await engine.statusDescription()
             onChange(ready, status)
         } catch {
-            failure = error.localizedDescription; onFailure(failure)
+            failure = error.localizedDescription
             ready = await engine.isReady; status = await engine.statusDescription()
+            // A failed switch that leaves the engine in use ready is this page's failure
+            // only: the host shows the ready engine, not a Retry model that has nothing
+            // to retry. Only an engine that is not ready is the host's failure too.
+            onFailure(ready ? nil : failure)
             onChange(ready, status)
         }
     }
