@@ -1,0 +1,106 @@
+import AppKit
+import SwiftUI
+
+enum NativePresentationApp: String, CaseIterable {
+    case quickTime, iPhoneMirroring
+    var title: String { self == .quickTime ? "QuickTime Player" : "iPhone Mirroring" }
+    var bundleIdentifier: String { self == .quickTime ? "com.apple.QuickTimePlayerX" : "com.apple.ScreenContinuity" }
+    var applicationURL: URL? { NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) }
+    var isAvailable: Bool { applicationURL != nil }
+
+    func open(onError: @escaping (String) -> Void) {
+        guard let url = applicationURL else { onError("\(title) is not installed on this Mac."); return }
+        NSWorkspace.shared.openApplication(at: url, configuration: .init()) { _, error in
+            if let error { DispatchQueue.main.async { onError("\(title) could not open: \(error.localizedDescription)") } }
+        }
+    }
+}
+
+enum PhoneConnectionSupport {
+    static let guideURL = URL(string: "https://workbench-mac.vercel.app/phone-presenting/")!
+    static let cameraSettingsURL = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Camera")!
+    /// The three things that happen away from Workbench, in the order they fail.
+    static let checks = [
+        "The cable carries data. Some cables only charge; the cable that came with the phone does both.",
+        "The phone is unlocked and you tapped Trust This Computer. A reset phone or a new Mac asks again.",
+        "This Mac allowed the accessory. Approve its prompt, or look under System Settings › Privacy & Security › Allow accessories to connect. A managed Mac may block phones over USB; that is IT’s setting, not yours."
+    ]
+}
+
+/// One compact answer to "Can’t see your phone?": the live status, the three
+/// checks that happen away from Workbench, a QuickTime check that separates the
+/// Mac from Workbench, and the honest ways to show a phone in a call when this
+/// Mac cannot receive it. No route picker, no policy detection, no setting changed.
+struct PhoneConnectionHelp: View {
+    let status: PhoneLinkStatus
+    let diagnostic: () -> String
+    /// A presentation is running: opening an Apple app releases its capture first.
+    var endsPresentation = false
+    let openApp: (NativePresentationApp) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var copiedUntil = Date.distantPast
+    @State private var now = Date()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text("Can’t see your phone?").font(.title2.bold())
+                Spacer()
+                Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
+            }
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: status.symbol).font(.title3).foregroundStyle(status.isLive ? Workbench.accent : .secondary).frame(width: 22)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(status.title).font(.headline)
+                    if let detail = status.detail { Text(detail).font(.callout).foregroundStyle(.secondary) }
+                }.fixedSize(horizontal: false, vertical: true)
+            }.padding(12).frame(maxWidth: .infinity, alignment: .leading).background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Three checks, on the phone and this Mac").font(.headline)
+                        ForEach(Array(PhoneConnectionSupport.checks.enumerated()), id: \.offset) { index, check in
+                            HStack(alignment: .top, spacing: 10) {
+                                Text("\(index + 1)").monospacedDigit().foregroundStyle(.secondary).frame(width: 16)
+                                Text(check).fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                    VStack(alignment: .leading, spacing: 6) {
+                        Button(endsPresentation ? "End presentation & check in QuickTime Player" : "Check in QuickTime Player") { openApp(.quickTime) }
+                            .disabled(!NativePresentationApp.quickTime.isAvailable)
+                        Text("File › New Movie Recording, then the source menu beside the record button. If QuickTime can’t see the phone either, this Mac isn’t receiving it: the cable, trust or a policy, not Workbench.")
+                            .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    }
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("In a call, without the stage").font(.headline)
+                        Text("Zoom on this Mac: Share Screen › iPhone/iPad via Cable, with Share computer sound for the phone’s audio.")
+                        Text("Teams or Zoom on the phone: share the phone’s screen from the phone itself. Keep one microphone and speaker live so nothing echoes.")
+                        HStack(alignment: .top, spacing: 10) {
+                            Text("Apple’s iPhone Mirroring controls the phone from this Mac. It needs the same Apple Account signed in on both devices, and keeps the phone’s microphone and camera off.")
+                            if NativePresentationApp.iPhoneMirroring.isAvailable {
+                                Button(endsPresentation ? "End & open" : "Open") { openApp(.iPhoneMirroring) }.fixedSize()
+                            }
+                        }
+                    }.fixedSize(horizontal: false, vertical: true)
+                }.frame(maxWidth: .infinity, alignment: .leading).padding(.trailing, 4)
+            }
+            Divider()
+            HStack {
+                Button(now < copiedUntil ? "Copied" : "Copy connection details") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(diagnostic(), forType: .string)
+                    copiedUntil = Date().addingTimeInterval(4)
+                }.help("Facts about the USB bus, screen sources and permissions, with no identifiers, for IT or a report")
+                    .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { now = $0 }
+                Spacer()
+                Link("Help online ↗", destination: PhoneConnectionSupport.guideURL)
+            }
+            if endsPresentation {
+                Text("Opening an Apple app ends this presentation’s capture first. Saved scenes stay as they are.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        }.padding(24).frame(width: 520, height: 560)
+            .onExitCommand { dismiss() }
+    }
+}

@@ -200,7 +200,7 @@ struct WorkbenchHome: View {
                     openMicrophoneSettings: model.openMicrophoneSettings,
                     prepareFollowUp: { id in handoffReview = HandoffReviewRequest(task: MeetingFollowUp.task, transcriptID: id) })
                 case "annotate": titled("annotate", summary: "Draw attention to what matters, right over your live demo.") { stage.controlsView }
-                case "present": titled("present", summary: "Show a device in a saved scene, with your backdrop and branding.", divided: true) { PresentWorkspaceView(model: model, stage: stage) }
+                case "present": titled("present", summary: "Your phone on a clean stage, for calls and demos.", divided: true) { PresentWorkspaceView(model: model, stage: stage) }
                 case "personas": stage.personasView
                 case _ where Self.destination(model.page).page == "library": library
                 case _ where Self.destination(model.page).page == "settings": settings
@@ -628,7 +628,15 @@ struct WorkbenchHomePage: View {
                 liveRow("Transcribing narration", WorkbenchHome.symbol(of: "readback")) { ProgressView().controlSize(.small) }
             }
             if stage.isDrawing { liveRow("Drawing", "pencil.tip") { Button("Stop drawing") { stage.finishDrawing() } } }
-            if stage.isPresenting { liveRow("Presenting", "iphone") { Button("End presentation") { stage.endDeviceScene() } } }
+            if stage.isPresenting {
+                // The phone's status from its one owner, which the stage's own observation does not
+                // forward, so the row follows it while the presentation runs.
+                PhoneLinkObserver(phoneLink: stage.phoneLink) { status in
+                    liveRow(stage.presentationShowsPhone ? "Presenting · " + status.title : "Presenting", "iphone") {
+                        Button("End presentation") { stage.endDeviceScene() }
+                    }
+                }
+            }
             if personaControl.isCurrentWork {
                 let persona = personaControl
                 liveRow("Persona · " + stage.personaStatus, "person.crop.rectangle") {
@@ -908,6 +916,14 @@ enum HomeRecentWork {
         case .snap: return nil
         }
     }
+}
+
+/// Draws its content from the phone's current status and again whenever it changes. Present's
+/// phone state has its own owner in StageKit, apart from the controller Home observes.
+private struct PhoneLinkObserver<Content: View>: View {
+    @ObservedObject var phoneLink: PhoneLinkMonitor
+    @ViewBuilder let content: (PhoneLinkStatus) -> Content
+    var body: some View { content(phoneLink.status) }
 }
 
 /// What Home shows, and in what order. Counting is what LocalVoice can reach; live state comes

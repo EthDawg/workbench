@@ -16,6 +16,10 @@ Repository collaborators can push their own feature branches after accepting the
 
 Matt's ServiceNow branding and deck helpers originated in [#104](https://github.com/Ship-Work/workbench/pull/104), whose authorship and public history remain intact. From 2.2, company content is maintained in its private pack repository; open its source link in Packs to contribute there. Changes to Workbench's generic loader and handoff contracts belong in this public repository. Preserve original artwork and credit, publish changed payloads as a new pack version, verify rendered examples in the pack repository, and leave existing sessions' snapshots unchanged. Colleagues use the [team guide](https://workbench-mac.vercel.app/guide/#servicenow-pack) and their team's pack link.
 
+## Before revisiting an idea
+
+Before revisiting an idea, check [research and decisions](docs/research/README.md). Reuse the existing investigation, then verify the relevant current source and changing vendor facts. Keep a short record of the outcome, decision, primary sources and checked date, reason, simpler route, reconsideration condition and acceptance/issue link. Preserve a superseded finding with a pointer to its replacement; do not revive its old schedule. Store reusable, sanitized conclusions in the owning repository document rather than only in chat or ignored build output.
+
 ## Choose a first step
 
 1. Check the [open issues](https://github.com/Ship-Work/workbench/issues). An unassigned [good first issue](https://github.com/Ship-Work/workbench/issues?q=is%3Aissue%20is%3Aopen%20label%3A%22good%20first%20issue%22) is a useful starting point. Comment that you want to take it so others can coordinate; no repository write access is needed.
@@ -109,7 +113,7 @@ Record simulator model/OS and actual test results in the PR. Physical speech ava
 | StageKit's public boundary | `Sources/StageKit/StageKitController.swift` |
 | Drawing, boards, timer and presentation | `Sources/StageKit/AppCoordinator.swift`, `DemoScenes.swift`, `DemoPresentation.swift` |
 | Presentation control visibility and keyboard reveal | `Sources/StageKit/PresentationControls.swift`, `Tests/StageKitLegacy/DemoModeTests.swift` |
-| Device capture and Apple alternatives | `Sources/StageKit/DemoCapture.swift`, `NativePresentationApps.swift` |
+| The phone's link, capture and help | `Sources/StageKit/PhoneLink.swift`, `DemoCapture.swift`, `PhoneConnectionHelp.swift` |
 | Identity, appearance and legacy-data import | `Sources/LocalVoice/Workbench.swift`, `Sources/StageKit/Workbench.swift` |
 | Packaging and Preview install | `scripts/build.sh`, `scripts/release/preview.py`, `scripts/release/config.json` |
 | Mobile navigation, text and local state | `Mobile/Workbench/WorkbenchApp.swift`, `TextWorkspaces.swift`, `MobileDocument.swift`, `MobileStore.swift` |

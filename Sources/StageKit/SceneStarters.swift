@@ -30,9 +30,9 @@ enum SceneStarters {
         (Bundle.main.resourceURL ?? Bundle.main.bundleURL).appendingPathComponent("SceneBackdrops")
     }
     static let all: [SceneStarter] = [
-        .init(id: "window-light", name: "Window light", group: "Quiet motion"),
-        .init(id: "campus-breeze", name: "Campus breeze", group: "Quiet motion"),
-        .init(id: "coastal-sky", name: "Coastal sky", group: "Quiet motion"),
+        .init(id: "window-light", name: "Window light", group: "Light and sky"),
+        .init(id: "campus-breeze", name: "Campus breeze", group: "Light and sky"),
+        .init(id: "coastal-sky", name: "Coastal sky", group: "Light and sky"),
         .init(id: "office-professional", name: "Office & professional", group: "Everyday settings"),
         .init(id: "care-service", name: "Care & service", group: "Everyday settings"),
         .init(id: "higher-education-campus", name: "Higher education campus", group: "Australian sectors"),

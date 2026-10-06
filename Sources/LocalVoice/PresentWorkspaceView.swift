@@ -9,7 +9,6 @@ struct PresentWorkspaceView: View {
         VStack(spacing: 0) {
             HStack {
                 PresentPromptButton(model: model).fixedSize().frame(height: 26)
-                Button("Switch to Browser Tab…") { model.onShowPresenter?() }
                 Spacer()
             }.padding(.horizontal, Workbench.pagePadding).padding(.vertical, 10)
             stage.scenesView

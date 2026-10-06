@@ -1,6 +1,7 @@
 import AppKit
 import AVFoundation
 import ObjectiveC
+import SceneSyncKit
 import SwiftUI
 import StageKit
 import ToolbarCore
@@ -589,8 +590,11 @@ private struct HistoryNativeAcceptanceView: View {
         for (route, shot) in try renderScreenAccessOff(to: output) {
             if let index = pages.firstIndex(where: { $0.route == route }) { pages[index].shots.append(shot) }
         }
+        // The entries and menus above press Present without a scene. Its phone states add one, so they come last.
+        let catalogue = entries() + menuEntries
+        if let present = pages.firstIndex(where: { $0.route == "present" }) { pages[present].shots += try renderPresentStates(to: output) }
         return SurfaceGallery.Pass(theme: theme, panels: panels, toolbar: toolbar, host: host, pickers: pickers + pickerShots, pickerHost: pickerHost,
-                                   pages: pages, entries: entries() + menuEntries, menus: listings, placement: placement, checks: checks)
+                                   pages: pages, entries: catalogue, menus: listings, placement: placement, checks: checks)
     }
 
     // MARK: Saved Prompts picker
@@ -3369,13 +3373,13 @@ private struct HistoryNativeAcceptanceView: View {
     /// (Home asks macOS for the login item status each time it is created, which can be slow).
     /// The Workbench window at `size`. `sectionFrames`, when given, hears where this window's pages
     /// lay out their named sections (`pageSectionFrames`), and no other window's.
-    func homeWindow(size: NSSize, hostsSheets: Bool = false, sectionFrames: ((String, CGRect) -> Void)? = nil) -> NSWindow {
+    func homeWindow(size: NSSize, hostsSheets: Bool = false, sectionFrames: ((String, CGRect) -> Void)? = nil, stage: StageKitController? = nil) -> NSWindow {
         // A preceding toolbar-host fixture closes its controller. Restore this pass's
         // retained settings owner before rendering desktop pages, as the live app has one.
         if model.toolbarControls == nil { model.toolbarControls = toolbarSettingsControls }
         let window = offscreenWindow(size: size, styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], hostsSheets: hostsSheets)
         window.titlebarAppearsTransparent = true; window.titleVisibility = .hidden
-        window.contentViewController = NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard, readback: readback, snap: snap)
+        window.contentViewController = NSHostingController(rootView: WorkbenchHome(model: model, stage: stage ?? self.stage, keyboard: keyboard, readback: readback, snap: snap)
             .environment(\.pageSectionFrames, sectionFrames))
         window.setContentSize(size)
         if hostsSheets {
@@ -3512,11 +3516,10 @@ private struct HistoryNativeAcceptanceView: View {
         list += ToolbarMode.allCases.map { page("Floating toolbar chooser", "Open " + $0.title + "…", $0.page) }
         list += [action("Floating toolbar chooser", "Activity commands", "Each visible command acts on its named owner and operation; choosing a tool starts nothing"),
                  action("Floating toolbar", "Choose Persona / Next Persona / Next set", "Selects or advances the frozen live cards or prepared sets"),
-                 action("Floating toolbar", "View", "Current presentation window, source and motion controls"),
+                 action("Floating toolbar", "View", "Current presentation window, its phone's next step and source"),
                  action("Settings · General", "Keep open / Position…", "Uses the toolbar's existing preference and placement owner"),
                  action("Persona workspace", "Live copy controls", "Appearance, size, lock, position, replace, update, visibility and explicit layout saving"),
                  action("Present workspace", "Live presentation", "Controls the running snapshot while saved scene preparation stays separate"),
-                 action("Present workspace", "Switch to Browser Tab…", "Opens the existing Switch to panel"),
                  action("Present workspace", "Saved Prompts…", "The same picker and delivery owner as the pill's Prompts")]
         for tool in WorkbenchControlTool.allCases {
             let options = "\(tool.title) · Options"
@@ -3613,6 +3616,79 @@ private struct HistoryNativeAcceptanceView: View {
                  page(other, "Switch to panel · Set up", "library"), page(other, "StageKit controls and drawing settings", "annotate"),
                  page(other, "StageKit shortcut editing", "shortcuts"), page(other, "StageKit persona preparation", "personas")]
         return list
+    }
+}
+
+extension SurfacePass {
+    // MARK: Present with a scene
+
+    /// Present with a saved scene and the phone's status pinned to synthetic signals (#276): nothing
+    /// on USB, an iPhone on USB whose screen macOS does not offer yet, and device video restricted on
+    /// this Mac. This pass's stage adds the scene; a new stage then reads it back as Workbench does at
+    /// launch, so the page carries no notice from adding it. The windows are never on screen, so the
+    /// preview never reports itself visible and the capture never starts: the device frame and the
+    /// status line show the pinned status.
+    func renderPresentStates(to output: URL) throws -> [SurfaceGallery.Shot] {
+        let synthetic = try addPresentScene()
+        let defaults = try SurfaceGallery.isolatedDefaults("StageKit-present", home: home)
+        defaults.set(true, forKey: "legacyStagePreferencesSeeded.v1")
+        // The two hooks the app sets that change this page: shared live controls and View image.
+        let saved = StageKitController(defaults: defaults)
+        saved.useSharedActivityControls()
+        saved.onViewImages = { _, _ in }
+        let window = homeWindow(size: SurfaceGallery.sizes[0].size, stage: saved)
+        defer { window.contentViewController = nil; window.close(); saved.setPhoneLinkFixture(nil) }
+        var onUSB = PhoneLinkSignals()
+        onUSB.usb = [.init(name: "iPhone", kind: .iPhone, productID: 0x12A8)]
+        var restricted = PhoneLinkSignals()
+        restricted.access = .restricted
+        let states: [(id: String, title: String, signals: PhoneLinkSignals)] = [
+            ("no-phone", "Present with a scene, no phone on USB", PhoneLinkSignals()),
+            ("phone-on-usb", "Present with a scene, iPhone on USB without its screen", onUSB),
+            ("restricted", "Present with a scene, device video restricted", restricted)]
+        return try states.map { state in
+            saved.setPhoneLinkFixture(state.signals)
+            let (rep, drawn) = try renderPage("present", in: window)
+            let words = PhoneLink.status(state.signals).title
+            guard saved.phoneLinkStatus.title == words else {
+                throw VoiceError.message("Present showed “\(saved.phoneLinkStatus.title)” for pinned signals that read “\(words)”.")
+            }
+            if let notice = saved.notice(on: .present) { throw VoiceError.message("Present's saved-scene render shows a notice: \(notice)") }
+            return try save(rep, id: "state-" + state.id, title: "\(state.title), \(Int(drawn.width)) × \(Int(drawn.height)) pt",
+                            detail: "Pinned synthetic signals; the device frame and the status line say “\(words)”. "
+                                + (synthetic ? "A synthetic backdrop imported as a scene file." : "The bundled Office & professional starter."),
+                            file: "page-present-state-\(state.id)-\(theme).png", to: output)
+        }
+    }
+
+    /// Adds a scene with the device frame to this pass's stage. A packaged app carries the starter
+    /// backdrops and adds the Office & professional starter. A bare build has none beside it, so a
+    /// synthetic backdrop is imported through the scene-file route Packs use. True when synthetic.
+    private func addPresentScene() throws -> Bool {
+        do {
+            try stage.addStarterScene("office-professional")
+            return false
+        } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+            let image = NSImage(size: NSSize(width: 1600, height: 1000))
+            image.lockFocus()
+            NSGradient(starting: NSColor(calibratedRed: 0.93, green: 0.91, blue: 0.87, alpha: 1),
+                       ending: NSColor(calibratedRed: 0.76, green: 0.82, blue: 0.88, alpha: 1))?.draw(in: NSRect(x: 0, y: 0, width: 1600, height: 1000), angle: 90)
+            NSColor(calibratedRed: 0.67, green: 0.62, blue: 0.56, alpha: 1).setFill()
+            NSRect(x: 0, y: 0, width: 1600, height: 240).fill()
+            NSColor(calibratedWhite: 1, alpha: 0.45).setFill()
+            NSBezierPath(roundedRect: NSRect(x: 150, y: 380, width: 470, height: 440), xRadius: 14, yRadius: 14).fill()
+            image.unlockFocus()
+            guard let tiff = image.tiffRepresentation, let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) else {
+                throw VoiceError.message("Could not draw a synthetic backdrop.")
+            }
+            let asset = SceneAsset.name(for: png)
+            var scene = PortableScene(name: "Customer demo", background: asset)
+            scene.viewport = SceneDevice()
+            let file = home.appendingPathComponent("Customer demo." + SceneFile.fileExtension)
+            try ScenePackage(scene: scene, assets: [asset: png]).encoded().write(to: file, options: .withoutOverwriting)
+            try stage.importPackScene(at: file)
+            return true
+        }
     }
 }
 
@@ -3765,6 +3841,7 @@ private struct SurfaceIndex {
             "Snap & Talk shows its first-run page. An open session shows its folder path and this Mac's Microphone access. Screen Recording reads as allowed, except in the Screen Recording off states.",
             "History shows the synthetic transcripts and Snaps, then its states: empty; All with Hand off tasks and two items selected; Results with running, completed, failed and Ready tasks; and Transcripts. Tasks run through a synthetic provider with a fixed clock; no process starts. The running strip draws a still symbol in place of its live indicator. Snap shows three synthetic Snaps with fixed dates.",
             "The meeting page lists two synthetic audio apps instead of this Mac's; the meeting status row comes from a synthetic capture that records nothing.",
+            "Present's phone states pin synthetic signals on one scene: the bundled Office & professional starter in a packaged app, otherwise a synthetic backdrop imported as a scene file. Its page is never on screen, so the capture never starts and no phone picture is drawn; the stage frame's live states need a phone on the installed app. The scene list's selected row draws black: its source-list selection is a material, which these renders do not draw.",
             "The speech engine is never loaded, so Models shows a fresh install. Mac voices, Apple Intelligence availability and keyboard labels come from the rendering Mac.",
             "Pixel sizes follow the rendering display's scale."].map { "<li>\(esc($0))</li>" }.joined() + "</ul></body></html>\n"
         try Data(html.utf8).write(to: output.appendingPathComponent("index.html"), options: .atomic)

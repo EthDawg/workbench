@@ -10,6 +10,12 @@ enum Workbench {
         return !NSRunningApplication.runningApplications(withBundleIdentifier: String(identifier.dropLast(".preview".count))).isEmpty
     }
     static var displayName: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? name }
+    /// Version and build as Info.plist states them, for reports; "development" from a bare binary.
+    static var buildLabel: String {
+        let info = Bundle.main.infoDictionary ?? [:]
+        guard let version = info["CFBundleShortVersionString"] as? String else { return "development" }
+        return version + ((info["CFBundleVersion"] as? String).map { " (\($0))" } ?? "")
+    }
     // Only debug QA bundles opt into disposable storage. Release builds ignore
     // the marker, and normal Preview/production data and migration stay intact.
     static var fixtureRoot: URL? {

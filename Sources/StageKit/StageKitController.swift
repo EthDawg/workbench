@@ -424,6 +424,23 @@ public final class StageKitController: ObservableObject {
         }
     }
     public func endDeviceScene() { coordinator.demoScenes.endPresentation() }
+    /// The phone's one status and next step, for Home's live row and any surface that
+    /// names the running presentation. Observe `phoneLink` for changes.
+    public var phoneLinkStatus: PhoneLinkStatus { coordinator.demoScenes.phoneLink.status }
+    public var phoneLink: PhoneLinkMonitor { coordinator.demoScenes.phoneLink }
+    /// The running presentation shows a device frame; a scene-only stage has no phone status.
+    public var presentationShowsPhone: Bool { coordinator.demoScenes.presentationShowsPhone }
+    /// Performs the status's next step from any surface; choosing a screen opens the Present page.
+    public func performPhoneStep(_ step: PhoneLinkStatus.Step) {
+        coordinator.demoScenes.performPhoneStep(step) { showScenes() }
+    }
+    /// Pins the phone's signals for an offscreen render; nil follows the Mac again.
+    public func setPhoneLinkFixture(_ signals: PhoneLinkSignals?) { coordinator.demoScenes.phoneLink.fixture = signals }
+    /// Adds a bundled starter as a scene, for renders and checks with no saved scenes.
+    public func addStarterScene(_ id: String) throws {
+        guard let starter = SceneStarters.all.first(where: { $0.id == id }) else { throw SceneError.noScene }
+        try coordinator.demoScenes.useStarter(starter)
+    }
     public var hasOverlaySession: Bool { coordinator.demoScenes.personas.sessionState.phase != .idle }
     public var areOverlaysPaused: Bool { coordinator.demoScenes.personas.sessionState.phase == .paused }
     public var canStepOverlays: Bool { coordinator.demoScenes.personas.sessionState.groups.count > 1 }
