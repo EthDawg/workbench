@@ -160,7 +160,35 @@ final class PhoneLinkTests {
         XCTAssertEqual(live.phase, .live, "A session that is running was never released")
         let unplugged = PhoneLink.status(signals { $0.released = true; $0.capturing = true })
         XCTAssertEqual(unplugged.phase, .released, "The release outranks what is on the bus and whether a session is allowed")
-        XCTAssertTrue(PhoneLink.diagnostic(signals { $0.released = true }, status: released, build: "b").contains("Session: released for another app"))
+        XCTAssertTrue(PhoneLink.diagnostic(signals { $0.released = true }, build: "b").contains("Session: released for another app"))
+    }
+
+    /// The report replaces every device's own name with its kind, including where the status
+    /// words would carry it. The page itself still names the screen for the person at the Mac.
+    func testReportsCarryKindsNeverPersonalNames() {
+        let personalCard = PhoneLinkSignals.ScreenSource(id: "cap-9", name: "Ethan’s Capture Card", isScreen: false)
+        let personalBus = PhoneLinkSignals.USBDevice(name: "Ethan’s iPhone", kind: .iPhone, productID: 0x12A8)
+        // Each state whose page words name a device: ready, found, and waiting with one other screen.
+        let named: [PhoneLinkSignals] = [
+            signals { $0.usb = [personalBus]; $0.sources = [screen] },
+            signals { $0.sources = [personalCard] },
+            signals { $0.sources = [personalCard]; $0.rememberedID = screen.id; $0.usb = [personalBus] }]
+        let cases = named + [signals { $0.sources = [screen, personalCard] }]
+        for value in cases {
+            let words = PhoneLink.status(value)
+            if named.contains(value) {
+                let shown = words.title + " " + (words.detail ?? "") + " " + (words.step?.title ?? "")
+                XCTAssertTrue(shown.contains("Ethan"), "The page's own words still name the screen: \(shown)")
+            }
+            let report = PhoneLink.diagnostic(value, build: "b")
+            XCTAssertFalse(report.contains("Ethan"), "No personal name reaches a report: \(report)")
+            let reported = PhoneLink.reportStatus(value)
+            XCTAssertFalse((reported.title + (reported.detail ?? "") + (reported.step?.title ?? "")).contains("Ethan"), "nor the receipt's status words")
+            XCTAssertEqual(reported.phase, words.phase, "The report's words describe the same state")
+        }
+        let report = PhoneLink.diagnostic(cases[3], build: "b")
+        XCTAssertTrue(report.contains("Screen sources: iPhone (screen), Video device (video)"))
+        XCTAssertTrue(PhoneLink.diagnostic(cases[0], build: "b").contains("USB: iPhone (product 0x12A8)"))
     }
 
     func testNounsFollowTheDeviceNotTheSerial() {
@@ -188,16 +216,17 @@ final class PhoneLinkTests {
             $0.usb = [phone]; $0.sources = [screen]; $0.rememberedID = screen.id; $0.access = .authorized; $0.capturing = true
             $0.phase = .live(screen.id, CGSize(width: 1179, height: 2556))
         }
-        let text = PhoneLink.diagnostic(value, status: PhoneLink.status(value), build: "2.5.0 (test)")
+        let text = PhoneLink.diagnostic(value, build: "2.5.0 (test)")
         XCTAssertTrue(text.contains("Workbench 2.5.0 (test) · macOS"))
         XCTAssertTrue(text.contains("USB: iPhone (product 0x12A8)"))
-        XCTAssertTrue(text.contains("Screen sources: Ethan’s iPhone (screen)"))
+        XCTAssertTrue(text.contains("Screen sources: iPhone (screen)"))
+        XCTAssertFalse(text.contains("Ethan"), "The screen's personal name stays on this Mac")
         XCTAssertTrue(text.contains("Remembered device: present"))
         XCTAssertTrue(text.contains("Device video access: authorized"))
         XCTAssertTrue(text.contains("Session: live 1179×2556"))
         XCTAssertTrue(text.contains("Status: Showing iPhone"))
         XCTAssertFalse(text.contains("udid-1"), "No device identifier leaves the Mac in a report")
-        let empty = PhoneLink.diagnostic(PhoneLinkSignals(), status: PhoneLink.status(PhoneLinkSignals()), build: "b")
+        let empty = PhoneLink.diagnostic(PhoneLinkSignals(), build: "b")
         XCTAssertTrue(empty.contains("USB: no iPhone or iPad on the bus"))
         XCTAssertTrue(empty.contains("Remembered device: none"))
         XCTAssertTrue(empty.contains("Status: No phone on USB — Connect"))

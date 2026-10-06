@@ -46,6 +46,16 @@ public struct PhoneLinkSignals: Equatable {
     /// be shown. Off in the headless receipt, where nothing ever connects.
     public var capturing = false
     public init() {}
+
+    /// The same facts with every device's own name replaced by its kind, so a report never
+    /// carries a personal name such as "Ethan’s iPhone", not even inside the status words.
+    /// Identifiers stay for matching and are never printed.
+    public var anonymised: PhoneLinkSignals {
+        var copy = self
+        copy.usb = usb.map { .init(name: $0.noun, kind: $0.kind, productID: $0.productID) }
+        copy.sources = sources.map { .init(id: $0.id, name: $0.isScreen ? PhoneLink.noun(for: $0, usb: usb) : "Video device", isScreen: $0.isScreen) }
+        return copy
+    }
 }
 
 /// The capture session's own phase, published by `DemoCapture`. Words live in
@@ -224,13 +234,19 @@ public enum PhoneLink {
         return usb.first?.noun ?? "phone"
     }
 
-    /// Facts for a report, with no serial number or device identifier. The same text
-    /// backs Copy connection details and the `--phone-link` receipt.
-    public static func diagnostic(_ signals: PhoneLinkSignals, status: PhoneLinkStatus, build: String) -> String {
+    /// The words a report carries: the status of the same facts with device names
+    /// replaced by their kinds (`PhoneLinkSignals.anonymised`).
+    public static func reportStatus(_ signals: PhoneLinkSignals) -> PhoneLinkStatus { status(signals.anonymised) }
+
+    /// Facts for a report, with no serial number, device identifier or personal device
+    /// name. The same text backs Copy connection details and the `--phone-link` receipt.
+    public static func diagnostic(_ signals: PhoneLinkSignals, build: String) -> String {
+        let signals = signals.anonymised
+        let status = Self.status(signals)
         let os = ProcessInfo.processInfo.operatingSystemVersion
         var lines = ["Workbench \(build) · macOS \(os.majorVersion).\(os.minorVersion).\(os.patchVersion)"]
         lines.append("USB: " + (signals.usb.isEmpty ? "no iPhone or iPad on the bus"
-            : signals.usb.map { String(format: "%@ (product 0x%04X)", $0.name, $0.productID) }.joined(separator: ", ")))
+            : signals.usb.map { String(format: "%@ (product 0x%04X)", $0.noun, $0.productID) }.joined(separator: ", ")))
         lines.append("Screen sources: " + (signals.sources.isEmpty ? "none"
             : signals.sources.map { $0.name + ($0.isScreen ? " (screen)" : " (video)") }.joined(separator: ", ")))
         let remembered: String
@@ -448,8 +464,10 @@ public final class PhoneLinkMonitor: ObservableObject {
         }
     }
 
-    /// Facts for a report, with no identifiers.
-    public func diagnostic(build: String) -> String { PhoneLink.diagnostic(signals, status: status, build: build) }
+    /// Facts for a report, with no identifiers or personal device names.
+    public func diagnostic(build: String) -> String { PhoneLink.diagnostic(signals, build: build) }
+    /// The status words a report carries: device names replaced by their kinds.
+    public var reportStatus: PhoneLinkStatus { PhoneLink.reportStatus(signals) }
 
     /// Like `observe`, but also runs the one capture session headless, so a Mac can
     /// prove that frames arrive, and at what size, without opening a window. The
@@ -464,7 +482,8 @@ public final class PhoneLinkMonitor: ObservableObject {
         monitor.mirror(capture)
         monitor.setCapturing(true)
         var last: PhoneLinkStatus?
-        let subscription = monitor.$status.sink { status in
+        // The receipt keeps the report's words, so no personal device name reaches it.
+        let subscription = monitor.$signals.map(PhoneLink.reportStatus).sink { status in
             guard status != last else { return }
             last = status; onChange(status.title + (status.detail.map { " — " + $0 } ?? ""))
         }
@@ -485,7 +504,7 @@ public final class PhoneLinkMonitor: ObservableObject {
         subscription.cancel()
         let frames = firstFrame.map { String(format: "Frames: first after %.1f s, %d×%d", $0, Int(size.width), Int(size.height)) }
             ?? "Frames: none within \(Int(seconds)) s"
-        let final = (signals: monitor.signals, status: monitor.status, report: monitor.diagnostic(build: build) + "\n" + frames, firstFrame: firstFrame, size: size)
+        let final = (signals: monitor.signals, status: monitor.reportStatus, report: monitor.diagnostic(build: build) + "\n" + frames, firstFrame: firstFrame, size: size)
         monitor.setActive(false)
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in capture.stop { continuation.resume() } }
         return final
@@ -504,7 +523,7 @@ public final class PhoneLinkMonitor: ObservableObject {
             monitor.update { $0.rememberedID = id }
         }
         var last: PhoneLinkStatus?
-        let subscription = monitor.$status.sink { status in
+        let subscription = monitor.$signals.map(PhoneLink.reportStatus).sink { status in
             guard status != last else { return }
             last = status; onChange(status.title + (status.detail.map { " — " + $0 } ?? ""))
         }
@@ -521,7 +540,7 @@ public final class PhoneLinkMonitor: ObservableObject {
         }
         subscription.cancel()
         // Read everything before stopping: stopping the bus watch clears its devices.
-        let final = (signals: monitor.signals, status: monitor.status, report: monitor.diagnostic(build: build))
+        let final = (signals: monitor.signals, status: monitor.reportStatus, report: monitor.diagnostic(build: build))
         monitor.setActive(false)
         return final
     }

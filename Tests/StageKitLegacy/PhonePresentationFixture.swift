@@ -59,7 +59,7 @@ private struct PhonePresentationFixtureView: View {
         }.padding(28).frame(width: 660, height: 420, alignment: .topLeading)
             .sheet(isPresented: $showingHelp) {
                 PhoneConnectionHelp(status: PhoneLink.status(signals), diagnostic: {
-                    PhoneLink.diagnostic(signals, status: PhoneLink.status(signals), build: "fixture")
+                    PhoneLink.diagnostic(signals, build: "fixture")
                 }, endsPresentation: isPresenting) { app in
                     result = "Requested \(isPresenting ? "end and open" : "open"): \(app.title). Help dismissed first."
                     showingHelp = false

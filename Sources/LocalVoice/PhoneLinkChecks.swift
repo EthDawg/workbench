@@ -8,7 +8,7 @@ import StageKit
 ///
 /// Each change of status is printed as it happens. A run through the signed app
 /// (`open -n … --args`) has no standard output, so the folder is the receipt: `phone-link.txt`
-/// holds the facts Copy connection details copies, with no serial number or device identifier,
+/// holds the facts Copy connection details copies, with no serial number, device identifier or device name,
 /// then the changes seen while watching; `receipt.json` holds the final status and its counts.
 enum PhoneLinkChecks {
     static let usage = "Usage: --phone-link NEW_FOLDER [SECONDS, 1 to 600; default 8] [--live]"
@@ -61,6 +61,7 @@ enum PhoneLinkChecks {
         case .denied: access = "denied"
         case .restricted: access = "restricted"
         }
+        // The status words are the report's: device names are replaced by their kinds.
         var receipt: [String: Any] = [
             "mode": "--phone-link", "build": build.label, "version": "\(build.version) (\(build.number))", "source": build.revision,
             "seconds": seconds, "finalTitle": result.status.title, "finalDetail": result.status.detail ?? NSNull(),

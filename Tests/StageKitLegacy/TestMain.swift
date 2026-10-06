@@ -625,6 +625,7 @@ struct TestRunner {
             ("phone: handoff launch and ordinary close ownership", phonePresentation.testHandoffKeepsFirstRequestAndDoesNotRetryFailedLaunchOrOrdinaryClose),
             ("phone: handoff native transition failure", phonePresentation.testHandoffWaitsThroughFailedNativeTransitionAndRepeatedEnd),
             ("phone: capture release retains pending handoff", phonePresentation.testCaptureStopCompletionRetainsHandoffAfterPresenterRelease),
+            ("phone link: reports carry kinds, never personal names", phoneLink.testReportsCarryKindsNeverPersonalNames),
             ("persona sessions: empty return and visible feedback", personaSessions.testEmptySetCanBeRevisitedAndLiveFailuresStayVisible),
             ("persona sessions: opt-in archive migration", personaSessions.testOptInMigrationBacksUpExactArchiveAndPreservesLegacyPlacement),
             ("persona sessions: independent placed copies", personaSessions.testTwoInstancesOwnIndependentGeometryVisibilityLockAndOrder),
