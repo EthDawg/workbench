@@ -565,7 +565,7 @@ approximations. Visual acceptance still requires inspecting the images.
 
 The surface gallery (`LocalVoice --render-surfaces`) adds the host: it drives the
 production `CapturePanelController` offscreen for every mode at rest and revealed,
-then switches between Dictate and Present with the row open, a width change that
+then switches between Dictate and Draw with the row open, a width change from Draw's retained Tools accessory that
 reaches the host only through the row's own report, then shows Present at the
 right-hand dock, revealed and at rest, and the compact mark while a synthetic
 meeting records. It flags a window smaller than
@@ -582,7 +582,7 @@ renders no host states and has nothing to fail.
 
 The gallery also releases the same host at free positions on each half of the
 display and near an edge, and reads the placement reference after an update, a reveal
-and a collapse, while choosing Present widens the row (released just left of the
+and a collapse, while choosing Draw widens the row and returning to Dictate shrinks it (released just left of the
 middle and on the right half), in a new host as after a relaunch, in new hosts
 reading each earlier build's save and a later move by one, at the right-hand dock,
 after Reset position, and at rest while a synthetic meeting records, where the
