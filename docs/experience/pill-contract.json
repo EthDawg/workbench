@@ -207,13 +207,6 @@
       "nativeHome": "Present Prompts accessory and Saved Prompts workspace button reuse the same frozen-target picker; Library owns management"
     },
     {
-      "oldAction": "Switch to Browser Tab",
-      "stateOwner": "Existing browser presenter",
-      "proposedHome": "Presentation workspace",
-      "invariant": "Preserve running presentation; use explicit browser destination",
-      "nativeHome": "Present workspace: Switch to Browser Tab opens the existing explicit destination panel"
-    },
-    {
       "oldAction": "Choose Persona and Next/Previous",
       "stateOwner": "Frozen PersonaCardDeck / shown card",
       "proposedHome": "Visible single-copy card picker + Next; keyboard Previous/Next",

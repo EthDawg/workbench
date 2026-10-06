@@ -2273,7 +2273,7 @@
     "label": "Can’t See Your Phone?…",
     "kind": "action",
     "belongsTo": "present",
-    "note": "Quality (#276): replaces Source & Connection Help… and the two End Preview & Open items with one help sheet: the live status, three checks, Check in QuickTime Player, the ways to show a phone in a call without the stage, and Copy connection details. Shown only while the phone is not on the stage; the page, the stage controls and the source sheet use the same words, in sentence case."
+    "note": "Quality (#276): replaces Source & Connection Help… and the two End Preview & Open items with one help sheet: the live status, three checks, Check in QuickTime Player while the picture is missing for a reason the Mac might explain, the ways to show a phone in a call without the stage, and Copy connection details. Shown only while the phone is not on the stage; the page, the stage controls and the source sheet use the same words, in sentence case."
   },
   {
     "id": "StageKit.DemoPresentation.DemoPresentation.StageMenuAction.compact",
