@@ -648,6 +648,10 @@ struct WorkbenchHomePage: View {
             if model.preparing || model.cleanupModels.downloading != nil { ProgressView().controlSize(.small) }
             VStack(alignment: .leading, spacing: 4) {
                 Text(model.modelMessage).font(.callout)
+                if !model.preparing && !model.ready && model.recognition.configuration.provider == .parakeet {
+                    Text("About 450 MB to download.").font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 // The writing model's download or its failure, as Dictate's line shows it (#134).
                 if let line = model.writingModelLine {
                     Text(line).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
