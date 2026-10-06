@@ -3,22 +3,36 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   # The merge queue tests each queued group with main before it lands.
   merge_group:
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Only a newer PR run supersedes another. Manual, queue and main runs cannot
+  # cancel each other, including GitHub's one-pending-run concurrency behaviour.
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 # The native work runs as five jobs on five runners. Each phase of scripts/test.sh
 # and each gallery depends only on the source, so every job builds what it needs
-# itself and a pull request finishes in the time of the longest job (about 13
-# minutes) instead of one 34-minute chain. "Build and test" is the required check:
-# it passes only when the classifier, Site and every selected native job pass.
+# itself and a run finishes in the time of the longest job (about 13 minutes)
+# instead of one 34-minute chain. The organisation has five macOS runners in all,
+# so the native jobs run where they decide something: in the merge queue, which
+# tests every group with current main before it lands, and on manual runs. A pull
+# request push runs only the classifier and Site unless it carries the ci:native
+# label. A push to main reuses only a successful queue run of this workflow
+# for the exact commit, verified through the Actions API. scripts/ci-scope.py
+# holds that rule and its tests.
+# "Build and test" is the required check: it passes only when the classifier, Site
+# and every selected native job pass, and accepts a skip only when the classifier
+# chose it.
 jobs:
   scope:
     name: Classify changes
+    permissions:
+      contents: read
+      actions: read
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -36,8 +50,11 @@ jobs:
           EVENT: ${{ github.event_name }}
           BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
           HEAD: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.event.after }}
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          python3 scripts/ci-scope.py --event "$EVENT" --base "$BASE" --head "$HEAD" >> "$GITHUB_OUTPUT"
+          python3 scripts/ci-scope.py --event "$EVENT" --base "$BASE" --head "$HEAD" \
+            --labels "$LABELS" >> "$GITHUB_OUTPUT"
   site:
     name: Site
     runs-on: ubuntu-latest
@@ -187,7 +204,7 @@ jobs:
             for result in "${native_results[@]}"; do [[ "$result" == success ]] || exit 1; done
           elif [[ "$NATIVE_REQUIRED" == false ]]; then
             for result in "${native_results[@]}"; do [[ "$result" == skipped ]] || exit 1; done
-            echo 'Documentation/site only; Site validates surfaces, contracts, release records and website.'
+            echo 'Native checks deferred, reused or unnecessary; see Classify changes. Site passed.'
           else
             exit 1
           fi
