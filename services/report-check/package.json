@@ -7,7 +7,7 @@
     "node": "24.x"
   },
   "scripts": {
-    "test": "node --test test/*.test.ts",
+    "test": "node --test --test-timeout=30000 test/*.test.ts",
     "typecheck": "tsc -p tsconfig.check.json",
     "test:ops": "python3 -m unittest discover -s ops -p 'test_*.py'"
   },

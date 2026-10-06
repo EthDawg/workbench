@@ -4,26 +4,37 @@ import verifier, {
   ATTACHMENT_LIMITS,
   createHandler,
   nextPage,
+  MAX_ELAPSED_SECONDS,
   parseStrictJson,
-  parseTimestamp,
   PENDING_WINDOW_SECONDS,
   readConfig,
   type Config,
+  type ConfigProblem,
 } from "../api/v1/verify.ts";
 import { API_BASE, STORAGE_BASE, SentrySim, TOKEN, json, makeReport, requestBody, sha256, type Report } from "./sentry-sim.ts";
 
 const NOW = new Date("2026-10-07T01:00:00.000Z");
 const config: Config = { apiBase: new URL(API_BASE), org: "workbench-dp", project: "workbench-reports", token: TOKEN };
 
-function setup(options: { requestTimeoutMs?: number; deadlineMs?: number; config?: Config | null } = {}) {
+function setup(
+  options: {
+    requestTimeoutMs?: number;
+    deadlineMs?: number;
+    config?: Config | ConfigProblem;
+    requestsPerMinute?: number;
+    now?: () => Date;
+  } = {},
+) {
   const sim = new SentrySim();
   const logs: Record<string, unknown>[] = [];
   const handler = createHandler({
     fetch: sim.fetch,
-    config: options.config === undefined ? config : options.config,
-    now: () => NOW,
+    config: options.config ?? config,
+    now: options.now ?? (() => NOW),
     requestTimeoutMs: options.requestTimeoutMs ?? 2000,
     deadlineMs: options.deadlineMs ?? 5000,
+    // The limiter has its own tests; elsewhere many requests share one synthetic client.
+    requestsPerMinute: options.requestsPerMinute ?? 1000,
     log: (line) => logs.push(line),
   });
   const post = (body: unknown, init: { headers?: Record<string, string>; raw?: BodyInit; method?: string } = {}) =>
@@ -38,11 +49,11 @@ function setup(options: { requestTimeoutMs?: number; deadlineMs?: number; config
   return { sim, logs, post };
 }
 
-async function verdict(response: Response): Promise<string> {
+async function verdict(response: Response, at: Date = NOW): Promise<string> {
   assert.equal(response.status, 200, `status ${response.status}`);
   const body = (await response.json()) as Record<string, unknown>;
   assert.deepEqual(Object.keys(body).sort(), ["checked_at", "state"]);
-  assert.equal(body.checked_at, NOW.toISOString());
+  assert.equal(body.checked_at, at.toISOString());
   return body.state as string;
 }
 
@@ -85,40 +96,46 @@ describe("verification results", () => {
     const e = report.eventId;
     const dashed = `${e.slice(0, 8)}-${e.slice(8, 12)}-${e.slice(12, 16)}-${e.slice(16, 20)}-${e.slice(20)}`;
     assert.equal(await verdict(await post(requestBody(report, dashed))), "received");
-    assert.ok(sim.seen[0]!.url.endsWith(`/events/${e}/`));
+    assert.ok(sim.seen.some((seen) => seen.url.endsWith(`/events/${e}/`)));
+    assert.ok(!sim.seen.some((seen) => seen.url.includes(dashed)));
   });
 
-  it("pending: event not processed yet, inside the window after the app's send time", async () => {
+  it("event not processed: pending inside the window, not_found from 900 s", async () => {
     const { post } = setup();
     const report = full();
-    const sentAt = new Date(NOW.getTime() - 20_000).toISOString();
-    assert.equal(await verdict(await post({ ...requestBody(report), sent_at: sentAt })), "pending");
-    // Clock skew: a send time in the future still counts as recent.
-    const future = new Date(NOW.getTime() + 3_600_000).toISOString();
-    assert.equal(await verdict(await post({ ...requestBody(report), sent_at: future })), "pending");
+    for (const [elapsed, state] of [[0, "pending"], [PENDING_WINDOW_SECONDS - 1, "pending"],
+      [PENDING_WINDOW_SECONDS, "not_found"], [MAX_ELAPSED_SECONDS, "not_found"]] as const) {
+      assert.equal(await verdict(await post(requestBody(report, report.eventId, elapsed))), state, `${elapsed}`);
+    }
   });
 
-  it("not_found: event absent after the window, or with no send time", async () => {
-    const { post } = setup();
-    const report = full();
-    const old = new Date(NOW.getTime() - PENDING_WINDOW_SECONDS * 1000).toISOString();
-    assert.equal(await verdict(await post({ ...requestBody(report), sent_at: old })), "not_found");
-    assert.equal(await verdict(await post(requestBody(report))), "not_found");
-  });
-
-  it("pending: an expected attachment is not listed yet", async () => {
-    const { sim, post } = setup();
+  it("attachment not listed: pending inside the window, not_found (attachment_missing) after", async () => {
+    const { sim, logs, post } = setup();
     const report = full();
     sim.store(report);
     sim.attachments.set(report.eventId, sim.attachments.get(report.eventId)!.filter((a) => a.name !== "voice.wav"));
-    assert.equal(await verdict(await post(requestBody(report))), "pending");
+    assert.equal(await verdict(await post(requestBody(report, report.eventId, 60))), "pending");
+    assert.equal(logs.at(-1)!.reason, "attachment_pending");
+    assert.equal(await verdict(await post(requestBody(report, report.eventId, PENDING_WINDOW_SECONDS))), "not_found");
+    assert.equal(logs.at(-1)!.reason, "attachment_missing");
   });
 
-  it("pending: a listed attachment cannot be downloaded yet", async () => {
-    const { sim, post } = setup();
+  it("listed attachment not downloadable: pending inside the window, not_found after", async () => {
+    const { sim, logs, post } = setup();
     const report = full();
     sim.store(report)[1]!.downloadStatus = 404;
-    assert.equal(await verdict(await post(requestBody(report))), "pending");
+    assert.equal(await verdict(await post(requestBody(report, report.eventId, 60))), "pending");
+    assert.equal(await verdict(await post(requestBody(report, report.eventId, 3600))), "not_found");
+    assert.equal(logs.at(-1)!.reason, "attachment_missing");
+  });
+
+  it("report_id compares case-insensitively on both sides", async () => {
+    const { sim, post } = setup();
+    const report = full();
+    sim.store(report);
+    assert.equal(await verdict(await post({ ...requestBody(report), report_id: report.reportId.toUpperCase() })), "received");
+    sim.store(report, { tags: [{ key: "report_id", value: report.reportId.toUpperCase() }] });
+    assert.equal(await verdict(await post(requestBody(report))), "received");
   });
 
   it("mismatch: listed size differs from the sent size", async () => {
@@ -194,15 +211,30 @@ describe("verification results", () => {
     assert.equal(await verdict(await post(requestBody(report))), "mismatch");
   });
 
-  it("identical duplicate copies are received; a differing copy is a mismatch", async () => {
+  it("repeated deliveries are received, hashing one copy per name", async () => {
+    const { sim, post } = setup();
+    const report = full();
+    const stored = [...sim.store(report)];
+    // Three extra deliveries of every attachment (resends inside Sentry's dedupe hour).
+    for (let copy = 0; copy < 3; copy++) {
+      stored.forEach((item, index) => {
+        sim.attachments.get(report.eventId)!.push({ ...item, id: String(5000 + copy * 10 + index) });
+      });
+    }
+    assert.equal(sim.attachments.get(report.eventId)!.length, 12);
+    assert.equal(await verdict(await post(requestBody(report))), "received");
+    const downloads = sim.seen.filter((seen) => seen.url.includes("download"));
+    assert.equal(downloads.length, 3);
+    // The lowest-numbered copy of each name is the one hashed.
+    assert.deepEqual(downloads.map((seen) => seen.url.split("/attachments/")[1]!.split("/")[0]).sort(),
+      stored.map((item) => item.id).sort());
+  });
+
+  it("a duplicate copy with a different size is a mismatch", async () => {
     const { sim, post } = setup();
     const report = full();
     const stored = sim.store(report);
-    sim.attachments.get(report.eventId)!.push({ ...stored[1]!, id: "77" });
-    assert.equal(await verdict(await post(requestBody(report))), "received");
-    const altered = new Uint8Array(stored[1]!.bytes);
-    altered[0] = altered[0]! ^ 1;
-    sim.attachments.get(report.eventId)!.push({ ...stored[1]!, id: "78", bytes: altered });
+    sim.attachments.get(report.eventId)!.push({ ...stored[1]!, id: "77", listedSize: stored[1]!.bytes.length + 5 });
     assert.equal(await verdict(await post(requestBody(report))), "mismatch");
   });
 
@@ -278,17 +310,18 @@ describe("upstream failures are never a result", () => {
     ["server error", 500, {}],
     ["bad gateway", 502, {}],
   ];
-  for (const stage of ["event", "list", "download"] as const) {
+  for (const stage of ["project", "event", "list", "download"] as const) {
     for (const [label, status, headers] of cases) {
       it(`${stage}: ${label} → 503`, async () => {
         const { sim, post } = setup();
         const report = full();
         sim.store(report);
         sim.overrides.push((url) => {
+          const isProject = url.pathname.endsWith("/workbench-reports/");
           const isList = url.pathname.endsWith("/attachments/");
           const isDownload = url.searchParams.has("download");
-          const isEvent = !isList && !isDownload;
-          const hit = stage === "event" ? isEvent : stage === "list" ? isList : isDownload;
+          const isEvent = url.pathname.endsWith(`/events/${report.eventId}/`);
+          const hit = { project: isProject, event: isEvent, list: isList, download: isDownload }[stage];
           return hit ? json(status, { detail: "synthetic" }, headers) : undefined;
         });
         const retry = await unavailable(await post(requestBody(report)));
@@ -340,10 +373,49 @@ describe("upstream failures are never a result", () => {
   });
 
   it("is unavailable, not wrong, when unconfigured", async () => {
-    const { post } = setup({ config: null });
-    const response = await post(requestBody(full()));
+    for (const problem of ["token_missing", "token_invalid", "settings_invalid"] as const) {
+      const { post, logs, sim } = setup({ config: { problem } });
+      const response = await post(requestBody(full()));
+      assert.equal(response.status, 503);
+      assert.equal(response.headers.get("retry-after"), "300");
+      assert.deepEqual(await response.json(), { error: "not_configured" });
+      assert.equal(logs.at(-1)!.reason, problem);
+      assert.equal(sim.seen.length, 0);
+    }
+  });
+
+  it("a missing project is misconfiguration (503), checked once per instance", async () => {
+    let clock = NOW.getTime();
+    const { sim, logs, post } = setup({ now: () => new Date(clock) });
+    const report = full();
+    sim.store(report);
+    sim.projectExists = false;
+    const response = await post(requestBody(report, report.eventId, 3600));
     assert.equal(response.status, 503);
     assert.deepEqual(await response.json(), { error: "not_configured" });
+    assert.equal(logs.at(-1)!.reason, "project_not_found");
+    assert.ok(!sim.seen.some((seen) => seen.url.includes("/events/")), "no event lookup, so never not_found");
+    // Remembered for a minute, then checked again.
+    sim.projectExists = true;
+    assert.equal((await post(requestBody(report))).status, 503);
+    clock += 60_000;
+    assert.equal(await verdict(await post(requestBody(report)), new Date(clock)), "received");
+    const projectChecks = () => sim.seen.filter((seen) => seen.url.endsWith("/workbench-reports/")).length;
+    assert.equal(projectChecks(), 2);
+    // Once found, never checked again on this instance.
+    clock += 3_600_000;
+    assert.equal(await verdict(await post(requestBody(report)), new Date(clock)), "received");
+    assert.equal(projectChecks(), 2);
+  });
+
+  it("an unanswered project check is retried on the next request", async () => {
+    const { sim, post } = setup();
+    const report = full();
+    sim.store(report);
+    sim.overrides.push((url) => (url.pathname.endsWith("/workbench-reports/") ? json(502, {}) : undefined));
+    await unavailable(await post(requestBody(report)));
+    sim.overrides.length = 0;
+    assert.equal(await verdict(await post(requestBody(report))), "received");
   });
 });
 
@@ -403,8 +475,8 @@ describe("request validation", () => {
       { ...base, event_id: report.eventId.toUpperCase() },
       { ...base, event_id: report.eventId.slice(1) },
       { ...base, event_id: report.eventId.slice(0, 12) + "1" + report.eventId.slice(13) },
-      { ...base, report_id: "A02149ED-36F5-4F10-9A21-10ACFE2289B2" },
       { ...base, report_id: "a02149ed-36f5-1f10-9a21-10acfe2289b2" },
+      { ...base, report_id: "a02149ed36f54f109a2110acfe2289b2" },
       { ...base, attachments: [] },
       { ...base, attachments: [...attachments, attachments[0]] },
       { ...base, attachments: attachments.slice(1) },
@@ -415,9 +487,14 @@ describe("request validation", () => {
       { ...base, attachments: [{ ...attachments[0], size: ATTACHMENT_LIMITS["context.json"]! + 1 }] },
       { ...base, attachments: [{ ...attachments[0], size: "10" }] },
       { ...base, attachments: [{ ...attachments[0], sha256: "A".repeat(64) }] },
-      { ...base, sent_at: "2026-02-30T00:00:00Z" },
-      { ...base, sent_at: "yesterday" },
-      { ...base, sent_at: 1_700_000_000 },
+      Object.fromEntries(Object.entries(base).filter(([key]) => key !== "elapsed_seconds")),
+      { ...base, elapsed_seconds: -1 },
+      { ...base, elapsed_seconds: 1.5 },
+      { ...base, elapsed_seconds: "30" },
+      { ...base, elapsed_seconds: null },
+      { ...base, elapsed_seconds: MAX_ELAPSED_SECONDS + 1 },
+      { ...base, elapsed_seconds: 1e300 },
+      { ...base, sent_at: "2026-10-07T01:00:00Z" },
     ];
     for (const variant of variants) {
       assert.equal((await post(variant)).status, 422, JSON.stringify(variant).slice(0, 120));
@@ -432,30 +509,67 @@ describe("request validation", () => {
     }
   });
 
-  it("RFC 3339 timestamps", () => {
-    assert.equal(parseTimestamp("2026-10-07T01:00:00Z").toISOString(), "2026-10-07T01:00:00.000Z");
-    assert.equal(parseTimestamp("2026-10-07T11:00:00.5+10:00").toISOString(), "2026-10-07T01:00:00.500Z");
-    for (const bad of ["2026-13-01T00:00:00Z", "2026-10-07 01:00:00Z", "2026-10-07T24:00:00Z", "2026-10-07T01:00:00+25:00", "2026-10-07T01:00:00"]) {
-      assert.throws(() => parseTimestamp(bad), bad);
-    }
-  });
 });
 
 describe("configuration and privacy", () => {
   it("reads configuration with the decided defaults", () => {
-    const config = readConfig({ SENTRY_READ_TOKEN: "abc" });
-    assert.equal(config?.apiBase.origin, "https://us.sentry.io");
-    assert.equal(config?.org, "workbench-dp");
-    assert.equal(config?.project, "workbench-reports");
-    for (const env of [
-      {},
-      { SENTRY_READ_TOKEN: "has space" },
-      { SENTRY_READ_TOKEN: "abc", SENTRY_API_BASE: "http://us.sentry.io" },
-      { SENTRY_READ_TOKEN: "abc", SENTRY_API_BASE: "https://us.sentry.io/api/0" },
-      { SENTRY_READ_TOKEN: "abc", SENTRY_ORG: "Bad Org" },
-    ]) {
-      assert.equal(readConfig(env), null, JSON.stringify(env));
+    const config = readConfig({ SENTRY_READ_TOKEN: "abc" }) as Config;
+    assert.equal(config.apiBase.origin, "https://us.sentry.io");
+    assert.equal(config.org, "workbench-dp");
+    assert.equal(config.project, "workbench-reports");
+    for (const [env, problem] of [
+      [{}, "token_missing"],
+      [{ SENTRY_READ_TOKEN: "" }, "token_missing"],
+      [{ SENTRY_READ_TOKEN: " \n\t" }, "token_missing"],
+      [{ SENTRY_READ_TOKEN: "has space" }, "token_invalid"],
+      [{ SENTRY_READ_TOKEN: "has\u0000nul" }, "token_invalid"],
+      [{ SENTRY_READ_TOKEN: "abc", SENTRY_API_BASE: "http://us.sentry.io" }, "settings_invalid"],
+      [{ SENTRY_READ_TOKEN: "abc", SENTRY_API_BASE: "https://us.sentry.io/api/0" }, "settings_invalid"],
+      [{ SENTRY_READ_TOKEN: "abc", SENTRY_ORG: "Bad Org" }, "settings_invalid"],
+    ] as const) {
+      assert.deepEqual(readConfig(env), { problem }, JSON.stringify(env));
     }
+  });
+
+  it("trims whitespace around a pasted token", async () => {
+    const trimmed = readConfig({ SENTRY_READ_TOKEN: `  ${TOKEN}\n`, SENTRY_API_BASE: `${API_BASE}\n` }) as Config;
+    assert.equal(trimmed.token, TOKEN);
+    const { sim, post } = setup({ config: trimmed });
+    const report = full();
+    sim.store(report);
+    assert.equal(await verdict(await post(requestBody(report))), "received");
+    assert.ok(sim.seen.filter((seen) => seen.url.startsWith(API_BASE)).every((seen) => seen.authorization === `Bearer ${TOKEN}`));
+  });
+
+  it("limits one client to 20 requests a minute per instance, without logging its address", async () => {
+    let clock = NOW.getTime();
+    const sim = new SentrySim();
+    const logs: Record<string, unknown>[] = [];
+    const handler = createHandler({ fetch: sim.fetch, config, now: () => new Date(clock), log: (line) => logs.push(line) });
+    const report = full();
+    sim.store(report);
+    const send = (ip: string, headers: Record<string, string> = {}) =>
+      handler(new Request("https://check.test/api/v1/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-forwarded-for": `${ip}, 10.0.0.1`, ...headers },
+        body: JSON.stringify(requestBody(report)),
+      }));
+    for (let i = 0; i < 20; i++) assert.equal((await send("203.0.113.7")).status, 200);
+    clock += 15_000;
+    const limited = await send("203.0.113.7");
+    assert.equal(limited.status, 429);
+    assert.equal(limited.headers.get("retry-after"), "45");
+    assert.equal(limited.headers.get("cache-control"), "no-store");
+    assert.deepEqual(await limited.json(), { error: "rate_limited" });
+    assert.equal(logs.at(-1)!.reason, "rate_limited");
+    // Other clients are unaffected; x-real-ip wins over x-forwarded-for.
+    assert.equal((await send("198.51.100.4")).status, 200);
+    assert.equal((await send("203.0.113.7", { "x-real-ip": "192.0.2.55" })).status, 200);
+    // A new window opens after a minute.
+    clock += 45_000;
+    assert.equal((await send("203.0.113.7")).status, 200);
+    const output = JSON.stringify(logs);
+    for (const ip of ["203.0.113.7", "198.51.100.4", "192.0.2.55", "10.0.0.1"]) assert.ok(!output.includes(ip));
   });
 
   it("parses Sentry cursor links", () => {
@@ -498,7 +612,8 @@ describe("configuration and privacy", () => {
       assert.equal(response.status, 503);
       assert.equal(logged.mock.callCount(), 1);
       const line = JSON.parse(String(logged.mock.calls[0]!.arguments[0]));
-      assert.deepEqual(Object.keys(line).sort(), ["ms", "msg", "reason", "status"]);
+      assert.deepEqual(Object.keys(line).sort(), ["calls", "ms", "msg", "reason", "status"]);
+      assert.equal(line.reason, "token_missing");
     } finally {
       logged.mock.restore();
     }

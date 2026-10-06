@@ -40,6 +40,7 @@ export class SentrySim {
   events = new Map<string, SimEvent>();
   attachments = new Map<string, SimAttachment[]>();
   pageSize = 100;
+  projectExists = true;
   seen: Seen[] = [];
   overrides: Override[] = [];
   nextId = 1000;
@@ -57,6 +58,11 @@ export class SentrySim {
     if (url.origin !== API_BASE) return new Response("unknown host", { status: 599 });
     if (headers.get("authorization") !== `Bearer ${TOKEN}`) return json(401, { detail: "Invalid token" });
     if (url.pathname.startsWith("/api/0/organizations/1/objectstore/")) return this.storage(url);
+    if (url.pathname === PROJECT_PATH.replace(/events\/$/, "")) {
+      return this.projectExists
+        ? json(200, { id: "4512211067011072", slug: "workbench-reports" })
+        : json(404, { detail: "The requested resource does not exist" });
+    }
     if (!url.pathname.startsWith(PROJECT_PATH)) return json(404, { detail: "not found" });
     const rest = url.pathname.slice(PROJECT_PATH.length).split("/").filter(Boolean);
     const event = this.events.get(rest[0] ?? "");
@@ -195,10 +201,11 @@ export function makeReport(options: { screenshot?: boolean; voice?: boolean; mes
   return { eventId, reportId, message, files: ordered };
 }
 
-export function requestBody(report: Report, eventId = report.eventId): Record<string, unknown> {
+export function requestBody(report: Report, eventId = report.eventId, elapsedSeconds = 30): Record<string, unknown> {
   return {
     event_id: eventId,
     report_id: report.reportId,
+    elapsed_seconds: elapsedSeconds,
     attachments: [...report.files].map(([name, bytes]) => ({ name, size: bytes.length, sha256: sha256(bytes) })),
   };
 }
