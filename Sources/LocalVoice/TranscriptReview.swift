@@ -82,7 +82,7 @@ struct TranscriptReviewView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     let notes = model.historyLibrary.metadata(for: item.id).captureNotes
                     if !notes.isEmpty {
-                        WorkbenchNote(notes.joined(separator: "\n"), symbol: "exclamationmark.triangle")
+                        WorkbenchNote(notes.joined(separator: "\n"))
                     }
                     // A reading measure: long lines are hard to follow, so the words stop near
                     // 600 points with a little air between lines, however wide the sheet grows.

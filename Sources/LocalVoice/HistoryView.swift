@@ -596,7 +596,7 @@ struct HistoryMadeFrom: View {
 
     @ViewBuilder private func madeFrom(_ inputs: HandoffJobInputs) -> some View {
         if let problem = inputs.problem {
-            WorkbenchNote(problem, symbol: "exclamationmark.triangle")
+            WorkbenchNote(problem)
         } else if !inputs.items.isEmpty {
             let shown = showingAll ? inputs.items : Array(inputs.items.prefix(6))
             VStack(alignment: .leading, spacing: 6) {
@@ -681,7 +681,7 @@ private struct HistoryInputChip: View {
                                 FrozenThumbnail(url: url, maximumPixels: 720).frame(maxWidth: 380, maxHeight: 240)
                             }
                         } else {
-                            WorkbenchNote("This saved image is missing from the task’s folder.", symbol: "exclamationmark.triangle")
+                            WorkbenchNote("This saved image is missing from the task’s folder.")
                         }
                     }
                 }

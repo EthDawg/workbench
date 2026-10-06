@@ -104,7 +104,7 @@ struct TranscriptMetadataEditor: View {
             Text("Transcript details").font(.title2)
             Text("Details help you find this later. Your original words stay unchanged.").foregroundStyle(.secondary)
             ForEach(library.metadata(for: transcript.id).captureNotes, id: \.self) { note in
-                WorkbenchNote(note, symbol: "exclamationmark.triangle")
+                WorkbenchNote(note)
             }
             Picker("Purpose", selection: $purpose) {
                 ForEach(TranscriptPurpose.allCases, id: \.self) { Text($0.title).tag($0) }
@@ -349,8 +349,7 @@ struct HandoffJobCard<MadeFrom: View>: View {
     }
 
     private func resultProblem(_ files: HandoffTaskFiles?) -> some View {
-        WorkbenchNote(files?.resultProblem ?? "The saved result is unavailable. Show selected files opens the task folder.",
-                      symbol: "exclamationmark.triangle")
+        WorkbenchNote(files?.resultProblem ?? "The saved result is unavailable. Show selected files opens the task folder.")
     }
 
     @ViewBuilder private func resultPreview(_ task: HandoffJob) -> some View {
@@ -490,7 +489,7 @@ struct HandoffReviewView: View {
                                     Text(source.title).font(.callout.weight(.medium)).lineLimit(2)
                                     Text(source.text).font(.caption).foregroundStyle(.secondary).lineLimit(3)
                                     ForEach(source.captureNotes, id: \.self) { note in
-                                        WorkbenchNote(note, symbol: "exclamationmark.triangle")
+                                        WorkbenchNote(note)
                                     }
                                     ForEach(Array(source.images.enumerated()), id: \.offset) { _, bytes in
                                         if let image = NSImage(data: bytes) {

@@ -111,7 +111,7 @@ struct TranscriptHistoryRow: View {
                 Text(item.text).font(Workbench.bodyText).lineLimit(8)
                     .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
                 if !metadata.captureNotes.isEmpty {
-                    WorkbenchNote(metadata.captureNotes.joined(separator: " "), symbol: "exclamationmark.triangle")
+                    WorkbenchNote(metadata.captureNotes.joined(separator: " "))
                 }
                 if hasRecording {
                     HStack {
