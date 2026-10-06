@@ -8,8 +8,9 @@ import Network
 //
 //   waiting / sending  --POST envelope, 200 without a feedback or attachment limit-->  sent
 //   sent  --verifier: received-->  received   (local copy dropped, receipt kept)
-//   sent  --verifier: mismatch or not_found at the end of 15 minutes-->  unconfirmed  (Send again: new event ID)
-//   sent  --verifier unavailable (503, no answer) or still pending-->  stays sent: never downgraded
+//   sent  --verifier: mismatch or not_found-->  unconfirmed  (Send again: new event ID, only when chosen)
+//   sent  --pending, any other status, no answer-->  stays sent, never downgraded; checked for about
+//          16 minutes after Sent, then once more at the next launch
 //   400, 401, 403, 404, 413, TLS  -->  failed  (Retry is the person's choice; no loop)
 
 @MainActor
@@ -23,7 +24,8 @@ final class BugReportTransport: ObservableObject {
     let client: String
     var now: () -> Date
     var random: () -> Double
-    static let verifyWindow: TimeInterval = 15 * 60
+    /// The verifier answers pending for 900 s of elapsed time; checks continue a little past it.
+    static let verifyWindow: TimeInterval = 16 * 60
     static let firstCheck: TimeInterval = 15
     private var wake: Task<Void, Never>?
     private var running = false
@@ -51,7 +53,14 @@ final class BugReportTransport: ObservableObject {
     func start(watchConnectivity: Bool = true) {
         guard !running else { return }
         running = true
-        store.prune(); reload()
+        store.prune()
+        // One more check at launch for reports whose window ended without an answer.
+        for var delivery in store.deliveries() where delivery.state == .sent && delivery.verifyAtLaunch {
+            delivery.verifyAtLaunch = false; delivery.launchCheckUsed = true
+            delivery.nextAttemptAt = now()
+            try? store.save(delivery)
+        }
+        reload()
         if watchConnectivity {
             let monitor = NWPathMonitor()
             monitor.pathUpdateHandler = { [weak self] path in
@@ -154,6 +163,7 @@ final class BugReportTransport: ObservableObject {
         delivery.state = .waiting; delivery.problem = nil; delivery.status = nil
         delivery.attempts = 0; delivery.nextAttemptAt = now(); delivery.sentAt = nil
         delivery.verifyAttempts = 0; delivery.verifyUntil = nil; delivery.verifierState = nil
+        delivery.verifyAtLaunch = false; delivery.launchCheckUsed = false
         try store.replaceEnvelope(id, with: envelope, delivery: delivery)
         kick()
     }
@@ -208,6 +218,7 @@ final class BugReportTransport: ObservableObject {
             switch status {
             case 200..<300 where wait == nil:
                 current.state = .sent; current.problem = nil; current.status = nil; current.sentAt = time
+                current.verifyAtLaunch = false; current.launchCheckUsed = false
                 if current.destination.verifier != nil {
                     current.verifyUntil = time.addingTimeInterval(Self.verifyWindow); current.verifyAttempts = 0
                     // Sentry takes roughly 10 to 40 seconds to store an event and its attachments.
@@ -257,10 +268,11 @@ final class BugReportTransport: ObservableObject {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         let files = (try? BugReportEnvelope.parse(try store.envelope(delivery.id)).items).map(BugReportEnvelope.verifierAttachments) ?? []
-        // sent_at, when Sentry's 200 arrived, lets the verifier read a missing event as pending
-        // for its first 15 minutes rather than not_found.
+        // Seconds since this Mac received Sentry's 200 for this event ID, by this Mac's own clock at
+        // both ends, so a wrong clock cancels out. A clock that moved backwards counts as 0.
+        let elapsed = max(0, Int(now().timeIntervalSince(sentAt).rounded(.down)))
         request.httpBody = try? JSONSerialization.data(withJSONObject: ["event_id": delivery.eventID, "report_id": delivery.id, "attachments": files,
-                                                                        "sent_at": BugReportText.timestamp(sentAt)],
+                                                                        "elapsed_seconds": elapsed],
                                                        options: [.sortedKeys, .withoutEscapingSlashes])
         let outcome = await perform(request)
         guard var current = store.delivery(delivery.id), current.eventID == delivery.eventID, current.state == .sent else { return }
@@ -269,40 +281,35 @@ final class BugReportTransport: ObservableObject {
         var answer: String?
         var wait: TimeInterval?
         if case .response(let response, let data) = outcome {
-            switch response.statusCode {
-            case 200:
-                if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let state = object["state"] as? String, ["received", "pending", "mismatch", "not_found"].contains(state) { answer = state }
-            case 503:
-                // The verifier or Sentry is unavailable: keep Sent and ask again when told.
-                wait = BugReportEnvelope.rateLimit(status: 429, rateLimits: nil, retryAfter: response.value(forHTTPHeaderField: "Retry-After"), now: time)
-            case 405, 413, 422:
-                // A request this build should never make. Note it in the receipt file and stop; Sent stays true.
-                current.verifierState = "client_error_\(response.statusCode)"
-                current.nextAttemptAt = nil
-                try? store.save(current)
-                return
-            default: break
+            if response.statusCode == 200, let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let state = object["state"] as? String, ["received", "pending", "mismatch", "not_found"].contains(state) {
+                answer = state
+            } else if let retryAfter = response.value(forHTTPHeaderField: "Retry-After") {
+                wait = BugReportEnvelope.rateLimit(status: 429, rateLimits: nil, retryAfter: retryAfter, now: time)
             }
         }
-        if answer == "received" {
-            current.state = .received; current.receivedAt = time; current.verifierState = "received"
-            current.nextAttemptAt = nil; current.problem = nil
+        if let answer { current.verifierState = answer }
+        switch answer {
+        case "received":
+            current.state = .received; current.receivedAt = time
+            current.nextAttemptAt = nil; current.problem = nil; current.verifyAtLaunch = false
             try? store.save(current)
             store.removeEvidence(current.id)
             return
-        }
-        if let answer { current.verifierState = answer }
-        if time >= until {
-            current.nextAttemptAt = nil
-            // Only the verifier's own answer at the end of the window can say a delivery is
-            // unconfirmed. An unavailable verifier or a pending answer leaves the truthful Sent.
-            if answer == "mismatch" || answer == "not_found" {
-                current.state = .unconfirmed
-                current.problem = answer == "mismatch" ? .mismatch : .notFound
+        case "mismatch", "not_found":
+            // The verifier answers pending while Sentry may still be storing the event, so these are its findings.
+            current.state = .unconfirmed
+            current.problem = answer == "mismatch" ? .mismatch : .notFound
+            current.nextAttemptAt = nil; current.verifyAtLaunch = false
+        default:
+            // Pending, any other status, or no answer: Sent stays, and checking continues.
+            if time < until {
+                current.nextAttemptAt = min(until, time.addingTimeInterval(wait ?? Self.backoff(current.verifyAttempts, random: random())))
+            } else {
+                current.nextAttemptAt = nil
+                // One more check at the next launch, unless this was it.
+                current.verifyAtLaunch = !current.launchCheckUsed
             }
-        } else {
-            current.nextAttemptAt = min(until, time.addingTimeInterval(wait ?? Self.backoff(current.verifyAttempts, random: random())))
         }
         try? store.save(current)
     }

@@ -200,6 +200,9 @@ final class BugReportModel: ObservableObject {
             return .init(id: delivery.id, title: "Sending…", detail: "Saved on this Mac until it's delivered.", tone: .progress, actions: [.saveCopy, .remove])
         }
         switch delivery.state {
+        case .waiting where delivery.problem != .offline:
+            // Frozen and about to go: it has not met a missing connection.
+            return .init(id: delivery.id, title: "Sending…", detail: "Saved on this Mac until it's delivered.", tone: .progress, actions: [.saveCopy, .remove])
         case .waiting:
             return .init(id: delivery.id, title: "Waiting for connection",
                          detail: "Saved on this Mac. It sends by itself when you're back online, even after a restart.", tone: .progress, actions: [.saveCopy, .remove])

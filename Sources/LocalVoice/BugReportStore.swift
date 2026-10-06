@@ -70,6 +70,10 @@ struct BugReportDelivery: Codable, Equatable, Identifiable {
     var verifyAttempts = 0
     var verifyUntil: Date?
     var verifierState: String?
+    /// The window ended without an answer: ask the verifier once more at the next launch.
+    var verifyAtLaunch = false
+    /// That launch check has been made for the current event ID.
+    var launchCheckUsed = false
     var receivedAt: Date?
     var evidenceRemoved = false
 

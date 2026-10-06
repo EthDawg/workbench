@@ -300,6 +300,7 @@ enum BugReportChecks {
         try expect(h.model.problem == nil, "Send froze the report: \(h.model.problem ?? "")")
         try expect(h.store.loadDraft() == nil && h.model.explanation.isEmpty && h.model.screenshot == nil, "the draft is done once frozen")
         let delivery = h.store.deliveries()[0]
+        try expect(h.model.receipts.first?.title == "Sending…", "a report frozen a moment ago says Sending…, not Waiting for connection")
         let frozen = try h.store.envelope(delivery.id)
         try expect(BugReportText.sha256(frozen) == delivery.envelopeSHA256, "the delivery names its frozen bytes")
         try expect(!String(decoding: frozen.prefix(while: { $0 != 0x0A }), as: UTF8.self).contains("sent_at"), "the stored envelope has no sent_at")
@@ -475,18 +476,21 @@ enum BugReportChecks {
                 guard let answer else { return .failure(.cannotConnectToHost) }
                 if answer == "503" { return .status(503, ["Retry-After": "120"], Data()) }
                 if answer == "422" { return .status(422, [:], Data(#"{"error":"invalid_request"}"#.utf8)) }
+                if answer == "html" { return .status(200, ["Content-Type": "text/html"], Data("<html>".utf8)) }
                 return .status(200, ["Content-Type": "application/json"], Data(#"{"state":"\#(answer)","checked_at":"2026-10-07T05:00:30Z"}"#.utf8))
             }
             return sentry.handle(request)
         }
-        func frozen(_ name: String) async throws -> (Harness, String) {
-            let h = harness(root.appendingPathComponent(name), destination: .init(dsn: dsn, verifier: verifier, environment: "production", isOverride: false))
+        func frozen(_ name: String, clock: Clock = Clock()) async throws -> (Harness, String) {
+            let h = harness(root.appendingPathComponent(name), clock: clock, destination: .init(dsn: dsn, verifier: verifier, environment: "production", isOverride: false))
             try fill(h.model)
             h.model.send()
             let id = h.store.deliveries()[0].id
             await h.transport.runDue()
             return (h, id)
         }
+        func elapsed() -> Int? { requests.last?["elapsed_seconds"] as? Int }
+
         // Pending, then received: the local copy goes and the receipt stays.
         var (h, id) = try await frozen("received")
         var delivery = h.store.delivery(id)!
@@ -496,33 +500,42 @@ enum BugReportChecks {
         h.clock.advance(15); await h.transport.runDue()
         delivery = h.store.delivery(id)!
         try expect(delivery.state == .sent && delivery.verifierState == "pending" && (delivery.nextAttemptAt ?? .distantPast) > h.clock.now, "pending keeps checking")
+        try expect(elapsed() == 15, "elapsed_seconds counts from Sentry's 200 by this Mac's clock")
         h.clock.advance(30); await h.transport.runDue()
         delivery = h.store.delivery(id)!
         try expect(delivery.state == .received && delivery.evidenceRemoved && (try? h.store.envelope(id)) == nil, "received drops the local copy and keeps the receipt")
         try expect(h.model.receipts.first?.title == "Received · \(BugReportText.shortID(id))", "receipt: Received · short ID")
         let body = requests.last!
         let files = body["attachments"] as? [[String: Any]]
-        try expect(body["event_id"] as? String == delivery.eventID && body["report_id"] as? String == id
+        try expect(body["event_id"] as? String == delivery.eventID && body["report_id"] as? String == id && id == id.lowercased()
                    && files?.map { $0["name"] as? String } == ["context.json", "screenshot.png", "voice.wav"]
                    && files?.allSatisfy({ ($0["size"] as? Int ?? 0) > 0 && ($0["sha256"] as? String)?.count == 64 }) == true, "the verifier request names every file")
-        try expect(body["sent_at"] as? String == BugReportText.timestamp(delivery.sentAt!) && Set(body.keys) == ["event_id", "report_id", "attachments", "sent_at"]
-                   && (try JSONSerialization.data(withJSONObject: body)).count <= 4_096, "the verifier request carries sent_at and nothing else, within 4 KiB")
+        try expect(Set(body.keys) == ["event_id", "report_id", "attachments", "elapsed_seconds"] && elapsed() == 45
+                   && (try JSONSerialization.data(withJSONObject: body)).count <= 4_096, "the request is exactly event, report, files and elapsed seconds, within 4 KiB")
         try expect(paths == ["/api/v1/verify"], "the verifier endpoint path")
         try expect(BugReportTransport.verifyEndpoint(URL(string: "https://workbench-report-check.vercel.app/api/v1/verify")!).absoluteString
                    == "https://workbench-report-check.vercel.app/api/v1/verify"
                    && BugReportTransport.verifyEndpoint(URL(string: "http://127.0.0.1:8787")!).absoluteString == "http://127.0.0.1:8787/api/v1/verify",
                    "a full endpoint is used as is; an origin gets /api/v1/verify")
 
-        // Mismatch for the whole window: Couldn't confirm delivery, then Send again under a new event ID.
+        // A clock moved backwards counts as 0 elapsed seconds.
+        (h, id) = try await frozen("clock")
+        h.clock.advance(-120); answers = ["pending"]
+        await h.transport.attempt(id)
+        try expect(elapsed() == 0 && h.store.delivery(id)?.state == .sent, "a clock moved backwards sends 0")
+
+        // A mismatch is the verifier's finding: Couldn't confirm delivery, then Send again under a new event ID.
         (h, id) = try await frozen("mismatch")
         let manifest = try BugReportEnvelope.parse(try h.store.envelope(id)).items[1].payload
         let firstEvent = h.store.delivery(id)!.eventID
-        answers = Array(repeating: "mismatch", count: 40)
-        for _ in 0..<40 where h.store.delivery(id)?.state == .sent { h.clock.advance(60); await h.transport.runDue() }
+        answers = ["mismatch"]
+        h.clock.advance(15); await h.transport.runDue()
         delivery = h.store.delivery(id)!
-        try expect(delivery.state == .unconfirmed && delivery.problem == .mismatch && delivery.nextAttemptAt == nil, "mismatch after 15 minutes is unconfirmed")
+        try expect(delivery.state == .unconfirmed && delivery.problem == .mismatch && delivery.nextAttemptAt == nil, "mismatch is Couldn't confirm delivery")
         try expect(h.model.receipts.first?.title == "Couldn't confirm delivery" && h.model.receipts.first?.actions.first == .sendAgain, "receipt offers Send again")
         let sends = sentry.bodies.count
+        h.clock.advance(3_600); await h.transport.runDue()
+        try expect(sentry.bodies.count == sends, "nothing is sent again without the person's choice")
         h.model.perform(.sendAgain, on: id)
         await h.transport.runDue()
         delivery = h.store.delivery(id)!
@@ -530,36 +543,45 @@ enum BugReportChecks {
         try expect(delivery.eventID != firstEvent && delivery.previousEventIDs == [firstEvent] && sentry.bodies.count == sends + 1 && delivery.state == .sent,
                    "Send again uses a new event ID, once")
         try expect(again.items[1].payload == manifest && again.header["event_id"] as? String == delivery.eventID, "the same report ID and context.json")
-
-        // 503 keeps Sent and waits as told; a mismatch before it does not downgrade at the end.
-        (h, id) = try await frozen("unavailable")
-        answers = ["mismatch", "503"]
+        answers = ["pending"]
         h.clock.advance(15); await h.transport.runDue()
+        try expect(elapsed() == 15, "the new 200 resets elapsed seconds")
+
+        (h, id) = try await frozen("not-found")
+        answers = ["not_found"]
+        h.clock.advance(15); await h.transport.runDue()
+        try expect(h.store.delivery(id)?.state == .unconfirmed && h.store.delivery(id)?.problem == .notFound, "not_found is Couldn't confirm delivery")
+
+        // Anything else keeps Sent and checks again: 503 with Retry-After, 422, a page that is not JSON.
+        (h, id) = try await frozen("unavailable")
+        answers = ["503"]
         h.clock.advance(15); await h.transport.runDue()
         delivery = h.store.delivery(id)!
         try expect(delivery.state == .sent && delivery.nextAttemptAt == h.clock.now + 120, "503 keeps Sent and honours Retry-After")
-        answers = Array(repeating: "503", count: 40)
-        for _ in 0..<40 where h.store.delivery(id)?.nextAttemptAt != nil { h.clock.advance(120); await h.transport.runDue() }
-        try expect(h.store.delivery(id)?.state == .sent, "an unavailable verifier never downgrades Sent")
-        // 422, 413 and 405 are this build's mistakes: stop checking and stay Sent.
-        (h, id) = try await frozen("client-error")
-        answers = ["422"]
-        h.clock.advance(15); await h.transport.runDue()
+        answers = ["422", "html"]
+        h.clock.advance(120); await h.transport.runDue()
+        h.clock.advance(300); await h.transport.runDue()
         delivery = h.store.delivery(id)!
-        try expect(delivery.state == .sent && delivery.nextAttemptAt == nil && delivery.verifierState == "client_error_422", "422 stops checking and stays Sent")
+        try expect(delivery.state == .sent && delivery.nextAttemptAt != nil, "422 and a non-JSON answer keep Sent and check again")
 
-        // not_found for the window is also unconfirmed; an unreachable verifier leaves Sent.
-        (h, id) = try await frozen("not-found")
-        answers = Array(repeating: "not_found", count: 40)
-        for _ in 0..<40 where h.store.delivery(id)?.nextAttemptAt != nil { h.clock.advance(60); await h.transport.runDue() }
-        try expect(h.store.delivery(id)?.state == .unconfirmed && h.store.delivery(id)?.problem == .notFound, "not_found after 15 minutes is unconfirmed")
-        (h, id) = try await frozen("unreachable")
-        answers = Array(repeating: nil, count: 40)
-        for _ in 0..<40 where h.store.delivery(id)?.nextAttemptAt != nil { h.clock.advance(60); await h.transport.runDue() }
+        // No answer for the whole window: Sent stays, with one more check at the next launch.
+        let clock = Clock()
+        (h, id) = try await frozen("unreachable", clock: clock)
+        answers = Array(repeating: nil, count: 60)
+        for _ in 0..<60 where h.store.delivery(id)?.nextAttemptAt != nil { clock.advance(60); await h.transport.runDue() }
         delivery = h.store.delivery(id)!
-        try expect(delivery.state == .sent && delivery.nextAttemptAt == nil && !delivery.evidenceRemoved, "an unreachable verifier leaves a truthful Sent")
+        try expect(delivery.state == .sent && delivery.nextAttemptAt == nil && delivery.verifyAtLaunch && !delivery.evidenceRemoved
+                   && clock.now.timeIntervalSince(delivery.sentAt!) >= BugReportTransport.verifyWindow, "an unreachable verifier leaves a truthful Sent for about 16 minutes")
         try expect(h.model.receipts.first?.title == "Sent · \(BugReportText.shortID(id))", "receipt stays Sent")
-        return ["verifier: first check at 15 s with sent_at, pending then received, mismatch and not_found become Couldn't confirm delivery, Send again with a new event ID, 503/422/unreachable stay Sent"]
+        answers = ["received"]
+        clock.advance(86_400)
+        let relaunched = harness(root.appendingPathComponent("unreachable"), clock: clock)
+        relaunched.transport.start(watchConnectivity: false)
+        await relaunched.transport.runDue()
+        relaunched.transport.stop()
+        try expect(relaunched.store.delivery(id)?.state == .received && elapsed() == Int(clock.now.timeIntervalSince(delivery.sentAt!)),
+                   "the next launch checks once more")
+        return ["verifier: first check at 15 s with elapsed_seconds, pending then received, mismatch and not_found are Couldn't confirm delivery, Send again resets the count, 503/422/non-JSON/unreachable stay Sent, one more check at launch"]
     }
 
     // MARK: Outbox, draft and Save a copy

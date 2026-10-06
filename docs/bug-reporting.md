@@ -197,12 +197,13 @@ There is no user, IP, server name, request, breadcrumb or log field. A report wi
 
 Backoff starts at 5 seconds, doubles to 15 minutes, and jitters over the upper half of each step. `delivery.json` holds the state and next attempt time, so delivery resumes after a relaunch.
 
-The verifier receives `POST {event_id, report_id, attachments:[{name,size,sha256}], sent_at}` at the configured URL. That is the full `/api/v1/verify` endpoint, or an origin that path is added to. The first check comes 15 seconds after Sent, then backs off until 15 minutes after Sent:
+The verifier receives `POST {event_id, report_id, attachments:[{name,size,sha256}], elapsed_seconds}` at the configured URL. That is the full `/api/v1/verify` endpoint, or an origin that path is added to. `elapsed_seconds` counts from this Mac's receipt of Sentry's 200 for that event ID, by this Mac's own clock at both ends, and is 0 if the clock moved backwards. Report IDs are lowercase everywhere. The first check comes 15 seconds after Sent, then backs off for about 16 minutes:
 
 - **received** makes the receipt **Received · short ID**. The envelope is deleted and the receipt kept.
-- **mismatch** or **not_found** as the final answer becomes **Couldn't confirm delivery · Send again**. Send again uses a new event ID for the same report ID and `context.json`, and keeps the earlier IDs.
-- **pending**, 503 (which honours `Retry-After`) or no answer leaves **Sent**, which is never downgraded.
-- 405, 413 and 422 stop checking. Sent stays, and the status code is noted in `delivery.json`.
+- **mismatch** or **not_found** is the verifier's finding, because it answers pending while Sentry may still be storing the event. It becomes **Couldn't confirm delivery · Send again**. Send again is only the person's choice: a new event ID for the same report ID and `context.json`, keeping the earlier IDs.
+- **pending**, any other status (honouring `Retry-After`), a non-JSON answer or no answer leaves **Sent**, which is never downgraded. If the window ends without an answer, the next launch checks once more.
+
+An event ID is sent again only after a network failure or a lost response before any 200, never after a 200.
 
 ### Outbox
 
