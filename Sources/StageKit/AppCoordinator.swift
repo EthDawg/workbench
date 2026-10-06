@@ -290,8 +290,12 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         return heldAction == .pen && !latched ? .release : nil
     }
 
+    /// Told each time a Draw, Persona or overlay shortcut is pressed, so Workbench can count it
+    /// as a key in use.
+    var onShortcutUsed: ((String) -> Void)?
     func handleHotkey(_ action: Action, down: Bool) {
         guard !screenshotHandoffActive else { return }
+        if down { onShortcutUsed?(action.rawValue) }
         if action.isOverlayAction { if down { perform(action) }; return }
         guard recordingAction == nil, !boardExportInProgress else { return }
         if let selected = action.tool {

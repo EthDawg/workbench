@@ -48,6 +48,10 @@ public final class StageKitController: ObservableObject {
     public var onShortcutsChanged: (() -> Void)? {
         didSet { coordinator.onShortcutsChanged = onShortcutsChanged }
     }
+    /// Each pressed Draw, Persona or overlay shortcut, by its catalogue id.
+    public var onShortcutUsed: ((String) -> Void)? {
+        didSet { coordinator.onShortcutUsed = onShortcutUsed }
+    }
     public var mayBeginInteraction: (() -> Bool)? {
         didSet {
             coordinator.mayBeginInteraction = mayBeginInteraction; coordinator.demoScenes.mayBeginInteraction = mayBeginInteraction

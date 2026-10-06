@@ -183,6 +183,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             if suspended { self.model.promptInsertion.cancel(); self.hotkeys.unregister(); self.stage.escape(); self.stage.setShortcutsSuspended(true) }
             else { self.stage.setShortcutsSuspended(false); self.registerShortcuts(); self.keyboard.replaceEntries(self.shortcutEntries()) }
         })
+        keyboard.restorePractised(UserDefaults.standard.stringArray(forKey: KeyboardCoachModel.practisedKey) ?? []) {
+            UserDefaults.standard.set($0.sorted(), forKey: KeyboardCoachModel.practisedKey)
+        }
+        stage.onShortcutUsed = { [weak self] id in self?.keyboard.recordUse("stage." + id) }
         panelEditor = PanelShortcutEditor(keyboard: keyboard)
         let homeWindow = WorkbenchHomeWindow(contentViewController: NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard, readback: readback, snap: snap)))
         homeWindow.onHide = { [weak self] in
@@ -195,7 +199,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         window.minSize = NSSize(width: 1050, height: 730)
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
         window.titlebarAppearsTransparent = true; window.titleVisibility = .hidden
-        window.isReleasedWhenClosed = false; window.center()
+        window.isReleasedWhenClosed = false
+        // The window comes back where and how big it was left; only its first opening centres it
+        // (docs/desktop.md § When the window shows).
+        if !window.setFrameUsingName(Self.windowFrameName) { window.center() }
+        window.setFrameAutosaveName(Self.windowFrameName)
         // The normal launch below opens the window after its controls exist.
         if PackLibraryModel.shared.pendingSource != nil { model.page = "packs" }
         capturePanel = CapturePanelController(model: model, readback: readback, stage: stage, snapModel: snap,
@@ -293,6 +301,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         model.onResetPanel = { [weak self] in self?.capturePanel.position(reset: true) }
         hotkeys.onKey = { [weak self] id, down, time in
             guard let self, VoicePreferences.shortcutIDs.contains(id) else { return }
+            if down { self.keyboard?.recordUse("voice.\(id)") }
             if id == 1 { self.model.shortcutChanged(down: down, at: time) }
             else if down, id == 3 { self.model.showLibrary() }
             else if down, id == 7 {
@@ -337,7 +346,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         WorkbenchUpdates.shared.showUpdate = { [weak self] in self?.showWindow() }
         WorkbenchUpdates.shared.start()
         setupMenus()
-        registerShortcuts(); showWindow()
+        // A launch at login keeps to the menu bar and the toolbar; every other launch opens the
+        // window. A pack link always opens it. When macOS does not mark the launch, the window
+        // opens as it always has.
+        registerShortcuts()
+        if !Self.launchedAtLogin(NSAppleEventManager.shared().currentAppleEvent) || PackLibraryModel.shared.pendingSource != nil { showWindow() }
         meetingOffer = MeetingOfferPanelController(model: model.meetings) { [weak self] in self?.navigate("meeting") }
         model.clipboardReceipt.$receipt.receive(on: RunLoop.main)
             .sink { [weak self] _ in
@@ -446,6 +459,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         draw.submenu = stage.makeAnnotationMenu(); main.addItem(draw)
         let windows = NSMenuItem(); windows.title = "Window"; let menu = NSMenu(title: "Window")
         menu.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        menu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
         menu.addItem(withTitle: "Open Workbench", action: #selector(showWindow), keyEquivalent: "0")
         // Show or Hide by the saved preference, through the same switch as the panel and Settings (#134).
         menu.addItem(withTitle: Self.floatingToolbarTitle(visible: model.floatingToolbarVisible), action: #selector(toggleFloatingToolbar), keyEquivalent: "")
@@ -636,6 +650,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     @objc func showWindow() { closeControls(); if window.isMiniaturized { window.deminiaturize(nil) }; window.makeKeyAndOrderFront(nil); statusItem?.isVisible = true; NSApp.activate(ignoringOtherApps: true) }
     @objc func showAbout() { NSApp.orderFrontStandardAboutPanel(options: [.applicationName: Workbench.displayName, .applicationVersion: WorkbenchUpdates.shared.build.label, .credits: NSAttributedString(string: "\(WorkbenchUpdates.shared.build.details)\n\nEveryday tools for speaking, explaining and presenting.\nSpeech powered by Parakeet, FluidAudio and your selected recognition provider.")]) }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showWindow(); return true }
+    /// The saved size and position of the Workbench window, kept per edition with its preferences.
+    static let windowFrameName = "WorkbenchWindow"
+    /// macOS marks an Open at Login launch in the event that opens the app.
+    static func launchedAtLogin(_ event: NSAppleEventDescriptor?) -> Bool {
+        guard let event, event.eventID == AEEventID(kAEOpenApplication) else { return false }
+        return event.paramDescriptor(forKeyword: AEKeyword(keyAEPropData))?.enumCodeValue == OSType(keyAELaunchedAsLogInItem)
+    }
     func applicationDidBecomeActive(_ notification: Notification) {
         readback?.refreshPermissionState()
         PackLibraryModel.shared.checkAutomatically()
@@ -737,7 +758,7 @@ func runCLI(_ args: [String]) async -> Int32 {
             try CorrectionRuleChecks.run()
             try HomeJourneyChecks.run()
             try PanelDestinationChecks.run()
-            try await MainActor.run { try WorkbenchPageChecks.run(); try HomeRecentWorkChecks.run() }
+            try await MainActor.run { try WorkbenchPageChecks.run() }
             try InsertionBoundaryChecks.run()
             try CoreChecks.run(); try CleanupChecks.run(); try DemoLibraryChecks.run(); try ReadbackChecks.run(); try await ReadbackChecks.runAdmissionChecks(); try ProviderChecks.run(); try CaptureHUDChecks.run(); try CaptureSettingsChecks.run(); try LocalRefinementChecks.run()
             try await AccessibilityBridgeChecks.run()

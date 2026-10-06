@@ -1,0 +1,41 @@
+{
+  "made": "2026-10-07",
+  "what": "A six-slide tour of Workbench that ships with the app: a short headline per slide, a real Workbench screenshot, one Draw-style annotation, and narration in manifest.json. It was designed and rendered from this folder; it was not made through Snap & Talk and does not show what a Snap & Talk handoff produces.",
+  "source": "scripts/samples (deck.html, deck.css, backdrop.html, manifest.json, provenance.json, screens/, backdrops/)",
+  "render": "bash scripts/samples/render.sh",
+  "renderer": "Headless Google Chrome in two passes. Pass 1 draws the walls and soft window shadows from backdrop.html and saves them as backdrops/*.jpg (Chrome's PDF printer would otherwise turn them into large images). Pass 2 shoots each 1920x1080 CSS px slide of deck.html at device scale 2, reduced to 1600x900 JPEG (quality 82) with sips, and prints the same page as a six-page 1440x810 pt (16:9) PDF whose headlines, lines and notes are live text.",
+  "screenshots": {
+    "origin": "Workbench's own surface gallery, rendered offscreen from the app's SwiftUI pages with synthetic sample data. No real person's data, recordings or captures appear.",
+    "files": {
+      "screens/dictate.png": "sample-dictate-light.png from WORKBENCH_SAMPLE_SCREENS_GALLERY_ONLY=1 (Dictate with automatic paste set up)",
+      "screens/meetings.png": "page-meeting-state-completed-light.png",
+      "screens/snap-and-talk.png": "sample-snap-and-talk-light.png from WORKBENCH_SAMPLE_SCREENS_GALLERY_ONLY=1 (a four-screen walkthrough of real Workbench screens with narration)",
+      "screens/draw.png": "page-annotate-default-light.png",
+      "screens/history.png": "page-history-default-light.png"
+    },
+    "processing": "Downscaled to 1600 px wide with sips -Z 1600. Pixels are otherwise unchanged, except that the Draw slide covers the offscreen render's \"Ready on 0 displays\" status line, which the installed app shows as \"Ready on 1 display\"."
+  },
+  "annotations": "Drawn in SVG over the screenshots in Draw's default coral ink (#ff5446 on the website, InkColor.coral in the app); the cover ellipse is the website's hand-drawn mark in mint.",
+  "fonts": [
+    {
+      "family": "Bricolage Grotesque",
+      "file": "site/assets/fonts/bricolage-grotesque-latin.woff2",
+      "use": "headlines",
+      "licence": "SIL Open Font License 1.1",
+      "copyright": "Copyright 2022 The Bricolage Grotesque Project Authors (https://github.com/ateliertriay/bricolage)",
+      "licence_file": "site/assets/fonts/OFL-bricolage-grotesque.txt"
+    },
+    {
+      "family": "Caveat",
+      "file": "site/assets/fonts/caveat-bold-latin.woff2",
+      "use": "hand-drawn notes",
+      "licence": "SIL Open Font License 1.1",
+      "copyright": "Copyright 2014 The Caveat Project Authors (https://github.com/googlefonts/caveat)",
+      "licence_file": "site/assets/fonts/OFL-caveat.txt"
+    },
+    {
+      "family": "System UI (San Francisco)",
+      "use": "body text, from the Mac that renders the deck; Chrome embeds only the glyphs used in the PDF"
+    }
+  ]
+}

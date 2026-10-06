@@ -46,6 +46,8 @@ cp "$PROJECT_DIR/scripts/AppIcon.icns" "$APP_DIR/Contents/Resources/AppIcon.icns
 ditto "$PROJECT_DIR/Resources/SceneBackdrops" "$APP_DIR/Contents/Resources/SceneBackdrops"
 ditto "$PROJECT_DIR/Resources/AmbientScenes" "$APP_DIR/Contents/Resources/AmbientScenes"
 ditto "$PROJECT_DIR/Resources/PersonaPortraits" "$APP_DIR/Contents/Resources/PersonaPortraits"
+# Home's sample deck (docs/desktop.md § Home), rendered from scripts/samples.
+ditto "$PROJECT_DIR/Resources/Samples" "$APP_DIR/Contents/Resources/Samples"
 bash "$PROJECT_DIR/scripts/app-intents.sh" "$APP_DIR"
 codesign --force --deep --sign - "$APP_DIR"
 codesign --verify --deep --strict "$APP_DIR"

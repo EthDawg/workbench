@@ -9,6 +9,96 @@ extension Workbench {
     static let bodyText = Font.body
     static let pagePadding: CGFloat = 24
     static let sectionSpacing: CGFloat = 16
+    /// One card shape for every page (docs/desktop.md § Page kit): 12 pt corners, 16 pt inside,
+    /// on the control surface with a hairline, so a card reads the same on Home and on a tool page.
+    static let tileRadius: CGFloat = 12
+    static let tilePadding: CGFloat = 16
+    /// Orange asks for attention and nothing else; red stays for recording and removal.
+    static let attention = Color.orange
+}
+
+/// A card on a page: a symbol in the accent, a section title, an optional trailing status or
+/// door, then its content. The whole card is never a button; its actions sit inside it, beside
+/// the thing they act on.
+struct WorkbenchTile<Accessory: View, Content: View>: View {
+    let title: String
+    let symbol: String
+    @ViewBuilder var accessory: () -> Accessory
+    @ViewBuilder var content: () -> Content
+
+    init(_ title: String, symbol: String, @ViewBuilder accessory: @escaping () -> Accessory, @ViewBuilder content: @escaping () -> Content) {
+        self.title = title; self.symbol = symbol; self.accessory = accessory; self.content = content
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: symbol).font(.system(size: 14, weight: .semibold)).foregroundStyle(Workbench.accent)
+                    .frame(width: 18).accessibilityHidden(true)
+                Text(title).font(Workbench.sectionTitle).accessibilityAddTraits(.isHeader)
+                Spacer(minLength: 8)
+                accessory()
+            }
+            content()
+        }
+        .padding(Workbench.tilePadding)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background(Workbench.surface, in: RoundedRectangle(cornerRadius: Workbench.tileRadius))
+        .overlay(RoundedRectangle(cornerRadius: Workbench.tileRadius).strokeBorder(Workbench.border))
+        .accessibilityElement(children: .contain)
+    }
+}
+
+extension WorkbenchTile where Accessory == EmptyView {
+    init(_ title: String, symbol: String, @ViewBuilder content: @escaping () -> Content) {
+        self.init(title, symbol: symbol, accessory: { EmptyView() }, content: content)
+    }
+}
+
+/// What a status says about itself: done, needs the person, or plain information.
+enum WorkbenchTone: Equatable { case done, attention, neutral }
+
+/// A short status beside the thing it describes: a symbol and a few words, coloured by tone.
+struct WorkbenchStatusBadge: View {
+    let text: String
+    let tone: WorkbenchTone
+    var symbol: String? = nil
+    var body: some View {
+        // Orange words fail contrast on a light card, so attention colours only its symbol.
+        Label {
+            Text(text).lineLimit(1).foregroundStyle(tone == .attention ? Color.primary : color)
+        } icon: {
+            Image(systemName: symbol ?? defaultSymbol).foregroundStyle(color).accessibilityHidden(true)
+        }
+        .font(.caption.weight(.medium)).labelStyle(.titleAndIcon)
+        .fixedSize()
+    }
+    private var defaultSymbol: String {
+        switch tone { case .done: return "checkmark.circle.fill"; case .attention: return "exclamationmark.circle.fill"; case .neutral: return "circle.dashed" }
+    }
+    private var color: Color {
+        switch tone { case .done: return Workbench.accent; case .attention: return Workbench.attention; case .neutral: return .secondary }
+    }
+}
+
+/// A card or page with nothing in it yet: what will appear, why it is useful, and the one next
+/// step. Left-aligned inside a card; a whole empty page centres it.
+struct WorkbenchEmptyState<Actions: View>: View {
+    let symbol: String
+    let title: String
+    let detail: String
+    @ViewBuilder var actions: () -> Actions
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: symbol).font(.system(size: 22, weight: .regular)).foregroundStyle(Workbench.accent)
+                .frame(width: 28).accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(title).font(.callout.weight(.semibold))
+                Text(detail).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 8) { actions() }.padding(.top, 4)
+            }
+        }.accessibilityElement(children: .contain)
+    }
 }
 
 /// A page's title, read from the page record so it is the name the sidebar, the menus and the
