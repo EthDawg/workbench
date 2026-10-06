@@ -1694,12 +1694,12 @@ private struct HistoryNativeAcceptanceView: View {
         state(admission: .serverUnverified, detail: "Local server configured, not yet verified")
         try shot("dictate", "server", "Unverified server admits a deliberate first attempt")
         state(); try shot("readback", "deferred-narration", "Deferred speech with usable saved Snap & Talk work")
-        model.voiceSession = .init(sessionID: UUID(), phase: .listening,
-                                   sources: [.init(source: .microphone, name: "Microphone")])
+        model.applyGalleryVoiceSnapshot(.init(sessionID: UUID(), phase: .listening,
+                                   sources: [.init(source: .microphone, name: "Microphone")]))
         model.phase = .recording
         guard model.canToggleRecording else { throw VoiceError.message("Readiness loss hid Stop.") }
         try shot("dictate", "stop-without-readiness", "Stop remains reachable after readiness loss")
-        model.phase = .idle; model.voiceSession = .init()
+        model.phase = .idle; model.applyGalleryVoiceSnapshot(.init())
 
         // Real owner admission/cancellation with injected OS responses. None of these
         // cases reaches audio capture, and all stores are in the verified child home.
@@ -1744,6 +1744,9 @@ private struct HistoryNativeAcceptanceView: View {
         Task { actualAdmission = await model.engine.isReady; checkedEngine = true }
         try wait("real engine remains unavailable in fixture") { checkedEngine }
         guard !actualAdmission else { throw VoiceError.message("A held-admission fixture cannot use a live engine.") }
+        var createdSessions = 0
+        let sessionObservation = model.$voiceSession.sink { if $0.sessionID != nil { createdSessions += 1 } }
+        defer { sessionObservation.cancel() }
         var admissions: [CheckedContinuation<Bool, Never>] = [], admissionReturns = 0
         model.readSpeechAdmission = { _ in
             let value = await withCheckedContinuation { admissions.append($0) }
@@ -1756,7 +1759,7 @@ private struct HistoryNativeAcceptanceView: View {
         try wait("cancelled true admission reply") { admissionReturns == 1 }
         settle(window.contentView!)
         guard model.phase == .idle, !model.hasCaptureRecovery, model.voiceSession.sessionID == nil,
-              model.captureFailure == nil else { throw VoiceError.message("An old true readiness reply started or failed cancelled capture.") }
+              model.captureFailure == nil, createdSessions == 0 else { throw VoiceError.message("An old true readiness reply started or failed cancelled capture.") }
         model.toggleRecording()
         try wait("second held speech admission") { admissions.count == 2 }
         model.cancelRecording(); model.toggleRecording()
@@ -1771,7 +1774,7 @@ private struct HistoryNativeAcceptanceView: View {
         try wait("new attempt cancelled reply") { admissionReturns == 3 }
         settle(window.contentView!)
         guard model.phase == .idle, !model.hasCaptureRecovery, model.voiceSession.sessionID == nil,
-              model.transcript == original else { throw VoiceError.message("Cancelled readiness replies changed saved work.") }
+              model.transcript == original, createdSessions == 0 else { throw VoiceError.message("Cancelled readiness replies changed saved work.") }
         model.readSpeechAdmission = { await $0.isReady }
         print("FIRST_SPEECH_READINESS_RACE_CHECKS_OK: held true reply after Cancel; held false reply after Cancel and new Start; no capture files or stale failure")
         print("FIRST_SPEECH_OWNER_CHECKS_OK: pending Cancel, late grant, readiness loss, denied, restricted, Settings-open failure, exact saved words")

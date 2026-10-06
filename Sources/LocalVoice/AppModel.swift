@@ -178,6 +178,12 @@ final class AppModel: NSObject, ObservableObject {
     private var liveCapture: DictationVoiceCapture?
     var hasActiveVoiceCapture: Bool { liveCapture != nil }
     @Published private(set) var voiceSession = LiveVoiceSnapshot()
+    /// Only the verified, isolated surface-gallery child can project recording
+    /// state without creating a real audio capture.
+    func applyGalleryVoiceSnapshot(_ snapshot: LiveVoiceSnapshot) {
+        guard ProcessInfo.processInfo.arguments.contains(SurfaceGallery.passFlag) else { return }
+        voiceSession = snapshot
+    }
     private var recordURL: URL?
     private var meter: Timer?
 

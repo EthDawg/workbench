@@ -72,7 +72,7 @@ enum RecognitionLifecycleChecks {
 
         for phase in [RecognitionSnapshot.Phase.downloading, .checkingCache, .loading] {
             let cancelProbe = SpeechPreparationProbe(phase: phase)
-            let interrupted: @Sendable (RecognitionLocalModels.Progress) async throws -> PreparedRecognition = { progress in
+            let interrupted: @Sendable (@escaping RecognitionLocalModels.Progress) async throws -> PreparedRecognition = { progress in
                 await cancelProbe.prepare(acquire: true, progress: progress)
                 throw URLError(.cancelled)
             }
