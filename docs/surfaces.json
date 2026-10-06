@@ -4158,10 +4158,11 @@
   {
     "id": "shortcut.stage.pointer",
     "surface": "global shortcuts",
-    "label": "Cursor highlight",
+    "label": "Pointer",
     "case": "pointer",
     "kind": "action",
-    "belongsTo": "draw"
+    "belongsTo": "draw",
+    "note": "Quality: named Pointer, as Draw's Pointer tab and tile name it, so one tool has one name on every surface (Names rule; 7 October)."
   },
   {
     "id": "shortcut.stage.rectangle",

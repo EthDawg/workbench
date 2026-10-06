@@ -175,9 +175,9 @@ struct QuickControlsView: View {
     private var cursor: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Label("Cursor highlight", systemImage: "cursorarrow.rays").fontWeight(.medium)
+                Label("Pointer", systemImage: "cursorarrow.rays").fontWeight(.medium)
                 Spacer()
-                Toggle("Cursor highlight", isOn: Binding(get: { app.pointerEnabled }, set: { value in
+                Toggle("Pointer", isOn: Binding(get: { app.pointerEnabled }, set: { value in
                     if value != app.pointerEnabled { app.perform(.pointer) }
                 })).labelsHidden().toggleStyle(.switch)
             }
