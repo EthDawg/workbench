@@ -38,8 +38,14 @@ methods = model.extract([
     "invalidateAudio", "receiveReadingSelection", "importReading", "listen(to:)", "canReplaceReading",
     "replaceWaitsForSave", "replaceReadingWithSelection", "keepCurrentReading", "readingLimitMessage",
     "applyReadingSelection", "endReadingForNewText",
-    # What the selected provider can read, and the reason copied text is refused (#173).
-    "readingProviderName", "ReadingRejection", "readingRejection", "copiedTextRefusal",
+    # What the selected provider can read, and the reason selected text is refused (#173).
+    "readingProviderName", "ReadingRejection", "readingRejection", "selectedTextRefusal",
+    # Read's one start from the front app's selection: the draft rule's inputs and the waits.
+    "readSelection(_:)", "draftWasHeard", "readingWaitsForOtherWork", "readingWaitsForMeeting", "readingWaitsForDictation",
+])
+# The draft rule readSelection applies, compiled from ReadStart without its Accessibility read.
+read_start = SwiftFile(SOURCES / "ReadStart.swift").type("ReadStart").extract([
+    "Draft", "draft(current:incoming:heard:)", "heard(draft:audioText:)",
 ])
 # The checks drive the private playback step directly instead of waiting for timers.
 exposed = methods.replace("    private func ", "    func ")
@@ -79,6 +85,9 @@ enum VoiceError: LocalizedError {
 }
 enum ReadingProvider: String { case mac = "Mac voices", neural = "Neural voices", speko = "Speko · online" }
 struct SpekoVoice { let requestSignature: String }
+enum ReadStart {
+__READ_START__
+}
 
 /// Every synthetic file lives under the disposable folder the script passes in.
 let scratch = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
@@ -997,13 +1006,56 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         await settle { MacSpeechRenderer.created.count == renders + 1 }
         let tileRender = MacSpeechRenderer.created.last!
         try check(tile.speechText == promptB && tileRender.text.spoken == promptB && !exists(tileURL),
-                  "Home's tile ends A through the replace step and reads the copied text")
+                  "Home's tile ends A through the replace step and reads the selected text")
         try tileRender.deliver(seconds: 0.5)
         await settle { tile.playing }
         let tilePlayer = tile.player
         tile.listen(to: promptB)
         try check(tile.playing && tile.player === tilePlayer && MacSpeechRenderer.created.count == renders + 1,
-                  "The same copied text already playing carries on")
+                  "The same selected text already playing carries on")
+
+        // Read's one start from the front app's selection, against real readings: a draft whose
+        // audio was made (playing, paused or stopped) is heard, so the selection replaces it and
+        // reads; a draft nobody heard keeps the selection behind the review, and nothing starts.
+        try check(tile.draftWasHeard && tile.readingWaitsForOtherWork == nil, "a playing reading's draft was heard, and nothing waits")
+        try check(tile.readSelection(try ReadingSelectionImport(text: promptB)) && tile.playing && tile.player === tilePlayer
+                  && MacSpeechRenderer.created.count == renders + 1, "the same selection as the playing reading carries on")
+        let selected = try await pausedReading(passageA)
+        let selectedURL = selected.audio?.url
+        try check(selected.draftWasHeard, "a paused reading's draft was heard")
+        renders = MacSpeechRenderer.created.count
+        selected.page = "home"
+        try check(selected.readSelection(try ReadingSelectionImport(text: promptB)) && selected.speechText == promptB
+                  && selected.pendingReadingSelection == nil && selected.page == "home", "a heard draft is replaced and the selection reads, with no page change")
+        await settle { MacSpeechRenderer.created.count == renders + 1 }
+        let selectedRender = MacSpeechRenderer.created.last!
+        try check(selectedRender.text.spoken == promptB && !exists(selectedURL), "the paused reading's audio is gone and the selection is being made")
+        try selectedRender.deliver(seconds: 0.5)
+        try selectedRender.complete()
+        await settle { selected.playing && selected.audio?.isRendering == false }
+        selected.stopPlayback()
+        try check(!selected.playing && selected.draftWasHeard, "a stopped reading keeps its finished audio, so its draft stays heard")
+        let typedDraft = ReadingHarness()
+        typedDraft.speechText = "Typed into Read and never heard."
+        typedDraft.page = "home"
+        renders = MacSpeechRenderer.created.count
+        try check(!typedDraft.draftWasHeard && !typedDraft.readSelection(try ReadingSelectionImport(text: promptB))
+                  && typedDraft.speechText == "Typed into Read and never heard." && typedDraft.pendingReadingSelection?.text == promptB
+                  && typedDraft.page == "speak" && typedDraft.readingTask == nil && MacSpeechRenderer.created.count == renders,
+                  "an unheard draft keeps the selection behind Replace reading / Keep current, and nothing starts")
+        typedDraft.replaceReadingWithSelection()
+        try check(typedDraft.speechText == promptB && !typedDraft.draftWasHeard, "Replace reading takes the selection as the draft, still unheard until Listen")
+        let duringDictation = ReadingHarness()
+        duringDictation.speechText = ""
+        duringDictation.phase = .recording
+        try check(duringDictation.readingWaitsForOtherWork == "Wait for the dictation to finish before playing a reading."
+                  && !duringDictation.readSelection(try ReadingSelectionImport(text: promptB)) && duringDictation.speechText == promptB
+                  && duringDictation.readingTask == nil && duringDictation.error == duringDictation.readingWaitsForOtherWork
+                  && duringDictation.attention?.page == .read && duringDictation.page == "speak",
+                  "dictation keeps the selection as the draft, starts nothing and says why on Read")
+        try check(Attention.besideHomeReadTile(duringDictation.attention, meetingBusy: false) == nil, "the selection's wait is Read's, not Home's tile's")
+        duringDictation.phase = .idle
+        try check(duringDictation.readingWaitsForOtherWork == nil, "with dictation over, a reading may start")
 
         // #173: Home's tile turns away text the selected provider cannot read before it touches
         // Read: the draft, its audio, player, playhead and review stay, nothing starts, and the
@@ -1012,7 +1064,7 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         // since Home hides its Read tile while a reading is live.
         func bytes(_ text: String) -> [UInt8] { Array(text.utf8) }
         func refused(_ count: String, _ provider: String, _ limit: String) -> String {
-            "The copied text has \(count) characters, more than \(provider) accepts (\(limit)). Your reading draft is unchanged."
+            "The selected text has \(count) characters, more than \(provider) accepts (\(limit)). Your reading draft is unchanged."
         }
         let draftA = String(String(repeating: "Idle draft A keeps every one of its words. ", count: 70).prefix(2_727))
         let macOver = String(repeating: "x", count: 50_001), macLimit = String(repeating: "x", count: 50_000)
@@ -1030,7 +1082,7 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         try check(draftA.count == 2_727 && !idle.playing && !idle.paused && idleAudio != nil && exists(idleAudio?.url),
                   "Read is idle with draft A (2,727 characters) and the audio it last made")
         idle.listen(to: macOver)
-        try check(bytes(idle.speechText) == bytes(draftA), "50,001 copied characters leave idle draft A byte for byte (#173)")
+        try check(bytes(idle.speechText) == bytes(draftA), "50,001 selected characters leave idle draft A byte for byte (#173)")
         try check(idle.audio === idleAudio && exists(idleAudio?.url) && !idle.rendering && idle.readingTask == nil
                   && idle.readingGenerationID == nil && !idle.playing && idle.status == idleStatus,
                   "the refused text keeps A's audio and starts nothing")
@@ -1051,14 +1103,14 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         await settle { MacSpeechRenderer.created.count == renders + 1 }
         let limitRender = MacSpeechRenderer.created.last!
         try check(idle.speechText == macLimit && limitRender.text.spoken.count == 50_000 && !exists(idleAudio?.url) && idle.error == nil,
-                  "50,000 characters, the Mac limit, still replace A and read the copied text")
+                  "50,000 characters, the Mac limit, still replace A and read the selected text")
         try check(Attention.besideHomeReadTile(idle.attention, meetingBusy: idle.meetings.isBusy) == nil, "a reading that starts clears the tile's notice")
         try limitRender.deliver(seconds: 0.5)
         await settle { idle.playing }
         let limitPlayer = idle.player
         idle.listen(to: macLimit)
         try check(idle.playing && idle.player === limitPlayer && MacSpeechRenderer.created.count == renders + 1,
-                  "the valid text plays once, and the same copied text carries on")
+                  "the valid text plays once, and the same selected text carries on")
 
         let unreadable = ReadingHarness()
         unreadable.speechText = draftA
@@ -1066,8 +1118,8 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         unreadable.listen(to: "---\n***\n")
         await settle()
         try check(bytes(unreadable.speechText) == bytes(draftA) && MacSpeechRenderer.created.count == renders && !unreadable.rendering
-                  && unreadable.error == "The copied text has nothing to read aloud. Your reading draft is unchanged."
-                  && unreadable.announcements.last == unreadable.error, "copied text with nothing to say leaves the draft and says why")
+                  && unreadable.error == "The selected text has nothing to read aloud. Your reading draft is unchanged."
+                  && unreadable.announcements.last == unreadable.error, "selected text with nothing to say leaves the draft and says why")
 
         // The online provider: its raw and prepared limits, through its fake transport only.
         let onlineIdle = ReadingHarness()
@@ -1077,7 +1129,7 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         let sentBeforeRefusals = SpekoRenderer.texts.count
         onlineIdle.listen(to: spekoOver)
         try check(onlineIdle.speechText == passageA && !onlineIdle.rendering && onlineIdle.error == refused("5,001", "Speko", "5,000"),
-                  "5,001 copied characters are refused for Speko before anything is sent")
+                  "5,001 selected characters are refused for Speko before anything is sent")
         // Code blocks are spoken as a placeholder, so their prepared text is longer than what is shown.
         func prepared(to spoken: Int) -> String {
             var text = String(repeating: "```\n```\n", count: 240)
@@ -1090,7 +1142,7 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         onlineIdle.listen(to: preparedOver)
         await settle()
         try check(onlineIdle.speechText == passageA && SpekoRenderer.texts.count == sentBeforeRefusals && !onlineIdle.rendering
-                  && onlineIdle.error == "Prepared for listening, the copied text is longer than Speko accepts (5,000 characters). Your reading draft is unchanged.",
+                  && onlineIdle.error == "Prepared for listening, the selected text is longer than Speko accepts (5,000 characters). Your reading draft is unchanged.",
                   "text within Speko's limit as shown but over it as prepared is refused, and nothing is sent")
         onlineIdle.listen(to: spekoLimit)
         await onlineIdle.readingTask?.value
@@ -1151,14 +1203,14 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         }
 
         // Stopping and discarding every reading leaves no audio behind.
-        for harness in [model, busy, duringMeeting, missing, speko, legacy, remote, early, late, waiting, kept, replaced, playingA, generating, cancelling, online, retried, tile, typed, resuming, pausing, saving, unsaved, aheadSave, cancelSave, exporting, preListen] {
+        for harness in [model, busy, duringMeeting, selected, typedDraft, duringDictation, missing, speko, legacy, remote, early, late, waiting, kept, replaced, playingA, generating, cancelling, online, retried, tile, typed, resuming, pausing, saving, unsaved, aheadSave, cancelSave, exporting, preListen] {
             harness.stopPlayback(); harness.audio?.discard(); harness.audio = nil
         }
         try check(scratchFolders().isEmpty, "No temporary reading audio remains: \(scratchFolders())")
         print("READING_PLAYBACK_MODEL_OK: \(count) checks; offline engine, no audio device")
     }
 }
-'''.replace("__EXACT_METHODS__", exposed)
+'''.replace("__EXACT_METHODS__", exposed).replace("__READ_START__", read_start)
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--write-fixture", type=Path, help="Write synthetic WAV and reading text here, then exit")

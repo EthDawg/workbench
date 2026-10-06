@@ -31,8 +31,14 @@ methods = SwiftFile(ROOT / "Sources/LocalVoice/AppModel.swift").type("AppModel")
     "receiveReadingSelection", "importReading", "importReadingFile(_:)", "listen(to:)", "canReplaceReading", "replaceWaitsForSave",
     "replaceReadingWithSelection", "keepCurrentReading", "readingLimitMessage", "applyReadingSelection",
     "endReadingForNewText",
-    # What the selected provider can read, and the reason copied text is refused (#173).
-    "readingProviderName", "ReadingRejection", "readingRejection", "copiedTextRefusal",
+    # What the selected provider can read, and the reason selected text is refused (#173).
+    "readingProviderName", "ReadingRejection", "readingRejection", "selectedTextRefusal",
+    # Read's one start from the front app's selection: the draft rule's inputs and the waits.
+    "readSelection(_:)", "draftWasHeard", "readingWaitsForOtherWork", "readingWaitsForMeeting", "readingWaitsForDictation",
+])
+# The draft rule readSelection applies, compiled from ReadStart without its Accessibility read.
+read_start = SwiftFile(ROOT / "Sources/LocalVoice/ReadStart.swift").type("ReadStart").extract([
+    "Draft", "draft(current:incoming:heard:)", "heard(draft:audioText:)",
 ])
 harness = r'''
 import AppKit
@@ -43,6 +49,11 @@ enum VoiceError: LocalizedError {
 }
 enum ReadingProvider: String { case mac, neural, speko }
 final class Receipt { func dismissHUD() {} }
+enum ReadStart {
+__READ_START__
+}
+/// The audio a reading made: only its text matters to the draft rule.
+struct AudioStandIn { let text: String }
 @MainActor final class SelectionHarness {
     var attention: Attention?
     var error: String? { attention?.message }
@@ -62,7 +73,8 @@ final class Receipt { func dismissHUD() {} }
     var selectedSpekoVoice = "Existing online voice"
     var rate = 180.0
     var readingLimit: Int { readingProvider == .speko ? 10_000 : 50_000 }
-    func invalidateAudio() { invalidations += 1; playing = false }
+    var audio: AudioStandIn?
+    func invalidateAudio() { invalidations += 1; playing = false; audio = nil }
     // The reading the decision ends: stand-ins that record what it asked for.
     var playing = false
     var readingGenerationActive = false
@@ -75,7 +87,8 @@ final class Receipt { func dismissHUD() {} }
     var phase: Phase = .idle
     func cancelReading() { cancels += 1; readingGenerationActive = false; rendering = false; readingGenerationID = nil; readingTask = nil }
     var savingAudio = false
-    func listen() { listens += 1 }
+    // Listen starts making the reading's audio, so a start reports that a reading is under way.
+    func listen() { listens += 1; rendering = true }
     var failureClears = 0
     func clearReadingFailure() { failureClears += 1 }
     // What VoiceOver would hear when Home's tile refuses text (#173).
@@ -216,7 +229,7 @@ __METHODS__
         let refusedInvalidations = home.invalidations
         home.listen(to: String(repeating: "z", count: 10_001))
         try check(home.speechText == "Copied text" && home.listens == 2 && home.invalidations == refusedInvalidations
-                  && home.error?.hasPrefix("The copied text has 10,001 characters") == true && home.attention?.page == .read
+                  && home.error?.hasPrefix("The selected text has 10,001 characters") == true && home.attention?.page == .read
                   && home.announcements.last == home.error, "the tile refuses text over the limit, keeps the draft and says why")
         try check(Attention.besideHomeReadTile(home.attention, meetingBusy: home.meetings.isBusy) == home.error, "the refusal shows beside the tile")
         home.receiveReadingSelection(try ReadingSelectionImport(text: "Copied text"))
@@ -225,10 +238,84 @@ __METHODS__
         home.report("A later Read problem.", on: .read)
         try check(home.error == "A later Read problem." && Attention.besideHomeReadTile(home.attention, meetingBusy: home.meetings.isBusy) == nil,
                   "a later notice from another door replaces it: Read shows the new one, and the tile shows nothing")
+        // Dictation owns the phase: the start says so on Read instead of a silent no.
+        home.phase = .recording
+        try check(!home.listen(to: "During dictation") && home.speechText == "Copied text" && home.listens == 2
+                  && home.error == "Wait for the dictation to finish before playing a reading." && home.attention?.page == .read,
+                  "a start during dictation leaves the draft alone and says why on Read")
+        home.phase = .idle
+
+        // Read's one start from the front app's selection: the draft rule, then the same start.
+        func selection(_ text: String) -> ReadingSelectionImport { try! ReadingSelectionImport(text: text) }
+        let start = SelectionHarness()
+        try check(!start.draftWasHeard, "an empty draft has no audio, so it was not heard")
+        try check(start.readSelection(selection("First selection")) && start.speechText == "First selection"
+                  && start.listens == 1 && start.pendingReadingSelection == nil && start.rendering,
+                  "an empty draft takes the selection and reads it at once")
+        start.rendering = false
+        try check(!start.draftWasHeard, "a draft whose audio is still being made, or was cancelled, is unheard")
+        start.audio = AudioStandIn(text: "First selection")
+        try check(start.draftWasHeard, "a draft whose audio exists was heard")
+        let heardInvalidations = start.invalidations
+        try check(start.readSelection(selection("First selection")) && start.listens == 2 && start.invalidations == heardInvalidations,
+                  "the same text reads again without a review and without ending its audio")
+        start.rendering = false
+        try check(start.readSelection(selection("Second selection")) && start.speechText == "Second selection"
+                  && start.listens == 3 && start.invalidations == heardInvalidations + 1 && start.pendingReadingSelection == nil,
+                  "a heard draft is replaced through the owner and the selection reads")
+        start.rendering = false
+        start.page = "home"
+        let unheardSaves = start.saves
+        try check(!start.readSelection(selection("Third selection")) && start.speechText == "Second selection"
+                  && start.saves == unheardSaves && start.listens == 3 && start.pendingReadingSelection?.text == "Third selection"
+                  && start.page == "speak" && start.status == "Selected text is ready. Choose Replace reading or Keep current.",
+                  "a different draft nobody heard waits behind Replace reading / Keep current, and nothing plays")
+        start.keepCurrentReading()
+        start.speechText = "Second selection, edited"
+        start.audio = AudioStandIn(text: "Second selection")
+        try check(!start.draftWasHeard && !start.readSelection(selection("Third selection"))
+                  && start.pendingReadingSelection?.text == "Third selection" && start.listens == 3,
+                  "editing a heard draft makes it unheard again, so a selection waits for review")
+        start.keepCurrentReading()
+        // While a meeting or dictation owns the microphone, the selection arrives as every import
+        // does and the page says what must finish first; nothing plays and nothing is dropped.
+        let waiting = SelectionHarness()
+        waiting.meetings.isBusy = true
+        try check(waiting.readingWaitsForOtherWork == "Finish the meeting recording or transcription before playing a reading."
+                  && !waiting.readSelection(selection("During a meeting")) && waiting.speechText == "During a meeting"
+                  && waiting.listens == 0 && waiting.error == waiting.readingWaitsForOtherWork && waiting.attention?.page == .read && waiting.page == "speak",
+                  "a meeting keeps the selection as the draft, plays nothing and says why on Read")
+        try check(Attention.besideHomeReadTile(waiting.attention, meetingBusy: true) == nil,
+                  "the selection's meeting wait is Read's, not Home's tile's")
+        waiting.meetings.isBusy = false
+        waiting.phase = .recording
+        waiting.audio = AudioStandIn(text: "During a meeting")
+        try check(waiting.readingWaitsForOtherWork == "Wait for the dictation to finish before playing a reading."
+                  && !waiting.readSelection(selection("During dictation")) && waiting.speechText == "During a meeting"
+                  && waiting.pendingReadingSelection?.text == "During dictation" && waiting.listens == 0
+                  && waiting.error == waiting.readingWaitsForOtherWork && waiting.attention?.page == .read,
+                  "dictation holds the selection behind the review even over a heard draft, plays nothing and says why on Read")
+        waiting.keepCurrentReading()
+        waiting.phase = .idle
+        try check(waiting.readingWaitsForOtherWork == nil, "with the microphone free a reading may start")
+        // A different unheard draft takes the review path first, whichever work owns the microphone:
+        // the review is what the page says, and Replace reading then Listen meets the wait.
+        waiting.meetings.isBusy = true
+        try check(!waiting.readSelection(selection("After the review")) && waiting.speechText == "During a meeting"
+                  && waiting.pendingReadingSelection?.text == "After the review" && waiting.listens == 0 && waiting.page == "speak",
+                  "an unheard draft keeps the selection behind the review even while a meeting runs")
+        waiting.meetings.isBusy = false
+        // Text the provider cannot read is refused by the same start, and the page says so.
+        let refused = SelectionHarness()
+        refused.page = "home"
+        try check(!refused.readSelection(selection(String(repeating: "z", count: 10_001))) && refused.speechText == ""
+                  && refused.listens == 0 && refused.page == "speak" && refused.error?.hasPrefix("The selected text has 10,001 characters") == true
+                  && refused.announcements.last == refused.error,
+                  "a selection the provider cannot read is refused, keeps the draft and opens Read with the reason")
         print("READ_SELECTION_MODEL_OK: \(count) checks; actual handoff methods, isolated draft and provider state")
     }
 }
-'''.replace("__METHODS__", methods)
+'''.replace("__METHODS__", methods).replace("__READ_START__", read_start)
 with tempfile.TemporaryDirectory(prefix="workbench-read-selection-", dir="/private/tmp") as temporary:
     directory = Path(temporary)
     fixture = directory / "SelectionChecks.swift"
