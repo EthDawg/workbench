@@ -619,7 +619,7 @@ final class MeetingProcessTap: @unchecked Sendable {
 
         let created = AudioHardwareCreateProcessTap(description, &tap)
         guard created == noErr, tap != kAudioObjectUnknown else {
-            throw MeetingError.message("Workbench could not listen to that app's audio (CoreAudio error \(created)). Check Privacy & Security › Audio Recording.")
+            throw Self.startProblem(status: created)
         }
 
         guard var asbd = MeetingCoreAudio.tapFormat(tap),
@@ -647,6 +647,12 @@ final class MeetingProcessTap: @unchecked Sendable {
         self.format = format
         self.tapID = tap
         self.aggregateID = device
+    }
+
+    static func startProblem(status: OSStatus) -> MeetingProblem {
+        // AudioHardwareBase.h explicitly defines this as a process permission
+        // refusal. Generic 'nope' and other statuses do not establish TCC denial.
+        status == kAudioDevicePermissionsError ? .appAudioPermission(status) : .appAudioUnknown(status)
     }
 
     func begin(_ handler: @escaping (UnsafePointer<AudioBufferList>, UnsafePointer<AudioTimeStamp>) -> Void) throws {

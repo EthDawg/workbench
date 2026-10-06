@@ -880,6 +880,9 @@ class Inventory:
             calls = {w for n, w in enumerate(words[:-1]) if words[n + 1] in ('(', '?')}
             return (any(words[n:n + 2] == ['page', '='] for n in range(len(words) - 1))
                     or bool(calls & ROUTES) or bool(set(words) & injected)
+                    # Meetings owns these typed, result-checked Settings actions.
+                    or (swift.type_context(i) == 'MeetingWorkspaceView'
+                        and bool(set(words) & {'openMicrophoneSettings', 'openAudioRecordingSettings'}))
                     or any(words[n:n + 2] == ['open', '('] and words[n - 1] != '.' for n in range(1, len(words) - 1)))
 
         def record(i, api, tokens, **metadata):

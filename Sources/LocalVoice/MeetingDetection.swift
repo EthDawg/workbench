@@ -84,8 +84,20 @@ final class MeetingDetector {
     /// The picker list: audio apps Workbench recognises that exist right now.
     /// This is an explicit person-facing action, not detection.
     func availableApps() -> [MeetingAudioApp] {
-        guard source.isAvailable else { return [] }
-        return availableApps(in: read())
+        (try? enumerateApps().get()) ?? []
+    }
+
+    func enumerateApps() -> Result<[MeetingAudioApp], MeetingProblem> {
+        guard source.isAvailable else { return .failure(.appAudioUnavailable(source.unavailableReason)) }
+        do {
+            let processes = try source.snapshot()
+            lastError = nil
+            return .success(availableApps(in: processes))
+        } catch {
+            let message = "Audio sources could not be checked. The previous selection was kept. " + error.localizedDescription
+            lastError = message
+            return .failure(.sourceProbe(message))
+        }
     }
 
     /// During an explicitly started recording, monitor only its chosen app's

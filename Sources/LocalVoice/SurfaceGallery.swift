@@ -519,6 +519,7 @@ private struct HistoryNativeAcceptanceView: View {
     }
 
     func render(to output: URL) throws -> SurfaceGallery.Pass {
+        if ProcessInfo.processInfo.environment["WORKBENCH_MEETINGS_GALLERY_ONLY"] == "1" { return try renderMeetingsRecovery(to: output) }
         if ProcessInfo.processInfo.environment["WORKBENCH_SPEECH_GALLERY_ONLY"] == "1" { return try renderFirstSpeech(to: output) }
         if ProcessInfo.processInfo.environment["WORKBENCH_PACKS_GALLERY_ONLY"] == "1" { return try renderPacks(to: output) }
         if ProcessInfo.processInfo.environment["WORKBENCH_RESOURCES_GALLERY_ONLY"] == "1" { return try renderResources(to: output) }
@@ -1548,6 +1549,7 @@ private struct HistoryNativeAcceptanceView: View {
             microphonePermission: { false }, captureFactory: { SilentMeetingCapture() })
         model.meetings = completed
         completed.saveTranscript = { [weak model] transcript, purpose in try model?.retainMeetingTranscript(transcript, purpose: purpose) }
+        completed.loadSavedTranscript = { [weak model] id in try model?.savedMeetingTranscript(id) }
         Task { await completed.retry() }
         try wait("a completed synthetic meeting") { (completed.completedTranscriptID != nil || completed.error != nil) && !completed.isBusy }
         guard completed.completedTranscriptID == manifest.id, !completed.isBusy,
@@ -1555,6 +1557,17 @@ private struct HistoryNativeAcceptanceView: View {
             throw VoiceError.message("The synthetic meeting did not commit its exact transcript: \(completed.error ?? completed.notice).")
         }
         let original = try Data(contentsOf: audio)
+        let durable = try model.store.load()
+        let durableData = try Data(contentsOf: model.store.url)
+        let metadataData = try Data(contentsOf: model.historyLibrary.store.url)
+        var stale = durable.history.first { $0.id == manifest.id }!
+        stale.text = "A stale retry must never replace the durable record."
+        try model.retainMeetingTranscript(stale, purpose: "call")
+        guard try Data(contentsOf: model.store.url) == durableData,
+              try Data(contentsOf: model.historyLibrary.store.url) == metadataData,
+              try model.savedMeetingTranscript(manifest.id)?.transcript.text == completed.completedTranscriptText else {
+            throw VoiceError.message("The production History commit replaced a durable same-UUID transcript or its metadata.")
+        }
         let journal = session.appendingPathComponent(MeetingStore.manifestName)
         let committed = try Data(contentsOf: journal)
         let window = homeWindow(size: SurfaceGallery.sizes[1].size)
@@ -1631,6 +1644,85 @@ private struct HistoryNativeAcceptanceView: View {
         return try save(image, id: "state-kept", title: "Meetings, one call kept for later and one without speech, \(Int(size.width)) × \(Int(size.height)) pt",
             detail: "The real meeting owner settled a recording that heard no speech: it is shown once with its audio kept and is not offered for retry. The call kept for later is listed with its own Transcribe, Show in Finder and Move to Trash.",
             file: "page-meeting-state-kept-\(theme).png", to: output)
+    }
+
+    /// Real Meetings views and owners, with no device or speech-engine access.
+    func renderMeetingsRecovery(to output: URL) throws -> SurfaceGallery.Pass {
+        let kept = model.meetings
+        let preferences = try SurfaceGallery.isolatedDefaults("Meetings", home: home)
+        let root = home.appendingPathComponent("Synthetic Meetings")
+        let source = SyntheticAudioApps()
+        var microphone = AVAuthorizationStatus.denied
+        var requests = 0, captures = 0, recognitions = 0
+        let meetings = MeetingModel(directory: root, defaults: preferences, processSource: source,
+            transcribe: { _ in recognitions += 1; throw VoiceError.message("The gallery never recognizes audio.") },
+            microphonePermission: { requests += 1; return false },
+            captureFactory: { captures += 1; return SilentMeetingCapture() }, microphoneStatus: { microphone })
+        model.meetings = meetings
+        let window = homeWindow(size: SurfaceGallery.sizes[1].size)
+        defer { model.meetings = kept; window.contentViewController = nil; window.close() }
+        var shots: [SurfaceGallery.Shot] = []
+        func shot(_ id: String, _ title: String) throws {
+            let (image, _) = try renderPage("meeting", in: window)
+            shots.append(try save(image, id: id, title: title,
+                detail: "Production Meetings at minimum width; injected readiness, permissions and sources with synthetic journals only.",
+                file: "meetings-\(id)-\(theme).png", to: output))
+        }
+        meetings.refreshApps(); meetings.selectAudioSource(41_001)
+        meetings.updateHostAdmission(.init())
+        try shot("setup", "Speech setup needed; source choice retained")
+        meetings.updateHostAdmission(.init(recognition: .init(admission: .localReady)))
+        try shot("microphone", "Denied microphone with explicit app-only alternative")
+        source.failure = true; meetings.refreshApps()
+        try shot("source-failure", "Failed source check retains chosen app")
+        source.failure = false; meetings.refreshApps(); meetings.useAppAudioOnly()
+        guard meetings.admission.canStart, !meetings.includeMicrophone, requests == 0, captures == 0 else {
+            throw VoiceError.message("Choosing an alternative started capture or lost its valid admission.")
+        }
+        try shot("app-only", "App audio only is ready after an explicit choice")
+        microphone = .authorized; meetings.includeMicrophone = true
+        meetings.updateHostAdmission(.init())
+        let date = Date(timeIntervalSince1970: 1_789_400_000)
+        let transcript = MeetingManifest(id: UUID(), createdAt: date, updatedAt: date, purpose: "meeting", appName: "Synthetic meeting",
+            includesMicrophone: false, includesRemote: true, state: .recognized, seconds: 1,
+            tracks: [.init(source: .remote, file: "tracks/remote.caf", startSeconds: 0, seconds: 1, sampleRate: 16_000, peak: 0.2, droppedSeconds: 0)],
+            segments: [.init(index: 0, file: MeetingSegmentPlan.filename(index: 0), startSeconds: 0, seconds: 1, bytes: 32_000, text: "A complete saved transcript remains usable without setup.")])
+        _ = try MeetingStore.create(root: root, manifest: transcript)
+        let recovery = MeetingModel(directory: root, defaults: preferences, processSource: source,
+            transcribe: { _ in recognitions += 1; throw VoiceError.message("The gallery never recognizes audio.") },
+            microphonePermission: { requests += 1; return false },
+            captureFactory: { captures += 1; return SilentMeetingCapture() }, microphoneStatus: { microphone })
+        recovery.updateHostAdmission(.init()); model.meetings = recovery
+        try wait("complete-text recovery") { !recovery.recoveries.isEmpty }
+        guard recovery.recoveries.first?.canSaveTranscript == true, !recovery.admission.canStart,
+              requests == 0, captures == 0, recognitions == 0 else { throw VoiceError.message("Saved text inherited capture setup requirements.") }
+        try shot("complete-text", "Complete text can be saved despite missing originals and model")
+        var savingRendered = false, saveFinished = false
+        recovery.saveTranscript = { [weak model] item, purpose in
+            guard let model else { throw CancellationError() }
+            guard recovery.isProcessing, requests == 0, captures == 0, recognitions == 0 else {
+                throw VoiceError.message("Complete-text save crossed a capture or recognition boundary.")
+            }
+            try shot("saving-without-audio", "Saving complete text without original audio")
+            savingRendered = true
+            try model.retainMeetingTranscript(item, purpose: purpose)
+        }
+        recovery.loadSavedTranscript = { [weak model] id in try model?.savedMeetingTranscript(id) }
+        let selected = recovery.recoveries[0]
+        Task { await recovery.retry(selected); saveFinished = true }
+        try wait("saving complete text without originals") { saveFinished }
+        guard savingRendered, recovery.completedTranscriptID == transcript.id, !recovery.isBusy,
+              recovery.pendingTranscriptNotes.contains(where: { $0.contains("Original audio is missing") }),
+              requests == 0, captures == 0, recognitions == 0 else {
+            throw VoiceError.message("Missing-original completion lost its truthful note or required capture setup.")
+        }
+        try shot("saved-without-audio", "Saved text with playback and retranscription unavailable")
+        let completed = try renderMeetingReview(to: output)
+        shots.append(completed.meeting)
+        print("MEETINGS_PRODUCTION_OWNER_CHECKS_OK: passive admission; explicit alternative; complete-text save; same-UUID durable History preservation")
+        return SurfaceGallery.Pass(theme: theme, panels: [], toolbar: [], host: [], pickers: [], pickerHost: [],
+            pages: [.init(route: "meeting", title: "Meetings admission and recovery", fallsThrough: false, shots: shots)],
+            entries: entries().filter { $0.route == "meeting" }, menus: [], placement: [])
     }
 
     /// The retired route's replacement, through the production startup and Library owners.
@@ -3908,10 +4000,12 @@ extension SurfaceGallery.HostCheck {
 
 /// Two known meeting apps with audio, so the meeting page lists choices without reading CoreAudio.
 private final class SyntheticAudioApps: MeetingProcessSource {
+    var failure = false
     var isAvailable: Bool { true }
     var unavailableReason: String { "" }
     func snapshot() throws -> [MeetingProcessSnapshot] {
-        [.init(pid: 41_001, bundleID: "us.zoom.xos", isRunningInput: true, isRunningOutput: true, name: "Zoom"),
+        if failure { throw VoiceError.message("The synthetic source check could not finish.") }
+        return [.init(pid: 41_001, bundleID: "us.zoom.xos", isRunningInput: true, isRunningOutput: true, name: "Zoom"),
          .init(pid: 41_002, bundleID: "com.microsoft.teams2", isRunningInput: false, isRunningOutput: true, name: "Microsoft Teams")]
     }
 }
