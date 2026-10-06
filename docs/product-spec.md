@@ -2,6 +2,8 @@
 
 Specification updated: 30 September 2026. Maintained with the code. Source, synthetic checks, installed acceptance and publication are separate claims. The [desktop cohesion record](verification/2026-09-30-desktop-cohesion/README.md) records the current candidate; the public guide lives at /guide/. [Issue #134](https://github.com/Ship-Work/workbench/issues/134) remains the desktop contract and review index.
 
+**Refinement decision, 6 October 2026:** the [focused Mac foundation](mac-foundation.md) decides the next Home/tool hierarchy, Meetings completion, manual handoff, Present scope, preservation during retirement and complete-journey acceptance. It supersedes conflicting older proposals for those packages, not their recorded evidence. This document still describes existing job/input ownership until each implementation updates its section. [#7](https://github.com/Ship-Work/workbench/issues/7) is the programme gate; #134 remains historical cohesion/retest context, not an instruction to rebuild already delivered work.
+
 ## Product outcome
 
 Make frequent Mac tasks easy to start, understand and leave. Dictate, Snap, Persona and Present work independently and compose where useful. Keep Read, Draw, Timer and Snap & Talk accessible. Share native conventions and placement components; keep each job's controls and state distinct. Mac desktop quality is the active scope; iOS, iPadOS and Chrome extension work is paused.
