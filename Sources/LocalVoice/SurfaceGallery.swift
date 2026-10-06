@@ -3870,7 +3870,7 @@ private struct HistoryNativeAcceptanceView: View {
                  action(home, "Your keys · Put Snap on ⌥G, while Snap has no key", "Assigns a free left-hand Option key through the same check"),
                  page(home, "Your keys · Open Keyboard…", "shortcuts"),
                  action(home, "Permissions · Done for now, or Show details", "Folds or opens the panel; saved"),
-                 action(home, "Permissions · Allow…, for an approval macOS has not asked about", "Shows macOS's request for that one approval"),
+                 action(home, "Permissions · Set up…, for an approval macOS has not asked about", "Shows macOS's request for that one approval"),
                  action(home, "Permissions · Open Settings…, for an approval that is off or managed", "Opens Privacy & Security at that approval"),
                  action("Home sidebar", "Expand or collapse sidebar · Control-Command-S", "Keeps the chosen sidebar width"),
                  action(home, "Show me a first dictation, after Skip for now", "Shows the first-dictation guide again"),

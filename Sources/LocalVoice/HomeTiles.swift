@@ -570,16 +570,21 @@ struct HomeKeysTile: View {
     /// Three rows of keycaps. A key with a shortcut shows its tool in the accent and opens
     /// Practice and Change; learned keys carry a tick; the rest stay quiet.
     private func keyMap(_ entries: [ShortcutEntry]) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
+        let next = Set(HomeKeys.next(entries, learned: keyboard.practised).map(\.id))
+        return VStack(alignment: .leading, spacing: 5) {
             ForEach(Array(HomeKeys.rows.enumerated()), id: \.offset) { index, row in
                 HStack(spacing: 4) {
-                    ForEach(row, id: \.self) { code in keycap(code, entry: HomeKeys.entry(on: code, in: entries)) }
+                    ForEach(row, id: \.self) { code in
+                        let entry = HomeKeys.entry(on: code, in: entries)
+                        keycap(code, entry: entry, next: entry.map { next.contains($0.id) } ?? false)
+                    }
                 }.padding(.leading, CGFloat(index) * 8)
             }
         }.fixedSize()
     }
 
-    @ViewBuilder private func keycap(_ code: UInt32, entry: ShortcutEntry?) -> some View {
+    /// `next`: one of the three to learn now, ringed so the map itself shows where to start.
+    @ViewBuilder private func keycap(_ code: UInt32, entry: ShortcutEntry?, next: Bool) -> some View {
         let letter = VoiceShortcut(keyCode: code, modifiers: 0, enabled: true).label.uppercased()
         let learned = entry.map { HomeKeys.isLearned($0, in: keyboard.practised) } ?? false
         let face = VStack(alignment: .leading, spacing: 2) {
@@ -595,12 +600,12 @@ struct HomeKeysTile: View {
         .frame(width: 64, height: 40, alignment: .topLeading)
         .foregroundStyle(entry == nil ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.primary))
         .background(entry == nil ? Workbench.background : Workbench.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 7))
-        .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(entry == nil ? Workbench.border : Workbench.accent.opacity(0.35)))
+        .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(entry == nil ? Workbench.border : Workbench.accent.opacity(next ? 1 : 0.35), lineWidth: next ? 2 : 1))
         if let entry {
             Button { chosen = entry.id } label: { face.contentShape(RoundedRectangle(cornerRadius: 7)) }
                 .buttonStyle(.plain)
                 .help("\(entry.shortcut.label) · \(entry.title)")
-                .accessibilityLabel("\(entry.shortcut.label), \(entry.title)\(learned ? ", learned" : "")")
+                .accessibilityLabel("\(entry.shortcut.label), \(entry.title)\(learned ? ", learned" : next ? ", learn next" : "")")
                 .accessibilityHint("Practice or change this key")
                 .popover(isPresented: Binding(get: { chosen == entry.id }, set: { if !$0 { chosen = nil } }), arrowEdge: .bottom) {
                     keyActions(entry)

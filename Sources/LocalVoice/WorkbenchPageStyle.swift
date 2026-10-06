@@ -45,7 +45,9 @@ struct WorkbenchTile<Accessory: View, Content: View>: View {
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .background(Workbench.surface, in: RoundedRectangle(cornerRadius: Workbench.tileRadius))
         .overlay(RoundedRectangle(cornerRadius: Workbench.tileRadius).strokeBorder(Workbench.border))
-        .accessibilityElement(children: .contain)
+        // One named group per card for VoiceOver, and one stop for keyboard focus moving between cards.
+        .accessibilityElement(children: .contain).accessibilityLabel(title)
+        .focusSection()
     }
 }
 

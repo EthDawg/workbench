@@ -770,8 +770,7 @@ struct WorkbenchHomePage: View {
                     Button { model.toggleRecording() } label: {
                         Label(model.phase == .requesting ? "Cancel" : model.phase == .recording ? "Stop" : "Start dictating",
                               systemImage: model.phase == .requesting ? "xmark" : model.phase == .recording ? "stop.fill" : "mic.fill")
-                            .font(.system(size: 16, weight: .semibold)).padding(.horizontal, 6).padding(.vertical, 4)
-                    }.buttonStyle(PrimaryButton())
+                    }.buttonStyle(.borderedProminent).controlSize(.large)
                         .disabled(![.idle, .requesting, .recording].contains(model.phase) || readback.blocksDictation)
                         .accessibilityLabel(model.phase == .requesting ? "Cancel microphone request" : model.phase == .recording ? "Stop recording" : "Start recording")
                     if model.phase == .recording {

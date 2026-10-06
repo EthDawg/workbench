@@ -6,7 +6,7 @@ import CoreGraphics
 /// Home's Permissions panel (docs/desktop.md § Home). It shows what macOS lets Workbench use on
 /// this Mac, what each approval is for and what still works without it. Looking never asks:
 /// every status is read passively, and macOS's own request appears only when the person presses
-/// Allow… on that one row. Nothing here is a gate; every tool keeps its own contextual request
+/// Set up… on that one row. Nothing here is a gate; every tool keeps its own contextual request
 /// and its useful remainder (mac-foundation.md § Permissions follow the action).
 enum MacPermission: String, CaseIterable, Identifiable {
     case microphone, accessibility, screenRecording, camera, callAudio
@@ -71,7 +71,7 @@ enum MacPermission: String, CaseIterable, Identifiable {
 /// "never asked" from "turned off", so it reads as not allowed, never as denied by policy.
 enum MacPermissionState: Equatable {
     case allowed
-    /// macOS has not asked yet; Allow… shows its request.
+    /// macOS has not asked yet; Set up… shows its request.
     case notAsked
     /// Turned off, or a yes/no check that is not yet true after Workbench asked.
     case notAllowed
@@ -87,11 +87,12 @@ enum MacPermissionState: Equatable {
 /// every combination without a Mac to ask.
 struct MacPermissionRow: Equatable, Identifiable {
     enum Action: Equatable {
-        /// Shows macOS's request for this one approval.
+        /// Shows macOS's request for this one approval. Labelled Set up…, not Allow: the person
+        /// allows it in macOS's own request (Apple's Privacy guidance).
         case request
         /// Opens Privacy & Security at this approval's list.
         case openSettings
-        var title: String { self == .request ? "Allow…" : "Open Settings…" }
+        var title: String { self == .request ? "Set up…" : "Open Settings…" }
     }
     let permission: MacPermission
     let state: MacPermissionState
@@ -223,7 +224,7 @@ struct HomePermissionsPanel: View {
     let snapshot: MacPermissionSnapshot
     /// Done for now, saved with Home: the panel stays one line until something turns off.
     @Binding var dismissed: Bool
-    /// Rereads macOS after an Allow… or Open Settings… returns.
+    /// Rereads macOS after a Set up… or Open Settings… returns.
     var refresh: () -> Void
     @State private var showingDetails = false
     @State private var problem: String?
@@ -235,7 +236,7 @@ struct HomePermissionsPanel: View {
                 .accessibilityIdentifier("home.permissions.summary")
         }) {
             if expanded {
-                Text("What Workbench can use on this Mac. Nothing is asked until you press Allow…, and each row says what still works without it.")
+                Text("What Workbench can use on this Mac. Nothing is asked until you press Set up…, and each row says what still works without it.")
                     .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(snapshot.rows) { row in
@@ -298,7 +299,7 @@ struct HomePermissionsPanel: View {
             .accessibilityElement(children: .contain)
     }
 
-    /// Each Allow… reaches the same owner its tool uses: Dictate's microphone and automatic-paste
+    /// Each Set up… reaches the same owner its tool uses: Dictate's microphone and automatic-paste
     /// setup, Snap's Screen Recording request, and macOS's camera request. None starts a recording.
     private func perform(_ action: MacPermissionRow.Action, for permission: MacPermission) {
         problem = nil

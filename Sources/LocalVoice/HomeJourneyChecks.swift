@@ -79,11 +79,11 @@ enum HomeJourneyChecks {
             try check(positions == positions.sorted(), "Home keeps its fixed order: \(journey.sections)")
         }
 
-        // Permissions: each row says only what macOS reports, asks only from its own Allow…,
+        // Permissions: each row says only what macOS reports, asks only from its own Set up…,
         // is orange only when something a tool needs is off, and never claims All allowed falsely.
         func row(_ permission: MacPermission, _ state: MacPermissionState) -> MacPermissionRow { .init(permission: permission, state: state) }
-        try check(row(.microphone, .notAsked).action == .request && row(.microphone, .notAsked).action?.title == "Allow…",
-                  "an approval macOS has not asked about offers Allow…, which shows its request")
+        try check(row(.microphone, .notAsked).action == .request && row(.microphone, .notAsked).action?.title == "Set up…",
+                  "an approval macOS has not asked about offers Set up…, never a custom Allow, and macOS asks")
         try check(row(.microphone, .notAsked).tone == .neutral && row(.camera, .notAllowed).tone == .attention,
                   "not asked yet is information; only an approval that is off asks for attention")
         try check(row(.camera, .notAllowed).action == .openSettings && row(.camera, .managed).action == .openSettings,

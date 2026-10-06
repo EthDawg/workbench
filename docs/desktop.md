@@ -16,13 +16,13 @@ Home holds only what the app shows nowhere else in that form. Everything else is
 4. **What can Workbench use on this Mac?** Permissions, with what each is for and what still works without it.
 5. **Which keys are worth learning?** Your keys: the one-hand layout and the next three to practise.
 
-**Home shows state and results, never a list of tools.** The sidebar is the list of tools. A button on Home sits beside the thing it acts on: a meeting's Copy transcript, a deck's Open deck, a permission's Allow…, a key’s Practice.
+**Home shows state and results, never a list of tools.** The sidebar is the list of tools. A button on Home sits beside the thing it acts on: a meeting's Copy transcript, a deck's Open deck, a permission's Set up…, a key’s Practice.
 
 ## When the window shows
 
 | Event | The window |
 | --- | --- |
-| First launch ever | Opens on Home. The Permissions panel is the setup; nothing is asked until the person presses Allow…. |
+| First launch ever | Opens on Home. The Permissions panel is the setup; nothing is asked until the person presses Set up…. |
 | Launch at login (Settings › General › Open Workbench at login) | **Stays closed.** The menu-bar icon and toolbar are ready; the Dock, the panel's Open Workbench and ⌘0 open the window. If macOS does not mark the launch as a login launch, the window opens as before. A pack link always opens it. |
 | Any other launch (Finder, Spotlight, Dock, after an update) | Opens on Home. |
 | Dock click or Open Workbench while running | Comes forward on the page it was showing. |
@@ -46,6 +46,8 @@ Every page uses the same few parts, so a page built by any person or agent looks
 **Empty states.** `WorkbenchEmptyState(symbol:title:detail:)`: what will appear here, why it is useful, and the one next step. Left-aligned inside a card; a whole empty page centres it.
 
 **Spacing and type.** 24 pt page padding, 16 pt between sections, 22 pt semibold page titles, 13 pt semibold section titles, 13 pt body. Text styles only, so larger text grows them.
+
+**Rules every page follows** (agreed with the page review, 7 Oct): every `Workbench.surface` container carries the hairline border, because the window and control backgrounds are the same colour on macOS 26; orange and red never colour text, only the symbol beside primary text (`WorkbenchStatusBadge`); text styles rather than fixed point sizes wherever a label is not a fixed-size key or glyph; Workbench.accent rather than `Color.accentColor`, which resolves to system blue; `…` only on a button that opens a dialog, sheet or another step.
 
 **Words.** One name per thing (the Grammar's Names). A button that opens something needing another step ends in …. A status describes what actually happened.
 
@@ -73,7 +75,7 @@ From 760 points of content width Home uses two columns; narrower, or at larger t
 
 **Permissions.** One row per approval Workbench uses, by macOS's own name for its list (Microphone, Accessibility, Screen Recording or, from macOS 15, Screen & System Audio Recording, Camera) and Call audio, with what each is for and, until it is allowed, what still works without it.
 
-- Looking never asks. Every status is a passive read (`MacPermissionReader`); macOS's request appears only from that row's **Allow…**, through the owner its tool already uses. Screen Recording's request is recorded wherever it is made (Home, Snap or Snap & Talk); if macOS shows nothing, Settings opens a moment later, so Allow… is never a dead click.
+- Looking never asks. Every status is a passive read (`MacPermissionReader`); macOS's request appears only from that row's **Set up…** (never a custom “Allow”: the person allows it in macOS's own request, per Apple's Privacy guidance), through the owner its tool already uses. Screen Recording's request is recorded wherever it is made (Home, Snap or Snap & Talk); if macOS shows nothing, Settings opens a moment later, so Set up… is never a dead click.
 - Only distinctions macOS reports: Allowed, Not asked yet, Off, Managed, and Asked on first call for call audio, which has no passive check and no list until Meetings first asks, so it offers no Settings button.
 - **Orange means off.** Not asked yet is information: the tool asks when first used. The summary says what it can know: “1 off”, “3 not asked yet”, “1 managed” or, only when true, “All allowed”. Status text stays in the primary colour; only the symbol is orange, for contrast.
 - The panel opens while something is off, or while something is still to set up and the person has not chosen **Done for now** (saved). Folded, it is one line naming what is allowed, with Show details. Something turning off opens it again.
@@ -121,7 +123,7 @@ Each page moves to the kit in its own small PR, rendered in the surface gallery,
 
 | Idea | Source | Decision | Why | What would change it |
 | --- | --- | --- | --- | --- |
-| Permissions panel on Home | Ethan, 6 Oct (setup screenshots he supplied) and 7 Oct | Built, as above | Asked twice. People need to know what Workbench can use and what they are missing; the panel keeps every rule of mac-foundation's permission section: passive reads, request only from a deliberate Allow…, honest states, no gate. It supersedes that brief's “no readiness dashboard or setup checklist” lines for Home. | An uncoached comprehension check where someone believes Home must be completed first, or a managed Mac where a status reads misleadingly. |
+| Permissions panel on Home | Ethan, 6 Oct (setup screenshots he supplied) and 7 Oct | Built, as above | Asked twice. People need to know what Workbench can use and what they are missing; the panel keeps every rule of mac-foundation's permission section: passive reads, request only from a deliberate Set up…, honest states, no gate. It supersedes that brief's “no readiness dashboard or setup checklist” lines for Home. | An uncoached comprehension check where someone believes Home must be completed first, or a managed Mac where a status reads misleadingly. |
 | Sample deck says what it is | Independent reviews, 7 Oct | Labels say “a tour of Workbench”; screens re-shot (a four-screen Snap & Talk walkthrough with narration, Dictate with automatic paste set up); persona and render artefacts removed | The first version claimed to be “made with Snap & Talk”; it was not, and its look is not what the neutral deck skill produces. | A real Snap & Talk handoff of these screens through the app, kept as the sample; then the labels can say so. |
 | Permissions: orange only for Off; Done for now | Independent reviews, 7 Oct | Built | A new Mac showed four orange badges for ever and pushed Your keys below the fold; “not asked yet” is information because each tool asks on first use. Ethan's encouragement stays: the panel opens until the person chooses Done for now. | People choose Done for now and later miss a permission they needed; then reopen the panel on a tool's first refusal. |
 | Your keys: learned by use, set step, Snap suggestion | Ethan, 7 Oct; independent review | Built | Habit means discovery, setting and muscle memory; real use is the best evidence of a habit; Snap ships without a key. | People ignore the suggestion; then drop it rather than add more. |
@@ -137,6 +139,10 @@ Each page moves to the kit in its own small PR, rendered in the surface gallery,
 | Reopen to the last page after relaunch | This record | Not now | Home now carries current work and results, so it is the right landing page. | People repeatedly navigate to the same page after each launch. |
 | Login item and Files & Folders rows in Permissions | Permissions inventory, 7 Oct | Not now | Open at login is a preference in Settings › General; Desktop folder access serves only Snap's Import Desktop screenshots… and has no passive check. | Either becomes a primary path. |
 
+## Later platform changes
+
+Recorded from the page review's research so the next person does not rediscover them. Tiles stay opaque content, never Liquid Glass (Apple keeps glass to the navigation layer). The sidebar is a custom view; keep it behind one boundary so it can become a `NavigationSplitView` sidebar if macOS 26/27's floating glass sidebar is wanted. `HomeJourney.sections` stays data, so tiles can later be hidden or reordered. Put `containerBackground(_:for: .window)` (macOS 15) and concentric corner shapes (macOS 26) behind `#available`. Tile models are value types, so a desktop widget could reuse them.
+
 ## Native checks owed
 
-On a signed Preview, by the integration owner or Ethan: each Allow… on a Mac that has not been asked (microphone and camera prompts; Accessibility's prompt then Settings; Screen Recording's prompt then Settings and a reopen); rows updating on return from System Settings; a managed or restricted approval; login launch staying closed after a real log-out and log-in, with the Dock opening the window; the frame restored after relaunch, on a second display and after that display is removed; ⌘M; Copy transcript from Home pasted into another app; the sample deck and its slides opening; VoiceOver and keyboard order through the tiles; Practice, Change… and Put Snap on ⌥G with a real keyboard, and a real ⌥V press ticking Dictate; Open deck after an assistant writes a `.pptx` and a `.key`; a meeting with a missing-audio note; the `Privacy_AudioCapture` link on macOS 14 and 15.
+On a signed Preview, by the integration owner or Ethan: each Set up… on a Mac that has not been asked (microphone and camera prompts; Accessibility's prompt then Settings; Screen Recording's prompt then Settings and a reopen); rows updating on return from System Settings; a managed or restricted approval; login launch staying closed after a real log-out and log-in, with the Dock opening the window; the frame restored after relaunch, on a second display and after that display is removed; ⌘M; Copy transcript from Home pasted into another app; the sample deck and its slides opening; VoiceOver and keyboard order through the tiles; Practice, Change… and Put Snap on ⌥G with a real keyboard, and a real ⌥V press ticking Dictate; Open deck after an assistant writes a `.pptx` and a `.key`; a meeting with a missing-audio note; the `Privacy_AudioCapture` link on macOS 14 and 15.
