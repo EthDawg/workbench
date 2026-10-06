@@ -92,7 +92,7 @@ struct MacPermissionRow: Equatable, Identifiable {
         case request
         /// Opens Privacy & Security at this approval's list.
         case openSettings
-        var title: String { self == .request ? "Set up…" : "Open Settings…" }
+        var title: String { self == .request ? "Set up…" : "Open System Settings…" }
     }
     let permission: MacPermission
     let state: MacPermissionState
@@ -249,7 +249,7 @@ struct HomePermissionsPanel: View {
                 }
                 if !snapshot.needsAttention {
                     Button(snapshot.isComplete ? "Hide details" : "Done for now") { dismissed = true; showingDetails = false }
-                        .buttonStyle(.link).font(.callout)
+                        .buttonStyle(.workbenchLink).font(.callout)
                         .help(snapshot.isComplete ? "Fold the panel to one line." : "Fold the panel to one line. Each tool still asks when it first needs something.")
                         .accessibilityIdentifier("home.permissions.fold")
                 }
@@ -259,7 +259,7 @@ struct HomePermissionsPanel: View {
                          : "Each tool asks when it first needs something. Allowed: " + allowedNames + ".")
                         .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 8)
-                    Button("Show details") { showingDetails = true }.buttonStyle(.link).font(.callout)
+                    Button("Show details") { showingDetails = true }.buttonStyle(.workbenchLink).font(.callout)
                         .accessibilityIdentifier("home.permissions.details")
                 }
             }

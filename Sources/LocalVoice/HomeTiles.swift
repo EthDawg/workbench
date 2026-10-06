@@ -72,7 +72,7 @@ struct HomeMeetingTile: View {
     var body: some View {
         WorkbenchTile("Your meetings", symbol: WorkbenchHome.symbol(of: "meeting"), accessory: {
             if !recent.isEmpty {
-                Button("Open Meetings") { model.page = "meeting" }.buttonStyle(.link).font(.callout)
+                Button("Open Meetings") { model.page = "meeting" }.buttonStyle(.workbenchLink).font(.callout)
                     .accessibilityIdentifier("home.meeting.open")
             }
         }) {
@@ -289,7 +289,7 @@ struct HomeDecksTile: View {
     var body: some View {
         WorkbenchTile("Your decks", symbol: WorkbenchHome.symbol(of: "readback"), accessory: {
             if !decks.isEmpty, sample != nil {
-                Button("Sample deck") { openSample() }.buttonStyle(.link).font(.callout)
+                Button("Sample deck") { openSample() }.buttonStyle(.workbenchLink).font(.callout)
                     .help("A short tour of Workbench that came with the app.")
                     .accessibilityIdentifier("home.sample.link")
             }
@@ -329,8 +329,8 @@ struct HomeDecksTile: View {
                 .init(title: deck.title, detail: "Snap & Talk session · first screen",
                       source: .file(deck.thumbnail, missing: "This screen is no longer in the session folder."))
             }) {
-                HomeThumbnail(url: deck.thumbnail, revision: deck.updatedAt.description, caption: nil)
-            }.frame(width: 140)
+                HomeThumbnail(url: deck.thumbnail, revision: deck.updatedAt.description, caption: nil).frame(width: 140)
+            }.frame(width: 140, alignment: .leading)
             VStack(alignment: .leading, spacing: 4) {
                 Text(deck.title).font(.callout.weight(.semibold)).lineLimit(2)
                 Text("\(deck.screens) \(deck.screens == 1 ? "screen" : "screens") · " + HomeMeetingTile.stamp(deck.updatedAt))
@@ -514,7 +514,7 @@ struct HomeKeysTile: View {
     var body: some View {
         let entries = keyboard.entries
         WorkbenchTile("Your keys", symbol: "keyboard", accessory: {
-            Button("Open Keyboard…") { keyboard.stopInteraction(); model.page = "shortcuts" }.buttonStyle(.link).font(.callout)
+            Button("Open Keyboard…") { keyboard.stopInteraction(); model.page = "shortcuts" }.buttonStyle(.workbenchLink).font(.callout)
                 .help("Settings › Keyboard: every shortcut, its keys and its conflicts.")
                 .accessibilityIdentifier("home.keys.all")
         }) {

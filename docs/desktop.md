@@ -53,6 +53,10 @@ Every page uses the same few parts, so a page built by any person or agent looks
 
 **Rules every page follows** (agreed with the page review, 7 Oct): every `Workbench.surface` container carries the hairline border, because the window and control backgrounds are the same colour on macOS 26; orange and red never colour text, only the symbol beside primary text (`WorkbenchStatusBadge`); text styles rather than fixed point sizes wherever a label is not a fixed-size key or glyph; Workbench.accent rather than `Color.accentColor`, which resolves to system blue; `…` only on a button that opens a dialog, sheet or another step.
 
+**Links.** `.buttonStyle(.workbenchLink)`: a text door in Workbench's accent. `.buttonStyle(.link)` and a plain `Link` draw system blue on macOS whatever the tint, beside mint buttons.
+
+**Section summaries.** A page with sections says what the shown section is for in its header, above the switcher (`WorkbenchHome.sectionSummaries`), as every other page does; the section's own view does not repeat it.
+
 **Words.** One name per thing (the Grammar's Names). A button that opens something needing another step ends in …. A status describes what actually happened.
 
 ## Home

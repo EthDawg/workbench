@@ -96,6 +96,21 @@ struct WorkbenchNote: View {
     }
 }
 
+/// A text link in Workbench's accent. `.buttonStyle(.link)` ignores the tint on macOS and draws
+/// system blue beside mint buttons; this keeps a link the app's colour. Use `.buttonStyle(.workbenchLink)`.
+struct WorkbenchLinkStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(isEnabled ? Workbench.accent : Color.secondary)
+            .opacity(configuration.isPressed ? 0.6 : 1)
+            .contentShape(Rectangle())
+    }
+}
+extension ButtonStyle where Self == WorkbenchLinkStyle {
+    static var workbenchLink: WorkbenchLinkStyle { .init() }
+}
+
 /// What a status says about itself: done, needs the person, or plain information.
 enum WorkbenchTone: Equatable { case done, attention, neutral }
 

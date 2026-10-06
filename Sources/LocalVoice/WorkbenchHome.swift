@@ -442,10 +442,14 @@ struct WorkbenchHome: View {
     /// other page has its title (#134). Each section keeps its own summary below.
     private func sectionedHeader(_ page: String, selection: String) -> some View {
         VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
-            WorkbenchPageHeader(page)
+            WorkbenchPageHeader(page, summary: Self.sectionSummaries[selection])
             sectionSwitcher(page, selection: selection) { model.page = $0 }
         }.padding([.horizontal, .top], Workbench.pagePadding)
     }
+    /// A section's one-line summary, in the page header above the switcher where every other page
+    /// has its own; the section's view does not repeat it.
+    static let sectionSummaries: [String: String] = [
+        "shortcuts": "One set of shortcuts for speaking, drawing and presenting."]
 
     /// A page whose own view draws no page title takes its name from the page record here, in
     /// the same place and type as every other page (#134). A page of two columns is divided
@@ -454,7 +458,8 @@ struct WorkbenchHome: View {
         VStack(alignment: .leading, spacing: 0) {
             WorkbenchPageHeader(route, summary: summary)
                 .padding([.horizontal, .top], Workbench.pagePadding).padding(.bottom, divided ? Workbench.sectionSpacing : 0)
-            if divided { Divider() }
+            // Within the page's padding, as every other page's dividers are; never to the window edge.
+            if divided { Divider().padding(.horizontal, Workbench.pagePadding) }
             page()
         }
     }
@@ -568,7 +573,7 @@ struct WorkbenchHomePage: View {
                         HomeGreeting(hasPlayed: greetingPlayed, returning: journey.hasDictated)
                         // The one way back to the skipped guide, until someone dictates (#15).
                         if journey.offersGuide {
-                            Button("Show me a first dictation") { showGuide() }.buttonStyle(.link).font(.callout)
+                            Button("Show me a first dictation") { showGuide() }.buttonStyle(.workbenchLink).font(.callout)
                                 .help("Bring back the short guide to your first dictation.")
                                 .accessibilityIdentifier("home.guide.show")
                         }
@@ -759,7 +764,7 @@ struct WorkbenchHomePage: View {
         WorkbenchTile("First dictation", symbol: WorkbenchHome.symbol(of: "dictate"), accessory: {
             // One small switch for the guide until the first dictation (#15).
             if journey.offersSkip {
-                Button("Skip for now") { skipGuide() }.buttonStyle(.link)
+                Button("Skip for now") { skipGuide() }.buttonStyle(.workbenchLink)
                     .help("Hide this guide. Show me a first dictation brings it back.")
             }
         }) {
@@ -790,10 +795,10 @@ struct WorkbenchHomePage: View {
                     HStack(spacing: 12) {
                         Button { model.copyTranscript() } label: { Label("Copy text", systemImage: "doc.on.doc") }
                         if model.preferences.delivery == .paste && !model.accessibilityGranted {
-                            Button("Set up automatic paste…") { model.requestAccessibility() }.buttonStyle(.link)
+                            Button("Set up automatic paste…") { model.requestAccessibility() }.buttonStyle(.workbenchLink)
                         }
                         Spacer()
-                        Button("Done") { stayInGuide = false }.buttonStyle(.link)
+                        Button("Done") { stayInGuide = false }.buttonStyle(.workbenchLink)
                     }.controlSize(.large)
                     if model.preferences.delivery == .paste && !model.accessibilityGranted {
                         Text("Automatic paste needs Accessibility approval. Until then, transcripts are copied for ⌘V. Your organisation may need to approve this.")
