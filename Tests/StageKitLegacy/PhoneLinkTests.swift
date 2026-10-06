@@ -175,6 +175,51 @@ final class PhoneLinkTests {
         XCTAssertTrue(PhoneLink.diagnostic(signals { $0.released = .ended }, build: "b").contains("Session: released when the presentation ended"))
     }
 
+    func testAFailedUSBCheckIsNotAnEmptyBus() {
+        let code = Int32(bitPattern: 0xE00002C7)
+        let failed = PhoneLink.status(signals { $0.usbProbe = .failed(code) })
+        XCTAssertEqual(failed.phase, .usbUnavailable)
+        XCTAssertEqual(failed.title, "Workbench couldn’t check USB")
+        XCTAssertFalse(failed.title.contains("No phone"), "A failed look never reads as nothing attached")
+        XCTAssertTrue(failed.offersHelp)
+        let report = PhoneLink.diagnostic(signals { $0.usbProbe = .failed(code) }, build: "b")
+        XCTAssertTrue(report.contains("USB: check failed (IOKit 0xE00002C7)"))
+        XCTAssertFalse(report.contains("no iPhone or iPad on the bus"))
+        XCTAssertTrue(PhoneLink.diagnostic(signals { $0.usbProbe = .checked }, build: "b").contains("USB: no iPhone or iPad on the bus"))
+        XCTAssertTrue(PhoneLink.diagnostic(signals(), build: "b").contains("USB: not checked"), "Never looked is not an empty bus either")
+        // A screen macOS offers is still there to show, whatever the USB check said.
+        XCTAssertEqual(PhoneLink.status(signals { $0.usbProbe = .failed(code); $0.sources = [screen] }).phase, .available)
+    }
+
+    /// The monitor's own USB callback, from a synthetic watch: a failure is kept as a failure,
+    /// a later look replaces it, and a look that lands after Present stopped watching is dropped.
+    @MainActor func testTheMonitorKeepsAFailedLookAndDropsALateOne() {
+        final class Watch: USBWatching {
+            var onChange: ((USBProbeResult) -> Void)?
+            var running = false
+            func start() { running = true }
+            func stop() { running = false }
+        }
+        func settle() { let end = Date().addingTimeInterval(0.2); while Date() < end { _ = RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.01)) } }
+        let watch = Watch()
+        let monitor = PhoneLinkMonitor(usb: watch)
+        monitor.setActive(true)
+        XCTAssertTrue(watch.running)
+        watch.onChange?(.failure(.init(code: Int32(bitPattern: 0xE00002BC))))
+        settle()
+        XCTAssertEqual(monitor.signals.usbProbe, .failed(Int32(bitPattern: 0xE00002BC)))
+        XCTAssertEqual(monitor.status.phase, .usbUnavailable)
+        watch.onChange?(.success([phone]))
+        settle()
+        XCTAssertEqual(monitor.status.phase, .phoneOnUSB)
+        monitor.setActive(false)
+        XCTAssertFalse(watch.running)
+        watch.onChange?(.success([phone]))
+        settle()
+        XCTAssertEqual(monitor.signals.usb, [], "A look after the watch stopped brings nothing back")
+        XCTAssertEqual(monitor.signals.usbProbe, .notChecked)
+    }
+
     /// The report replaces every device's own name with its kind, including where the status
     /// words would carry it. The page itself still names the screen for the person at the Mac.
     func testReportsCarryKindsNeverPersonalNames() {
@@ -182,9 +227,9 @@ final class PhoneLinkTests {
         let personalBus = PhoneLinkSignals.USBDevice(name: "Ethan’s iPhone", kind: .iPhone, productID: 0x12A8)
         // Each state whose page words name a device: ready, found, and waiting with one other screen.
         let named: [PhoneLinkSignals] = [
-            signals { $0.usb = [personalBus]; $0.sources = [screen] },
+            signals { $0.usb = [personalBus]; $0.usbProbe = .checked; $0.sources = [screen] },
             signals { $0.sources = [personalCard] },
-            signals { $0.sources = [personalCard]; $0.rememberedID = screen.id; $0.usb = [personalBus] }]
+            signals { $0.sources = [personalCard]; $0.rememberedID = screen.id; $0.usb = [personalBus]; $0.usbProbe = .checked }]
         let cases = named + [signals { $0.sources = [screen, personalCard] }]
         for value in cases {
             let words = PhoneLink.status(value)
@@ -225,7 +270,7 @@ final class PhoneLinkTests {
 
     func testDiagnosticNamesFactsWithoutIdentifiers() {
         let value = signals {
-            $0.usb = [phone]; $0.sources = [screen]; $0.rememberedID = screen.id; $0.access = .authorized; $0.capturing = true
+            $0.usb = [phone]; $0.usbProbe = .checked; $0.sources = [screen]; $0.rememberedID = screen.id; $0.access = .authorized; $0.capturing = true
             $0.phase = .live(screen.id, CGSize(width: 1179, height: 2556))
         }
         let text = PhoneLink.diagnostic(value, build: "2.5.0 (test)")
@@ -238,7 +283,7 @@ final class PhoneLinkTests {
         XCTAssertTrue(text.contains("Session: live 1179×2556"))
         XCTAssertTrue(text.contains("Status: Showing iPhone"))
         XCTAssertFalse(text.contains("udid-1"), "No device identifier leaves the Mac in a report")
-        let empty = PhoneLink.diagnostic(PhoneLinkSignals(), build: "b")
+        let empty = PhoneLink.diagnostic(signals { $0.usbProbe = .checked }, build: "b")
         XCTAssertTrue(empty.contains("USB: no iPhone or iPad on the bus"))
         XCTAssertTrue(empty.contains("Remembered device: none"))
         XCTAssertTrue(empty.contains("Status: No phone on USB — Connect"))

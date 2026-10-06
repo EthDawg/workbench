@@ -61,11 +61,17 @@ enum PhoneLinkChecks {
         case .denied: access = "denied"
         case .restricted: access = "restricted"
         }
+        let usbProbe: String
+        switch result.signals.usbProbe {
+        case .notChecked: usbProbe = "notChecked"
+        case .checked: usbProbe = "checked"
+        case .failed(let code): usbProbe = String(format: "failed 0x%08X", UInt32(bitPattern: code))
+        }
         // The status words are the report's: device names are replaced by their kinds.
         var receipt: [String: Any] = [
             "mode": "--phone-link", "build": build.label, "version": "\(build.version) (\(build.number))", "source": build.revision,
             "seconds": seconds, "finalTitle": result.status.title, "finalDetail": result.status.detail ?? NSNull(),
-            "usbCount": result.signals.usb.count, "sourceCount": result.signals.sources.count, "access": access,
+            "usbProbe": usbProbe, "usbCount": result.signals.usb.count, "sourceCount": result.signals.sources.count, "access": access,
             "changes": changes, "writtenAt": ISO8601DateFormatter().string(from: Date())]
         if let liveResult {
             let firstFrame: Any = liveResult.firstFrame.map { $0 as Any } ?? NSNull()

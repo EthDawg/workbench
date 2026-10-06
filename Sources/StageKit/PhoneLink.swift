@@ -32,10 +32,14 @@ public struct PhoneLinkSignals: Equatable {
         public init(id: String, name: String, isScreen: Bool) { self.id = id; self.name = name; self.isScreen = isScreen }
     }
     public enum VideoAccess: Equatable { case notDetermined, authorized, denied, restricted }
+    /// The last look at the USB bus. A look that failed is not an empty bus: it is
+    /// kept with its IOKit result code, so the words and the report say "couldn't check".
+    public enum USBProbe: Equatable { case notChecked, checked, failed(Int32) }
     /// Why Workbench let go of the phone. Either way the capture stays off until the
     /// person asks for it back: Present, Reconnect, or showing a screen.
     public enum Release: Equatable { case ended, forAnotherApp }
     public var usb: [USBDevice] = []
+    public var usbProbe = USBProbe.notChecked
     public var sources: [ScreenSource] = []
     /// The exact device a previous choice saved. Reconnects only ever reopen this one.
     public var rememberedID: String?
@@ -106,7 +110,7 @@ public enum CapturePhase: Equatable {
 
 public struct PhoneLinkStatus: Equatable {
     public enum Phase: Equatable {
-        case noPhone, phoneOnUSB, screenFound, chooseScreen, waitingForRemembered, available, connecting, live, stalled,
+        case noPhone, usbUnavailable, phoneOnUSB, screenFound, chooseScreen, waitingForRemembered, available, connecting, live, stalled,
              interrupted, busy, couldNotOpen, couldNotStart, accessPending, accessDenied, accessRestricted, released, ended
     }
     /// The one next action a surface renders beside the words. nil means the words
@@ -220,6 +224,11 @@ public enum PhoneLink {
             return .init(phase: .available, title: "\(noun) ready", detail: "Present shows \(remembered.name).", step: nil)
         }
         if sources.isEmpty {
+            if case .failed = signals.usbProbe {
+                // A failed look at the bus says nothing about whether a phone is there.
+                return .init(phase: .usbUnavailable, title: "Workbench couldn’t check USB",
+                             detail: "macOS didn’t answer the USB check. If the phone is plugged in, unlock it and trust this Mac; its screen can still appear here.", step: nil)
+            }
             if let phone = signals.usb.first {
                 return .init(phase: .phoneOnUSB, title: "\(phone.noun) connected, screen not available yet",
                              detail: "Unlock it and tap Trust on the phone. If this Mac asked to allow the accessory, allow it.", step: nil)
@@ -274,8 +283,15 @@ public enum PhoneLink {
         let status = Self.status(signals)
         let os = ProcessInfo.processInfo.operatingSystemVersion
         var lines = ["Workbench \(build) · macOS \(os.majorVersion).\(os.minorVersion).\(os.patchVersion)"]
-        lines.append("USB: " + (signals.usb.isEmpty ? "no iPhone or iPad on the bus"
-            : signals.usb.map { String(format: "%@ (product 0x%04X)", $0.noun, $0.productID) }.joined(separator: ", ")))
+        let usb: String
+        switch signals.usbProbe {
+        case .notChecked: usb = "not checked"
+        case .failed(let code): usb = String(format: "check failed (IOKit 0x%08X)", UInt32(bitPattern: code))
+        case .checked:
+            usb = signals.usb.isEmpty ? "no iPhone or iPad on the bus"
+                : signals.usb.map { String(format: "%@ (product 0x%04X)", $0.noun, $0.productID) }.joined(separator: ", ")
+        }
+        lines.append("USB: " + usb)
         lines.append("Screen sources: " + (signals.sources.isEmpty ? "none"
             : signals.sources.map { $0.name + ($0.isScreen ? " (screen)" : " (video)") }.joined(separator: ", ")))
         let remembered: String
@@ -315,19 +331,39 @@ public enum PhoneLink {
 
 // MARK: - USB bus
 
+/// One look at the USB bus: the Apple phones and tablets on it, or the IOKit result
+/// code of a look that failed. A failure is never reported as an empty bus.
+typealias USBProbeResult = Result<[PhoneLinkSignals.USBDevice], USBProbeFailure>
+struct USBProbeFailure: Error, Equatable { let code: kern_return_t }
+
+/// What the monitor needs from the bus watch, so a check can drive the monitor's own
+/// callback with a failed or late look instead of the Mac's IOKit.
+protocol USBWatching: AnyObject {
+    /// Called on any queue with each look at the bus.
+    var onChange: ((USBProbeResult) -> Void)? { get set }
+    func start()
+    func stop()
+}
+
 /// Apple phones and tablets on the USB bus, from IOKit, with no permission and
 /// no pairing. Presence here without a screen source means the phone is attached
 /// but not yet unlocked, trusted or allowed as an accessory.
-final class USBPhoneWatch {
+final class USBPhoneWatch: USBWatching {
     private static let appleVendor = 0x05AC
+    /// IOKit's generic error, for a step that failed without returning its own code.
+    private static let genericFailure = kern_return_t(bitPattern: 0xE00002BC)
     private var port: IONotificationPortRef?
     private var iterators: [io_iterator_t] = []
     private let queue = DispatchQueue(label: "Workbench.phone-link.usb", qos: .utility)
-    /// Called on the watch's own queue with the whole current list.
-    var onChange: (([PhoneLinkSignals.USBDevice]) -> Void)?
+    /// Called on the watch's own queue with each look at the bus.
+    var onChange: ((USBProbeResult) -> Void)?
 
     func start() {
-        guard port == nil, let port = IONotificationPortCreate(kIOMainPortDefault) else { return }
+        guard port == nil else { return }
+        guard let port = IONotificationPortCreate(kIOMainPortDefault) else {
+            queue.async { [weak self] in self?.onChange?(.failure(.init(code: Self.genericFailure))) }
+            return
+        }
         self.port = port
         // Registered on the queue so an ordinary caller never races a stop in flight.
         IONotificationPortSetDispatchQueue(port, queue)
@@ -336,16 +372,17 @@ final class USBPhoneWatch {
             guard let refcon else { return }
             let watch = Unmanaged<USBPhoneWatch>.fromOpaque(refcon).takeUnretainedValue()
             watch.drain(iterator)
-            watch.publish()
+            watch.publish(nil)
         }
+        // A watch that could not register cannot see changes: the look is reported as failed.
+        var failure: kern_return_t?
         for kind in [kIOMatchedNotification, kIOTerminatedNotification] {
-            guard let matching = Self.matching() else { continue }
+            guard let matching = Self.matching() else { failure = Self.genericFailure; continue }
             var iterator: io_iterator_t = 0
-            if IOServiceAddMatchingNotification(port, kind, matching, callback, refcon, &iterator) == KERN_SUCCESS {
-                drain(iterator); iterators.append(iterator)
-            }
+            let result = IOServiceAddMatchingNotification(port, kind, matching, callback, refcon, &iterator)
+            if result == KERN_SUCCESS { drain(iterator); iterators.append(iterator) } else { failure = result }
         }
-        queue.async { [weak self] in self?.publish() }
+        queue.async { [weak self] in self?.publish(failure) }
     }
     /// Synchronous on the watch's own queue, where its callbacks run, so no callback
     /// can run after this returns and the unretained reference they carry is safe.
@@ -368,13 +405,16 @@ final class USBPhoneWatch {
         var service = IOIteratorNext(iterator)
         while service != 0 { IOObjectRelease(service); service = IOIteratorNext(iterator) }
     }
-    private func publish() { onChange?(Self.snapshot()) }
+    private func publish(_ failure: kern_return_t?) {
+        if let failure { onChange?(.failure(.init(code: failure))) } else { onChange?(Self.snapshot()) }
+    }
 
-    /// Every Apple phone or tablet currently on the bus.
-    static func snapshot() -> [PhoneLinkSignals.USBDevice] {
-        guard let matching = matching() else { return [] }
+    /// Every Apple phone or tablet currently on the bus, or why the bus could not be read.
+    static func snapshot() -> USBProbeResult {
+        guard let matching = matching() else { return .failure(.init(code: genericFailure)) }
         var iterator: io_iterator_t = 0
-        guard IOServiceGetMatchingServices(kIOMainPortDefault, matching, &iterator) == KERN_SUCCESS else { return [] }
+        let result = IOServiceGetMatchingServices(kIOMainPortDefault, matching, &iterator)
+        guard result == KERN_SUCCESS else { return .failure(.init(code: result)) }
         defer { IOObjectRelease(iterator) }
         var devices: [PhoneLinkSignals.USBDevice] = []
         var service = IOIteratorNext(iterator)
@@ -389,7 +429,7 @@ final class USBPhoneWatch {
             IOObjectRelease(service)
             service = IOIteratorNext(iterator)
         }
-        return devices
+        return .success(devices)
     }
 
     /// Apple's own product identifiers first, then the product name. Keyboards,
@@ -428,16 +468,29 @@ public final class PhoneLinkMonitor: ObservableObject {
     @Published public private(set) var status = PhoneLink.status(PhoneLinkSignals())
     /// Fixed signals for an offscreen render; nil follows the Mac.
     public var fixture: PhoneLinkSignals? { didSet { if let fixture { apply(fixture) } else { apply(mirrored); refresh() } } }
-    private let usb = USBPhoneWatch()
+    private let usb: USBWatching
     private var captureObservations = Set<AnyCancellable>()
     private var observers: [NSObjectProtocol] = []
     private var wakeObserver: NSObjectProtocol?
     private var running = false
     private var mirrored = PhoneLinkSignals()
 
-    public init() {
-        usb.onChange = { [weak self] devices in
-            DispatchQueue.main.async { self?.update { $0.usb = devices } }
+    public convenience init() { self.init(usb: USBPhoneWatch()) }
+    init(usb: USBWatching) {
+        self.usb = usb
+        usb.onChange = { [weak self] result in
+            DispatchQueue.main.async { self?.receiveUSB(result) }
+        }
+    }
+    /// A look at the bus, on main. One that lands after the watch stopped is dropped, so
+    /// a stale look cannot bring back devices or a failure while Present is not in use.
+    func receiveUSB(_ result: USBProbeResult) {
+        guard running else { return }
+        update {
+            switch result {
+            case .success(let devices): $0.usb = devices; $0.usbProbe = .checked
+            case .failure(let failure): $0.usb = []; $0.usbProbe = .failed(failure.code)
+            }
         }
     }
     /// Mirror the capture's own facts: the sources it sees, the device it remembers
@@ -478,7 +531,7 @@ public final class PhoneLinkMonitor: ObservableObject {
         usb.stop()
         observers.forEach(NotificationCenter.default.removeObserver); observers.removeAll()
         if let wakeObserver { NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver); self.wakeObserver = nil }
-        update { $0.usb = [] }
+        update { $0.usb = []; $0.usbProbe = .notChecked }
     }
     private func update(_ change: (inout PhoneLinkSignals) -> Void) {
         change(&mirrored)
