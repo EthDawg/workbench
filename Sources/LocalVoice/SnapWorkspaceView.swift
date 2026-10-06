@@ -75,7 +75,13 @@ struct SnapWorkspaceView: View {
                     Button("Reload history") { model.requestRefresh() }
                 }.foregroundStyle(.orange)
             }
-            if let notice = model.notice { Text(notice).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+            if let notice = model.notice {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text(notice).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    // A recoverable problem can go to the Workbench team with its typed code (#296).
+                    if let code = model.failureCode { ReportProblemButton(origin: BugReportOrigin(surface: .snap, errorCode: code)) }
+                }
+            }
             if model.visibleItems.isEmpty {
                 VStack(spacing: 10) {
                     Image(systemName: model.search.isEmpty ? "photo.on.rectangle" : "magnifyingglass").font(.largeTitle)

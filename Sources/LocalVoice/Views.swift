@@ -28,11 +28,11 @@ struct ContentView: View {
 
     /// A problem stays on the workspace that owns it. Read's typed playback failure already
     /// has its own Retry beside the transport, so it is never repeated in the page banner.
-    private var bannerError: String? {
+    private var bannerError: String? { bannerAttention?.message }
+    private var bannerAttention: Attention? {
         guard let attention = model.attention else { return nil }
         let belongsHere = ["dictate", "dictionary"].contains(model.page) && attention.page == .dictate
-        guard belongsHere else { return nil }
-        return attention.message
+        return belongsHere ? attention : nil
     }
 
     var body: some View {
@@ -48,6 +48,8 @@ struct ContentView: View {
                         Button("Microphone Settings…") { model.openMicrophoneSettings() }.controlSize(.small)
                             .help("Open Privacy & Security › Microphone in System Settings")
                     }
+                    // The same Report a problem… as Help, carrying this problem's typed code (#296).
+                    if let attention = bannerAttention { ReportProblemButton(origin: BugReportOrigin(surface: .dictate, errorCode: attention.code)) }
                     Button { model.dismissError() } label: { Image(systemName: "xmark") }
                         .buttonStyle(.plain).accessibilityLabel("Dismiss error")
                 }.padding(14).background(Color.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))

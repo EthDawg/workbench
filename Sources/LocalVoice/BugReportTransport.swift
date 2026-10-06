@@ -14,8 +14,8 @@ import Network
 @MainActor
 final class BugReportTransport: ObservableObject {
     @Published private(set) var deliveries: [BugReportDelivery] = []
-    /// Reports with a request in flight now.
-    @Published private(set) var active: Set<String> = []
+    /// Reports with a request in flight now. The surface gallery sets it to draw Sending….
+    @Published var active: Set<String> = []
     let store: BugReportStore
     let session: URLSession
     /// `workbench-mac/<version>`, sent as the Sentry client.
