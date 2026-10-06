@@ -37,10 +37,10 @@ struct ShortcutControl: View {
                 if !showsTitle { Spacer() }
             }
             if model.editingShortcut == id {
-                Text(model.shortcutRecordingMessage ?? "Press your combination. Use ⌃, ⌥ or ⌘ with a key.")
-                    .font(.caption).foregroundStyle(model.shortcutRecordingMessage == nil ? Color.secondary : .orange)
+                if let message = model.shortcutRecordingMessage { VoiceAttentionNote(text: message, font: .caption) }
+                else { Text("Press your combination. Use ⌃, ⌥ or ⌘ with a key.").font(.caption).foregroundStyle(.secondary) }
             }
-            if let failure = model.shortcutFailures[id] { Text(failure).font(.caption).foregroundStyle(.orange) }
+            if let failure = model.shortcutFailures[id] { VoiceAttentionNote(text: failure, font: .caption) }
         }
     }
 }
@@ -113,6 +113,8 @@ struct DictateTaskOptions: View {
                         ForEach(DeliveryMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                     }.labelsHidden().fixedSize()
                     if model.preferences.delivery == .paste {
+                        // Secondary buttons on the sheet sit at the trailing edge, as Models and Your dictionary do.
+                        Spacer()
                         if model.accessibilityGranted {
                             Label("Ready", systemImage: "checkmark.circle").foregroundStyle(Workbench.accent).font(.caption)
                         } else {
@@ -128,7 +130,7 @@ struct DictateTaskOptions: View {
                     ForEach(CleanupStyle.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }.labelsHidden().fixedSize()
                 Text(model.preferences.cleanup.detail).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                Text(model.preferences.cleanup.exampleText).font(.caption).foregroundStyle(.tertiary).fixedSize(horizontal: false, vertical: true)
+                Text(model.preferences.cleanup.exampleText).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
         }.disabled(model.phase != .idle)
     }
