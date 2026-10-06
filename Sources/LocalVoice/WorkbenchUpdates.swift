@@ -170,8 +170,12 @@ final class WorkbenchUpdates: NSObject, ObservableObject {
         offerReply = nil; requestedVersion = nil; requestedBuildNumber = nil; availableBuildNumber = nil
         #endif
         if !restartWaiting {
+            let hadOffer = availableVersion != nil
             availableVersion = nil; releaseSummary = nil; downloaded = false; installing = false
             if wasUpdating { status = "Update paused. Check again when you’re ready." }
+            // A dismissed offer takes its "is ready" line with it, so Settings never says an update
+            // is ready beside a disabled Check for Updates… with nothing on offer.
+            else if hadOffer { status = "Updates stay on the \(build.edition) edition." }
         }
     }
     func canTerminate(saveSession: () -> Bool) -> Bool {
