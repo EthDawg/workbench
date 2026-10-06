@@ -97,6 +97,29 @@ struct ReadbackHandoffBrief {
         preservation: "Keep the original session and any `template.pptx` unchanged.")
 }
 
+struct ReadbackHandoffApplication {
+    let url: URL
+    let title: String
+
+    init(url: URL) {
+        self.url = url
+        let bundle = Bundle(url: url)
+        let names = [bundle?.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String,
+                     bundle?.object(forInfoDictionaryKey: "CFBundleName") as? String,
+                     url.deletingPathExtension().lastPathComponent]
+        title = names.compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty } ?? "The selected app"
+    }
+
+    var openingNotice: String {
+        "Handoff prompt copied and \(title) is opening. Give it access to this folder, then paste the prompt. Nothing was uploaded."
+    }
+
+    func failureNotice(_ error: Error) -> String {
+        "\(title) could not open: \(error.localizedDescription) The prompt is copied and the session is shown in Finder. Nothing was uploaded."
+    }
+}
+
 enum ReadbackHandoffTarget: String, CaseIterable, Identifiable {
     case claude
     case chatGPT
@@ -118,6 +141,17 @@ enum ReadbackHandoffTarget: String, CaseIterable, Identifiable {
         case .chatGPT: ["com.openai.chat", "com.openai.codex"]
         case .codex: ["com.openai.codex", "com.openai.chat"]
         }
+    }
+
+    /// Keep the installed-app fallback, but name the application actually found.
+    /// Resolution is separate from opening so checks never launch another app.
+    func resolveApplication(using locate: (String) -> URL? = {
+        NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0)
+    }) -> ReadbackHandoffApplication? {
+        for identifier in bundleIdentifiers {
+            if let url = locate(identifier) { return ReadbackHandoffApplication(url: url) }
+        }
+        return nil
     }
 
     /// The Snap & Talk deck brief stays the default, so existing callers keep the
@@ -713,18 +747,18 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         }
 
         NSWorkspace.shared.activateFileViewerSelecting([sessionURL])
-        guard let applicationURL = target.bundleIdentifiers.lazy.compactMap({ NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) }).first else {
+        guard let application = target.resolveApplication() else {
             notice = "Handoff prompt copied and the session shown in Finder. Open \(target.title), add this folder, then paste the prompt. Nothing was uploaded."
             stateChanged()
             return
         }
 
-        notice = "Handoff prompt copied and \(target.title) is opening. Give it access to this folder, then paste the prompt. Nothing was uploaded."
+        notice = application.openingNotice
         stateChanged()
-        NSWorkspace.shared.openApplication(at: applicationURL, configuration: .init()) { [weak self] _, error in
+        NSWorkspace.shared.openApplication(at: application.url, configuration: .init()) { [weak self] _, error in
             guard let error else { return }
             Task { @MainActor in
-                self?.notice = "\(target.title) could not open: \(error.localizedDescription) The prompt is copied and the session is shown in Finder. Nothing was uploaded."
+                self?.notice = application.failureNotice(error)
                 self?.stateChanged()
             }
         }
