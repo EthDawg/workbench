@@ -100,7 +100,7 @@ struct MeetingWorkspaceView: View {
                         }.controlSize(.large)
                         // Confirmed under its control, in space kept for it, so the row never shifts (Fit rule 7).
                         if let problem = copyFeedback.problem {
-                            VoiceAttentionNote(text: problem, font: .caption)
+                            WorkbenchNote(problem, font: .caption)
                         } else {
                             ConfirmationLabel(text: copyFeedback.confirmation?.kind, reserving: ["Copied transcript"])
                         }
@@ -153,7 +153,7 @@ struct MeetingWorkspaceView: View {
                         Button("Models…", action: openModels).buttonStyle(.link).font(.caption)
                             .help("Choose the speech model in Settings › Models")
                     }
-                }.voicePageCard()
+                }.workbenchCard()
                     .accessibilityIdentifier("meeting.recording")
 
                 if let problem = model.problem ?? (model.isBusy ? nil : model.admission.captureProblem) {
@@ -200,7 +200,7 @@ struct MeetingWorkspaceView: View {
                         Spacer()
                         Button { model.dismissKeptWithoutSpeech() } label: { Image(systemName: "xmark").frame(width: 24, height: 24).contentShape(Rectangle()) }
                             .buttonStyle(.plain).accessibilityLabel("Dismiss")
-                    }.voicePageCard()
+                    }.workbenchCard()
                 }
                 if !model.recoveries.isEmpty {
                     keptForLater
@@ -307,7 +307,7 @@ struct MeetingWorkspaceView: View {
                     }
                     Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([entry.session]) }
                     Button("Move to Trash") { Task { await model.moveRecordingToTrash(entry.session) } }.disabled(model.isBusy)
-                }.controlSize(.small).voicePageCard()
+                }.controlSize(.small).workbenchCard()
                     .accessibilityElement(children: .contain).accessibilityLabel(Self.title(entry))
             }
         }

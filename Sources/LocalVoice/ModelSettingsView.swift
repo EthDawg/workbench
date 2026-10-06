@@ -56,7 +56,7 @@ struct ModelSettingsView: View {
                 }
             }
 
-            if let failure { VoiceAttentionNote(text: failure) }
+            if let failure { WorkbenchNote(failure) }
             if let details = current.failure?.details {
                 DisclosureGroup("Details") { Text(details).font(.callout).textSelection(.enabled) }
             }

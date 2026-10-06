@@ -37,10 +37,10 @@ struct ShortcutControl: View {
                 if !showsTitle { Spacer() }
             }
             if model.editingShortcut == id {
-                if let message = model.shortcutRecordingMessage { VoiceAttentionNote(text: message, font: .caption) }
+                if let message = model.shortcutRecordingMessage { WorkbenchNote(message, font: .caption) }
                 else { Text("Press your combination. Use ⌃, ⌥ or ⌘ with a key.").font(.caption).foregroundStyle(.secondary) }
             }
-            if let failure = model.shortcutFailures[id] { VoiceAttentionNote(text: failure, font: .caption) }
+            if let failure = model.shortcutFailures[id] { WorkbenchNote(failure, font: .caption) }
         }
     }
 }

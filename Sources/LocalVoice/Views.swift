@@ -127,7 +127,7 @@ struct ContentView: View {
                                 Spacer()
                                 Button("Dismiss") { model.dismissUnresolvedDelivery() }.accessibilityLabel("Dismiss unfinished delivery")
                             }
-                        }.voicePageCard()
+                        }.workbenchCard()
                     }
                     if let incoming = model.pendingTranscript {
                         VStack(alignment: .leading, spacing: 10) {
@@ -139,7 +139,7 @@ struct ContentView: View {
                                 Spacer()
                                 Button("Replace draft") { model.replaceDraftWithTranscript() }.disabled(model.phase != .idle)
                             }
-                        }.voicePageCard()
+                        }.workbenchCard()
                     }
                     VStack(alignment: .leading, spacing: 16) {
                         captureControls
@@ -369,7 +369,7 @@ struct ContentView: View {
         } label: {
             Label(hasCurrentRecovery ? "Capture recovery" : "Saved recordings", systemImage: hasCurrentRecovery ? "arrow.counterclockwise" : "archivebox")
                 .font(.callout)
-        }.voicePageCard()
+        }.workbenchCard()
     }
 
     /// The existing Settings door now opens this workspace's settings sheet, once.
@@ -539,10 +539,10 @@ struct DictionaryView: View {
                         .disabled(pending == nil || pending?.isAlreadySaved == true)
                 }
                 if let note = note(for: change) {
-                    if note.warning { VoiceAttentionNote(text: note.text, font: .callout) }
+                    if note.warning { WorkbenchNote(note.text) }
                     else { Text(note.text).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
                 }
-            }.textFieldStyle(.roundedBorder).controlSize(.large).voicePageCard()
+            }.textFieldStyle(.roundedBorder).controlSize(.large).workbenchCard()
             ForEach(CorrectionRule.conflicts(in: model.replacements), id: \.[0].id) { rules in conflict(rules) }
             if model.replacements.isEmpty {
                 Text("No corrections yet. Add a name or phrase above when you need one.").font(.callout).foregroundStyle(.secondary)
@@ -641,29 +641,4 @@ struct WaveBars: View {
     }
 }
 
-extension View {
-    /// The page kit's card (docs/desktop.md § Page kit) for a container that is not a titled
-    /// WorkbenchTile: 16 pt inside, 12 pt corners, the control surface and its hairline, which
-    /// macOS 26 needs because the window and control backgrounds are the same colour.
-    func voicePageCard() -> some View {
-        padding(Workbench.tilePadding)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Workbench.surface, in: RoundedRectangle(cornerRadius: Workbench.tileRadius))
-            .overlay(RoundedRectangle(cornerRadius: Workbench.tileRadius).strokeBorder(Workbench.border))
-    }
-}
-
-/// A failure or warning in words: the text in the primary colour so it stays readable, and an
-/// orange symbol for attention (orange and red text fail contrast on a light card).
-struct VoiceAttentionNote: View {
-    let text: String
-    var font: Font = .callout
-    var body: some View {
-        Label {
-            Text(text).foregroundStyle(.primary).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
-        } icon: {
-            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Workbench.attention).accessibilityHidden(true)
-        }.font(font)
-    }
-}
 func time(_ seconds: Double) -> String { String(format: "%d:%02d", max(0, Int(seconds)) / 60, max(0, Int(seconds)) % 60) }

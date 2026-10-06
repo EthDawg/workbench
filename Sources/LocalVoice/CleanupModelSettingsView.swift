@@ -101,7 +101,7 @@ struct CleanupModelSettingsView: View {
                 Button("Cancel") { manager.cancel() }
             }
         }
-        if let failure = manager.failure { VoiceAttentionNote(text: failure) }
+        if let failure = manager.failure { WorkbenchNote(failure) }
         if draft.naturalProvider == .ollama || manager.isWorking || manager.failure != nil {
             Text(manager.status).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
