@@ -479,7 +479,12 @@ private struct KeyboardCoachWindowObserver: NSViewRepresentable {
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             if let observer { NotificationCenter.default.removeObserver(observer); self.observer = nil }
-            guard let window else { onResign(); return }
+            guard let window else {
+                // SwiftUI takes this view out of its window inside a view update; the model
+                // changes after that update, as it does when the section disappears.
+                let resign = onResign
+                DispatchQueue.main.async(execute: resign); return
+            }
             observer = NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification, object: window, queue: .main) { [weak self] _ in self?.onResign() }
         }
         deinit { if let observer { NotificationCenter.default.removeObserver(observer) } }
