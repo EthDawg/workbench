@@ -19,7 +19,7 @@ struct ControlCenter: View {
                         Button { app.finishRecording(); app.selectedTab = title } label: {
                             HStack(spacing: 12) {
                                 Image(systemName: symbol).frame(width: 18)
-                                Text(title).font(.system(size: 13, weight: app.selectedTab == title ? .semibold : .regular))
+                                Text(title).font(.body.weight(app.selectedTab == title ? .semibold : .regular))
                                 Spacer()
                             }.foregroundStyle(app.selectedTab == title ? inkAccent : Color.secondary)
                                 .padding(.horizontal, 13).padding(.vertical, 11)
@@ -32,14 +32,14 @@ struct ControlCenter: View {
                 VStack(alignment: .leading, spacing: 8) {
                     if !app.embedded {
                         Toggle("Launch at login", isOn: Binding(get: { app.launchAtLogin }, set: { app.setLaunchAtLogin($0) }))
-                            .toggleStyle(.checkbox).font(.system(size: 11)).padding(.bottom, 14)
+                            .toggleStyle(.checkbox).font(.caption).padding(.bottom, 14)
                     }
-                    Label("Made for the live demo", systemImage: "sparkle").font(.system(size: 10, weight: .medium)).foregroundStyle(.secondary)
-                    Text("Native to your Mac.\nYour screen stays yours.").font(.system(size: 11)).foregroundStyle(.tertiary).lineSpacing(3)
+                    Label("Made for the live demo", systemImage: "sparkle").font(.caption2.weight(.medium)).foregroundStyle(.secondary)
+                    Text("Native to your Mac.\nYour screen stays yours.").font(.caption).foregroundStyle(.tertiary).lineSpacing(3)
                     HStack {
-                        Text(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development").font(.system(size: 10, design: .monospaced)).foregroundStyle(.tertiary)
+                        Text(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development").font(.caption2.monospaced()).foregroundStyle(.tertiary)
                         Spacer()
-                        if !app.embedded { Button("Quit") { app.quitApp() }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(.secondary) }
+                        if !app.embedded { Button("Quit") { app.quitApp() }.buttonStyle(.plain).font(.caption).foregroundStyle(.secondary) }
                     }.padding(.top, 12)
                 }
             }.padding(20).frame(width: 190).background(Workbench.surface.opacity(0.65))
@@ -59,24 +59,28 @@ struct ControlCenter: View {
                             if value == "Shortcuts" { app.selectedTab = "Drawing"; app.onOpenShortcuts?() }
                         }
                 }
-                HStack {
-                    Text(app.embedded && app.selectedTab == "Present" ? "Overview" : app.selectedTab).font(.body.weight(.semibold))
-                        .accessibilityAddTraits(.isHeader)
-                    Spacer()
-                    // In Workbench, Persona is its own page; a second library sheet here was a parallel door.
-                    if !app.embedded { Button { app.choosingPersonas = true } label: { Label("Persona…", systemImage: "person.crop.rectangle") } }
-                    HStack(spacing: 6) {
-                        Circle().fill(inkAccent).frame(width: 6, height: 6)
-                        Text("Ready on \(app.displayCount) \(app.displayCount == 1 ? "display" : "displays")")
-                    }.font(.system(size: 11)).foregroundStyle(.secondary)
-                }.padding(.horizontal, 24).padding(.vertical, 16)
-                Divider().overlay(Color.white.opacity(0.03))
+                // Embedded, the segmented control already names the section, so the row only
+                // speaks when something is wrong: no display to draw on.
+                if !app.embedded || app.displayCount == 0 {
+                    HStack {
+                        if !app.embedded {
+                            Text(app.selectedTab).font(.body.weight(.semibold)).accessibilityAddTraits(.isHeader)
+                        }
+                        Spacer()
+                        // In Workbench, Persona is its own page; a second library sheet here was a parallel door.
+                        if !app.embedded { Button { app.choosingPersonas = true } label: { Label("Persona…", systemImage: "person.crop.rectangle") } }
+                        if app.displayCount == 0 {
+                            Label("No display available", systemImage: "circle.dashed").font(.caption.weight(.medium)).foregroundStyle(.secondary)
+                        }
+                    }.padding(.horizontal, 24).padding(.vertical, app.embedded ? 8 : 16)
+                    Divider().overlay(Color.white.opacity(0.03))
+                }
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         if let message = app.notice ?? settings.notice {
                             HStack(alignment: .top) {
                                 Image(systemName: "info.circle").foregroundStyle(inkAccent)
-                                Text(message).font(.system(size: 12)).textSelection(.enabled)
+                                Text(message).font(.callout).textSelection(.enabled)
                                 Spacer()
                                 Button { app.clearNotice(); settings.clearNotice() } label: { Image(systemName: "xmark") }.buttonStyle(.plain)
                             }.padding(12).background(inkAccent.opacity(0.08), in: RoundedRectangle(cornerRadius: 9))
@@ -86,8 +90,11 @@ struct ControlCenter: View {
                                 if app.embedded { app.onOpenShortcuts?() }
                                 else { app.selectedTab = "Shortcuts" }
                             } label: {
-                                Label("\(app.shortcutFailures.count) shortcut conflicts need a different key combination", systemImage: "exclamationmark.triangle")
-                            }.foregroundStyle(.orange).font(.system(size: 12))
+                                // Primary words keep their contrast; only the symbol is orange.
+                                Label {
+                                    Text(app.shortcutFailures.count == 1 ? "1 shortcut needs a different key combination" : "\(app.shortcutFailures.count) shortcuts need a different key combination")
+                                } icon: { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange) }
+                            }.font(.callout)
                         }
                         switch app.selectedTab {
                         case "Drawing": drawing
@@ -108,58 +115,66 @@ struct ControlCenter: View {
             // Embedded, Workbench's page title and summary say this (#134).
             if !app.embedded { HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Make the point.\nKeep the flow.").font(.system(size: 29, weight: .semibold)).tracking(-1)
+                    Text("Make the point.\nKeep the flow.").font(.largeTitle.weight(.semibold)).tracking(-1)
                     Text("Draw attention to what matters,\nright over your live demo.")
-                        .font(.system(size: 13)).foregroundStyle(.secondary).lineSpacing(4)
+                        .font(.body).foregroundStyle(.secondary).lineSpacing(4)
                 }
                 Spacer(minLength: 10)
                 DemoIllustration().frame(width: 213, height: 132).padding(.top, 4).accessibilityHidden(true)
             }.padding(.bottom, 3) }
-            HStack(spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
                 startButton(.pen, title: "Draw on screen")
                 startButton(.arrow, title: "Point it out")
                 startButton(.highlighter, title: "Highlight")
             }
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
-                    Label("Your two essential shortcuts", systemImage: "keyboard").font(.system(size: 12, weight: .semibold))
+                    Label("Your two essential shortcuts", systemImage: "keyboard").font(.callout.weight(.semibold))
                     Spacer()
-                    Text(settings.value.activation.rawValue.uppercased()).font(.system(size: 9, weight: .semibold)).tracking(1).foregroundStyle(inkAccent)
+                    Text(settings.value.activation.rawValue).font(.caption).foregroundStyle(.secondary)
                 }
                 shortcutHint(settings.value.activation == .hold ? "Hold to draw. Release to continue." : "Press to draw. Press again to continue.", action: .pen)
                 Divider()
                 shortcutHint("Clear the ink and return to your demo.", action: .clear)
-                Text("Escape returns to your demo. Share your entire display in Zoom, Teams or Meet so your audience sees the ink.")
-                    .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Divider()
+                HStack { Text("Return to your demo.").font(.callout).foregroundStyle(.secondary); Spacer(); Keycap(text: "esc") }
+                Text("Share your entire display in Zoom, Teams or Meet so your audience sees the ink.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }.surface()
-            HStack(spacing: 10) {
-                utilityButton("Cursor", detail: app.pointerEnabled ? "Highlight is on" : "Help them follow", symbol: "cursorarrow.rays", active: app.pointerEnabled) { app.perform(.pointer) }
-                utilityButton("Whiteboard", detail: "Explain an idea", symbol: "rectangle") { app.perform(.whiteboard) }
+            // Named as Draw's own tabs name them: Pointer and Boards (Names rule).
+            HStack(alignment: .top, spacing: 10) {
+                utilityButton("Pointer", detail: app.pointerEnabled ? "Pointer is on" : "Show where you point", symbol: "cursorarrow.rays", active: app.pointerEnabled) { app.perform(.pointer) }
+                utilityButton("Board", detail: "Explain an idea", symbol: "rectangle") { app.perform(.whiteboard) }
                 utilityButton("Timer", detail: "Keep the room on time", symbol: "timer") { app.perform(.timer) }
             }
         }
     }
+    /// Three starts at equal weight; the accent symbol and border mark the default, Draw on screen.
     private func startButton(_ tool: DrawingTool, title: String) -> some View {
         Button { settings.value.onboardingComplete = true; app.startDrawing(tool, latched: true) } label: {
             VStack(alignment: .leading, spacing: 10) {
-                HStack { Image(systemName: tool.symbol).font(.system(size: 20)); Spacer(); Image(systemName: "arrow.up.right").font(.system(size: 10)).opacity(0.6) }
-                Text(title).font(.system(size: 12, weight: .semibold))
-            }.foregroundStyle(tool == .pen ? inkBackground : Color.primary)
-                .padding(14).frame(maxWidth: .infinity, alignment: .leading)
-                .background(tool == .pen ? inkAccent : inkSurface, in: RoundedRectangle(cornerRadius: 12))
-        }.buttonStyle(.plain)
+                HStack {
+                    Image(systemName: tool.symbol).font(.title3).foregroundStyle(tool == .pen ? inkAccent : Color.primary)
+                    Spacer()
+                    Image(systemName: "arrow.up.right").font(.caption2).foregroundStyle(.secondary)
+                }.frame(height: 24, alignment: .leading)
+                Text(title).font(.callout.weight(.semibold))
+            }.foregroundStyle(Color.primary)
+                .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+        }.buttonStyle(DrawTileStyle(emphasised: tool == .pen)).accessibilityLabel(title)
     }
     private func utilityButton(_ title: String, detail: String, symbol: String, active: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 7) {
                 HStack { Image(systemName: symbol).foregroundStyle(active ? inkAccent : .secondary); Spacer(); if active { Circle().fill(inkAccent).frame(width: 5, height: 5) } }
-                Text(title).font(.system(size: 12, weight: .medium))
-                Text(detail).font(.system(size: 10)).foregroundStyle(.secondary)
-            }.padding(14).frame(maxWidth: .infinity, alignment: .leading).background(inkSurface, in: RoundedRectangle(cornerRadius: 10))
-        }.buttonStyle(.plain)
+                    .frame(height: 18, alignment: .leading)
+                Text(title).font(.callout.weight(.medium))
+                Text(detail).font(.caption2).foregroundStyle(.secondary)
+            }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
+        }.buttonStyle(DrawTileStyle()).accessibilityLabel(title).accessibilityValue(detail)
     }
     private func shortcutHint(_ title: String, action: Action) -> some View {
-        HStack { Text(title).font(.system(size: 12)).foregroundStyle(.secondary); Spacer(); Keycap(text: settings.value.shortcut(for: action).label) }
+        HStack { Text(title).font(.callout).foregroundStyle(.secondary); Spacer(); Keycap(text: settings.value.shortcut(for: action).label) }
     }
     private var drawing: some View {
         VStack(alignment: .leading, spacing: 22) {
@@ -167,7 +182,7 @@ struct ControlCenter: View {
             VStack(spacing: 18) {
                 Picker("Activation", selection: $settings.value.activation) { ForEach(ActivationMode.allCases, id: \.self) { Text($0.rawValue).tag($0) } }.pickerStyle(.segmented)
                 Text(settings.value.activation == .hold ? "Hold a tool shortcut while drawing. Release it to interact with your app again. Text and boards stay open until you exit." : "Press a tool shortcut once to start, and again to stop. Ideal for longer explanations, a tablet or Stream Deck.")
-                    .font(.system(size: 12)).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
+                    .font(.callout).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
             }.surface()
             VStack(spacing: 20) {
                 HStack {
@@ -185,13 +200,13 @@ struct ControlCenter: View {
                 // Workbench's shared toolbar is the one drawing control surface, so the
                 // standalone app's floating palette and its setting stay out of it (#160).
                 if !app.embedded { Toggle("Show the palette while drawing", isOn: $settings.value.showDrawingPalette) }
-            }.font(.system(size: 12)).surface()
+            }.font(.callout).surface()
             VStack(spacing: 16) {
                 Toggle("Auto-fade screen annotations", isOn: $settings.value.autoFade)
                 if settings.value.autoFade { sliderRow("Visible for", value: $settings.value.fadeDelay, range: 0.5...30, suffix: "sec") }
                 Text("Board drawings are retained. Hold Shift for straight angles, squares and circles. For text, type at the pointer, click to place, then Enter to finish; Shift-Enter adds a line.")
-                    .font(.system(size: 11)).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
-            }.font(.system(size: 12)).surface()
+                    .font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
+            }.font(.callout).surface()
             HStack(spacing: 8) {
                 ForEach(DrawingTool.allCases) { tool in
                     Button { app.startDrawing(tool, latched: true) } label: { Image(systemName: tool.symbol).frame(maxWidth: .infinity).frame(height: 28) }
@@ -208,7 +223,7 @@ struct ControlCenter: View {
                     Button { settings.value.pointerStyle = style } label: {
                         VStack(spacing: 12) {
                             PointerPreview(style: style).frame(height: 55)
-                            Text(style.rawValue).font(.system(size: 11, weight: .medium))
+                            Text(style.rawValue).font(.caption.weight(.medium))
                         }.padding(.vertical, 16).frame(maxWidth: .infinity)
                             .background(settings.value.pointerStyle == style ? inkAccent.opacity(0.1) : inkSurface, in: RoundedRectangle(cornerRadius: 11))
                             .overlay(RoundedRectangle(cornerRadius: 11).stroke(settings.value.pointerStyle == style ? inkAccent.opacity(0.65) : .clear))
@@ -224,13 +239,13 @@ struct ControlCenter: View {
                 Divider()
                 Picker("Visibility", selection: $settings.value.pointerVisibility) { ForEach(PointerVisibility.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
                 Toggle("Ripple on click", isOn: $settings.value.clickRipple)
-                Text("Each style remembers its own settings. Pointer effects hide automatically while drawing.").font(.system(size: 11)).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
-            }.font(.system(size: 12)).surface()
+                Text("Each style remembers its own settings. Pointer effects hide automatically while drawing.").font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
+            }.font(.callout).surface()
             HStack {
                 Button { app.perform(.pointer) } label: { Label(app.pointerEnabled ? "Turn pointer off" : "Turn pointer on", systemImage: "cursorarrow.rays") }.buttonStyle(.borderedProminent).controlSize(.large)
                 Spacer(); Keycap(text: settings.value.shortcut(for: .pointer).label)
             }
-            Button("Open macOS Zoom settings…") { app.openZoomSettings() }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(.secondary)
+            Button("Open macOS Zoom settings…") { app.openZoomSettings() }.buttonStyle(.plain).font(.caption).foregroundStyle(.secondary)
         }
     }
     private var boardSettings: some View {
@@ -243,23 +258,23 @@ struct ControlCenter: View {
             BoardExportButtons(app: app)
             ScreenshotHandoffButton(app: app)
             Text("Board image includes only the board and ink. Use a region or display capture to include visible screen annotations; a single-window capture may omit Workbench’s separate layer. \(app.embedded ? "The floating toolbar" : "The palette") and pointer hide during selection.")
-                .font(.system(size: 12)).foregroundStyle(.secondary)
+                .font(.callout).foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 18) {
                 Toggle("Keep board drawings separate from the screen", isOn: $settings.value.separateBoards).disabled(!app.boards.isEmpty)
                 Text(settings.value.separateBoards ? "Your board is saved automatically on this Mac. White and black backgrounds use the same saved canvas for each display." : "The board uses your current screen annotations. Shared screen ink is temporary and is not saved when you quit.")
-                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                    .font(.callout).foregroundStyle(.secondary)
                 Divider()
                 if !app.embedded {
                     Picker("Board palette", selection: $settings.value.boardPalette) { ForEach(PaletteMode.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
-                    Text("With Auto-hide, move the mouse to reveal the palette again. Escape closes the board and returns to your presentation.").font(.system(size: 11)).foregroundStyle(.secondary)
+                    Text("With Auto-hide, move the mouse to reveal the palette again. Escape closes the board and returns to your presentation.").font(.caption).foregroundStyle(.secondary)
                 } else {
-                    Text("Escape closes the board and returns to your presentation.").font(.system(size: 11)).foregroundStyle(.secondary)
+                    Text("Escape closes the board and returns to your presentation.").font(.caption).foregroundStyle(.secondary)
                 }
-            }.font(.system(size: 12)).surface()
+            }.font(.callout).surface()
             VStack(alignment: .leading, spacing: 8) {
-                Label("Drawing with an iPad or tablet", systemImage: "ipad.and.arrow.forward").font(.system(size: 12, weight: .semibold))
+                Label("Drawing with an iPad or tablet", systemImage: "ipad.and.arrow.forward").font(.callout.weight(.semibold))
                 Text("Connect your iPad with Sidecar, or use a Mac-compatible pen tablet. Choose Toggle activation for drawing without holding a keyboard shortcut. Pressure input is supported where the device supplies it.")
-                    .font(.system(size: 12)).foregroundStyle(.secondary).lineSpacing(3)
+                    .font(.callout).foregroundStyle(.secondary).lineSpacing(3)
             }.surface()
         }
     }
@@ -270,7 +285,7 @@ struct ControlCenter: View {
                     RoundedRectangle(cornerRadius: 8).fill(style == .white ? Color(red: 0.95, green: 0.96, blue: 0.98) : Color(red: 0.04, green: 0.05, blue: 0.08))
                     Image(systemName: "scribble.variable").font(.system(size: 54, weight: .light)).foregroundStyle(style == .white ? Color(nsColor: InkColor.coral.nsColor) : inkAccent)
                 }.frame(height: 105)
-                HStack { Text(title).font(.system(size: 13, weight: .semibold)); Spacer(); Keycap(text: settings.value.shortcut(for: action).label) }
+                HStack { Text(title).font(.body.weight(.semibold)); Spacer(); Keycap(text: settings.value.shortcut(for: action).label) }
             }.padding(14).background(inkSurface, in: RoundedRectangle(cornerRadius: 12))
         }.buttonStyle(.plain)
     }
@@ -288,7 +303,7 @@ struct ControlCenter: View {
                 HStack { ColorPicker("Text", selection: colorBinding(\Preferences.timerColor), supportsOpacity: false); Spacer(); ColorPicker("Background", selection: colorBinding(\Preferences.timerBackground), supportsOpacity: false) }
                 sliderRow("Window opacity", value: Binding(get: { settings.value.timerOpacity * 100 }, set: { settings.value.timerOpacity = $0 / 100 }), range: 20...100, suffix: "%")
                 Toggle("Play a chime when time is up", isOn: $settings.value.timerChime)
-            }.font(.system(size: 12)).surface()
+            }.font(.callout).surface()
             HStack {
                 // One transport action for the current state: Start, Pause, Resume or Restart, and
                 // only the one it shows (#174).
@@ -304,18 +319,20 @@ struct ControlCenter: View {
         VStack(alignment: .leading, spacing: 20) {
             pageIntro("Keep your hands in the flow.", "Click a shortcut, then press your preferred combination.")
             Text("Use Control, Option or Command with a key. Escape cancels recording; Delete disables a shortcut. Stream Deck can send these same hotkeys.")
-                .font(.system(size: 12)).foregroundStyle(.secondary)
+                .font(.callout).foregroundStyle(.secondary)
             VStack(spacing: 0) {
                 ForEach(Action.allCases) { action in
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
-                            Text(action.title).font(.system(size: 12))
+                            Text(action.title).font(.callout)
                             Spacer()
                             Button { app.beginRecording(action) } label: {
                                 Keycap(text: app.recordingAction == action ? "Press keys…" : settings.value.shortcut(for: action).label)
                             }.buttonStyle(.plain).accessibilityLabel("Shortcut for \(action.title)")
                         }
-                        if let error = app.shortcutFailures[action] { Text(error).font(.system(size: 10)).foregroundStyle(.orange) }
+                        if let error = app.shortcutFailures[action] {
+                            Label { Text(error) } icon: { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange) }.font(.caption2)
+                        }
                     }.padding(.vertical, 10)
                     if action != Action.allCases.last { Divider() }
                 }
@@ -332,8 +349,8 @@ struct ControlCenter: View {
     /// Embedded, the section's name is its heading above, so only the detail shows (#134).
     private func pageIntro(_ title: String, _ detail: String) -> some View {
         VStack(alignment: .leading, spacing: 9) {
-            if !app.embedded { Text(title).font(.system(size: 26, weight: .semibold)).tracking(-0.7) }
-            Text(detail).font(.system(size: 13)).foregroundStyle(.secondary)
+            if !app.embedded { Text(title).font(.largeTitle.weight(.semibold)).tracking(-0.7) }
+            Text(detail).font(.body).foregroundStyle(.secondary)
         }
     }
     private func sliderRow(_ title: String, value: Binding<Double>, range: ClosedRange<Double>, suffix: String) -> some View {
@@ -342,13 +359,38 @@ struct ControlCenter: View {
             Slider(value: value, in: range)
             Text("\(value.wrappedValue, specifier: value.wrappedValue < 1 ? "%.1f" : "%.0f") \(suffix)")
                 .monospacedDigit().foregroundStyle(.secondary).frame(width: 52, alignment: .trailing)
-        }.font(.system(size: 12))
+        }.font(.callout)
     }
 }
 
 private extension View {
     func surface() -> some View {
-        padding(18).frame(maxWidth: .infinity, alignment: .leading).background(inkSurface, in: RoundedRectangle(cornerRadius: 12))
+        // The page kit's card: 12 pt corners, 16 pt inside and a hairline, because on macOS 26
+        // the control surface and the window are the same colour.
+        padding(16).frame(maxWidth: .infinity, alignment: .leading)
+            .background(inkSurface, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Workbench.border))
+    }
+}
+
+/// Draw's start and utility tiles: the kit's card, with hover and pressed states so a tile
+/// reads as the button it is. `emphasised` marks the default start with the accent.
+private struct DrawTileStyle: ButtonStyle {
+    var emphasised = false
+    func makeBody(configuration: Configuration) -> some View { Tile(configuration: configuration, emphasised: emphasised) }
+    private struct Tile: View {
+        let configuration: ButtonStyleConfiguration
+        let emphasised: Bool
+        @State private var hovering = false
+        var body: some View {
+            configuration.label
+                .background(configuration.isPressed ? Color.primary.opacity(0.08) : hovering ? Color.primary.opacity(0.04) : .clear,
+                            in: RoundedRectangle(cornerRadius: 12))
+                .background(inkSurface, in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(emphasised ? inkAccent.opacity(0.7) : Workbench.border, lineWidth: emphasised ? 1.5 : 1))
+                .contentShape(RoundedRectangle(cornerRadius: 12))
+                .onHover { hovering = $0 }
+        }
     }
 }
 
@@ -400,7 +442,7 @@ struct DrawingPalette: View {
     @ObservedObject var settings: SettingsStore
     var body: some View {
         HStack(spacing: 5) {
-            Image(systemName: "line.3.horizontal").font(.system(size: 10)).foregroundStyle(.tertiary).padding(.trailing, 3)
+            Image(systemName: "line.3.horizontal").font(.caption2).foregroundStyle(.tertiary).padding(.trailing, 3)
             ForEach(DrawingTool.allCases) { tool in
                 Button { app.startDrawing(tool, latched: true) } label: {
                     Image(systemName: tool.symbol).font(.system(size: 15)).frame(width: 30, height: 34)
@@ -431,7 +473,7 @@ struct DrawingPalette: View {
             }.menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
                 .disabled(!app.canExportBoard).help("Copy or save the open board")
                 .accessibilityLabel("Board image")
-            Button { app.escape() } label: { Text("Done").font(.system(size: 11, weight: .semibold)).foregroundStyle(inkAccent).padding(.horizontal, 8) }.help("Return to demo · Escape")
+            Button { app.escape() } label: { Text("Done").font(.caption.weight(.semibold)).foregroundStyle(inkAccent).padding(.horizontal, 8) }.help("Return to demo · Escape")
         }.buttonStyle(.plain).padding(.horizontal, 13).padding(.vertical, 12)
             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 15))
             .overlay(RoundedRectangle(cornerRadius: 15).stroke(.white.opacity(0.12)))
