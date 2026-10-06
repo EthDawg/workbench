@@ -627,17 +627,6 @@ struct DictionaryView: View {
 
 
 
-/// Home's first-dictation button. Disabled, its label stays readable (secondary on a quaternary
-/// fill) rather than fading the accent's dark label into an almost-matching background.
-struct PrimaryButton: ButtonStyle {
-    @Environment(\.isEnabled) private var enabled
-    func makeBody(configuration: Configuration) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 8)
-        return configuration.label.font(.callout.weight(.semibold)).padding(.horizontal, 20).padding(.vertical, 12)
-            .foregroundStyle(enabled ? AnyShapeStyle(Workbench.background) : AnyShapeStyle(.secondary))
-            .background { if enabled { shape.fill(mint.opacity(configuration.isPressed ? 0.75 : 1)) } else { shape.fill(.quaternary) } }
-    }
-}
 /// The live level, tallest in the middle (voice-waveform decision): sixteen bars on one sine arch.
 struct WaveBars: View {
     let level: Double

@@ -389,12 +389,12 @@ private struct HistoryNativeAcceptanceView: View {
         model.meetings = meetings
         // Meetings reads the app's own speech readiness, as main.swift wires it, so its status
         // never says Ready to record beside a Models page that says Download Parakeet.
-        for owner in [meetings, recordingMeetings] {
-            owner.hostAdmission = { [weak model] in MeetingHostAdmission(recognition: model?.recognition ?? .init()) }
-        }
-        // The isolated view fixtures supply readiness through the one snapshot every page reads;
-        // no preparation or observer can overwrite it, load local models, or acquire assets.
-        model.acceptRecognition(RecognitionSnapshot(admission: .localReady))
+        // (The panel's recording fixture starts its own meeting and keeps its synthetic admission.)
+        meetings.hostAdmission = { [weak model] in MeetingHostAdmission(recognition: model?.recognition ?? .init()) }
+        // The isolated view fixtures supply readiness through the one snapshot every page reads. Its
+        // sequence is ahead of the isolated engine's, so Models' own refresh cannot replace it with
+        // that empty engine's "Download Parakeet"; the speech pass's states (10 000 on) still apply.
+        model.acceptRecognition(RecognitionSnapshot(sequence: 1_000, admission: .localReady))
         model.accessibilityGranted = false
         model.history = SurfacePass.history
         model.transcript = SurfacePass.history[0].text; model.rawTranscript = model.transcript

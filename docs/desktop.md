@@ -108,8 +108,8 @@ Each page moves to the kit in its own small PR, rendered in the surface gallery,
 | --- | --- | --- |
 | Home | As above | Done in the first desktop PR (five iterations and two independent reviews) |
 | Window behaviour | Login launch, remembered frame, ⌘M | Done in the first desktop PR; native login check owed |
-| Dictate | Already the reference layout: header with Import audio… and Settings…, hero microphone, transcript, Copy text | Kit tokens only |
-| Meetings | Start recording and Copy transcript as the phase's prominent action; card to `WorkbenchTile` radius and padding; drop the 960-point cap | Next |
+| Dictate | Already the reference layout: header with Import audio… and Settings…, hero microphone, transcript, Copy text | Done in the Voice pages PR: kit cards, header summary, Copy text prominent (⌘↩); Your dictionary and Models with it |
+| Meetings | Start recording and Copy transcript as the phase's prominent action; card to `WorkbenchTile` radius and padding; drop the 960-point cap | Done in the Voice pages PR, with readiness that follows the speech model |
 | Snap | Literal padding to tokens; empty state to `WorkbenchEmptyState` with Region as the one prominent capture | Next |
 | Snap & Talk | Empty state to `WorkbenchEmptyState` with New session… prominent; header's extra bottom padding removed | Next |
 | Draw (StageKit) | StageKit cannot see the page tokens: move them into the shared `Workbench` namespace, then use `WorkbenchPageHeader` and the kit's card, badge and prominent action | Next, needs the token move first |
