@@ -1412,7 +1412,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         if previewingVoice { stopVoicePreview(); return }
         if readingProvider == .neural { previewNeuralVoice(); return }
         guard !rendering, !playing, phase == .idle, !meetings.isBusy, let voice = voiceChoice?.voice, !voice.sayOnly,
-              let systemVoice = AVSpeechSynthesisVoice(identifier: voice.id) else { return }
+              let systemVoice = MacVoiceCatalog.voice(identifier: voice.id) else { return }
         let utterance = AVSpeechUtterance(string: "This is \(voice.name). Here is how your readings will sound.")
         utterance.voice = systemVoice
         utterance.rate = MacVoicePace.utteranceRate(forWordsPerMinute: rate)

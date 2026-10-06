@@ -98,13 +98,32 @@ enum MacVoiceCatalog {
     /// The voices AVFoundation lists for English and the person's language, in
     /// its order: the one read of the installed set. It takes 35–90 ms and may
     /// run on any plain thread (the main run loop, a GCD queue); from a Swift
-    /// task's thread it logs an Accessibility fault.
+    /// task's thread it logs an Accessibility fault. The voice objects it has
+    /// in hand replace the cache `voice(identifier:)` serves, wholesale.
     static func listed(preferredLanguage: String = preferredLanguage) -> [MacVoice] {
-        AVSpeechSynthesisVoice.speechVoices().compactMap { voice -> MacVoice? in
+        let voices = AVSpeechSynthesisVoice.speechVoices()
+        voiceLock.withLock { voiceCache = Dictionary(voices.map { ($0.identifier, $0) }, uniquingKeysWith: { first, _ in first }) }
+        return voices.compactMap { voice -> MacVoice? in
             guard !voice.voiceTraits.contains(.isPersonalVoice), relevant(voice.language, preferredLanguage: preferredLanguage) else { return nil }
             return MacVoice(id: voice.identifier, name: voice.name, language: voice.language, quality: MacVoice.Quality(voice.quality),
                             isNovelty: voice.voiceTraits.contains(.isNoveltyVoice))
         }
+    }
+
+    /// The listed voice objects by identifier, filled by `listed()` on
+    /// whichever thread read the list and read on the main thread.
+    nonisolated(unsafe) private static var voiceCache: [String: AVSpeechSynthesisVoice] = [:]
+    private static let voiceLock = NSLock()
+
+    /// The installed voice for a listed identifier, for an utterance: the
+    /// object `listed()` kept, so a reading or a preview starts from a Swift
+    /// task with no voice lookup and no Accessibility fault. Only an
+    /// identifier the list has not held since the last change (a voice
+    /// removed since, or a saved choice before the first listing) falls back
+    /// to `AVSpeechSynthesisVoice(identifier:)`, the one call here that may
+    /// log a fault when made from a task's thread.
+    static func voice(identifier: String) -> AVSpeechSynthesisVoice? {
+        voiceLock.withLock { voiceCache[identifier] } ?? AVSpeechSynthesisVoice(identifier: identifier)
     }
 
     /// The picker's order for `listed` voices, with the `say` names and the
@@ -154,9 +173,13 @@ enum MacVoiceCatalog {
     }
 
     /// Reads the `say` list again at the next `sayVoices()`, after macOS reports
-    /// that the installed voices changed.
+    /// that the installed voices changed, and drops the listed voice objects
+    /// until the next `listed()` refills them.
     @MainActor
-    static func forgetSayVoices() { sayVoiceCache = nil }
+    static func forgetSayVoices() {
+        sayVoiceCache = nil
+        voiceLock.withLock { voiceCache = [:] }
+    }
 
     /// Earlier builds saved the names `say` lists. Attach them so those choices
     /// keep working, and keep the few voices only `say` can speak.

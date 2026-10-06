@@ -99,6 +99,18 @@ enum ReadingChecks {
 
     // MARK: Voices
 
+    /// Runs `body` on a GCD utility queue and waits for it, as the app lists
+    /// voices: these checks run inside a Swift task (`MainActor.run`, or the
+    /// async render), where the voice listings and lookups log an AXCommon
+    /// fault apiece on macOS 26 and a GCD queue logs none.
+    nonisolated private static func offMain<T>(_ body: @escaping @Sendable () -> T) throws -> T {
+        let done = DispatchGroup(); done.enter()
+        nonisolated(unsafe) var result: T?
+        DispatchQueue.global(qos: .utility).async { result = body(); done.leave() }
+        guard done.wait(timeout: .now() + 10) == .success, let result else { throw Failure(label: "the utility queue listed the voices within 10 s") }
+        return result
+    }
+
     private static func checkVoices(_ check: (@autoclosure () throws -> Bool, String) throws -> Void) throws {
         let voices = MacVoiceCatalog.ordered(compactCatalogue, preferredLanguage: "en-AU")
         func resolved(_ saved: String, _ language: String, in catalogue: [MacVoice] = voices) -> String? {
@@ -150,15 +162,18 @@ enum ReadingChecks {
                   "a removed voice's identifier is reported missing without the `say` list, which cannot have it")
         // Returning to the app lists voices on a GCD queue, not the main thread
         // and not a Swift task; the picker order is applied on the main thread.
-        let offMain = DispatchGroup(); offMain.enter()
-        nonisolated(unsafe) var listedOffMain: [MacVoice] = []
-        DispatchQueue.global(qos: .utility).async { listedOffMain = MacVoiceCatalog.listed(preferredLanguage: "en-AU"); offMain.leave() }
-        try check(offMain.wait(timeout: .now() + 10) == .success
-                  && MacVoiceCatalog.catalogue(listedOffMain, preferredLanguage: "en-AU") == MacVoiceCatalog.installed(preferredLanguage: "en-AU")
+        let listedOffMain = try offMain { MacVoiceCatalog.listed(preferredLanguage: "en-AU") }
+        try check(MacVoiceCatalog.catalogue(listedOffMain, preferredLanguage: "en-AU") == (try offMain { MacVoiceCatalog.installed(preferredLanguage: "en-AU") })
                   && MacVoiceCatalog.sayScanCount == 0,
                   "the listing read on the utility queue, ordered on the main thread, is the launch catalogue, without the `say` list")
-        try check(MacVoiceCatalog.installed(preferredLanguage: "en-AU").allSatisfy { !$0.sayOnly && $0.legacyNames.isEmpty }
+        try check(try offMain { MacVoiceCatalog.installed(preferredLanguage: "en-AU") }.allSatisfy { !$0.sayOnly && $0.legacyNames.isEmpty }
                   && MacVoiceCatalog.sayScanCount == 0, "listing installed voices never asks NSSpeechSynthesizer")
+        // A reading or a preview starts from a Swift task, so it takes the
+        // voice object the listing kept rather than looking one up there.
+        if let id = listedOffMain.first?.id {
+            try check(MacVoiceCatalog.voice(identifier: id).map { $0.identifier == id && $0 === MacVoiceCatalog.voice(identifier: id) } == true,
+                      "after a listing, voice(identifier:) hands out the listed voice object itself")
+        }
         func fresh(_ language: String, _ catalogue: [MacVoice] = compactCatalogue) -> String? {
             MacVoiceCatalog.preferredDefault(in: catalogue, preferredLanguage: language)?.id
         }
@@ -438,15 +453,16 @@ enum ReadingChecks {
     /// Renders synthetic text with an installed English voice into a file and
     /// checks word timing against the audio itself. Nothing is played.
     static func runRender() async throws {
-        let installed = MacVoiceCatalog.installed(preferredLanguage: "en-US")
+        let installed = try offMain { MacVoiceCatalog.installed(preferredLanguage: "en-US") }
         var voices = ["com.apple.voice.compact.en-US.Samantha", "com.apple.voice.super-compact.en-AU.Karen", "com.apple.voice.compact.en-GB.Daniel"]
             .compactMap { id in installed.first { $0.id == id } }
         if voices.isEmpty, let any = installed.first(where: { !$0.isNovelty && !$0.sayOnly && $0.language.hasPrefix("en") }) { voices = [any] }
         guard let first = voices.first else { print("READING_RENDER_SKIPPED: no installed English Mac voice"); return }
         var count = 0
         // A listed voice is reachable by its installed identifier alone, so
-        // rendering never looks a voice up by language or name (#140).
-        guard voices.allSatisfy({ AVSpeechSynthesisVoice(identifier: $0.id) != nil }), MacVoiceCatalog.sayScanCount == 0 else {
+        // rendering never looks a voice up by language or name (#140); the
+        // identifier constructions run on the utility queue, not this task.
+        guard try offMain({ [voices] in voices.allSatisfy { AVSpeechSynthesisVoice(identifier: $0.id) != nil } }), MacVoiceCatalog.sayScanCount == 0 else {
             throw Failure(label: "a listed voice is constructed from its identifier without the `say` list")
         }
         count += 1
