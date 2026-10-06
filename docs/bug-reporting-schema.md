@@ -1,6 +1,6 @@
 # Bug report protocol schema
 
-Shared build target for the native producer and intake validator described in [Report a problem](bug-reporting.md). This is a contract fixture, not a live customer report or an implemented validator. Extract the first JSON block as `manifest.schema.json`; the second is a synthetic valid text-only input. Use JSON Schema draft 2020-12 with **format assertions enabled**, not only annotations.
+Shared build target for the native producer and the receipt verifier described in [Report a problem](bug-reporting.md). This is a contract fixture, not a live customer report or an implemented validator. Extract the first JSON block as `manifest.schema.json`; the second is a synthetic valid text-only input. Use JSON Schema draft 2020-12 with **format assertions enabled**, not only annotations.
 
 ## Manifest
 
@@ -373,31 +373,47 @@ Shared build target for the native producer and intake validator described in [R
 }
 ```
 
-## Receipt shape
+## Verification request and result
 
-Every successful endpoint returns the same receipt shape with required `schema_version`, `report_id`, `manifest_sha256`, `revision`, `state` and `updated_at`. UUID/hash formats match the manifest; revision is a positive integer, monotonically increasing per report. `state` is one of `uploading`, `accepted`, `forwarding`, `verifying`, `received`, `held`, `removal_pending`, `deleted`, `expired`. Optional `retry_after_seconds` is an integer from 1 to 86400. Optional `failure_code` is one of `incomplete_upload`, `invalid_payload`, `quota_exceeded`, `receiver_unavailable`, `receipt_unconfirmed`, `removal_unconfirmed`, `expired`. Reject unknown keys. Do not return provider credentials, private queue links or reporter content. The all-zero hash below is an illustrative placeholder, not the digest of this fixture.
+Revised 7 October 2026: the app sends the manifest to Sentry as `context.json` and asks the stateless [Report check](../services/report-check/README.md) verifier for receipt. The 6 October gateway receipt (revisions, removal states, failure codes) is superseded.
+
+Request, `POST /api/v1/verify`, at most 4 KiB, strict JSON (unknown and duplicate keys rejected). `event_id` is the Sentry envelope's UUIDv4 as 32 lowercase hex; `report_id` matches the manifest; `report_id` matches the manifest (sent lowercase, compared case-insensitively); `elapsed_seconds` is a required whole number from 0 to 31,536,000, the seconds since the app received Sentry's 200 for its latest send of this `event_id`, measured on the app's own clock; `attachments` lists one to three of the fixed names with their exact byte counts and SHA-256, and always includes `context.json` (whose own digest is computed over the exact manifest bytes sent). The hashes below are illustrative placeholders, not digests of this fixture.
 
 ```json
 {
-  "schema_version": 1,
+  "event_id": "9ec79c33ec9942ab8353589fcb2e04dc",
   "report_id": "a02149ed-36f5-4f10-9a21-10acfe2289b2",
-  "manifest_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
-  "revision": 1,
-  "state": "accepted",
-  "updated_at": "2026-10-06T05:00:02Z",
-  "retry_after_seconds": 5
+  "elapsed_seconds": 29,
+  "attachments": [
+    {
+      "name": "context.json",
+      "size": 512,
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ]
+}
+```
+
+Result, `200` with `Cache-Control: no-store`: exactly `state` (`received`, `pending`, `not_found` or `mismatch`) and `checked_at`. Errors are `405`, `413`, `422`, `429` and `503` (the last two with `Retry-After`) and never carry a state; a client treats any non-`200` or non-JSON answer like `503`. Neither shape carries credentials, private Sentry URLs or reporter content.
+
+```json
+{
+  "state": "received",
+  "checked_at": "2026-10-06T05:00:31Z"
 }
 ```
 
 ## Required validation beyond JSON Schema
 
-- Parse UTF-8 strictly, rejecting invalid Unicode/unpaired surrogates and duplicate JSON keys before schema validation. Exact manifest bytes must fit 32 KiB. `explanation` must also fit 4096 UTF-8 bytes and email 254 bytes; schema character limits alone cannot enforce these byte limits.
-- Whitespace-only explanation needs at least one attachment. Schema enums describe facts; map unavailable platform state to unknown, never infer denied from an undifferentiated false result. Omit unavailable optional context. Empty required build/OS strings become `unknown` in the producer; reject empty values at the service.
-- Treat `created_at` as evidence, not authorization/TTL. A clock discrepancy does not block a legitimate report; server time controls admission and expiry. Map unavailable client time to null.
+Revised 7 October 2026: there is no intake service, and Sentry does not validate the manifest or media. These rules belong to the **producer** (the native app, before Send) and to the operator **fetch tool** (`services/report-check/ops/report_ops.py fetch`, which re-checks a received packet). The verifier checks only identity, sizes and SHA-256 in Sentry.
+
+- Parse UTF-8 strictly, rejecting invalid Unicode/unpaired surrogates and duplicate JSON keys before schema validation (the producer before Send; the fetch tool when it reads `context.json`). Exact manifest bytes must fit 32 KiB. `explanation` must also fit 4096 UTF-8 bytes and email 254 bytes; schema character limits alone cannot enforce these byte limits.
+- Whitespace-only explanation needs at least one attachment. Schema enums describe facts; map unavailable platform state to unknown, never infer denied from an undifferentiated false result. Omit unavailable optional context. Empty required build/OS strings become `unknown` in the producer, which never emits an empty value.
+- Treat `created_at` as evidence, not authorization or retention. A clock discrepancy does not block a legitimate report; Sentry's receive time governs retention. Map unavailable client time to null.
 - No raw newlines/control characters in build/OS/email/error fields, and no text in optional fields outside their approved meaning. No system paths, titles, endpoint URLs or arbitrary error messages. Bound safe strings before populating the manifest rather than truncate user explanation.
-- At most one descriptor per fixed attachment name. Confirm actual byte count, type, SHA-256 and media decode. An image is at most 40 megapixels; the WAV must be PCM mono 16 kHz/16-bit and at most 60 seconds. Total payload is at most 16 MiB. No archives, executables, symlinks or caller-selected paths.
+- At most one descriptor per fixed attachment name. The producer confirms actual byte count, type, SHA-256 and media decode before Send: an image is at most 40 megapixels; the WAV must be PCM mono 16 kHz/16-bit and at most 60 seconds; total payload at most 16 MiB; no archives, executables, symlinks or caller-selected paths. The fetch tool re-checks byte counts and SHA-256 against `context.json` and writes only the fixed names.
 - `context.screenshot` is present only with `screenshot.png`, matches decoded dimensions, and has a finite scale. Media validation does not follow links or launch players. Bound CPU, memory and decoding time.
-- Context files, original note and selected attachments are reviewable content. The optional email appears in the reviewed manifest and receiver feedback context, never tags or operational logs. Do not mark Received until every expected provider attachment has been downloaded and verified against this frozen payload.
+- Context files, original note and selected attachments are reviewable content. The optional email appears in the reviewed manifest (`context.json`), never in tags, URLs or operational logs; Sentry turns `contexts.feedback.contact_email` into a `user.email` tag, so the producer leaves it out unless one-click reply is decided. Do not mark Received until the verifier has confirmed every expected attachment's size and SHA-256 in Sentry.
 
 ## Shared negative vectors
 

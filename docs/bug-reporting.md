@@ -1,6 +1,6 @@
 # Report a problem
 
-Decided build brief, 6 October 2026. **Ready to implement against the contract below; not implemented, provider-accepted or released.** [Research and rejected alternatives](research/bug-reporting-2026-10.md) explain the choices. This contribution supports the [Mac release gate](https://github.com/Ship-Work/workbench/issues/7). The [owning implementation issue #296](https://github.com/Ship-Work/workbench/issues/296) supplies delivery status; this document is not another backlog.
+Decided build brief, 6 October 2026; delivery architecture revised 7 October 2026 (direct to Sentry, stateless verifier). **The verifier is live at `https://workbench-report-check.vercel.app/api/v1/verify` and serves only Preview test reports until the native sender ships; the native sender and release are not done.** [Research and rejected alternatives](research/bug-reporting-2026-10.md) explain the choices. This contribution supports the [Mac release gate](https://github.com/Ship-Work/workbench/issues/7). The [owning implementation issue #296](https://github.com/Ship-Work/workbench/issues/296) supplies delivery status; this document is not another backlog.
 
 ## Outcome and scope
 
@@ -23,24 +23,42 @@ The action cannot preserve a transient hover that vanished before invoking Help.
 
 ## Decided architecture
 
+Revised 7 October 2026 for free tiers: **the app sends straight to Sentry; a stateless verifier confirms receipt.** This supersedes the 6 October first-party intake (Cloudflare Worker, Durable Objects, R2, Sentry adapter) and the brief same-day GitHub-receiver revision; the [decisions ledger](research/bug-reporting-2026-10.md#decisions-ledger) records why and what would bring them back.
+
 ```mermaid
 flowchart LR
   A[Native composer] --> B[Private local outbox]
-  B --> C[HTTPS intake and receipt service]
-  C --> D[Private staging and per-report state]
-  D --> E[Sentry private feedback inbox]
-  E --> F[Maintainer investigates and links GitHub work]
-  E -->|Event and attachment readback| C
-  C -->|Scoped receipt| B
+  B -->|One envelope per attempt, public DSN| C[Sentry ingest]
+  C --> D[Sentry feedback inbox: issue, context.json, screenshot, voice]
+  B -->|Event ID, report ID, sizes, SHA-256| E[Report check: stateless verifier]
+  E -->|Server-only read token| D
+  E -->|received, pending, not_found or mismatch| B
+  D --> F[Maintainer triages, fetches the packet, links GitHub work]
 ```
 
-Use native `URLSession`, **without embedding the Sentry Cocoa SDK**, against one first-party intake service. The service owns durability, deduplication, anonymous submission limits and provider readback. Sentry supplies the private inbox, attachment access and assignment. GitHub remains the engineering work queue; link accepted work from intake instead of maintaining two copies of its fix status. Public GitHub issues contain only deliberately sanitised summaries.
+- **Production is the target.** Only the Stable app ships a DSN, for one Sentry project (`workbench-dp/workbench-reports`, US region), environment `production`. Preview and local builds send only through an explicit developer override, environment `preview`, to test the path. The verifier serves both.
+- **The app's local outbox is the only first-party durable store.** Native `URLSession` sends one Sentry envelope per attempt, without the Sentry Cocoa SDK: a `feedback` item and `attachment` items `context.json` (the exact manifest bytes), optional `screenshot.png` and optional `voice.wav`. There is no intake server, staging bucket or service-side retry queue.
+- **[Report check](../services/report-check/README.md)** (`services/report-check/`) is one TypeScript function on the Node runtime, deployed as its own Vercel project, never the website project. It holds the only read credential, keeps no state, and never stores, returns or logs report content.
+- **Sentry is the private inbox** with assignment, filtering by tags and attachment download. GitHub remains the engineering work queue; link accepted work from the feedback issue rather than copying reports. Public GitHub issues contain only deliberately sanitised summaries.
 
-Reference backend: one TypeScript **Cloudflare Worker**, SQLite-backed **Durable Object per report**, and one private **R2 bucket**. The object serialises state transitions and alarms; R2 holds bounded evidence. No D1, Kafka, generic workflow engine or new dashboard. This is a deployment choice for the new endpoint, not permission to alter the existing Vercel site/feed. It is not an already provisioned service. Pin the implementation's current tooling when that PR begins.
+Platform facts this depends on, checked 7 October 2026 against Sentry source (`getsentry/sentry` at `b5f054ff`, `getsentry/relay` at `613679b9`), current documentation and the lead's live probe of the real project:
 
-Durable Object alarms are at-least-once with limited automatic retries; explicitly persist `next_attempt_at` and reschedule caught failures. A persisted dispatch flag must protect awaits, not rely on JavaScript running on one thread. Recovery alarms and an operational reconciliation command inspect overdue/held reports. The intake service never runs user-provided code or opens supplied URLs.
+- Relay stores a feedback envelope's attachments as individual event attachments under the feedback's event ID. The project event endpoint returns feedback events (stored as issue-platform `generic` events) once processed, and the attachment list and download endpoints serve their bytes. The live probe matched all three SHA-256 values.
+- Before processing finishes (8–40 s in the probe) the event endpoint answers 404, the same as for an event that never arrived. Attachments that arrive before their event can be parked and, rarely, expire; Sentry's own comment says this window is narrowed, not closed. Ingest's 200 is therefore not receipt.
+- Attachment downloads need a user who is an organisation member with the **Attachments Access** role. A personal token works; an internal-integration or organisation token does not.
+- Feedback is counted in its own `feedback` data category, not as errors (probe usage stats). Attachments count against the attachment quota.
 
-Sentry is the selected receiver adapter for implementation. Its real account/plan proof is a **release gate**, not a reason to leave the native interface unspecified. If modern feedback readback or attachment access fails that gate, stop activation and revise this adapter decision. Do not substitute a manual-upload journey or falsely report success.
+## Envelope contract (app → Sentry)
+
+The native implementation owns the sender; these are the service-facing rules it must meet.
+
+- `POST https://o4512211018121216.ingest.us.sentry.io/api/4512211067011072/envelope/` with `X-Sentry-Auth: Sentry sentry_version=7, sentry_key=<public key>, sentry_client=workbench/<version>` (or the `dsn` envelope header). DSNs only allow submission and are safe to ship ([Sentry](https://docs.sentry.io/concepts/key-terms/dsn-explainer/)).
+- Envelope header `{"event_id", "sent_at"}`. `event_id` is a random UUIDv4 as 32 lowercase hex, chosen once per send and reused with identical bytes for every retry of that send. UUIDs (event ID and the `report_id` tag) are sent lowercase.
+- Item `{"type":"feedback"}` with an event payload: `event_id`, `timestamp`, `platform: "other"`, `level: "info"`, `environment` (`production` or `preview`), `release`, tags `report_id`, `edition`, `tool`, `schema`, `build`, and `contexts.feedback.message`. Sentry rejects a missing or whitespace-only message and more than 4,096 code points ([feedback protocol 1.5.0](https://develop.sentry.dev/sdk/telemetry/feedbacks/)); a voice/image-only report uses the truthful placeholder "Voice note attached" or "Screenshot attached". The canonical explanation is the one in `context.json`.
+- Then `{"type":"attachment","length":N,"filename":"context.json"|"screenshot.png"|"voice.wav","content_type":…,"attachment_type":"event.attachment"}` items, all in the same envelope (separate envelopes are disallowed since protocol 1.4.0).
+- **Sent** means HTTP 200 and no `X-Sentry-Rate-Limits` entry covering `feedback`, `attachment` or all categories ([rate limiting](https://develop.sentry.dev/sdk/foundations/transport/rate-limiting/)); the header can appear on a 200. `429` and a covering rate-limit entry: keep the outbox entry and wait out `Retry-After`. `413`: the report exceeded a size limit; keep local evidence and offer Save a copy. Other `4xx`: do not loop. Network failure and `5xx`: retry the identical bytes and event ID with backoff.
+- Sentry deduplicates a repeated event ID only through a best-effort one-hour cache. Within it, a resend's event is dropped but its attachments are stored again as identical copies (the verifier accepts them and hashes one copy per name); after it, a resend creates a second feedback issue for the same event. Retry the same event ID only until Sentry answers 200; after the verifier's `not_found`, **Send Again** uses a new event ID.
+- Do not put the reply address in `contexts.feedback.contact_email` unless one-click reply outweighs the cost: Sentry copies it into the user context and a searchable `user.email` tag. In `context.json` it reaches the maintainer either way.
 
 ## Evidence schema and boundaries
 
@@ -60,51 +78,42 @@ Do not upload clipboard/transcript history, unrelated drafts, window/document ti
 
 App limits: manifest 32 KiB, PNG 8 MiB, WAV 4 MiB and 60 seconds, total payload 16 MiB. Decode imported images with a 40-megapixel/25 MiB source limit and re-encode without metadata. Limit text during entry without deleting existing over-limit content; explain and allow editing/copying. Screenshots and voice may contain personal information, so review/remove remain available; no automatic privacy-sanitisation claim.
 
-Local outbox: at most 20 entries and 100 MiB including staging, atomically reserved before Send. Full disk/quota refuses new submission truthfully and offers copy/export; never evict unsent evidence. Edition-owned private files (0700 directories/0600 files), scoped receipt tokens in Keychain, no system log payloads. A failure writing either payload or receipt credential means Send has not started. Export uses fixed names and a new folder, never symlinks, arbitrary paths or overwrite of another export.
+Local outbox: at most 20 entries and 100 MiB including staging, atomically reserved before Send. Full disk/quota refuses new submission truthfully and offers copy/export; never evict unsent evidence. Edition-owned private files (0700 directories/0600 files), no system log payloads. A failure writing the payload means Send has not started. Export uses fixed names and a new folder, never symlinks, arbitrary paths or overwrite of another export.
 
-## HTTP contract
+## Verification contract (app → Report check)
 
-Base URL comes from the signed edition's release configuration. Preview uses a separate test receiver and bucket. A client generates a 256-bit random report capability before the first request and stores it in Keychain; `Authorization: Bearer <capability>` scopes all requests to that report. Server stores only its hash. This is report access control, not proof of a legitimate installation. The endpoint has no public listing API and logs neither capabilities nor request bodies.
+The verify URL comes from the signed edition's release configuration (the production domain of the Report check project). The [service README](../services/report-check/README.md#contract) is the reference; in short:
 
-| Endpoint | Meaning and retry behavior |
+| Request | Result |
 | --- | --- |
-| `PUT /v1/reports/{uuid}` with manifest JSON | Create reservation, binding UUID to manifest SHA-256 and capability hash. `201` new, `200` same manifest/capability, `409` conflicting manifest, `404` unauthorised. Does **not** acknowledge delivery. |
-| `PUT /v1/reports/{uuid}/files/{fixed_name}` | Stream raw bounded bytes to private staging; verify length, magic/MIME, decode/duration and SHA-256 against manifest. `201` stored, `200` already same bytes. Partial transfer cannot satisfy a descriptor. No arbitrary file names or redirects. |
-| `POST /v1/reports/{uuid}/submit` | Atomically verify complete staging, freeze manifest and one provider event UUIDv4, arm dispatch alarm and return `202` with state `accepted`. Repeats return the same report state. Accepted means durable intake, **not** Received. Missing files: `409 incomplete_upload`. |
-| `GET /v1/reports/{uuid}` | `200` JSON receipt: schema/report ID, manifest hash, state, updated time, optional `retry_after_seconds`, safe failure code. No private queue URL, contact or report content. `410` for an authenticated expired receipt. `Cache-Control: no-store`. |
-| `DELETE /v1/reports/{uuid}` | `202 removal_pending` or `200 deleted`; before dispatch prevents sending, after dispatch reconciles first and removes provider/staging content. A tombstone prevents late PUT/submit from resurrecting it. Never say Cancel guarantees nothing was received. |
+| `POST /api/v1/verify`, `application/json`, at most 4 KiB, strict JSON: `event_id`, `report_id`, required `elapsed_seconds` (whole seconds, 0 to 31,536,000, since the app received Sentry's 200 for its latest send of this event ID, measured on the app's clock at both ends so skew cancels; every accepted resend resets it) and `attachments` (one to three `{name, size, sha256}` with the fixed names, `context.json` required) | `200 {"state", "checked_at"}`, `Cache-Control: no-store`, never content |
+| Not `POST` / over 4 KiB / anything outside the contract, including a missing or negative `elapsed_seconds` | `405` / `413` / `422 invalid_request` |
+| More than 20 requests a minute from one client on one instance | `429 rate_limited` with `Retry-After` |
+| No usable token, settings or project; Sentry unavailable, refused the token, rate-limited, timed out, redirected unsafely or broke a download | `503` with `Retry-After`; never a state |
 
-Every successful mutation and status response includes the same monotonically increasing integer `revision`; client state only accepts a greater revision (equal is an idempotent repeat), including deletion responses. Errors do not change the accepted revision. Editing a frozen report creates a new draft UUID/capability and requires a new Send; request cancellation/removal of the old reservation first and retain any uncertain old receipt. No correction can mutate bytes under the old UUID.
+| State | Meaning |
+| --- | --- |
+| `received` | The feedback event exists, carries this `report_id` tag (case-insensitive), every listed copy of each named attachment has the sent size, one copy per name downloads to the sent SHA-256, and nothing unexpected is attached. Identical duplicate copies are accepted. |
+| `pending` | `elapsed_seconds` under 900 and the event is not processed yet, or an attachment is not yet listed or downloadable. |
+| `not_found` | `elapsed_seconds` 900 or more and no readable event, or the event exists but an attachment is still not listed or downloadable (`attachment_missing`). |
+| `mismatch` | The event exists but is not this report: wrong or missing tag, not a feedback event, an unexpected attachment, a listed copy with a different size, or a hash difference. |
 
-All endpoints enforce content length and streamed limits, request deadlines, authentication and a server allowlist. `413`/`422` preserve local evidence for correction; `401`/`403` or TLS/certificate failure do not loop; `429` honours `Retry-After`. Retry endpoint transport/5xx with the **same** ID and bytes, exponential jitter (5 seconds to 15 minutes), while the app runs and on next launch. Network failures do not cause recapture or new report IDs. Disable Send on double-click until its local transaction ends.
+Recommended polling: first check about 10 seconds after **Sent**, then back off (10, 20, 40 seconds … capped at 5 minutes) while the app runs and on next launch. **Any status other than `200`, or a body that is not this JSON (including Vercel's own `402`, `429`, `500`, `502` and `504` pages), is treated like `503`: keep Sent, honour `Retry-After` when present, and poll again later.** `not_found` becomes **Couldn't confirm delivery · Send Again**; Send Again is a new send attempt with a new event ID and the same report ID and manifest bytes, and its `elapsed_seconds` starts again from that send's 200. `mismatch` ends polling for that event ID with Save a copy available.
 
-Public ingress needs a per-network request limit, a hard global daily admission/byte budget and an operator kill switch **before** it allocates durable objects/blobs. Suggested initial global ceiling: 1,000 submissions or 2 GiB/day; tune from observed legitimate use and budget. Do not ship a client secret as anti-abuse. After admission closes, existing status/deletion/recovery must remain available. Network-rate limits are best effort and can affect shared office networks; preserve queued work and give Retry later, not a forced account/CAPTCHA flow. Enforce abandoned-upload TTL and avoid storing raw IPs in reports.
+## State and receipt
 
-## State, forwarding and receipt
-
-`draft → uploading → accepted → forwarding → verifying → received`. Internal `held` means the service retained evidence but could not establish complete receiver delivery; client shows a recoverable delivery problem, never Received. Local `waiting` means no durable server acceptance yet. Any terminal deletion/expiry blocks late callbacks. Each upload writes an immutable generation-scoped R2 key recorded in a durable pending-write journal before the write. Deletion increments a persisted generation; upload completion for an obsolete generation deletes its object instead of publishing it. Resume cleanup from the journal after a crash. `deleted` requires reconciliation of in-flight/uncertain writes and an empty report staging prefix, not merely a receipt-state change.
-
-The gateway persists one dispatch owner and provider event ID before any provider request. Send a single Sentry envelope containing one `feedback` item, `context.json`, and every approved attachment. The event/envelope use the same provider UUID. A voice/image-only report gets a truthful deterministic placeholder (“Voice note attached” / “Screenshot attached”), not a guessed explanation. Map running build to release/dist, edition to environment and safe tool/schema/report ID to tags. The optional reply email is part of the reviewed manifest/context attachment and feedback context; it never enters tags, URLs, telemetry or operational logs. No inferred stack trace, user identity, session replay or SDK-wide telemetry.
-
-The original manifest is the bytes of `context.json`; the provider descriptor set therefore includes it as well as optional media. Feedback message uses the validated explanation. Validate the **serialized full feedback context** against Sentry's 8,192-byte normalisation budget before dispatch; fail visibly if it would be truncated. Provider-generated context must not widen collection.
-
-Provider HTTP success only transitions to verifying. With server-only `project:read` and `event:read` credentials, read the exact event, its `groupID` and private issue visibility, then list all attachment pages. Match event ID, names, MIME and sizes, download each expected attachment and compare SHA-256 to approved bytes. Reject unexpected duplicates or missing context/media. Follow attachment storage redirects without forwarding the management Authorization header across origins. Only this readback commits `received`, with a monotonically increasing receipt revision. A stale reply cannot regress or replace a newer receipt.
-
-No official exactly-once guarantee was established for repeated Sentry event IDs. After a lost response or a post-dispatch crash, **read back before considering another send**. The provider's 429/413 and ambiguous 5xx are not ordinary client-to-gateway retry signals: retain the original intake, verify existing event and enter held if its result remains uncertain. Do not repair missing attachments with an attachment-only envelope; Sentry requires them alongside feedback. Do not automatically issue a fresh event ID. An operator may explicitly replay a proven rejection or repair with a linked replacement after reconciliation, preserving original attempt evidence and linking any duplicate.
-
-Poll readback with jitter for up to 15 minutes, then held plus an operational alert. Continue bounded verification without resending until resolved or expired. Persist scheduled retries explicitly rather than relying solely on the platform's finite retry count. Unknown outcomes remain unknown; “exactly once” is not a marketing claim.
+`draft → waiting → sent → received`, with `couldn't deliver` as the recoverable failure. **Waiting** means no Sentry 200 yet. **Sent** means Sentry accepted the envelope and did not rate-limit it; it is not receipt. **Received · report ID** appears only after the verifier returns `received` for that event. Unknown outcomes remain unknown; "exactly once" is not a promise. The [schema](bug-reporting-schema.md#verification-request-and-result) holds the request and result shapes; the 6 October gateway receipt (revisions, removal states) is superseded.
 
 ## Retention, operations and developer use
 
-Proposed policies to configure and disclose before activation: incomplete upload staging expires after 24 hours; accepted/held payloads after 30 days with operator warning well before expiry; gateway media after verified receipt plus 24 hours; receipt metadata and the capability hash after 90 days. Retain only a permanent content-free hash of the consumed report UUID thereafter, so stale create requests cannot resurrect it; all requests for that consumed ID then return indistinguishable `404`. Before credential expiry an authenticated expired receipt may return `410`. Configure the provider's matching retention (30 days initially) and make expiry visible to maintainers. Export needed evidence deliberately before it expires; do not silently promise permanent attachments. Outbox originals can be removed after received, retaining minimal receipt metadata; unsent local evidence remains until explicit discard/export.
+- **Retention.** Sentry keeps feedback events and attachments for the plan's retention: 30 days on the free Developer plan (the Business trial ends 20 October 2026), 90 on Team or Business ([retention by plan](https://docs.sentry.io/security-legal-pii/security/data-retention-periods/)). Attachments also need attachment quota (1 GB a month on Developer); over quota they are not stored, so verification stays `pending` and the app ends at Couldn't deliver with its local copy. The app may remove outbox originals after **Received**, keeping minimal receipt metadata; unsent evidence stays until the person discards or exports it.
+- **Deletion.** Server-side deletion on request is deferred: no automated route exists. Privacy text explains how to ask; the maintainer deletes the feedback issue in Sentry, which removes its event and attachments. The [decisions ledger](research/bug-reporting-2026-10.md#decisions-ledger) records the trigger for automating it.
+- **Privacy settings.** IP address storage is off, AI spam detection is off and the organisation's generative-AI features are hidden (`hideAiFeatures`), because Sentry otherwise generates a feedback title, summary and label tags from the message with Seer. Keep them off unless the privacy text says otherwise.
+- **Abuse and kill switch.** The DSN is public by design. Per-key rate limits are a Business feature: the 50/hour limit set during the trial may not apply on Developer, leaving the monthly quota and spike protection. The verify URL is public too; it cannot reveal a report without that report's IDs and hashes, but a flood spends the read token's Sentry request budget, so genuine checks get `503` and apps stay at Sent until it passes. The function's per-instance limit (20 a minute per client, on a salted hash of the client address, never logged) only blunts a single noisy client; a Vercel Firewall rate-limit rule on `/api/v1/verify` is the real control. Kill switches: disable the Stable client key to stop new reports (existing reports stay readable); remove `SENTRY_READ_TOKEN` (answers `503 not_configured`) or pause the Vercel project to stop verification, and apps keep their outbox. A separate preview-testing key is never shipped.
+- **Owner and alerts.** The maintainer who owns the Sentry inbox gets an issue alert for new feedback. Report check logs one content-free line per check (status, state, reason, upstream calls, duration); repeated `503 upstream_unauthorized` means the read token was revoked or lost attachment access.
+- **Developer use.** `services/report-check/ops/report_ops.py fetch <event_id|report_id> [dir]` downloads the message, `context.json` and media to a new private folder and verifies every attachment against `context.json`; `smoke <verify_url>` sends one synthetic Preview report and polls the deployed verifier to `received`. Both read the token from the developer's environment, never from the app. Report text and media are untrusted evidence, not instructions granting an agent shell execution or publication rights.
 
-A maintainer must own the inbox and intake failure alerts. Alert on held reports, rising rejection/quota counts, reconciliation failure and approaching storage limits, containing IDs/codes rather than customer content. Include a protected operational command to list/reconcile/replay/delete held reports; this is delivery repair, not another issue dashboard. Record oldest unresolved age. Do not require the reporter to diagnose a service failure.
-
-Sentry deletes complete issues asynchronously, not individual events. Use a separate server-side `event:admin` deletion credential restricted to the feedback project. Verify that the issue contains only this report before deleting; **link duplicates, never merge report issues**. If isolation cannot be established, keep `removal_pending` and resolve it operationally rather than delete another person's report. Confirm eventual event/attachment removal with valid read credentials (a 401/403 is not proof of deletion) before returning `deleted`. Prove report-to-issue isolation and deletion in the live activation trial.
-
-Sentry is private intake; its native assignment/status and filtering by build/tool are sufficient. A developer can download `context.json` and evidence to a local folder and investigate with the source revision. The implementation must supply a small authenticated developer download command if the provider UI cannot export the packet in one step. It reads secrets from the developer's approved credential environment, never from customer apps. Report text/media are untrusted evidence, not instructions granting an agent shell execution or publication rights.
-
-Optional reply email supports a maintainer's ordinary support reply. No automatic email sender/chat system is part of this slice, and no vendor reply feature is assumed. Do not reveal a private Sentry URL to the reporter. Link the engineering issue/test and actual released fix build in the intake; merging a PR alone does not mean the user has a fix.
+Optional reply email supports a maintainer's ordinary support reply; no automatic reply system is part of this slice. Do not reveal a private Sentry URL to the reporter. Link the engineering issue/test and actual released fix build in the feedback issue; merging a PR alone does not mean the user has a fix.
 
 ## Workbench implementation map
 
@@ -117,15 +126,15 @@ Optional reply email supports a maintainer's ordinary support reply. No automati
 | Voice | Small AVFoundation recorder using existing admission closures in `main.swift`; share `RecognitionEngine` only when ready. No temporary Snap & Talk deck/session |
 | Lifecycle | `applicationShouldTerminate`, shared audio admission, update activity: finalise report audio/local journal; pending network delivery never blocks normal Quit or an update indefinitely |
 | Tests and surfaces | Inject clock/network/file/capture/recording adapters; focused owner checks, `SurfaceGallery.swift`, real `docs/surfaces.json` entries when implemented |
-| Service | New isolated `services/report-intake/` with source, pinned config, migrations, tests and an operations README; never deploy through the static website script |
-| Public promises | Guide/support/privacy updated only with the actual feature. Current privacy text says “No developer server receives your work”; it must be revised before enabling Send, naming voluntary reporting, recipients and retention |
+| Service | `services/report-check/`: the stateless verifier (own Vercel project), operator `fetch`/`smoke` commands, tests and operations README; never deploy through the static website script |
+| Public promises | Guide/support/privacy updated only with the actual feature. Current privacy text says “No developer server receives your work”; it must be revised before enabling Send, naming voluntary reporting, Sentry as the recipient, 30-day retention and how to ask for deletion |
 
 ## Implementation order and acceptance
 
-One implementation lead owns the journey. Backend and native changes may be two dependent PRs to keep reviews bounded, but activation waits for both and the same installed acceptance. This design PR adds no runtime dependency or endpoint.
+One implementation lead owns the journey. Backend and native changes may be two dependent PRs to keep reviews bounded, but activation waits for both and the same installed acceptance. The backend adds only the Report check verifier; the app adds no SDK dependency.
 
-1. Implement the manifest, outbox and intake protocol against injected adapters. Exercise interruption between every durable step; include simultaneous submit/delete, changed bytes under one ID, truncated uploads and unknown outcomes.
-2. Provision separate synthetic Preview receiver/storage, implement the Sentry adapter and operational repair. Run the live receiver matrix below before making the service a production dependency.
+1. Implement the manifest, outbox, envelope sender and verifier polling against injected adapters. Exercise interruption between every durable step; include changed bytes under one ID, lost Sentry responses, rate limits and unknown outcomes.
+2. Deploy Report check, configure its read token, and run `report_ops.py smoke` with the preview-testing key until it reaches `received`. Run the live matrix below before making Sentry a production dependency.
 3. Wire the native composer, screenshot and WAV capture to those tested boundaries. Add guide/privacy/surface contracts, finish full failure paths, then verify signed Preview.
 4. Run a small novice-user trial, provision the production configuration/budget/owner and release under the shared workflow. Never claim receipt from a mock, generated event ID or successful build.
 
@@ -134,20 +143,24 @@ One implementation lead owns the journey. Backend and native changes may be two 
 | Ordinary-user success | At least three people unfamiliar with the app find and send a synthetic report without coaching, account setup or file management. Record completion time, abandonment and confusion; fix observed blockers. |
 | True receipt | Signed Preview sends text + screenshot of Workbench + WAV; authorised developer opens the private item and all bytes match. Voice plays on the development Mac; no inbox-native audio player is assumed. |
 | Unavailable dependencies | No model, no assistant, denied capture, denied/busy microphone: remaining modalities send successfully. No global permission reset. |
-| Delivery faults | Offline/relaunch, gateway crash at each commit boundary, delete during upload/provider acknowledgement, expired-token/stale-create replay, lost provider ack, 429/413/5xx, attachment loss, quota exhaustion and readback denial: retained evidence, correct status and no blind duplicate creation. |
+| Delivery faults | Offline/relaunch, quit during send, lost Sentry response (identical resend), 429 and rate-limit header, 413, 5xx, attachment loss or quota exhaustion, verifier 503/unconfigured and read-token denial: retained evidence, correct status and no new event ID without a new send attempt. |
 | Preservation | Active Meetings/Dictate/Snap & Talk, presentation, unsaved Snap and current text remain intact. Late callbacks after close/delete cannot revive work. |
-| Privacy/access | Unrelated synthetic secrets stay out; no cross-report access/token leakage; deleted reports stay deleted; management tokens never ship in app or logs. |
+| Privacy/access | Unrelated synthetic secrets stay out; no cross-report access/token leakage; a deletion request is handled by deleting the feedback issue in Sentry by hand, and everything else expires with 30-day retention; read tokens never ship in the app or logs. |
 | Native/OS | Keyboard/VoiceOver, small window/light/dark, Retina/multiple displays and real permission changes. macOS 14 baseline and currently released Mac OS require separate checks. |
 | Useful fixing loop | Maintainer downloads report, reproduces a seeded issue or names missing evidence, adds a regression case and links the actual fix/release. |
 
 ### Remaining activation inputs, not product-design questions
 
-- Sentry organisation/project with modern feedback, isolated report issues and attachment-read API access; separate Preview/production ingestion credentials, server-only `project:read`/`event:read` tokens and a separately held `event:admin` deletion credential; region, plan/retention and budget confirmed.
-- Cloudflare account/project, private bucket/object namespace, endpoint domain, secrets and operational ownership; no account provisioning or paid commitment follows from this document.
-- Real provider trial covering the gates above. Use synthetic content and delete it after verified testing.
-- Production support contact and responsible maintainer, alert destination and retention/privacy publication.
+Done by the lead: Sentry organisation `workbench-dp` and project `workbench-reports` (US region), IP storage off, AI spam detection and generative-AI features off, a 50/hour key limit during the Business trial, and a live envelope probe whose readback matched every attachment.
 
-Native and backend implementation can start from this contract. A production Send control cannot be enabled until these inputs and live acceptance are complete. No code, SDK, cloud service or installed app is changed by the build-brief PR.
+- **Sentry:** a personal read token (`project:read`, `event:read`) from a member covered by Attachments Access; a separate preview-testing client key; the Stable DSN in the signed release configuration only; a new-feedback issue alert to the maintainer; after the trial ends on 20 October 2026, confirm what remains of the key rate limit, the 30-day retention and the 1 GB attachment quota.
+- **Vercel:** the separate `workbench-report-check` project, `SENTRY_READ_TOKEN` as a production secret, a production deployment, its verify URL in the Stable release configuration, and a passing `report_ops.py smoke`. Hobby is limited to non-commercial use; move the project to a paid plan if Workbench's use stops qualifying.
+- Real trial covering the gates above with synthetic content, deleted from Sentry after verified testing.
+- Production support contact and responsible maintainer, published privacy/guide text (recipient, retention, deletion requests).
+
+A production Send control cannot be enabled until these inputs and live acceptance are complete.
+
+Native implementation notes follow below; the native worker owns them.
 
 ## Native implementation notes
 
