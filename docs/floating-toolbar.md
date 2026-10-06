@@ -190,8 +190,9 @@ adjustments stay in their workspace and capability’s menu-bar Options. Present
 live controls bind the running snapshot even while another saved scene is selected.
 They include window/full-screen, source and connection recovery, device proportions
 and applicable motion controls. Apple-app handoffs remain in the connection guide
-and release capture before opening the chosen app. Saved Prompts… belongs to
-Library; browser switching remains paused. Persona’s workspace has
+and release capture before opening the chosen app. Present's toolbar
+Prompts inserts a saved prompt; Library's Saved Prompts… copies one. Browser
+switching remains paused. Persona’s workspace has
 live-copy Appearance, size, position, lock, replace/update, visibility, add/remove,
 front/back and explicit layout saving; saved library selection cannot silently
 replace the shown artwork. Read-only preparation never disables a live control.
@@ -216,7 +217,7 @@ combinations are omitted; the toolbar has no shortcut editor. Keep open is an
 explicit persistent preference.
 
 **Contextual controls.** Snap & Talk has Review while its session is open;
-Draw has Tools; Present has View while a presentation is live. View
+Draw has Tools; Present has Prompts, plus View while a presentation is live. View
 contains only the current presentation’s applicable source, motion and window
 controls. End stays the primary/chooser action, and Apple handoffs stay in the
 connection guide. Persona always has Choose Persona, because the live camera is
@@ -230,7 +231,7 @@ choice exists and advances once without opening a menu; it never cycles into the
 camera. The picker uses frozen public labels and every choice checks again that
 Persona is as it was drawn. One-item sets have no inert Next. Failure preserves the
 shown artwork and exposes its notice through the chooser and picker. Dictate and Snap have no settings accessory.
-Review and Next act directly; Tools, View and Persona selection open their
+Review and Next act directly; Tools, Prompts, View and Persona selection open their
 focused menus/picker. Space, Return, Enter or Down open admitted menus once per
 press; repeat events cannot reopen a dismissed menu. The full
 contextual group hides together when it cannot fit; the chooser’s workspace door
@@ -247,7 +248,7 @@ other way, in that order at every dock, the mirrored right-hand row included; a
 control that is absent or disabled is passed over. The row moves
 the focus itself (`ToolbarKeyCycle`), so the cycle is the same whether Full
 Keyboard Access is on or off: AppKit's own key-view loop leaves buttons out while
-it is off (#223). The chooser and Position… take the keyboard
+it is off (#223). The chooser, the Prompts picker and Position… take the keyboard
 without making Workbench the active app, and each keeps the field that was in
 front before it took the keyboard. A choice returns the keyboard to the launcher;
 the first Escape closes the picker and the second leaves keyboard interaction. A
@@ -284,17 +285,33 @@ because its Stop is there. Recording, processing and narration keep their
 own controls whatever the choice (`FloatingToolbarSurface.resolve`, checked by
 `--check-floating-toolbar`).
 
-Library's Saved Prompts… opens the existing picker: search, favourites, all other
-prompts once, and an optional Product or Persona filter. It copies the complete
-prompt through Library's copy owner and reports clipboard failure beside the
-resource. Opening Library never captures an external field, requests Accessibility
-or inserts text. Cancel leaves the clipboard and saved prompt unchanged. The
-picker remains at most 420 points wide and inside the display, with complete
-accessible names for truncated rows, Escape/outside-click dismissal and arrow-key
-selection. Its panel still follows the content's `onGeometryChange` report (#152).
-The retained insertion owner requires an explicitly frozen valid target; Escape,
-Stop, changed focus/selection/value and shortcut editing cancel it. No partial
-write is replayed and no submit key is sent.
+Saved Prompts reads the existing Library. Favourite, Product and Persona groupings
+do not create another store. Present's Prompts accessory and Library's Saved
+Prompts… open one picker: a search field, favourites and then every other prompt
+once, and one optional Product or Persona filter that narrows the list without a
+submenu. It is a transient panel of at most 420 points, kept 16 points inside the
+display near either edge, above a bottom dock and below a top one. Long names wrap
+to two lines or truncate and keep their full accessible text. It takes keyboard
+focus without activating Workbench, holds the row open as a native menu does, and
+closes on Escape, a click outside, a second click on Prompts or a choice; ↑ ↓ and
+Return choose. A choice acts only after the picker has gone, as a menu item's
+action runs after tracking, and typing waits, for about a second at most, until
+the frozen app is in front with the frozen field focused. The picker's panel is
+sized from its content's `onGeometryChange` report, never from a background
+`GeometryReader` preference (#152).
+
+From the toolbar's Prompts, the original field, value and UTF-16 selection are
+captured before the picker opens. Supported fields receive confirmed literal
+chunks; other readable fields get one guarded paste labelled as such. Without
+Accessibility approval, or with no readable field, the action is Copy prompt: one
+copy of the exact text and the Copied, Paste with ⌘V. receipt, with no paste or
+Accessibility write. Library's Saved Prompts… never captures an external field: it
+copies the complete prompt through Library's copy owner and reports clipboard
+failure beside the resource. The last delivery is one line naming its destination,
+with Details for the full reason. Escape, Stop, changed focus/selection/value and
+shortcut editing cancel insertion. No partial write is replayed and no submit key
+is sent. (Restored 7 October 2026: the consolidation had removed the toolbar door
+without an owner decision.)
 
 ## Status at rest
 
