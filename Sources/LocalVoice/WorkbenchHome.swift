@@ -173,7 +173,7 @@ struct WorkbenchHome: View {
                         handoffReview = HandoffReviewRequest(task: "Prepare a clear summary and follow-up from these screenshots and their paired narration.", evidenceURL: session)
                     }, onSaveImageToLibrary: { model.library.saveCapturedImageToLibrary($0) },
                     initialSheet: openSnapTalkSessions ? .sessions : nil,
-                    engine: .init(name: model.modelMessage, ready: model.ready, failure: model.modelFailure),
+                             engine: .init(name: model.modelMessage, ready: model.ready, failure: model.modelFailure, preparing: model.preparing),
                     onOpenModels: { model.page = "models" }, onRetryModel: { Task { await model.prepare() } })
                         .onAppear { openSnapTalkSessions = false }
                 case "snap": SnapWorkspaceView(model: snap, selectedIDs: Binding(get: {
@@ -327,11 +327,8 @@ struct WorkbenchHome: View {
                 ScrollView { KeyboardCoachView(model: keyboard) }
             case "models":
                 ScrollView { VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
-                    ModelSettingsView(engine: model.engine, isBusy: model.phase != .idle || model.preparing || model.meetings.isBusy || readback.isRecording || readback.isCapturing || readback.hasPendingTranscriptions,
-                                      progress: model.modelMessage, hostPreparing: model.preparing, hostFailure: model.modelFailure,
-                                      onFailure: { model.modelFailure = $0 }) { ready, message in
-                        model.ready = ready; model.modelMessage = message
-                    }
+                    ModelSettingsView(engine: model.engine, isBusy: model.phase != .idle || model.meetings.isBusy || readback.isRecording || readback.isCapturing || readback.hasPendingTranscriptions,
+                                      snapshot: model.recognition, onNotNow: { model.page = "home" }, onSnapshot: model.acceptRecognition)
                     Divider()
                     CleanupModelSettingsView(manager: model.cleanupModels, isBusy: model.phase != .idle || model.preparing)
                 }.padding(Workbench.pagePadding) }
@@ -575,7 +572,7 @@ struct WorkbenchHomePage: View {
     /// Active or paused work. Retained dictation audio belongs on Dictate,
     /// where Retry, the saved files and explicit Discard stay together; it is not current work.
     private var hasCurrentWork: Bool {
-        dictationLive || !model.ready
+        dictationLive || model.preparing
             || readback.isRecording || readback.hasPendingTranscriptions || stage.isDrawing || stage.isPresenting
             || personaControl.isCurrentWork || stage.hasTimerSession || meetings.isBusy || jobs.isBusy
     }
@@ -597,6 +594,8 @@ struct WorkbenchHomePage: View {
             // Other running or resumable work.
             if model.waitingForDrawing {
                 liveRow("Text ready", "doc.on.clipboard") { Button("Copy") { model.copyWaitingDelivery() } }
+            } else if model.phase == .requesting {
+                liveRow("Waiting for microphone access", "mic") { Button("Cancel") { model.cancelRecording() } }
             } else if model.phase != .idle && model.phase != .recording {
                 liveRow("Processing speech", "waveform") { ProgressView().controlSize(.small) }
             }
@@ -660,7 +659,11 @@ struct WorkbenchHomePage: View {
                 }
             }
             Spacer()
-            if !model.preparing { Button("Retry model") { Task { await model.prepare() } } }
+            if model.preparing { Button("Cancel setup") { model.cancelSpeechPreparation() }.disabled(model.recognition.phase == .cancelling) }
+            else if !model.ready && model.recognition.configuration.provider == .parakeet {
+                Button("Download Parakeet") { Task { await model.downloadSpeechModel() } }
+                if !journey.offersSkip { Button("Not now") { skipGuide() } }
+            }
             Button("Models…") { model.page = "models" }
         }.padding(16).background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
     }
@@ -680,8 +683,8 @@ struct WorkbenchHomePage: View {
                         .help("Hide this guide. Show me a first dictation brings it back.")
                 }
             }
-            Text("One click, and your words are ready to paste anywhere.").foregroundStyle(.secondary)
-            if !model.ready { engineBanner } else {
+            Text("Record a thought, then copy your words into any app.").foregroundStyle(.secondary)
+            if !model.ready && ![.requesting, .recording].contains(model.phase) { engineBanner } else {
                 HStack(spacing: 16) {
                     Button { model.toggleRecording() } label: {
                         Label(model.phase == .requesting ? "Cancel" : model.phase == .recording ? "Stop" : "Start dictating",
