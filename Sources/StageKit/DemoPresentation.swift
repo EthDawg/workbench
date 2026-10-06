@@ -82,7 +82,7 @@ final class DemoPresentation: NSObject, NSWindowDelegate {
             if capture.sources.count > 1 { menu.addSubmenu("Source", items: capture.sources.map { source in
                 StageMenuAction(source.name, checked: source.id == capture.selectedID) { [weak self] in self?.capture.select(source.id) }
             }) }
-            if status.step != .reconnect, !status.isLive {
+            if status.offersReconnect {
                 menu.addItem(StageMenuAction("Reconnect") { [weak self] in self?.capture.reconnect() })
             }
             if status.offersHelp {
@@ -230,6 +230,13 @@ final class DemoPresentation: NSObject, NSWindowDelegate {
     }
     func windowDidFailToExitFullScreen(_ window: NSWindow) { apply(lifecycle.failedToExit()) }
     func windowShouldClose(_ sender: NSWindow) -> Bool { end(); return false }
+
+    /// The stage's content for an offscreen render: the same view the window hosts,
+    /// with its own controls and no window, capture session or app launch.
+    static func offscreenStage(scene: DemoScene, image: NSImage, capture: DemoCapture, phoneLink: PhoneLinkMonitor, root: URL) -> AnyView {
+        AnyView(DemoStageContent(scene: scene, backdrop: image, logo: nil, hand: nil, persona: nil, ambience: nil, capture: capture, phoneLink: phoneLink,
+                                 controls: PresentationControlsModel(root: root), sharedControls: false, perform: { _ in }, endAndOpen: { _ in }, end: {}))
+    }
 }
 
 /// The status, its one next step and Reconnect, as the Present page's live
@@ -250,7 +257,7 @@ struct PhoneLinkStatusRow: View {
             }
             HStack(spacing: 8) {
                 if let step = status.step { Button(step.title) { perform(step) } }
-                if status.step != .reconnect, !status.isLive { Button("Reconnect", action: reconnect).help("Reconnect device · ⌘R in the presentation") }
+                if status.offersReconnect { Button("Reconnect", action: reconnect).help("Reconnect device · ⌘R in the presentation") }
                 if status.offersHelp { Button("Can’t see your phone?", action: help).buttonStyle(.link) }
             }.controlSize(.small)
         }
@@ -459,7 +466,8 @@ private struct DemoStageContent: View {
                     controls.stop()
                 }
                 .onChange(of: controls.focusRequest) { _, _ in
-                    focusedControl = controls.policy.isExpanded ? (scene.showsPhone ? (status.step == nil ? .reconnect : .step) : .close) : .tile
+                    focusedControl = controls.policy.isExpanded
+                        ? (scene.showsPhone ? (status.step != nil ? .step : status.offersReconnect ? .reconnect : .position) : .close) : .tile
                 }
                 .sheet(isPresented: $controls.choosingSource) { sourceSheet }
                 .sheet(isPresented: $controls.showingHelp, onDismiss: {
@@ -515,7 +523,7 @@ private struct DemoStageContent: View {
                     if let step = status.step {
                         Button(step.title) { perform(step) }.focused($focusedControl, equals: .step)
                     }
-                    if status.step != .reconnect, !status.isLive {
+                    if status.offersReconnect {
                         Button("Reconnect") { capture.reconnect() }
                             .focused($focusedControl, equals: .reconnect).help("Reconnect device · ⌘R")
                     }

@@ -19,6 +19,7 @@ final class PhoneLinkTests {
         XCTAssertTrue(status.detail?.contains("allow the accessory") == true)
         XCTAssertTrue(status.step == nil)
         XCTAssertTrue(status.offersHelp)
+        XCTAssertFalse(status.offersReconnect, "Nothing on the bus: looking again changes nothing")
         XCTAssertFalse(status.isLive)
     }
 
@@ -30,6 +31,7 @@ final class PhoneLinkTests {
         XCTAssertTrue(status.detail?.contains("allow the accessory") == true)
         XCTAssertTrue(status.step == nil, "Unlocking and trusting happen on the phone, not in Workbench")
         XCTAssertTrue(status.offersHelp)
+        XCTAssertTrue(status.offersReconnect, "A nudge after Trust is worth offering")
         let tablet = PhoneLink.status(signals { $0.usb = [.init(name: "iPad", kind: .iPad, productID: 0x12AB)] })
         XCTAssertEqual(tablet.title, "iPad connected, screen not available yet")
     }
@@ -94,7 +96,9 @@ final class PhoneLinkTests {
         let stalled = PhoneLink.status(signals { base(&$0); $0.phase = .stalled(self.screen.id) })
         XCTAssertEqual(stalled.phase, .stalled)
         XCTAssertEqual(stalled.step, .reconnect)
+        XCTAssertFalse(stalled.offersReconnect, "Reconnect is already the step")
         XCTAssertTrue(stalled.offersHelp)
+        XCTAssertFalse(live.offersReconnect)
         let interrupted = PhoneLink.status(signals { base(&$0); $0.phase = .interrupted(self.screen.id); $0.sources = [] })
         XCTAssertEqual(interrupted.phase, .interrupted)
         XCTAssertEqual(interrupted.title, "Phone disconnected", "With the source gone and nothing on the bus, only the kind is unknown")

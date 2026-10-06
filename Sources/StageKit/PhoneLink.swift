@@ -88,6 +88,14 @@ public struct PhoneLinkStatus: Equatable {
     public var detail: String?
     public var step: Step?
     public var isLive: Bool { phase == .live }
+    /// Reconnect is worth offering only where looking again can change something and
+    /// the next step is not already Reconnect: a phone on the bus, a choice to make.
+    public var offersReconnect: Bool {
+        switch phase {
+        case .phoneOnUSB, .chooseScreen, .waitingForRemembered, .screenFound: return true
+        default: return false
+        }
+    }
     /// The phone is not on the stage and the reason may be outside Workbench, so
     /// the surface offers "Can't see your phone?".
     public var offersHelp: Bool {
