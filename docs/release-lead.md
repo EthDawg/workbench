@@ -100,7 +100,7 @@ gh pr merge <n> --repo Ship-Work/workbench --merge
 
 Runner contention: the merge queue, PR runs and post-merge push runs share five macOS slots, and a queue entry can wait more than an hour behind them (the first run saw waits of 37 to 90 minutes). A run that fails while cloning a dependency is a runner network error, not a regression; re-queue it. Watch with `gh run list --repo Ship-Work/workbench --limit 30`. A post-merge push run repeats the merge-group run that validated that exact tree, and a PR run for a head that a newer push superseded proves nothing; both are safe to cancel with `gh run cancel <id> --repo Ship-Work/workbench`. Never cancel a merge-group run.
 
-Two branches, one function: when two streams change the same function, decide which root-cause fix owns it, merge that branch first, then rebuild the other on top of it rather than taking a textual merge. Record the decision in the second PR's description.
+Two branches, one function: when two streams change the same function, decide which root-cause fix owns it, merge that branch first, then rebuild the other on top of it rather than taking a textual merge. Record the decision in the second PR's description. A clean `git merge-tree` is not a build: two branches can add a local with the same name to one function on different lines and compile only apart. Before queueing siblings that touch one file, merge them into a scratch checkout and run `swift build --disable-sandbox` once, or queue them one at a time; a failed merge-group run for a sibling means dequeue it, fix the clash on its branch, and queue it again (`gh api graphql` with `dequeuePullRequest`, then `gh pr merge` again).
 
 ## 6. Verify on integrated main
 
