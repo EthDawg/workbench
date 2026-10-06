@@ -181,6 +181,11 @@
         "id": "U2",
         "variant": "public-feed-update",
         "phase": "delivery"
+      },
+      {
+        "id": "X3",
+        "variant": "native",
+        "phase": "candidate"
       }
     ],
     "storageFormats": [

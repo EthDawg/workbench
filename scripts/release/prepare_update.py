@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Prepare a verified release's signed update feed. Does not publish anything."""
 import argparse
+from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
@@ -79,7 +80,7 @@ def verify_package(receipt, archive, config):
 
 
 # This is a small artifact gate, not proof that an observer's attestation is true.
-JOURNEY_IDS = set('D1 M1 M2 H1 H2 S1 ST1 P1 P2 R1 U1 U2 I1 I2 Q1 Q2 Q3 L1 L2 L3 L4 X1 X2'.split())
+JOURNEY_IDS = set('D1 M1 M2 H1 H2 S1 ST1 P1 P2 R1 U1 U2 I1 I2 Q1 Q2 Q3 L1 L2 L3 L4 X1 X2 X3'.split())
 ACCEPTANCE_NAME = 'journey-acceptance.json'
 
 
@@ -145,6 +146,9 @@ def validate_acceptance(directory, receipt, info, root):
         for key, field in [('source', 'WorkbenchSourceRevision'), ('version', 'CFBundleShortVersionString'), ('build', 'CFBundleVersion')]:
             require(artifact[key] == info[field], 'different verified bundle')
         require(all(text(acceptance[key]) for key in ('observer', 'reviewer', 'observedAt')), 'missing observation/review')
+        observed = datetime.fromisoformat(acceptance['observedAt'].replace('Z', '+00:00'))
+        require(observed.utcoffset() is not None, 'observation time needs an explicit offset')
+        require(observed <= datetime.now(timezone.utc), 'observation is in the future')
         require(acceptance['reviewer'] != acceptance['observer'], 'independent review required')
         require(all(text(acceptance['environment'][key]) for key in ('macOS', 'hardware')), 'missing native environment')
         require(acceptance['candidateSmoke']['method'] == 'native' and acceptance['candidateSmoke']['status'] == 'pass', 'fresh native candidate smoke required')

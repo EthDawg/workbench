@@ -423,7 +423,7 @@ def acceptance_fixture(root, directory, receipt, baseline):
     artifact['bundle'] = 'com.ethdawg.workbench' + ('.preview' if receipt['channel'] == 'preview' else '')
     value = dict(schemaVersion=1, stage='candidate', publicationReady=True, resetComplete=False,
         policySHA256=prepare_update.policy_digest(policy), artifact=artifact,
-        observer='Synthetic observer', reviewer='Synthetic independent reviewer', observedAt='2026-10-07T01:00:00Z',
+        observer='Synthetic observer', reviewer='Synthetic independent reviewer', observedAt='2026-10-06T01:00:00Z',
         environment={'macOS':'synthetic macOS 26.5.1', 'hardware':'synthetic Apple silicon'},
         candidateSmoke={'method':'native', 'status':'pass', 'opening':'pass', 'permissions':'pass', 'savedWork':'pass', 'evidence':[evidence_name]},
         evidence=[{'path':evidence_name, 'sha256':hashlib.sha256(data).hexdigest(), 'sanitized':True}],
@@ -604,7 +604,7 @@ class PinnedPublicationTests(ReleaseHistoryFixture, unittest.TestCase):
         original = copy.deepcopy(self.acceptance)
         cases = [
             ('schemaVersion', 2), ('stage', 'source'), ('publicationReady', False),
-            ('resetComplete', True), ('policySHA256', '0'*64), ('reviewer', ''),
+            ('resetComplete', True), ('observedAt','9999-01-01T00:00:00Z'), ('observedAt','not a timestamp'), ('observedAt','2026-10-07T01:00:00'), ('policySHA256', '0'*64), ('reviewer', ''),
             ('environment', {}), ('journeys', original['journeys'][1:]),
             ('journeys', original['journeys']+[original['journeys'][0]]),
             ('evidence', []), ('compatibility', {'compatible':True}),
@@ -639,13 +639,17 @@ class PinnedPublicationTests(ReleaseHistoryFixture, unittest.TestCase):
     def test_all_promoted_routes_are_required_and_delivery_is_later(self):
         original = copy.deepcopy(self.acceptance)
         for index, row in enumerate(original['journeys']):
-            if row['id'] not in ('H2', 'P1', 'L1', 'L2', 'L3', 'L4'):
+            if row['id'] not in ('H2', 'P1', 'L1', 'L2', 'L3', 'L4', 'X3'):
                 continue
             with self.subTest(id=row['id'], variant=row['variant']):
                 self.acceptance = copy.deepcopy(original)
                 del self.acceptance['journeys'][index]
                 self.save_acceptance()
                 self.assert_acceptance_rejected()
+        self.acceptance = copy.deepcopy(original)
+        next(r for r in self.acceptance['journeys'] if r['id']=='X3')['status']='fail'
+        self.save_acceptance()
+        self.assert_acceptance_rejected()
         self.acceptance = copy.deepcopy(original)
         next(r for r in self.acceptance['journeys'] if r['id']=='I1')['status']='pass'
         self.save_acceptance()
@@ -754,6 +758,55 @@ class PinnedPublicationTests(ReleaseHistoryFixture, unittest.TestCase):
                 self.assertRaisesRegex(RuntimeError,'Public acceptance'):
             publish_update.publish(self.prepared,self.prepared/'notes.md')
         self.assertEqual(self.publication_state(),before)
+
+
+    def test_foundation_policy_covers_every_owning_contract_journey(self):
+        # Read the owning contract, not the implementation's ID constant.
+        import re
+        contract=(build_info.ROOT/'docs/mac-foundation.md').read_text()
+        declared=set(re.findall(r'^\| ([A-Z]+[0-9]+) \|',contract,re.MULTILINE))
+        policy=json.loads((build_info.ROOT/'scripts/release/config.json').read_text())['acceptance']
+        self.assertEqual({row['id'] for row in policy['journeys']},declared)
+
+    def late_evidence_mutation(self, symlink):
+        native=self.prepared/'acceptance-evidence/native.md'
+        original={'native.md':native.read_bytes(), prepare_update.ACCEPTANCE_NAME:(self.prepared/prepare_update.ACCEPTANCE_NAME).read_bytes()}
+        private=b'Synthetic private neighbor; must never reach upload.'
+        neighbor=self.directory/'private-neighbor.txt'; neighbor.write_bytes(private)
+        uploaded={}
+        github=self.github
+        def mutate_and_capture(*args):
+            if args==('api','repos/Ship-Work/workbench/releases','--paginate','--slurp'):
+                if symlink:
+                    native.unlink(); native.symlink_to(neighbor)
+                else:
+                    native.write_bytes(private)
+                (self.prepared/prepare_update.ACCEPTANCE_NAME).write_bytes(private)
+            if args[:2]==('release','upload'):
+                for name in args[3:args.index('--repo')]:
+                    path=Path(name); uploaded[path.name]=path.read_bytes()
+                    self.assertNotIn(private,uploaded[path.name])
+                for name,data in original.items():
+                    self.assertEqual(uploaded[name],data)
+                self.remote_calls.append(args)
+                return ''
+            if args[:2]==('release','download'):
+                name=args[args.index('--pattern')+1]
+                (Path(args[args.index('--dir')+1])/name).write_bytes(uploaded[name])
+                self.remote_calls.append(args)
+                return ''
+            return github(*args)
+        with self.publication_boundary(),patch.object(publish_update,'gh',side_effect=mutate_and_capture), \
+             patch.object(publish_update.urllib.request,'urlopen',side_effect=lambda url,**kw:io.BytesIO(uploaded[url.rsplit('/',1)[1]])):
+            publish_update.publish(self.prepared,self.prepared/'notes.md')
+        self.assertTrue(any(call[:2]==('release','edit') for call in self.remote_calls))
+        self.assertEqual({key:uploaded[key] for key in original},original)
+
+    def test_late_evidence_edit_uploads_only_validated_snapshot(self):
+        self.late_evidence_mutation(symlink=False)
+
+    def test_late_evidence_symlink_never_uploads_private_neighbor(self):
+        self.late_evidence_mutation(symlink=True)
 
 
 

@@ -120,20 +120,28 @@ def publish(directory, notes):
     # Reject stale prepared artifacts before creating or exposing a release.
     require_newer_build(previous, receipt['build'])
     evidence = prepare_update.validate_acceptance(directory, receipt, info, ROOT)
-    # Never create duplicate releases or overwrite already published assets.
-    listing=[r for page in json.loads(gh('api',f'repos/{REPO}/releases','--paginate','--slurp')) for r in page]
-    existing=next((r for r in listing if r['tag_name']==tag),None)
-    if existing is not None:
-        raise RuntimeError(f'Release {tag} already exists. Reconcile its exact assets before resuming; no write performed.')
-    verify_integrated_source(receipt['source'])
-    verify_tag_target(tag, receipt['source'])
-    command=['release','create',tag,'--repo',REPO,'--target',receipt['source'],
-             '--title',f"Workbench {receipt['version']}" + (' Preview' if receipt['channel']=='preview' else ''),
-             '--notes-file',str(notes),'--draft']
-    if receipt['channel']=='preview': command.append('--prerelease')
-    gh(*command)
-    gh('release','upload',tag,archive,directory/'SHA256SUMS.txt',directory/'release.json',
-       *[directory / name for name in evidence], '--repo',REPO)
+    # Freeze only the already validated public bytes. Never upload a later edit
+    # or symlink replacement of an evidence path while network checks run.
+    with tempfile.TemporaryDirectory(prefix='workbench-acceptance-upload-') as staging:
+        evidence_paths = []
+        for name, data in evidence.items():
+            snapshot = Path(staging) / Path(name).name
+            snapshot.write_bytes(data)
+            evidence_paths.append(snapshot)
+        # Never create duplicate releases or overwrite already published assets.
+        listing=[r for page in json.loads(gh('api',f'repos/{REPO}/releases','--paginate','--slurp')) for r in page]
+        existing=next((r for r in listing if r['tag_name']==tag),None)
+        if existing is not None:
+            raise RuntimeError(f'Release {tag} already exists. Reconcile its exact assets before resuming; no write performed.')
+        verify_integrated_source(receipt['source'])
+        verify_tag_target(tag, receipt['source'])
+        command=['release','create',tag,'--repo',REPO,'--target',receipt['source'],
+                 '--title',f"Workbench {receipt['version']}" + (' Preview' if receipt['channel']=='preview' else ''),
+                 '--notes-file',str(notes),'--draft']
+        if receipt['channel']=='preview': command.append('--prerelease')
+        gh(*command)
+        gh('release','upload',tag,archive,directory/'SHA256SUMS.txt',directory/'release.json',
+           *evidence_paths, '--repo',REPO)
     # Verify authenticated draft downloads before exposing the release.
     with tempfile.TemporaryDirectory(prefix='workbench-publish-') as temporary:
         gh('release','download',tag,'--repo',REPO,'--pattern',filename,'--dir',temporary)

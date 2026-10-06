@@ -255,7 +255,7 @@ review and the actual native observations remain required.
 
 The `acceptance` object in version-controlled `config.json` owns the release
 claim, slice impact, every required journey/route, and the persisted formats to
-assess. Its current scope is the foundation candidate, including L1–L4, manual
+assess. Its current scope is the foundation candidate, including L1–L4 and Read retirement X3, manual
 and connected Claude/Codex handoff, and separately observed USB Teams/Zoom routes.
 These are acceptance targets, not claims that the held work already passes.
 An independently accepted bounded slice may instead use an explained, reviewed
@@ -273,7 +273,7 @@ executable format example; it is **not** real acceptance evidence):
   from the release receipt and `bundle` from the verified app's bundle identifier.
   Validation uses the extracted, signed, notarized final package. Renaming a ZIP
   for GitHub changes neither its bytes nor this identity.
-- `observer`, different independent `reviewer`, `observedAt`, and `environment`
+- `observer`, different independent `reviewer`, ISO-8601 `observedAt` with an explicit UTC offset, and `environment`
   (`macOS`, `hardware`) identify the native review. Use public-safe attribution,
   not account names, machine serials or unrelated personal information.
 - `candidateSmoke` records native `method`, passing `status`, exact-edition
@@ -311,7 +311,8 @@ and #7 evidence before describing the foundation as complete. A passing
 preflight, ZIP download or feed staging is not that browser/install/update test.
 No public publication or installation authority is granted by this format.
 
-Publication revalidates the prepared receipt and evidence, uploads the sidecar
+Publication revalidates the prepared receipt and evidence, snapshots those validated
+bytes in a private temporary directory before network checks, uploads the sidecar
 and only its listed sanitized files as release assets (evidence basenames), then
 reads them back from the draft and public release byte for byte. A draft mismatch
 leaves the release draft; a public mismatch does not stage the feed or website.
