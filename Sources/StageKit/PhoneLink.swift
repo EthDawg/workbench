@@ -307,10 +307,11 @@ final class USBPhoneWatch {
     }
     deinit { stop() }
 
+    /// Every USB device: the USB family accepts only its own key combinations in a
+    /// matching dictionary (a vendor alone matches nothing), so the Apple filter is
+    /// applied in `classify`, not here. Found on 6 October 2026 with a real iPhone.
     private static func matching() -> CFMutableDictionary? {
-        guard let matching = IOServiceMatching("IOUSBHostDevice") else { return nil }
-        (matching as NSMutableDictionary)["idVendor"] = NSNumber(value: appleVendor)
-        return matching
+        IOServiceMatching("IOUSBHostDevice")
     }
     private func drain(_ iterator: io_iterator_t) {
         var service = IOIteratorNext(iterator)
