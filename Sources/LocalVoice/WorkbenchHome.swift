@@ -149,14 +149,7 @@ struct WorkbenchHome: View {
                         }
                     }
                 }
-                if updates.availableVersion != nil || updates.restartWaiting {
-                    Button { hoveredSidebarItem = nil; model.page = "settings"; updates.checkForUpdates() } label: {
-                        sidebarRow("update", symbol: "arrow.down.circle", name: Text(updates.buttonTitle))
-                            .foregroundStyle(Workbench.accent)
-                    }.buttonStyle(WorkbenchNavigationStyle()).padding(.vertical, 6)
-                        .modifier(SidebarHintTarget(id: "update", title: updates.buttonTitle, enabled: collapsed, hovered: $hoveredSidebarItem))
-                        .accessibilityLabel(updates.buttonTitle)
-                }
+                WorkbenchUpdateSidebar(updates: updates, collapsed: collapsed, hovered: $hoveredSidebarItem)
                 // Settings stays reachable below the list, whatever it scrolls to (#134).
                 if let settings = Self.navItems.first(where: { $0.id == Self.pinnedPage }) {
                     Divider().padding(.vertical, 6)
@@ -178,7 +171,9 @@ struct WorkbenchHome: View {
                         guard let session = readback.sessionURL else { return }
                         handoffReview = HandoffReviewRequest(task: "Prepare a clear summary and follow-up from these screenshots and their paired narration.", evidenceURL: session)
                     }, onSaveImageToLibrary: { model.library.saveCapturedImageToLibrary($0) },
-                    initialSheet: openSnapTalkSessions ? .sessions : nil)
+                    initialSheet: openSnapTalkSessions ? .sessions : nil,
+                    engine: .init(name: model.modelMessage, ready: model.ready, failure: model.modelFailure),
+                    onOpenModels: { model.page = "models" }, onRetryModel: { Task { await model.prepare() } })
                         .onAppear { openSnapTalkSessions = false }
                 case "snap": SnapWorkspaceView(model: snap, selectedIDs: Binding(get: {
                     Set(history.selected.filter { $0.kind == .snap }.map(\.id))
@@ -328,11 +323,12 @@ struct WorkbenchHome: View {
             case "models":
                 ScrollView { VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
                     ModelSettingsView(engine: model.engine, isBusy: model.phase != .idle || model.preparing || model.rendering || model.meetings.isBusy || readback.isRecording || readback.isCapturing || readback.hasPendingTranscriptions,
-                                      progress: model.modelMessage, hostPreparing: model.preparing, hostFailure: model.modelFailure) { ready, message in
+                                      progress: model.modelMessage, hostPreparing: model.preparing, hostFailure: model.modelFailure,
+                                      onFailure: { model.modelFailure = $0 }) { ready, message in
                         model.ready = ready; model.modelMessage = message
                     }
                     Divider()
-                    CleanupModelSettingsView(isBusy: model.phase != .idle || model.preparing || model.rendering)
+                    CleanupModelSettingsView(manager: model.cleanupModels, isBusy: model.phase != .idle || model.preparing || model.rendering)
                     Divider()
                     // Read's voice source is an engine too, so Models shows it with the others (rule 9).
                     VStack(alignment: .leading, spacing: 14) {
@@ -692,9 +688,13 @@ struct WorkbenchHomePage: View {
     }
     private var engineBanner: some View {
         HStack {
-            if model.preparing { ProgressView().controlSize(.small) }
+            if model.preparing || model.cleanupModels.downloading != nil { ProgressView().controlSize(.small) }
             VStack(alignment: .leading, spacing: 4) {
                 Text(model.modelMessage).font(.callout)
+                // The writing model's download or its failure, as Dictate's line shows it (#134).
+                if let line = model.writingModelLine {
+                    Text(line).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
                 // A failed preparation belongs here, beside Retry model: the menu-bar panel's
                 // Open Home… leads to these words (#134).
                 if let attention = model.attention, attention.page == .home {
@@ -761,8 +761,13 @@ struct WorkbenchHomePage: View {
                     }
                     WorkbenchClipboardShelf(receipts: model.clipboardReceipt, unresolved: model.unresolvedDelivery,
                         review: {
-                            let prompt = model.clipboardReceipt.receipt?.source == .prompt
-                            model.clipboardReceipt.dismissHUD(); model.page = prompt ? "library" : "history"
+                            let source = model.clipboardReceipt.receipt?.source
+                            model.clipboardReceipt.dismissHUD()
+                            switch source {
+                            case .prompt: model.page = "library"
+                            case .result(let id): model.openHistory(HistoryDoor(job: id))
+                            default: model.openHistory()
+                            }
                         },
                         showCue: { model.clipboardReceipt.revealHUD() },
                         reviewUnresolved: { _ in model.reviewUnresolvedDelivery() },

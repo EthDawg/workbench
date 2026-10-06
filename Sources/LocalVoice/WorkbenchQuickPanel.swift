@@ -35,7 +35,7 @@ struct WorkbenchQuickPanel: View {
     private var hasFeedback: Bool {
         editor.shortcutID != nil || receipts.receipt?.isClipboardCurrent == true || model.unresolvedDelivery != nil ||
             !context.activitySummary.isEmpty || model.error != nil || stage.notice != nil ||
-            readback.notice != nil || (model.phase == .idle && !model.ready)
+            readback.notice != nil || (model.phase == .idle && !model.ready) || model.writingModelLine != nil
     }
 
     /// The panel's width and inset (#134).
@@ -94,9 +94,13 @@ struct WorkbenchQuickPanel: View {
                     VStack(alignment: .leading, spacing: 5) {
                         WorkbenchClipboardShelf(receipts: receipts, unresolved: model.unresolvedDelivery,
                             review: {
-                                let prompt = receipts.receipt?.source == .prompt
+                                let source = receipts.receipt?.source
                                 receipts.dismissHUD()
-                                if prompt { open("library") } else { model.openHistory(); open("history") }
+                                switch source {
+                                case .prompt: open("library")
+                                case .result(let id): model.openHistory(HistoryDoor(job: id)); open("history")
+                                default: model.openHistory(); open("history")
+                                }
                             },
                             showCue: { model.onCloseMenu?(); receipts.revealHUD() },
                             reviewUnresolved: { entry in
@@ -141,6 +145,8 @@ struct WorkbenchQuickPanel: View {
         if let notice = stage.notice, let page = stage.noticePage { return (notice, page.route, true) }
         if let notice = readback.notice { return (notice, "readback", false) }
         if model.phase == .idle && !model.ready { return (model.modelMessage, "models", false) }
+        // The writing model's download or its failure, the same line Home and Dictate show (#134).
+        if let line = model.writingModelLine { return (line, "models", model.cleanupModels.failure != nil) }
         return nil
     }
 

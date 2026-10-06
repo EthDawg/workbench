@@ -108,6 +108,16 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     @Published var ready = false
     @Published var preparing = false
     @Published var modelMessage = "Preparing local speech…"
+    /// The writing model's one download, Ollama's, owned here as Parakeet's setup is: leaving
+    /// Settings › Models changes nothing, and its line reaches wherever readiness shows (#134).
+    private(set) lazy var cleanupModels: CleanupModelManager = {
+        let manager = CleanupModelManager()
+        cleanupModelsObserver = manager.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        return manager
+    }()
+    private var cleanupModelsObserver: AnyCancellable?
+    /// The writing model's progress or failure beside the speech model's line, or nothing.
+    var writingModelLine: String? { cleanupModels.downloadLine ?? cleanupModels.failure }
     /// Why the speech model could not be prepared, for Settings › Models beside its Try again.
     @Published var modelFailure: String?
     @Published var status = "Ready when you are."
@@ -340,7 +350,10 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     private var neuralPreview: NeuralSpeechRenderer?
     private var neuralPreviewPlayer: AVAudioPlayer?
     private var voiceObservers: [AnyCancellable] = []
-    private var voiceRefresh: Task<Void, Never>?
+    /// Set once a saved choice needed the `say` list; it then stays in the catalogue.
+    private var sayVoicesWanted = false
+    /// A voice listing in flight on the utility queue; one at a time.
+    private var voiceRefreshPending = false
     private var peakPower: Float = -160
     private var destination: TextDelivery.Target? {
         didSet { oldValue?.opaqueEditor?.end(); liveDictation?.end(); liveDictation = nil }
@@ -420,7 +433,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         refreshNeuralVoices()
         voiceObservers = [
             NotificationCenter.default.publisher(for: AVSpeechSynthesizer.availableVoicesDidChangeNotification)
-                .receive(on: RunLoop.main).sink { [weak self] _ in self?.refreshVoices(inBackground: true) },
+                .receive(on: RunLoop.main).sink { [weak self] _ in MacVoiceCatalog.forgetSayVoices(); self?.refreshVoices(inBackground: true) },
             NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
                 .sink { [weak self] _ in self?.refreshVoices(inBackground: true) }
         ]
@@ -1364,7 +1377,8 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         catch { fail(error.localizedDescription) }
         return nil
     }
-    func exportCapture(_ item: Transcript, version: TranscriptExportVersion) {
+    /// Nil is a cancelled Save panel; the review can acknowledge only an actual result.
+    @discardableResult func exportCapture(_ item: Transcript, version: TranscriptExportVersion) -> Bool? {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.plainText]
         panel.nameFieldStringValue = TranscriptExport.defaultFilename
@@ -1372,13 +1386,15 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         panel.message = version == .original
             ? "Save the original recognised wording as a UTF-8 text file."
             : "Save the cleaned transcript as a UTF-8 text file."
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard panel.runModal() == .OK, let url = panel.url else { return nil }
         do {
             try TranscriptExport.write(item, version: version, to: url)
             attention = nil
             status = "\(version.rawValue) saved to \(url.lastPathComponent)."
+            return true
         } catch {
             report("Could not save this transcript. \(error.localizedDescription)", on: .history)
+            return false
         }
     }
 
@@ -1407,19 +1423,35 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         }
         return "No Mac voice is installed. Add one in \(MacVoiceCatalog.settingsTitle) settings."
     }
-    /// Loads installed voices. Launch waits for them; later refreshes (a voice
-    /// added in Settings, or returning to the app) run off the main thread.
+    /// Lists installed voices by identifier: at launch, when macOS reports a
+    /// voice change and on returning to the app (a voice added in Settings
+    /// appears without a relaunch). Launch waits for the list; later refreshes
+    /// read it on a GCD utility queue (35–90 ms measured, 0 Accessibility
+    /// faults there, where a Swift task's thread logs one per call) and apply
+    /// it on the main thread. The `say` list is read once, on the main thread,
+    /// and only when the saved choice is an older name or a voice only `say`
+    /// can speak (#140).
     func refreshVoices(inBackground: Bool = false) {
         let language = MacVoiceCatalog.preferredLanguage
-        guard inBackground else { applyVoices(MacVoiceCatalog.installed(preferredLanguage: language), language: language); return }
-        guard voiceRefresh == nil else { return }
-        voiceRefresh = Task.detached(priority: .utility) { [weak self] in
-            let voices = MacVoiceCatalog.installed(preferredLanguage: language)
-            await self?.applyVoices(voices, language: language)
+        guard inBackground else { applyVoices(listed: MacVoiceCatalog.listed(preferredLanguage: language), language: language); return }
+        guard !voiceRefreshPending else { return }
+        voiceRefreshPending = true
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let listed = MacVoiceCatalog.listed(preferredLanguage: language)
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    self?.voiceRefreshPending = false
+                    self?.applyVoices(listed: listed, language: language)
+                }
+            }
         }
     }
-    private func applyVoices(_ voices: [MacVoice], language: String) {
-        voiceRefresh = nil
+    private func applyVoices(listed: [MacVoice], language: String) {
+        var voices = MacVoiceCatalog.catalogue(listed, preferredLanguage: language)
+        if sayVoicesWanted || MacVoiceCatalog.needsSayVoices(for: voice, in: voices, preferredLanguage: language) {
+            sayVoicesWanted = true
+            voices = MacVoiceCatalog.catalogue(listed, sayVoices: MacVoiceCatalog.sayVoices(), preferredLanguage: language)
+        }
         if voices != macVoices { macVoices = voices }
         if language != voiceLanguage { voiceLanguage = language }
     }

@@ -13,6 +13,9 @@ struct ModelSettingsView: View {
     var hostPreparing = false
     /// Why the app's own preparation failed, shown here beside Try download again.
     var hostFailure: String? = nil
+    /// Why this page's own Use or Download stopped, or nil as it starts, so the host's readiness
+    /// line shows one failure wherever it shows (Snap & Talk's Retry model reads it).
+    var onFailure: @MainActor (String?) -> Void = { _ in }
     var onChange: @MainActor (Bool, String) -> Void = { _, _ in }
     @State private var draft = RecognitionConfiguration()
     @State private var active = RecognitionConfiguration()
@@ -104,7 +107,7 @@ struct ModelSettingsView: View {
 
     @MainActor private func apply() async {
         guard !isBusy, !applying else { return }
-        applying = true; failure = nil
+        applying = true; failure = nil; onFailure(nil)
         defer { applying = false }
         // Close the recording gate on the main actor before the first suspension:
         // another window or hotkey must not begin capture while selection changes.
@@ -121,7 +124,7 @@ struct ModelSettingsView: View {
             ready = await engine.isReady; status = await engine.statusDescription()
             onChange(ready, status)
         } catch {
-            failure = error.localizedDescription
+            failure = error.localizedDescription; onFailure(failure)
             ready = await engine.isReady; status = await engine.statusDescription()
             onChange(ready, status)
         }

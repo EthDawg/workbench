@@ -154,6 +154,26 @@ __METHODS__
                   "an empty item explains itself and leaves the draft")
         try check(doors.attention?.page == .read, "the import's problem is Read's, so the menu-bar panel opens Read (#134)")
         try check(Attention.besideHomeReadTile(doors.attention, meetingBusy: doors.meetings.isBusy) == nil, "a History or Library Read aloud failure never shows beside Home's Read tile (#173)")
+        // A saved assistant result takes this same admission route, including
+        // a playing reading. Neither import nor replacement starts playback.
+        let resultDraft = SelectionHarness()
+        resultDraft.speechText = "Existing reading"; resultDraft.playing = true; resultDraft.saves = 0
+        resultDraft.importReading(exact, from: .result)
+        try check(resultDraft.speechText == "Existing reading" && resultDraft.playing && resultDraft.saves == 0
+                  && resultDraft.pendingReadingSelection?.text == exact && resultDraft.pendingReadingSelection?.origin == .result
+                  && resultDraft.listens == 0, "a saved result waits for review while current text and playback remain intact")
+        resultDraft.keepCurrentReading()
+        try check(resultDraft.speechText == "Existing reading" && resultDraft.playing && resultDraft.pendingReadingSelection == nil
+                  && resultDraft.status == "Current reading kept. The saved result is still in History.",
+                  "Keep current preserves the reading and names the retained saved result")
+        resultDraft.importReading(exact, from: .result)
+        resultDraft.replaceReadingWithSelection()
+        try check(resultDraft.speechText == exact && !resultDraft.playing && resultDraft.listens == 0
+                  && resultDraft.pendingReadingSelection == nil, "Replace adopts the exact result and ends old playback without autoplay")
+        let emptyResult = SelectionHarness()
+        emptyResult.importReading(exact, from: .result)
+        try check(emptyResult.speechText == exact && emptyResult.listens == 0 && emptyResult.pendingReadingSelection == nil,
+                  "an empty reading accepts the exact saved result and waits for Listen")
         let emptyDraft = SelectionHarness()
         let fileRoot = FileManager.default.temporaryDirectory.appendingPathComponent("ReadFileChecks-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: fileRoot, withIntermediateDirectories: true)

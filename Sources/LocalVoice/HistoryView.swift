@@ -21,8 +21,8 @@ enum HistoryFilter: String, CaseIterable, Identifiable {
 /// How one visit to History begins: its filter and, after Hand off, the task
 /// to reveal, or a transcript to show from Home's recent work (#134). Each door
 /// makes a new one, so it applies even when History is already showing. Showing
-/// a transcript scrolls to and focuses it; it never selects it or opens it in
-/// Dictate.
+/// a transcript reveals its row and opens its full read-only review; it never
+/// selects it or replaces the draft in Dictate.
 struct HistoryDoor: Equatable {
     var id = UUID()
     var filter = HistoryFilter.all
@@ -94,7 +94,8 @@ enum HistoryList {
     static func shown(_ merged: [HistoryEntry], filter: HistoryFilter, query: String,
                       matchTranscripts: ([Transcript], String) -> [Transcript],
                       matchSnap: (SnapItem, String) -> Bool,
-                      resultText: (HandoffJob) -> String) -> [HistoryEntry] {
+                      resultText: (HandoffJob) -> String,
+                      matchResult: ((HandoffJob, String) -> Bool)? = nil) -> [HistoryEntry] {
         let terms = query.split(whereSeparator: \.isWhitespace).map(String.init)
         let showsTranscripts = filter == .all || filter == .transcripts
         var matchingTranscripts: Set<UUID>?
@@ -116,6 +117,7 @@ enum HistoryList {
             case .result(let job):
                 guard filter == .all || filter == .results else { return false }
                 guard !terms.isEmpty else { return true }
+                if let matchResult { return matchResult(job, query) }
                 let text = job.title + "\n" + resultText(job)
                 return terms.allSatisfy { text.localizedCaseInsensitiveContains($0) }
             }
@@ -127,9 +129,10 @@ enum HistoryList {
                         filter: HistoryFilter, query: String,
                         matchTranscripts: ([Transcript], String) -> [Transcript],
                         matchSnap: (SnapItem, String) -> Bool,
-                        resultText: (HandoffJob) -> String) -> [HistoryEntry] {
+                        resultText: (HandoffJob) -> String,
+                        matchResult: ((HandoffJob, String) -> Bool)? = nil) -> [HistoryEntry] {
         shown(merged(transcripts: transcripts, snaps: snaps, results: results), filter: filter, query: query,
-              matchTranscripts: matchTranscripts, matchSnap: matchSnap, resultText: resultText)
+              matchTranscripts: matchTranscripts, matchSnap: matchSnap, resultText: resultText, matchResult: matchResult)
     }
 
     static func availability(of reference: WorkbenchItemReference, transcripts: Set<UUID>,
@@ -247,7 +250,7 @@ struct HistoryView: View {
     @FocusState private var focusedTask: UUID?
     @AccessibilityFocusState private var voiceOverTask: UUID?
     @State private var showingConnections = false
-    @State private var original: Transcript?
+    @State private var transcriptReview: TranscriptReview?
     @State private var details: Transcript?
     @State private var removal: TranscriptRemoval?
     @State private var recording: Transcript?
@@ -273,7 +276,8 @@ struct HistoryView: View {
                                       filter: filter, query: appliedQuery)) {
             HistoryList.shown(stores.merged, filter: filter, query: appliedQuery,
                 matchTranscripts: { library.matching($0, query: $1) }, matchSnap: { snap.matches($0, query: $1) },
-                resultText: { jobs.files($0)?.inputs.task ?? "" })
+                resultText: { jobs.files($0)?.inputs.task ?? "" },
+                matchResult: { jobs.matchesResult($0, query: $1) })
         }
         VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
             header
@@ -308,8 +312,8 @@ struct HistoryView: View {
             .sheet(isPresented: $showingConnections) {
                 HandoffConnectionsSheet(jobs: jobs, backTitle: "Back to History") { showingConnections = false }
             }
-            .modifier(TranscriptHistoryDialogs(model: model, original: $original, details: $details, removal: $removal, recording: $recording))
-            .onAppear { snap.refresh(); applyDoor() }
+            .modifier(TranscriptHistoryDialogs(model: model, review: $transcriptReview, details: $details, removal: $removal, recording: $recording))
+            .onAppear { snap.requestRefresh(); applyDoor() }
             .onChange(of: model.historyDoor) { applyDoor() }
             .task(id: query) {
                 // Search runs once typing pauses; clearing it applies at once.
@@ -325,7 +329,7 @@ struct HistoryView: View {
             .onReceive(snap.$recognizedText.dropFirst()) { _ in searchRevision &+= 1 }
             .onReceive(jobs.$taskFiles.dropFirst()) { _ in searchRevision &+= 1 }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-                snap.refresh()
+                snap.requestRefresh()
                 Task { await jobs.loadTaskFiles(jobs.jobs) }
             }
     }
@@ -399,7 +403,7 @@ struct HistoryView: View {
                         case .transcript(let item):
                             TranscriptHistoryRow(model: model, library: library, item: item,
                                 history: stores.sameSecond[Int(item.date.timeIntervalSince1970.rounded(.down))] ?? [item],
-                                original: $original, details: $details, removal: $removal, recording: $recording,
+                                review: $transcriptReview, details: $details, removal: $removal, recording: $recording,
                                 shown: shownTranscript == item.id, focus: $focusedTranscript, voiceOverFocus: $voiceOverTranscript)
                                 .overlay(RoundedRectangle(cornerRadius: 10)
                                     .strokeBorder(shownTranscript == item.id ? Workbench.accent : .clear, lineWidth: 2))
@@ -413,7 +417,9 @@ struct HistoryView: View {
                         case .result(let job):
                             HandoffJobCard(jobs: jobs, job: job, expanded: $expandedResult, revealed: target?.task,
                                            focus: $focusedTask, voiceOverFocus: $voiceOverTask,
-                                           applySuggestedMetadata: applySuggestedMetadata) {
+                                           applySuggestedMetadata: applySuggestedMetadata, query: appliedQuery,
+                                           copyResult: { model.copySavedResult($1, jobID: $0.id) },
+                                           readAloud: { model.importReading($0, from: .result) }) {
                                 HistoryMadeFrom(jobs: jobs, job: job) {
                                     HistoryList.availability(of: $0, transcripts: stores.transcripts, snaps: stores.snaps)
                                 }
@@ -446,8 +452,12 @@ struct HistoryView: View {
                 try? await Task.sleep(nanoseconds: 80_000_000)
                 withAnimation { proxy.scrollTo(HistoryEntry.ID.transcript(id), anchor: .center) }
                 try? await Task.sleep(nanoseconds: 120_000_000)
-                focusedTranscript = id
-                voiceOverTranscript = id
+                // The review sheet owns focus while open. Returning to the
+                // list leaves this exact row outlined without moving selection.
+                if transcriptReview == nil {
+                    focusedTranscript = id
+                    voiceOverTranscript = id
+                }
             }
         }
     }
@@ -490,7 +500,12 @@ struct HistoryView: View {
         revealed = door.job
         if door.job != nil { revealRequest = UUID() }
         shownTranscript = door.transcript
-        if door.transcript != nil { transcriptRequest = UUID() }
+        if let id = door.transcript {
+            transcriptRequest = UUID()
+            // A saved result opens as a result. This page-owned sheet never
+            // changes Dictate's draft, the shared selection or playback.
+            transcriptReview = TranscriptReview.find(id, in: model.history)
+        }
     }
 }
 

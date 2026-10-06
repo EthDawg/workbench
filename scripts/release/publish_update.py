@@ -7,7 +7,9 @@ A failed run must be reconciled against the existing release before retrying.
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
@@ -21,6 +23,41 @@ REPO = 'Ship-Work/workbench'
 
 def gh(*args):
     return subprocess.check_output(['gh', *map(str,args)], text=True)
+
+
+def verify_integrated_source(source):
+    """Accept only an exact current or earlier main state, never a merged feature tip."""
+    def valid_sha(value):
+        return isinstance(value, str) and re.fullmatch(r'[0-9a-f]{40}', value) and value != '0' * 40
+
+    if not valid_sha(source):
+        raise RuntimeError('Release source must be an exact commit')
+    try:
+        current = json.loads(gh('api', f'repos/{REPO}/branches/main'))['commit']['sha']
+    except (ValueError, KeyError, TypeError, OSError, subprocess.SubprocessError) as error:
+        raise RuntimeError('Cannot verify the canonical main commit; no release created') from error
+    if not valid_sha(current):
+        raise RuntimeError('Canonical main returned an invalid commit; no release created')
+    if source == current:
+        return
+    git = ['git', '--no-replace-objects', '-C', str(ROOT)]
+    # Legacy graft files also rewrite ancestry, independently of replacement refs.
+    # Override both the default graft file and any inherited GIT_GRAFT_FILE.
+    git_env = dict(os.environ, GIT_GRAFT_FILE=os.devnull)
+    try:
+        # Fetch the API-verified immutable SHA, not a moving branch or stale local
+        # tracking ref. With no destination ref/FETCH_HEAD, the checkout stays put.
+        subprocess.run([*git, 'fetch', '--no-tags', '--no-write-fetch-head',
+                        '--no-recurse-submodules', '--no-auto-maintenance',
+                        f'https://github.com/{REPO}.git', current], check=True, timeout=120, env=git_env)
+        shallow = subprocess.check_output([*git, 'rev-parse', '--is-shallow-repository'], text=True, timeout=30, env=git_env).strip()
+        if shallow != 'false':
+            raise RuntimeError('Prior release sources require complete main history; use a full checkout')
+        history = subprocess.check_output([*git, 'rev-list', '--first-parent', current, '--'], text=True, timeout=30, env=git_env)
+    except (OSError, subprocess.SubprocessError) as error:
+        raise RuntimeError('Cannot verify integrated release source from canonical main history; no release created') from error
+    if source not in history.splitlines():
+        raise RuntimeError('Release source must be current main or an earlier first-parent main commit; no release created')
 
 
 def verify_tag_target(tag, source):
@@ -87,9 +124,7 @@ def publish(directory, notes):
     existing=next((r for r in listing if r['tag_name']==tag),None)
     if existing is not None:
         raise RuntimeError(f'Release {tag} already exists. Reconcile its exact assets before resuming; no write performed.')
-    current=json.loads(gh('api',f'repos/{REPO}/branches/main'))['commit']['sha']
-    if current != receipt['source']:
-        raise RuntimeError('Release source must be current integrated main before publication')
+    verify_integrated_source(receipt['source'])
     verify_tag_target(tag, receipt['source'])
     command=['release','create',tag,'--repo',REPO,'--target',receipt['source'],
              '--title',f"Workbench {receipt['version']}" + (' Preview' if receipt['channel']=='preview' else ''),

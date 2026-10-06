@@ -60,7 +60,10 @@ enum ReadSelectionChecks {
                   && emptyMessage(.selection)?.contains("Read Selection") == true, "an empty import explains itself for each origin")
         try check((try? ReadingSelectionImport(text: "Saved prompt", origin: .savedText))?.origin == .savedText
                   && (try? ReadingSelectionImport(text: "Selected"))?.origin == .selection, "the Service's import stays a selection by default")
-        let origins: [ReadingSelectionImport.Origin] = [.selection, .transcript, .savedText]
+        try check(emptyMessage(.result) == "This saved result has no words to read."
+                  && (try? ReadingSelectionImport(text: exact, origin: .result))?.text == exact,
+                  "saved results use the same exact-text reading import with their own empty message")
+        let origins: [ReadingSelectionImport.Origin] = [.selection, .transcript, .savedText, .result]
         let copy = origins.flatMap { [$0.name, $0.keepNote, $0.keptNote] }.joined(separator: " ")
         try check(!copy.contains("—") && !copy.contains("–") && !copy.contains(" - ") && !copy.lowercased().contains("attention"),
                   "import wording is plain, with no dash punctuation")
