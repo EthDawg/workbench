@@ -2,7 +2,8 @@
 
 Foundation G, [#283](https://github.com/Ship-Work/workbench/issues/283), from canonical main
 `b2fea0faf770cf85397bcb209a51da3629f0753c` on `codex/pause-browser-admission`.
-The source revision is the commit containing this receipt; its final SHA belongs in the PR.
+The tested app source is `f5e79be7ca4501613acbd72aaf133378f10f3fc2`; this final
+receipt update changes only this document.
 This is source and synthetic verification, not installed or released acceptance.
 
 The production availability guard cuts off setup/manifest installation, automatic and
@@ -29,6 +30,7 @@ the integration. Unreadable preferences fail visibly rather than produce a parti
 | `LocalVoice --check-presenter` | 41 pause/preservation checks and 27 retained protocol checks. Synthetic stores, defaults, sockets and effect spies; normal signal handling. |
 | Setup admission negative control | Temporarily removed the production `enable()` guard. The first upgraded-profile assertion failed because setup became possible; restored source rebuilt and passed. No manifest was installed because the check injects the installer. |
 | Native-host refusal | The compiled helper exited 1 with no output for an existing allowlisted extension origin; source guard runs before socket-path lookup. |
+| `bash scripts/build.sh --component-package` | Passed; internal ad-hoc archive, strict signature verification, native action metadata and packaged readback-resource check. ZIP inspection confirmed the inert native helper remains and the BrowserExtension installation/store directory is absent. No installation. |
 | `scripts/test-library-recall.py` | 31 checks on the actual model/view and temporary Library store. Repeated after adding recovery export dependencies. |
 | `scripts/test-voice-preferences.py` | 96 preference-preservation checks. |
 | `LocalVoice --check-shortcut-migration` | 35 checks; no global shortcut registration. |
@@ -41,7 +43,8 @@ the integration. Unreadable preferences fail visibly rather than produce a parti
 Preference, shortcut and JS/package checks ran before the final isolated recovery-export
 addition; their source owners were unchanged by that addition. The release build,
 presenter checks, Library checks, renders, registry and handbook checks include it.
-The component-package archive check is pending at this source-review freeze.
+The component-package check also completed against the frozen app source. Its archive
+is an internal check artifact, not a signed Preview or public release.
 
 ## Production-view renders
 
