@@ -3,7 +3,7 @@
   "id": "visual-experiences",
   "title": "A desktop and a presentation are different commitments",
   "reviewedOn": "2026-10-06",
-  "implementationRevision": "7989426b41f84afaf8e38bf57ae4b2a68935aacb",
+  "implementationRevision": "9ff281762fa896834829ffc5d372d8586a45b31a",
   "scope": "Presentation preparation, independent Persona overlays, deliberate Snap capture and history, break-timer placement, desktop appearance and coordination with annotation and Mac audio workflows. Issue #112 capabilities were first published in Workbench 2.2.0 build 20260927101737 from source f2b8dfa, and Workbench 2.3.0 build 20260928035156 from source 6392286 adds the persona voice ring and the 28 September features. The notarized archives and remaining hardware and fresh-Mac limits are recorded in docs/releases/2026-09-27-capability-preview.md and docs/releases/2026-09-28-workbench-2.3.0.md. Earlier evidence entries retain their original source and test boundaries. App-wide history, assistant and meeting contracts are in docs/workbench.md and docs/product-spec.md. On 6 October 2026 the Present rebuild (issue #276) gave the phone one status owner and one help sheet, and retired gentle motion, the animated desktop and the still desktop apply; their records stay with status retired. docs/phone-presenting.md and docs/research/2026-10-06-present-rebuild.md hold the details.",
   "statusMeaning": {
     "implemented": "Verified in source and the stated local checks; this is not a claim that the newest binary is publicly released.",
