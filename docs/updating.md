@@ -34,6 +34,7 @@ Run `python3 scripts/release/status.py` to inspect both Applications folders and
 4. Open the exact installed path, use **Copy build details**, and exercise the changed workflow there. Report source checked, Preview installed, native acceptance, merged, packaged and published as separate states. A new source commit is not evidence about the running app.
 5. Merge reviewed changes through the [merge queue](#ci-and-the-merge-queue) with `gh pr merge <number> --repo Ship-Work/workbench --merge`. The queue verifies them with current `main` before merging; do not bypass it or repeatedly update the branch just to make it current.
 6. Use the [release procedure](../scripts/release/README.md) for a clean, signed, notarized artifact, followed by `prepare_update.py`. Publish the exact artifact and verify the public download before deploying its signed feed and matching website link. Do not rebuild between package verification and publication. Preview and Stable require their own packages and acceptance because their identities differ.
+7. A lead that runs several streams at once for one release follows [the release-lead playbook](release-lead.md), which applies these same steps across worktrees, reviewers and one integration owner.
 
 Use only these two persistent identities; there is no third QA or staging app. Build products stay disposable and uninstalled in build or verification directories. Persistent developer testing uses the existing purple-P Preview installation and its signed replacement workflow.
 
