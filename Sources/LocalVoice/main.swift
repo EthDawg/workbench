@@ -674,7 +674,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         capturePanel?.close()
         meetingOffer?.close()
         snap?.cancelCapture()
-        model?.promptInsertion.cancel(); keyboard?.stopInteraction(); stage?.shutdown(); readback?.shutdown(); model?.shutdown(); hotkeys.unregister()
+        model?.promptInsertion.cancel(); keyboard?.stopInteraction(); stage?.shutdown(); readback?.shutdown(); model?.cleanupModels.cancel(); model?.shutdown(); hotkeys.unregister()
         if let navigationObserver { NotificationCenter.default.removeObserver(navigationObserver) }
     }
     func navigate(_ page: String) {
@@ -737,6 +737,7 @@ func runCLI(_ args: [String]) async -> Int32 {
             try HomeJourneyChecks.run()
             try PanelDestinationChecks.run()
             try await MainActor.run { try WorkbenchPageChecks.run(); try HomeRecentWorkChecks.run() }
+            try InsertionBoundaryChecks.run()
             try CoreChecks.run(); try CleanupChecks.run(); try DemoLibraryChecks.run(); try ReadbackChecks.run(); try await ReadbackChecks.runAdmissionChecks(); try ProviderChecks.run(); try CaptureHUDChecks.run(); try CaptureSettingsChecks.run(); try LocalRefinementChecks.run()
             try await AudioRendererCancellationChecks.run()
             try await NeuralVoiceChecks.run()
@@ -820,6 +821,8 @@ func runCLI(_ args: [String]) async -> Int32 {
             try await MainActor.run { try LiveVoiceExperienceChecks.run() }
         case "--check-live-dictation-delivery":
             try await MainActor.run { try LiveDictationDeliveryChecks.run() }
+        case "--check-insertion-boundary":
+            try InsertionBoundaryChecks.run()
         case "--render-live-voice":
             guard args.count == 2 else { throw VoiceError.message("Usage: --render-live-voice OUTPUT_DIRECTORY") }
             try await MainActor.run {
@@ -841,6 +844,7 @@ func runCLI(_ args: [String]) async -> Int32 {
             try SpekoChecks.run()
         case "--check-refinement":
             try LocalRefinementChecks.run(); try await LocalRefinementChecks.runTransportChecks()
+            try await LocalRefinementChecks.runOwnershipChecks()
         case "--check-input":
             try await MainActor.run { try InputChecks.run() }
         case "--check-readback":

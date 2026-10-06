@@ -250,11 +250,17 @@ struct ContentView: View {
     /// (workbench.md, rule 9). While the model is not ready, the line above already says why.
     @ViewBuilder private var dictateEngine: some View {
         if model.ready {
-            HStack(spacing: 8) {
-                Label("\(model.modelMessage) · \(model.preferences.cleanup.rawValue) text style", systemImage: "waveform")
-                    .font(.caption).foregroundStyle(.secondary)
-                Button("Models…") { model.page = "models" }.buttonStyle(.link).font(.caption)
-                    .help("Choose the speech and writing models in Settings › Models")
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 8) {
+                    Label("\(model.modelMessage) · \(model.preferences.cleanup.rawValue) text style", systemImage: "waveform")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Button("Models…") { model.page = "models" }.buttonStyle(.link).font(.caption)
+                        .help("Choose the speech and writing models in Settings › Models")
+                }
+                // The writing model's download, or why it stopped, beside the models it concerns (#134).
+                if let line = model.writingModelLine {
+                    Text(line).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
     }
@@ -567,6 +573,7 @@ struct DictateSettingsView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(model.modelMessage)
                             Text("Natural text style uses \(CleanupConfigurationStore().snapshot().naturalSummary).")
+                            if let line = model.writingModelLine { Text(line) }
                         }.font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                         Spacer()
                         Button("Models…", action: openModels).help("Choose the speech and writing models in Settings › Models")

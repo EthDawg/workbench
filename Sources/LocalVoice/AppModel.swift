@@ -108,6 +108,16 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     @Published var ready = false
     @Published var preparing = false
     @Published var modelMessage = "Preparing local speech…"
+    /// The writing model's one download, Ollama's, owned here as Parakeet's setup is: leaving
+    /// Settings › Models changes nothing, and its line reaches wherever readiness shows (#134).
+    private(set) lazy var cleanupModels: CleanupModelManager = {
+        let manager = CleanupModelManager()
+        cleanupModelsObserver = manager.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        return manager
+    }()
+    private var cleanupModelsObserver: AnyCancellable?
+    /// The writing model's progress or failure beside the speech model's line, or nothing.
+    var writingModelLine: String? { cleanupModels.downloadLine ?? cleanupModels.failure }
     /// Why the speech model could not be prepared, for Settings › Models beside its Try again.
     @Published var modelFailure: String?
     @Published var status = "Ready when you are."
@@ -349,6 +359,8 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         didSet { oldValue?.opaqueEditor?.end(); liveDictation?.end(); liveDictation = nil }
     }
     private var liveDictation: LiveDictationDelivery?
+    /// Dictated words fit the field (#14); the dictionary's spellings keep their capitals.
+    private var insertionContext: InsertionBoundary.Context { .init(dictionaryTerms: replacements.map(\.written)) }
     private var recordingAttempt: UUID?
     private var recordingSettings: CaptureSettings?
     private var permissionRequest: Task<Bool, Never>?
@@ -662,7 +674,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         destination = intendedTarget
         destination?.opaqueEditor?.begin(shortcut: preferences.dictationShortcut)
         if recordingSettings?.preferences.delivery == .paste, shouldDeferDelivery?() != true {
-            liveDictation = LiveDictationDelivery.begin(target: intendedTarget, shortcut: preferences.dictationShortcut)
+            liveDictation = LiveDictationDelivery.begin(target: intendedTarget, shortcut: preferences.dictationShortcut, context: insertionContext)
         }
         phase = .requesting
         Task { await startRecording(attempt) }
@@ -1035,7 +1047,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
                             }
                         }
                     } else {
-                        outcome = await TextDelivery.deliver(result, target: destination, mode: delivery, restoreClipboard: settings.preferences.restoreClipboard)
+                        outcome = await TextDelivery.deliver(result, target: destination, mode: delivery, restoreClipboard: settings.preferences.restoreClipboard, fit: insertionContext)
                     }
                     guard transcriptionID == invocation else { return }
                     status = outcome.message

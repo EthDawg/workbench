@@ -790,6 +790,23 @@
     "note": "Existing door, recorded, no change: Opens Packs (Library) (Option of library; #134)."
   },
   {
+    "id": "LocalVoice.ReadbackView.ReadbackView.Button.models",
+    "surface": "snap & talk page",
+    "label": "Models…",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Door to Settings › Models beside the engine Snap & Talk narration uses, the one place an engine is chosen (Grammar rule 9; #134 follow-up, 6 Oct): the same door Dictate and Meetings show beside their engine line."
+  },
+  {
+    "id": "LocalVoice.ReadbackView.ReadbackView.Button.retry-model",
+    "surface": "snap & talk page",
+    "label": "Retry model",
+    "kind": "action",
+    "belongsTo": "settings",
+    "aliasOf": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.retry-model",
+    "note": "Quality: Home's Retry model repeated beside Record narration when the speech model could not be prepared, so narration never waits in a silent queue (Fit rule 2; #134 follow-up, 6 Oct)."
+  },
+  {
     "id": "LocalVoice.ReadbackView.ReadbackView.Button.review-selected-evidence",
     "surface": "snap & talk page",
     "label": "Review selected evidence…",

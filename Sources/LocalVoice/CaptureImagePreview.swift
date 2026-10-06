@@ -283,7 +283,7 @@ private struct PreviewImage: NSViewRepresentable {
     let accessibilityLabel: String
     func makeNSView(context: Context) -> PreviewImageScrollView {
         let view = PreviewImageScrollView()
-        view.onZoom = { [weak model] percent in model?.percent = percent }
+        view.onZoom = { [weak model] percent in if let model, model.percent != percent { model.percent = percent } }
         model.view = view
         view.show(loaded, label: accessibilityLabel)
         return view
@@ -333,7 +333,7 @@ final class PreviewImageScrollView: NSScrollView {
         imageView.image = NSImage(cgImage: loaded.image, size: .zero)
         imageView.setAccessibilityLabel(label)
         layoutImage()
-        fit()
+        fit(afterLayout: true)
     }
 
     private func layoutImage() {
@@ -344,11 +344,13 @@ final class PreviewImageScrollView: NSScrollView {
         maxMagnification = CaptureImageZoom.largest
     }
 
-    func fit() {
+    /// Fits the image. SwiftUI shows and resizes this view inside its own update, so a fit from
+    /// those paths reports its zoom on the next turn; a chosen fit reports at once.
+    func fit(afterLayout: Bool = false) {
         fitting = true
         minMagnification = CaptureImageZoom.smallest(fit: fitMagnification)
         magnification = fitMagnification
-        report()
+        if afterLayout { DispatchQueue.main.async { [weak self] in self?.report() } } else { report() }
     }
 
     /// Zooms about the centre of what is showing.
@@ -364,14 +366,14 @@ final class PreviewImageScrollView: NSScrollView {
 
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
-        if fitting, image != nil { fit() }
+        if fitting, image != nil { fit(afterLayout: true) }
     }
 
     override func viewDidChangeBackingProperties() {
         super.viewDidChangeBackingProperties()
         // Actual size means one image pixel per screen pixel on this display.
         layoutImage()
-        if fitting { fit() } else { report() }
+        if fitting { fit(afterLayout: true) } else { DispatchQueue.main.async { [weak self] in self?.report() } }
     }
 }
 
