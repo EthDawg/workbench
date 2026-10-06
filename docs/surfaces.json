@@ -1,11 +1,11 @@
 [
   {
-    "id": "LocalVoice.CaptureHistoryView.TranscriptHistoryRow.Button.open",
+    "id": "LocalVoice.CaptureHistoryView.TranscriptHistoryRow.Button.open-in-dictate",
     "surface": "history page",
-    "label": "Open",
+    "label": "Open in Dictate",
     "kind": "action",
     "belongsTo": "dictate",
-    "note": "Existing door, moved with the transcript row into History: opens the transcript on the Dictate page (Option of dictate; #134, #137)."
+    "note": "Quality (#137): the existing draft-replacement door is explicitly named and lives in More. Review transcript opens the full saved result inside History without replacing a draft."
   },
   {
     "id": "LocalVoice.CaptureHistoryView.TranscriptHistoryRow.Button.read-aloud",

@@ -21,8 +21,8 @@ enum HistoryFilter: String, CaseIterable, Identifiable {
 /// How one visit to History begins: its filter and, after Hand off, the task
 /// to reveal, or a transcript to show from Home's recent work (#134). Each door
 /// makes a new one, so it applies even when History is already showing. Showing
-/// a transcript scrolls to and focuses it; it never selects it or opens it in
-/// Dictate.
+/// a transcript reveals its row and opens its full read-only review; it never
+/// selects it or replaces the draft in Dictate.
 struct HistoryDoor: Equatable {
     var id = UUID()
     var filter = HistoryFilter.all
@@ -247,7 +247,7 @@ struct HistoryView: View {
     @FocusState private var focusedTask: UUID?
     @AccessibilityFocusState private var voiceOverTask: UUID?
     @State private var showingConnections = false
-    @State private var original: Transcript?
+    @State private var transcriptReview: TranscriptReview?
     @State private var details: Transcript?
     @State private var removal: TranscriptRemoval?
     @State private var recording: Transcript?
@@ -308,7 +308,7 @@ struct HistoryView: View {
             .sheet(isPresented: $showingConnections) {
                 HandoffConnectionsSheet(jobs: jobs, backTitle: "Back to History") { showingConnections = false }
             }
-            .modifier(TranscriptHistoryDialogs(model: model, original: $original, details: $details, removal: $removal, recording: $recording))
+            .modifier(TranscriptHistoryDialogs(model: model, review: $transcriptReview, details: $details, removal: $removal, recording: $recording))
             .onAppear { snap.refresh(); applyDoor() }
             .onChange(of: model.historyDoor) { applyDoor() }
             .task(id: query) {
@@ -399,7 +399,7 @@ struct HistoryView: View {
                         case .transcript(let item):
                             TranscriptHistoryRow(model: model, library: library, item: item,
                                 history: stores.sameSecond[Int(item.date.timeIntervalSince1970.rounded(.down))] ?? [item],
-                                original: $original, details: $details, removal: $removal, recording: $recording,
+                                review: $transcriptReview, details: $details, removal: $removal, recording: $recording,
                                 shown: shownTranscript == item.id, focus: $focusedTranscript, voiceOverFocus: $voiceOverTranscript)
                                 .overlay(RoundedRectangle(cornerRadius: 10)
                                     .strokeBorder(shownTranscript == item.id ? Workbench.accent : .clear, lineWidth: 2))
@@ -446,8 +446,12 @@ struct HistoryView: View {
                 try? await Task.sleep(nanoseconds: 80_000_000)
                 withAnimation { proxy.scrollTo(HistoryEntry.ID.transcript(id), anchor: .center) }
                 try? await Task.sleep(nanoseconds: 120_000_000)
-                focusedTranscript = id
-                voiceOverTranscript = id
+                // The review sheet owns focus while open. Returning to the
+                // list leaves this exact row outlined without moving selection.
+                if transcriptReview == nil {
+                    focusedTranscript = id
+                    voiceOverTranscript = id
+                }
             }
         }
     }
@@ -490,7 +494,12 @@ struct HistoryView: View {
         revealed = door.job
         if door.job != nil { revealRequest = UUID() }
         shownTranscript = door.transcript
-        if door.transcript != nil { transcriptRequest = UUID() }
+        if let id = door.transcript {
+            transcriptRequest = UUID()
+            // A saved result opens as a result. This page-owned sheet never
+            // changes Dictate's draft, the shared selection or playback.
+            transcriptReview = TranscriptReview.find(id, in: model.history)
+        }
     }
 }
 

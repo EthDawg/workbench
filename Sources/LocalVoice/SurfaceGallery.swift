@@ -538,7 +538,10 @@ private struct HistoryNativeAcceptanceView: View {
                 + [try renderHomeLargerText(to: output), try renderHomeSavedPhotos(to: output)]
         }
         let review = try checkHomeReview(to: output)
-        if let history = pages.firstIndex(where: { $0.route == "history" }) { pages[history].shots.append(review.shot) }
+        if let history = pages.firstIndex(where: { $0.route == "history" }) {
+            pages[history].shots.append(review.shot)
+            pages[history].shots += try renderTranscriptReviewStates(to: output)
+        }
         let meetingReview = try renderMeetingReview(to: output)
         if let meeting = pages.firstIndex(where: { $0.route == "meeting" }) { pages[meeting].shots += [meetingReview.meeting, try renderMeetingKept(to: output)] }
         if let history = pages.firstIndex(where: { $0.route == "history" }) { pages[history].shots.append(meetingReview.history) }
@@ -1063,6 +1066,94 @@ private struct HistoryNativeAcceptanceView: View {
                  "An older transcript's title opens History on All, showing it; the edited Dictate draft is unchanged byte for byte and the selection is kept.",
                  "History Open preserves a different Dictate draft and original in the actual saved store until Replace draft; Keep current, navigation and live capture preserve them, including capture beginning after the decision opens.",
                  "Clearing the displayed draft keeps its original behind the same Keep/Replace decision. Keep and saved-state reload preserve it, Original restores it, and explicit Replace commits the selected transcript and original."], shot)
+    }
+
+    /// Open the production page-owned review through the same typed door used
+    /// by Home and Meetings. Native sheet attachment, a scrollable full-text
+    /// viewport and dismissal are verified while independent work stays exact.
+    func renderTranscriptReviewStates(to output: URL) throws -> [SurfaceGallery.Shot] {
+        let kept = (history: model.history, draft: model.transcript, raw: model.rawTranscript,
+                    selected: model.historyLibrary.selected, page: model.page, phase: model.phase,
+                    reading: model.speechText, playing: model.meetings.recordingPlayback.playing)
+        defer { model.history = kept.history; model.page = kept.page; model.phase = kept.phase; model.historyDoor = nil }
+        let paragraphs = (1...24).map {
+            "Item \($0). Maya will review the proposal on Thursday. Sam will confirm the room and bring the revised agenda. The budget remains $2,400, and no purchase is approved."
+        }.joined(separator: "\n\n")
+        let item = Transcript(id: UUID(uuidString: "5D1C0A1E-0000-4000-8000-000000000188")!,
+                              date: Date(timeIntervalSince1970: 1_789_399_000),
+                              text: paragraphs + "\n\nFinal decision: keep the original evidence.", seconds: 900,
+                              rawText: "um " + paragraphs + "\n\nFinal original words: don't discard the evidence.")
+        model.history.append(item)
+        // Review must work during unrelated dictation, rather than invoking
+        // the existing busy guard for replacing Dictate's draft.
+        model.phase = .recording
+        var shots: [SurfaceGallery.Shot] = []
+        for (name, size) in SurfaceGallery.sizes {
+            final class Frames { var values: [String: CGRect] = [:] }
+            let frames = Frames()
+            model.page = "home"; model.historyDoor = nil
+            let window = homeWindow(size: size, hostsSheets: true) { frames.values[$0] = $1 }
+            let root = window.contentView?.superview ?? window.contentView!
+            defer {
+                if let sheet = window.attachedSheet { window.endSheet(sheet); sheet.orderOut(nil) }
+                window.contentViewController = nil; window.close()
+            }
+            settle(root)
+            guard let door = HomeRecentWork.review(for: .transcript(item)) else {
+                throw VoiceError.message("The long saved transcript has no History review door.")
+            }
+            model.openHistory(door)
+            let deadline = Date().addingTimeInterval(4)
+            repeat { settle(root, seconds: 0.1) }
+            while (window.attachedSheet == nil || frames.values["history.transcript-review.text"] == nil) && Date() < deadline
+            guard model.historyDoor == nil, let sheet = window.attachedSheet, let content = sheet.contentView,
+                  let frame = frames.values["history.transcript-review"],
+                  let textFrame = frames.values["history.transcript-review.text"],
+                  let document = frames.values["history.transcript-review.document"],
+                  document.height > textFrame.height * 2,
+                  abs(frame.width - 640) < 1, abs(frame.height - 560) < 1,
+                  textFrame.width > 500, textFrame.height > 250 else {
+                throw VoiceError.message("History did not attach the full transcript review at \(name): \(frames.values).")
+            }
+            settle(content)
+            guard model.transcript == kept.draft, model.rawTranscript == kept.raw,
+                  model.historyLibrary.selected == kept.selected, model.speechText == kept.reading,
+                  model.phase == .recording, model.pendingTranscript == nil,
+                  model.meetings.recordingPlayback.playing == kept.playing,
+                  TranscriptReview.find(item.id, in: model.history)?.text == item.text else {
+                throw VoiceError.message("Read-only transcript review changed independent work or opened other words.")
+            }
+            shots.append(try save(try snapshot(content), id: "transcript-review-" + name,
+                title: "Full transcript review, " + name + " window",
+                detail: "The existing Home/Meetings History door attaches the actual sheet for a long saved transcript while Dictate is busy. Full text scrolls; draft, original, selection, reading and recording playback stay unchanged.",
+                file: "page-history-transcript-review-\(name)-\(theme).png", to: output))
+            let done = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
+                timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: sheet.windowNumber, context: nil,
+                characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36)!
+            guard sheet.performKeyEquivalent(with: done) else { throw VoiceError.message("Transcript review did not handle Done.") }
+            let closed = Date().addingTimeInterval(3)
+            repeat { settle(root, seconds: 0.1) } while window.attachedSheet != nil && Date() < closed
+            guard window.attachedSheet == nil, model.transcript == kept.draft,
+                  model.rawTranscript == kept.raw, model.historyLibrary.selected == kept.selected,
+                  model.phase == .recording else {
+                throw VoiceError.message("Done failed to close only the transcript review.")
+            }
+        }
+        let original = TranscriptReview(transcript: item, version: .original)
+        guard original.text == item.rawText,
+              TranscriptExport.data(for: item, version: .original) == Data(original.text.utf8),
+              TranscriptReview.find(UUID(), in: model.history) == nil else {
+            throw VoiceError.message("Original review/export lost wording or a missing History ID opened another transcript.")
+        }
+        let host = NSHostingView(rootView: TranscriptReviewView(model: model, review: original, done: {}))
+        host.frame = NSRect(x: 0, y: 0, width: 640, height: 560)
+        let window = offscreenWindow(size: host.frame.size, styleMask: [.borderless])
+        defer { window.contentView = nil; window.close() }
+        window.contentView = host; settle(host)
+        shots.append(try save(try snapshot(host), id: "transcript-review-original", title: "Transcript review, original wording",
+            detail: "The production review on Original wording. Copy explicitly names current text; Export original uses the exact original UTF-8 bytes. No playback, copy or export is started by opening it.",
+            file: "page-history-transcript-review-original-\(theme).png", to: output))
+        return shots
     }
 
     /// Home at 1.35 times its text in the minimum window's content column. SwiftUI's text styles do
@@ -1591,7 +1682,10 @@ private struct HistoryNativeAcceptanceView: View {
         pages[homeIndex].shots += try renderHomeChrome(to: output) + renderHomeStates(to: output)
             + [renderHomeLargerText(to: output), renderHomeSavedPhotos(to: output)]
         let review = try checkHomeReview(to: output)
-        if let history = pages.firstIndex(where: { $0.route == "history" }) { pages[history].shots.append(review.shot) }
+        if let history = pages.firstIndex(where: { $0.route == "history" }) {
+            pages[history].shots.append(review.shot)
+            pages[history].shots += try renderTranscriptReviewStates(to: output)
+        }
         guard model.hasCaptureRecovery, model.canRetry, model.canDiscardCaptureRecovery,
               try Data(contentsOf: audio) == audioBytes, try Data(contentsOf: journal) == journalBytes else {
             throw VoiceError.message("Visiting Home or History changed the pending recording or its recovery controls.")
@@ -3383,7 +3477,7 @@ private struct HistoryNativeAcceptanceView: View {
                  E(surface: "Meetings page", label: "Review transcript", leads: "Page: history, showing the exact completed transcript", route: "history"),
                  E(surface: "Handoff review", label: "Copy instructions or Start task", leads: "Page: history, revealing the task it prepared", route: "history"),
                  page("Remember correction", "Open Dictionary", "dictionary"),
-                 page("History page", "Transcript · Open", "dictate"), page("History page", "Transcript · More… · Read aloud", "speak"),
+                 page("History page", "Transcript · More… · Open in Dictate", "dictate"), page("History page", "Transcript · More… · Read aloud", "speak"),
                  action("History page", "Connections…", "Shows provider connections over History"),
                  action("History page", "Hand off…", "Opens the handoff review for the selected items"),
                  action("History page", "Result · Review suggested details…", "Reviews an assistant's suggested details for the task's transcript"),
