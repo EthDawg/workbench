@@ -149,18 +149,30 @@ final class PhoneLinkTests {
     }
 
     func testReleasedForAnAppleAppSaysSoUntilReconnect() {
-        let released = PhoneLink.status(signals { $0.sources = [screen]; $0.rememberedID = screen.id; $0.usb = [phone]; $0.released = true })
+        let released = PhoneLink.status(signals { $0.sources = [screen]; $0.rememberedID = screen.id; $0.usb = [phone]; $0.released = .forAnotherApp })
         XCTAssertEqual(released.phase, .released)
         XCTAssertEqual(released.title, "Let go for another app")
         XCTAssertTrue(released.detail?.contains("QuickTime Player") == true)
         XCTAssertEqual(released.step, .reconnect)
         XCTAssertFalse(released.offersHelp)
         XCTAssertFalse(released.offersReconnect, "Reconnect is already the step")
-        let live = PhoneLink.status(signals { $0.released = true; $0.phase = .live(screen.id, CGSize(width: 1, height: 2)); $0.sources = [screen] })
+        let live = PhoneLink.status(signals { $0.released = .forAnotherApp; $0.phase = .live(screen.id, CGSize(width: 1, height: 2)); $0.sources = [screen] })
         XCTAssertEqual(live.phase, .live, "A session that is running was never released")
-        let unplugged = PhoneLink.status(signals { $0.released = true; $0.capturing = true })
+        let unplugged = PhoneLink.status(signals { $0.released = .forAnotherApp; $0.capturing = true })
         XCTAssertEqual(unplugged.phase, .released, "The release outranks what is on the bus and whether a session is allowed")
-        XCTAssertTrue(PhoneLink.diagnostic(signals { $0.released = true }, build: "b").contains("Session: released for another app"))
+        XCTAssertTrue(PhoneLink.diagnostic(signals { $0.released = .forAnotherApp }, build: "b").contains("Session: released for another app"))
+    }
+
+    func testEndedSaysSoAndOffersOnlyADeliberateWayBack() {
+        let ended = PhoneLink.status(signals { $0.sources = [screen]; $0.rememberedID = screen.id; $0.usb = [phone]; $0.released = .ended; $0.access = .authorized })
+        XCTAssertEqual(ended.phase, .ended)
+        XCTAssertEqual(ended.title, "Presentation ended")
+        XCTAssertTrue(ended.detail?.contains("Reconnect") == true)
+        XCTAssertEqual(ended.step, .reconnect, "The page's preview comes back only when asked")
+        XCTAssertFalse(ended.offersHelp, "Nothing is wrong: Workbench let go on purpose")
+        XCTAssertEqual(PhoneLink.status(signals { $0.released = .ended; $0.sources = [screen]; $0.capturing = true }).phase, .ended,
+                       "A visible page does not turn End into connecting")
+        XCTAssertTrue(PhoneLink.diagnostic(signals { $0.released = .ended }, build: "b").contains("Session: released when the presentation ended"))
     }
 
     /// The report replaces every device's own name with its kind, including where the status

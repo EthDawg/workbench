@@ -32,15 +32,18 @@ public struct PhoneLinkSignals: Equatable {
         public init(id: String, name: String, isScreen: Bool) { self.id = id; self.name = name; self.isScreen = isScreen }
     }
     public enum VideoAccess: Equatable { case notDetermined, authorized, denied, restricted }
+    /// Why Workbench let go of the phone. Either way the capture stays off until the
+    /// person asks for it back: Present, Reconnect, or showing a screen.
+    public enum Release: Equatable { case ended, forAnotherApp }
     public var usb: [USBDevice] = []
     public var sources: [ScreenSource] = []
     /// The exact device a previous choice saved. Reconnects only ever reopen this one.
     public var rememberedID: String?
     public var access: VideoAccess = .notDetermined
     public var phase: CapturePhase = .idle
-    /// Workbench let go of the phone so an Apple app could use it, and stays out of
-    /// the way until the person asks for it back.
-    public var released = false
+    /// Workbench let go of the phone (the presentation ended, or an Apple app needed it),
+    /// and stays out of the way until the person asks for it back.
+    public var released: Release?
     /// A capture session is allowed to run now (the Present page shows a device scene,
     /// or a presentation with a device frame runs), so an available screen is about to
     /// be shown. Off in the headless receipt, where nothing ever connects.
@@ -58,6 +61,19 @@ public struct PhoneLinkSignals: Equatable {
     }
 }
 
+/// A capture failure's bounded identity for a report: the error's domain and code,
+/// never its message or user-info dictionary.
+public struct CaptureFault: Equatable {
+    public let domain: String
+    public let code: Int
+    public init(domain: String, code: Int) { self.domain = String(domain.prefix(64)); self.code = code }
+    public init(_ error: Error) {
+        let error = error as NSError
+        self.init(domain: error.domain, code: error.code)
+    }
+    public var text: String { "\(domain) \(code)" }
+}
+
 /// The capture session's own phase, published by `DemoCapture`. Words live in
 /// `PhoneLink.status`, not here.
 public enum CapturePhase: Equatable {
@@ -69,14 +85,21 @@ public enum CapturePhase: Equatable {
     case connecting(String)
     case live(String, CGSize)
     case stalled(String)
-    case interrupted(String)
-    case failed(String, Failure)
+    /// The device went away or the session stopped with an error, kept bounded for the report.
+    case interrupted(String, CaptureFault? = nil)
+    case failed(String, Failure, CaptureFault? = nil)
     var deviceID: String? {
         switch self {
         case .idle, .waitingForAccess: return nil
-        case .connecting(let id), .stalled(let id), .interrupted(let id): return id
+        case .connecting(let id), .stalled(let id), .interrupted(let id, _): return id
         case .live(let id, _): return id
-        case .failed(let id, _): return id
+        case .failed(let id, _, _): return id
+        }
+    }
+    var fault: CaptureFault? {
+        switch self {
+        case .interrupted(_, let fault), .failed(_, _, let fault): return fault
+        default: return nil
         }
     }
 }
@@ -84,7 +107,7 @@ public enum CapturePhase: Equatable {
 public struct PhoneLinkStatus: Equatable {
     public enum Phase: Equatable {
         case noPhone, phoneOnUSB, screenFound, chooseScreen, waitingForRemembered, available, connecting, live, stalled,
-             interrupted, busy, couldNotOpen, couldNotStart, accessPending, accessDenied, accessRestricted, released
+             interrupted, busy, couldNotOpen, couldNotStart, accessPending, accessDenied, accessRestricted, released, ended
     }
     /// The one next action a surface renders beside the words. nil means the words
     /// already say what to do away from the Mac (unlock, trust, a cable).
@@ -119,7 +142,7 @@ public struct PhoneLinkStatus: Equatable {
     /// the surface offers "Can't see your phone?".
     public var offersHelp: Bool {
         switch phase {
-        case .live, .connecting, .available, .screenFound, .accessPending, .released: return false
+        case .live, .connecting, .available, .screenFound, .accessPending, .released, .ended: return false
         default: return true
         }
     }
@@ -154,13 +177,13 @@ public enum PhoneLink {
         case .interrupted:
             return .init(phase: .interrupted, title: "\(Noun) disconnected",
                          detail: "Reconnect the cable and unlock it. The stage waits here.", step: .reconnect)
-        case .failed(_, .busy):
+        case .failed(_, .busy, _):
             return .init(phase: .busy, title: "Another app is using the \(noun)’s screen",
                          detail: "Close QuickTime Player or the other preview, then Reconnect.", step: .reconnect)
-        case .failed(_, .couldNotOpen):
+        case .failed(_, .couldNotOpen, _):
             return .init(phase: .couldNotOpen, title: "Workbench can’t open the \(noun)",
                          detail: "Unlock it and close any other preview using it, then Reconnect.", step: .reconnect)
-        case .failed(_, .couldNotStart):
+        case .failed(_, .couldNotStart, _):
             return .init(phase: .couldNotStart, title: "The \(noun)’s screen didn’t start",
                          detail: "Unlock the phone, close any other app previewing it, then Reconnect.", step: .reconnect)
         case .waitingForAccess:
@@ -169,10 +192,16 @@ public enum PhoneLink {
         case .idle:
             break
         }
-        if signals.released {
+        switch signals.released {
+        case .forAnotherApp:
             return .init(phase: .released, title: "Let go for another app",
                          detail: "Workbench released the \(noun) so QuickTime Player or iPhone Mirroring could use it. Reconnect to show it here again.",
                          step: .reconnect)
+        case .ended:
+            return .init(phase: .ended, title: "Presentation ended",
+                         detail: "Workbench let go of the \(noun). Reconnect to show it here again, or press Present.", step: .reconnect)
+        case nil:
+            break
         }
         switch signals.access {
         case .restricted:
@@ -260,18 +289,24 @@ public enum PhoneLink {
         case .restricted: access = "restricted by policy"
         }
         lines.append("Device video access: " + access)
-        let phase: String
+        var phase: String
         switch signals.phase {
-        case .idle: phase = signals.released ? "released for another app" : "no session"
+        case .idle:
+            switch signals.released {
+            case .forAnotherApp: phase = "released for another app"
+            case .ended: phase = "released when the presentation ended"
+            case nil: phase = "no session"
+            }
         case .waitingForAccess: phase = "waiting for the permission prompt"
         case .connecting: phase = "connecting"
         case .live(_, let size): phase = "live \(Int(size.width))×\(Int(size.height))"
         case .stalled: phase = "stalled, no frames for 5 s"
         case .interrupted: phase = "interrupted"
-        case .failed(_, .busy): phase = "could not start, device busy"
-        case .failed(_, .couldNotOpen): phase = "could not open the device"
-        case .failed(_, .couldNotStart): phase = "the session did not start"
+        case .failed(_, .busy, _): phase = "could not start, device busy"
+        case .failed(_, .couldNotOpen, _): phase = "could not open the device"
+        case .failed(_, .couldNotStart, _): phase = "the session did not start"
         }
+        if let fault = signals.phase.fault { phase += " (\(fault.text))" }
         lines.append("Session: " + phase)
         lines.append("Status: " + status.title + (status.detail.map { " — " + $0 } ?? ""))
         return lines.joined(separator: "\n")
@@ -427,8 +462,8 @@ public final class PhoneLinkMonitor: ObservableObject {
         guard running, fixture == nil else { return }
         update { $0.access = Self.access() }
     }
-    /// The capture was let go for an Apple app, or taken back.
-    func setReleased(_ released: Bool) { update { $0.released = released } }
+    /// The capture was let go (the presentation ended, or an Apple app needed it), or taken back.
+    func setReleased(_ released: PhoneLinkSignals.Release?) { update { $0.released = released } }
     /// A session is allowed to run now, so an available screen reads as connecting.
     func setCapturing(_ capturing: Bool) { update { $0.capturing = capturing } }
     private func start() {

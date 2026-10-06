@@ -248,9 +248,11 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
     /// The live owner of the phone's state, mirroring that capture.
     let phoneLink: PhoneLinkMonitor
     private var pageVisible = false
-    /// An Apple app was opened for the phone: the capture stays released until the
-    /// person returns to Present or asks to reconnect.
-    private var releasedForHandoff = false
+    /// Workbench let go of the phone: the presentation ended, or an Apple app was opened for
+    /// it. Capture stays off, whatever the page shows, until a deliberate action takes it back:
+    /// Present, Reconnect, or showing a screen. Covering, uncovering, revisiting the page or
+    /// a late permission, discovery or frame callback never does.
+    private var released: PhoneLinkSignals.Release?
     /// Present starts in a window unless the person chose full screen, kept with the scenes.
     @Published private(set) var startsFullScreen = false
     private var presentPreferencesURL: URL { root.appendingPathComponent("present-preferences.json") }
@@ -270,36 +272,45 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
         pageVisible = visible
         reconsiderCapture()
     }
-    private func setReleasedForHandoff(_ value: Bool) {
-        guard releasedForHandoff != value else { return }
-        releasedForHandoff = value
+    private func setReleased(_ value: PhoneLinkSignals.Release?) {
+        guard released != value else { return }
+        released = value
         MainActor.assumeIsolated { phoneLink.setReleased(value) }
     }
-    /// Asked for explicitly: the capture may hold the device again after a handoff. The
-    /// release ends only here, with a shown source or with Present, never by the page
-    /// being covered, so an Apple app keeps the phone while it is in front.
-    func reconnectPhone() { setReleasedForHandoff(false); reconsiderCapture(); capture.reconnect() }
+    /// Asked for explicitly: the capture may hold the device again after End or a handoff.
+    /// A release ends only here, with a shown source or with Present, never by the page
+    /// being covered or opened again, so End stays final and an Apple app keeps the phone.
+    func reconnectPhone() {
+        let wasReleased = released != nil
+        setReleased(nil); reconsiderCapture()
+        // A released capture starts afresh above; a running one looks again for its device.
+        if !wasReleased { capture.reconnect() }
+    }
     /// Opens QuickTime Player or iPhone Mirroring from the page. A running presentation
     /// ends first through its own handoff; otherwise the capture releases the phone, and
     /// stays released until the person reconnects.
     func openNativeApp(_ app: NativePresentationApp) {
         if let presentation { presentation.endAndOpen(app); return }
-        setReleasedForHandoff(true)
+        setReleased(.forAnotherApp)
         reconsiderCapture { [weak self] in app.open { message in self?.notice = message } }
     }
     /// The one next step the status names, from the page.
     func performPhoneStep(_ step: PhoneLinkStatus.Step, chooseSource: () -> Void) {
         switch step {
-        case .showSource(let id, _): setReleasedForHandoff(false); reconsiderCapture(); capture.select(id)
+        case .showSource(let id, _): setReleased(nil); reconsiderCapture(); capture.select(id)
         case .chooseSource: chooseSource()
         case .reconnect: reconnectPhone()
         case .openCameraSettings: NSWorkspace.shared.open(PhoneConnectionSupport.cameraSettingsURL)
         }
     }
     private var captureWanted: Bool {
-        guard !releasedForHandoff, !shuttingDown, systemIntegrationEnabled else { return false }
+        guard released == nil, !shuttingDown, captureEnabled else { return false }
         return presentation?.showsPhone == true || (pageVisible && selected?.showsPhone == true)
     }
+    /// The capture runs only in the app, or under a check's synthetic hardware.
+    private let captureEnabled: Bool
+    /// A check drives the capture with synthetic hardware; its stage stays off screen.
+    private let syntheticCapture: Bool
     private var shuttingDown = false
     /// Starts or stops the one session to match where Present is in use. A completion
     /// runs once the session is released, or at once when it keeps running.
@@ -334,11 +345,16 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
     private var snapshotURL: URL { root.appendingPathComponent("desktop-restore.json") }
     /// `personaPanels` stands in for prepared overlay windows in checks, and
     /// `personaCamera` for the live camera.
+    /// `captureHardware` stands in for AVFoundation in checks, so the capture, the page and the
+    /// stage run their real callbacks against synthetic devices, permission answers and frames.
     init(root: URL? = nil, readOnlyReason: String? = nil, systemIntegrationEnabled: Bool = true, personaVoice: PersonaVoiceAccess? = nil,
-         personaPanels: (() -> any PersonaSessionDisplaying)? = nil, personaCamera: PersonaLiveCamera? = nil) {
-        self.root = root ?? Workbench.supportDirectory(component: "StageMark").appendingPathComponent("Scenes")
+         personaPanels: (() -> any PersonaSessionDisplaying)? = nil, personaCamera: PersonaLiveCamera? = nil, captureHardware: CaptureHardware? = nil) {
+        let root = root ?? Workbench.supportDirectory(component: "StageMark").appendingPathComponent("Scenes")
+        self.root = root
         self.systemIntegrationEnabled = systemIntegrationEnabled
-        capture = DemoCapture(root: self.root)
+        captureEnabled = systemIntegrationEnabled || captureHardware != nil
+        syntheticCapture = captureHardware != nil
+        capture = captureHardware.map { DemoCapture(root: root, hardware: $0) } ?? DemoCapture(root: root)
         phoneLink = MainActor.assumeIsolated { PhoneLinkMonitor() }
         if let data = try? Data(contentsOf: self.root.appendingPathComponent("present-preferences.json")),
            let preferences = try? JSONDecoder().decode(PresentPreferences.self, from: data) {
@@ -441,7 +457,7 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
     /// Starts the selected scene. Without a mode, the saved choice applies: a window
     /// to share in a call, or full screen for a projector.
     func startDemo(mode: PresentationMode? = nil) {
-        guard systemIntegrationEnabled else { return }
+        guard captureEnabled else { return }
         let mode = mode ?? (startsFullScreen ? .fullScreen : .windowed)
         guard mayBeginInteraction?() != false else { notice = "Finish your current recording or keyboard practice before presenting."; return }
         guard let scene = selected, let image = image(for: scene) else { return }
@@ -450,8 +466,10 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
         if scene.persona != nil && personaImage(for: scene) == nil { notice = SceneError.missingPersona.localizedDescription; return }
         if presentation != nil { presentation?.bringForward(); return }
         onBeginPresentation?()
-        setReleasedForHandoff(false)
-        let presenter = DemoPresentation(scene: scene, image: image, logo: logoImage(for: scene), hand: handImage(for: scene), persona: personaImage(for: scene), ambience: ambienceImages(for: scene), screen: targetScreen, root: root, capture: capture, phoneLink: phoneLink, mode: mode, sharedControls: usesSharedControls)
+        // Present is a deliberate action: it takes the phone back after End or a handoff.
+        setReleased(nil)
+        let presenter = DemoPresentation(scene: scene, image: image, logo: logoImage(for: scene), hand: handImage(for: scene), persona: personaImage(for: scene), ambience: ambienceImages(for: scene), screen: targetScreen, root: root, capture: capture, phoneLink: phoneLink, mode: mode, sharedControls: usesSharedControls,
+                                        onScreen: !syntheticCapture)
         presenter.onRevealSharedControls = { [weak self] in self?.onFocusSharedControls?() }
         // The stage's Reconnect and Show go through the owner, so a capture released for an
         // Apple app comes back when asked from any surface.
@@ -459,7 +477,10 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
         presenter.showSource = { [weak self] id in self?.performPhoneStep(.showSource(id: id, title: ""), chooseSource: {}) }
         presenter.releaseCapture = { [weak self] forHandoff, completion in
             guard let self else { completion(); return }
-            if forHandoff { setReleasedForHandoff(true) }
+            // End revokes the capture's admission before the stage closes, whatever the page
+            // shows: the stop completes, outstanding work is invalidated, and only Present,
+            // Reconnect or showing a screen starts it again. Nothing held, nothing to let go.
+            if forHandoff { setReleased(.forAnotherApp) } else if captureWanted { setReleased(.ended) }
             reconsiderCapture(completion: completion)
         }
         presenter.onEnd = { [weak self] in

@@ -7,9 +7,9 @@ final class DemoPresentation: NSObject, NSWindowDelegate {
     let sessionIdentity = UUID()
     var onEnd: (() -> Void)?
     var onRevealSharedControls: (() -> Void)?
-    /// Hands the shared capture back to its owner at the end. For a handoff to an
-    /// Apple app the owner releases the device; otherwise it may keep the session
-    /// for the Present page. The completion runs once the device is released, or at once.
+    /// Hands the shared capture back to its owner at the end. The owner lets go of the
+    /// device either way (End is final; a handoff keeps it free for the Apple app) and
+    /// the completion runs once the device is released.
     var releaseCapture: ((_ forHandoff: Bool, _ completion: @escaping () -> Void) -> Void)?
     /// Reconnect and Show go through the capture's owner, which may have released it.
     var reconnect: (() -> Void)?
@@ -30,9 +30,12 @@ final class DemoPresentation: NSObject, NSWindowDelegate {
     private var lifecycle = PresentationLifecycle()
     private let handoff = PresentationHandoff()
     private var keepAwake: NSObjectProtocol?
-    init(scene: DemoScene, image: NSImage, logo: NSImage?, hand: NSImage?, persona: NSImage? = nil, ambience: AmbientSceneImages? = nil, screen: NSScreen?, root: URL, capture: DemoCapture, phoneLink: PhoneLinkMonitor, mode: PresentationMode = .windowed, sharedControls: Bool = false) {
+    /// False only under a check's synthetic capture: the stage window is built and ended as
+    /// usual but never ordered on screen, so the check neither shows a window nor activates the app.
+    private let onScreen: Bool
+    init(scene: DemoScene, image: NSImage, logo: NSImage?, hand: NSImage?, persona: NSImage? = nil, ambience: AmbientSceneImages? = nil, screen: NSScreen?, root: URL, capture: DemoCapture, phoneLink: PhoneLinkMonitor, mode: PresentationMode = .windowed, sharedControls: Bool = false, onScreen: Bool = true) {
         self.scene = scene; backdrop = image; self.logo = logo; self.hand = hand; self.persona = persona; self.screen = screen
-        self.mode = mode; self.ambience = ambience; self.sharedControls = sharedControls; self.phoneLink = phoneLink
+        self.mode = mode; self.ambience = ambience; self.sharedControls = sharedControls; self.phoneLink = phoneLink; self.onScreen = onScreen
         self.capture = capture
         controls = PresentationControlsModel(root: root)
         super.init()
@@ -63,11 +66,14 @@ final class DemoPresentation: NSObject, NSWindowDelegate {
         window.contentView = NSHostingView(rootView: DemoStageContent(scene: scene, backdrop: backdrop, logo: logo, hand: hand, persona: persona, ambience: ambience, capture: capture, phoneLink: phoneLink, controls: controls, sharedControls: sharedControls,
             perform: { [weak self] in self?.perform($0) }, endAndOpen: { [weak self] in self?.endAndOpen($0) }, end: { [weak self] in self?.end() }))
         self.window = window
+        guard onScreen else { return }
         NSApp.activate(ignoringOtherApps: true); window.makeKeyAndOrderFront(nil)
         if mode == .fullScreen { lifecycle.willEnter(); window.toggleFullScreen(nil) }
     }
-    /// The one next step the status names, wherever it is shown.
+    /// The one next step the status names, wherever it is shown. Once End is under way the
+    /// stage takes no step, so a late click or ⌘R cannot take the phone back from End.
     func perform(_ step: PhoneLinkStatus.Step) {
+        guard !lifecycle.ending, !lifecycle.finished else { return }
         switch step {
         case .showSource(let id, _): if let showSource { showSource(id) } else { capture.select(id) }
         case .chooseSource: controls.close(); controls.choosingSource = true; bringForward()
@@ -75,7 +81,10 @@ final class DemoPresentation: NSObject, NSWindowDelegate {
         case .openCameraSettings: NSWorkspace.shared.open(PhoneConnectionSupport.cameraSettingsURL)
         }
     }
-    func reconnectCapture() { if let reconnect { reconnect() } else { capture.reconnect() } }
+    func reconnectCapture() {
+        guard !lifecycle.ending, !lifecycle.finished else { return }
+        if let reconnect { reconnect() } else { capture.reconnect() }
+    }
     var status: PhoneLinkStatus { MainActor.assumeIsolated { phoneLink.status } }
     func makeControlsMenu() -> NSMenu {
         let menu = NSMenu(title: "Present"); menu.autoenablesItems = false
