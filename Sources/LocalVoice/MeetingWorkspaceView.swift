@@ -80,7 +80,7 @@ struct MeetingWorkspaceView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(showsCompletedResult ? "Transcript saved" : model.isRecording ? model.voiceSession.recordingTitle : model.isProcessing ? "Finishing transcript" : model.isStarting ? "Starting recording" : model.admission.title)
                                 .font(.title3.weight(.semibold))
-                            Text(showsCompletedResult ? "Copy the complete transcript to use it in your next task." : model.isRecording ? time(model.elapsed) : model.isProcessing ? "Finishing the selected recording checkpoint." : "Start once. Follow the words as the conversation happens.")
+                            Text(showsCompletedResult ? "Copy the complete transcript to use it in your next task." : model.isRecording ? time(model.elapsed) : model.isProcessing ? "Finishing your transcript." : "Start once. Follow the words as the conversation happens.")
                                 .font(.callout).foregroundStyle(.secondary).monospacedDigit()
                         }
                         Spacer()
@@ -233,7 +233,7 @@ struct MeetingWorkspaceView: View {
     private var transcriptSnapshot: LiveVoiceSnapshot {
         var value = model.voiceSession
         if model.completedTranscriptID != nil { value.phase = .completed; value.message = "Saved in History." }
-        else if model.isProcessing { value.message = "Finishing the selected recording checkpoint." }
+        else if model.isProcessing { value.message = "Finishing your transcript." }
         return value
     }
 
