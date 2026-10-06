@@ -47,7 +47,7 @@ class ScopeTests(unittest.TestCase):
         for path in ("site/updates/production.json", "site/updates/production.xml", "docs/releases/2.4.md"):
             self.write(path)
         Path("docs/distribution.md").write_text("new release\n")
-        self.assertFalse(scope.native_required(self.base, self.commit()))
+        self.assertFalse(scope.native_required(self.base, self.commit(), "merge_group"))
 
     def test_unknown_paths_require_native(self):
         for path in ("Sources/New.swift", "scripts/build.sh", ".github/workflows/ci.yml",
@@ -56,7 +56,29 @@ class ScopeTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.git("reset", "--hard", self.base)
                 self.write(path)
-                self.assertTrue(scope.native_required(self.base, self.commit()))
+                self.assertTrue(scope.native_required(self.base, self.commit(), "merge_group"))
+
+    def test_pull_request_defers_native_to_the_queue(self):
+        # The queue runs the five macOS jobs for every group; a push run would repeat them.
+        self.write("Sources/New.swift")
+        head = self.commit()
+        self.assertFalse(scope.native_required(self.base, head, "pull_request"))
+        self.assertFalse(scope.native_required(self.base, head, "pull_request", ["bug", "design system"]))
+        self.assertTrue(scope.native_required(self.base, head, "pull_request", ["ci:native"]))
+        self.assertTrue(scope.native_required(self.base, head, "pull_request", ["bug", " ci:native "]))
+        self.assertFalse(scope.native_required(self.base, head, "pull_request", ["ci:nativeish"]))
+
+    def test_push_of_a_queue_merge_skips_native(self):
+        # The group's run validated exactly this tree; the push to main must not repeat it.
+        self.write("Sources/New.swift")
+        head = self.commit()
+        queued = "Merge pull request #290 from Ship-Work/claude/readiness-fixes\n\nKeep dictated names"
+        self.assertFalse(scope.native_required(self.base, head, "push", head_message=queued))
+        for message in ("Fix the thing", "Merge pull request from nowhere", "", "merge pull request #1 from x"):
+            with self.subTest(message=message):
+                self.assertTrue(scope.native_required(self.base, head, "push", head_message=message))
+        # Only a push is a queue merge; a merge group with the same words is still classified.
+        self.assertTrue(scope.native_required(self.base, head, "merge_group", head_message=queued))
 
     def test_documentation_and_site_changes_for_each_event(self):
         for path in ("README.md", "AGENTS.md", "CONTRIBUTING.md", "SECURITY.md",
@@ -74,8 +96,9 @@ class ScopeTests(unittest.TestCase):
         self.write("docs/updating.md")
         self.write("Sources/New.swift")
         head = self.commit()
-        for event in ("pull_request", "merge_group", "push"):
+        for event in ("merge_group", "push"):
             self.assertTrue(scope.native_required(self.base, head, event))
+        self.assertFalse(scope.native_required(self.base, head, "pull_request"))
 
     def test_complete_merge_group_includes_earlier_native_change(self):
         self.write("Sources/EarlierPR.swift")
@@ -89,7 +112,7 @@ class ScopeTests(unittest.TestCase):
         self.git("reset", "--hard", self.base)
         self.write("docs/rewrite.md")
         after = self.commit()
-        # The PR-only comparison sees docs; a main rewrite also removes native code.
+        # A main rewrite also removes native code; a pull request leaves that to the queue.
         self.assertFalse(scope.native_required(before, after, "pull_request"))
         self.assertTrue(scope.native_required(before, after, "push"))
 
@@ -101,35 +124,37 @@ class ScopeTests(unittest.TestCase):
 
     def test_native_deletion(self):
         Path("Sources/App.swift").unlink()
-        self.assertTrue(scope.native_required(self.base, self.commit()))
+        self.assertTrue(scope.native_required(self.base, self.commit(), "merge_group"))
 
     def test_native_renamed_to_release_note(self):
         Path("docs/releases").mkdir()
         Path("Sources/App.swift").rename("docs/releases/moved.md")
-        self.assertTrue(scope.native_required(self.base, self.commit()))
+        self.assertTrue(scope.native_required(self.base, self.commit(), "merge_group"))
 
     def test_release_note_deletion(self):
         Path("docs/distribution.md").unlink()
-        self.assertFalse(scope.native_required(self.base, self.commit()))
+        self.assertFalse(scope.native_required(self.base, self.commit(), "merge_group"))
 
     def test_documentation_move_to_native(self):
         Path("docs/distribution.md").rename("Sources/Instructions.md")
-        self.assertTrue(scope.native_required(self.base, self.commit()))
+        self.assertTrue(scope.native_required(self.base, self.commit(), "merge_group"))
 
     def test_documentation_rename_with_spaces_and_newline(self):
         Path("docs/distribution.md").rename("docs/renamed note\nsecond line.md")
-        self.assertFalse(scope.native_required(self.base, self.commit()))
+        self.assertFalse(scope.native_required(self.base, self.commit(), "merge_group"))
 
     def test_empty_diff(self):
-        for event in ("pull_request", "merge_group", "push"):
+        for event in ("merge_group", "push"):
             self.assertTrue(scope.native_required(self.base, self.base, event))
+        self.assertFalse(scope.native_required(self.base, self.base, "pull_request"))
 
     def test_missing_or_invalid_history(self):
         for base in ("", "--output=bad", "0" * 40):
             with self.subTest(base=base):
-                for event in ("pull_request", "merge_group", "push"):
+                for event in ("merge_group", "push"):
                     self.assertTrue(scope.native_required(base, self.base, event))
                     self.assertTrue(scope.native_required(self.base, base, event))
+                self.assertFalse(scope.native_required(base, self.base, "pull_request"))
 
 
 class GateTests(unittest.TestCase):
