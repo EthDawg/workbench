@@ -53,3 +53,15 @@ Independent adversarial review of `c059d4d6d6e61a5f4b1576210563cbdfa396b614` fou
 Start with a real person's unprepared material and a creation request. Compare the ordinary assistant route with capture-and-explain, including gathering, attachment, review and one correction. Observe preparation effort, repeated explanation, source confusion and voluntary reuse. Do not prepare both routes' source maps in advance. Actual vocal-delivery feedback additionally requires audio/video and clear separation of observed, heard and inferred evidence.
 
 This trial did not test human preparation time, voluntary reuse, Claude/ChatGPT UI interaction, physical capture, provider execution, arbitrary inputs, rich artifact return or a signed old-to-new app update.
+
+## Foundation C manual native acceptance, 7 October
+
+Signed Preview **2.4.1 (20261006123415)** at clean combined source `dec1f343413b9c3ce68583e81863e6c9278ec0df` was verified through actual Copy build details on macOS 26.5.1 (25F80). The unchanged C implementation from merged #291 was exercised through the installed app with a synthetic stopped meeting, complete journal and one second of silent audio. This avoided provider inference and live microphone capture.
+
+**Kept for later → Transcribe → Prepare follow-up…** recovered the complete synthetic words and opened the handoff review. With Codex off, Copy was available and Start disabled; switching to Claude Code off retained that behavior. Opening Connections and returning with both providers still off preserved the request, source, reference role and chosen provider. No setup, sign-in, permission prompt or inference began automatically.
+
+**Copy instructions → actual paste into TextEdit** produced 4,186 UTF-8 bytes. The complete 555-byte synthetic transcript appeared once, including its Unicode end marker; the instructions retained the request, recipe, reference-only boundary, UTC source time, duration and silent-recording limitation. The reference contained quoted instruction-like text to check its labeling, not an instruction to execute. The saved handoff remained **Ready**, with zero attempts and truthful “Nothing has been sent” feedback. The synthetic paste SHA256 is `2e28ea4e5c6d769c10a2ddb79b581bc3a46545c3d3cb5ceab56bd601ae398508`.
+
+Evidence remains locally under `.build/native-foundation-dec1f34`. After normal Quit, only the new synthetic meeting and unsent handoff were archived outside live stores. The original state/history files were restored byte for byte after verifying every other field and record was unchanged. Two normal relaunches retained the user's original Home state and preserved Read resource.
+
+This establishes the manual text-only route, complete native paste and setup-return behavior with both providers off. It does not establish actual assistant submission/output, image attachment handoff, VoiceOver, live recognition or the broader five-section Snap & Talk value trial. Those remain explicit gates; no public release follows from this check.
