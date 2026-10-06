@@ -103,11 +103,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             guard let model else { throw VoiceError.message("The transcript library is unavailable.") }
             try model.retainMeetingTranscript(capture, purpose: purpose)
         }
-        model.meetings.mayStart = { [weak self] in
-            guard let self, !self.terminating else { return "Workbench is closing." }
-            guard self.model.ready else { return "Prepare your speech engine in Settings › Models first." }
-            return self.model.phase == .idle && !self.readback.blocksDictation && !self.shortcutsSuspended
-                ? nil : "Finish Dictate or Snap & Talk before starting a meeting."
+        model.meetings.loadSavedTranscript = { [weak model] id in
+            guard let model else { throw VoiceError.message("The transcript library is unavailable.") }
+            return try model.savedMeetingTranscript(id)
+        }
+        model.meetings.hostAdmission = { [weak self] in
+            guard let self else { return MeetingHostAdmission(closing: true) }
+            return MeetingHostAdmission(recognition: self.model.recognition,
+                captureProblem: self.model.phase == .idle && !self.readback.blocksDictation && !self.shortcutsSuspended
+                    ? nil : .busy("Finish Dictate or Snap & Talk before starting a meeting."), closing: self.terminating)
         }
         model.meetings.mayPlayRecording = { [weak self] in
             guard let self, !self.terminating else { return false }
@@ -355,6 +359,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         model.promptInsertion.objectWillChange.receive(on: RunLoop.main).sink { [weak self] _ in
             self?.updateRecordingUI()
         }.store(in: &receiptObservations)
+        // Deliver after published assignments complete; a synchronous willChange
+        // read would project the previous readiness or narration busy state.
+        model.$recognition.receive(on: RunLoop.main).sink { [weak self] _ in
+            self?.model.meetings.refreshAdmission()
+        }.store(in: &receiptObservations)
+        readback.objectWillChange.receive(on: RunLoop.main).sink { [weak self] _ in
+            self?.model.meetings.refreshAdmission()
+        }.store(in: &receiptObservations)
     }
     func registerShortcuts() {
         guard model.editingShortcut == nil, !shortcutsSuspended else { return }
@@ -574,6 +586,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         Task { await readback.captureNewSection(fromEditor: false, mode: mode) }
     }
     func updateRecordingUI() {
+        model.meetings.refreshAdmission()
         model.meetings.updateRecordingPlaybackAdmission()
         let receipt = model.clipboardReceipt.receipt
         let state: String

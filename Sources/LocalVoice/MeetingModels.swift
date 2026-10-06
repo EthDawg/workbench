@@ -194,7 +194,25 @@ struct MeetingManifest: Codable, Equatable, Sendable {
             .filter { !$0.isEmpty }.joined(separator: " ")
     }
     var isFullyRecognized: Bool {
-        liveText != nil || (!segments.isEmpty && segments.allSatisfy { $0.text != nil })
+        guard hasValidTimeline else { return false }
+        if liveText != nil { return formatVersion == 2 }
+        return hasCompleteSegmentPlan && segments.allSatisfy { $0.text != nil }
+    }
+    var timelineSeconds: Double { tracks.map { $0.startSeconds + $0.seconds }.max() ?? 0 }
+    /// A declared duration cannot hide a missing tail or a plan truncated at the cap.
+    var hasValidTimeline: Bool {
+        !tracks.isEmpty && timelineSeconds.isFinite && timelineSeconds > 0
+            && timelineSeconds <= MeetingSegmentPlan.maximumMeetingSeconds
+            && abs(seconds - timelineSeconds) < 0.001
+    }
+    var hasCompleteSegmentPlan: Bool {
+        guard hasValidTimeline else { return false }
+        let expected = MeetingSegmentPlan.plan(totalSeconds: timelineSeconds)
+        guard !expected.isEmpty, expected.count == segments.count else { return false }
+        return zip(orderedSegments, expected).allSatisfy { segment, window in
+            segment.index == window.index && abs(segment.startSeconds - window.start) < 0.001
+                && abs(segment.seconds - window.seconds) < 0.001
+        }
     }
     /// Anything that still holds audio the person has not received text for. A recording that
     /// was recognised to the end without a word is finished, not unfinished: retrying it only
@@ -205,7 +223,14 @@ struct MeetingManifest: Codable, Equatable, Sendable {
     }
     /// Recognised to the end with no words, or too short to hold any. Its audio stays on this
     /// Mac until the person shows or removes it; nothing offers to retry it.
-    var isSettledWithoutSpeech: Bool { state == .recognized && recognizedText.isEmpty }
+    var isSettledWithoutSpeech: Bool {
+        guard recognizedText.isEmpty, hasValidTimeline else { return false }
+        // No recognition was possible. Keep the ordinary stopped shape readable
+        // by older binaries, while this reader avoids offering pointless retry.
+        if [.stopped, .recognized].contains(state), timelineSeconds < MeetingSegmentPlan.minimumSegmentSeconds,
+           segments.isEmpty { return true }
+        return state == .recognized && isFullyRecognized
+    }
 }
 
 /// Sizes for the shared recognition engine. A meeting is chunked so no request
@@ -312,14 +337,20 @@ enum MeetingStore {
     }
 
     static func load(from session: URL) throws -> MeetingManifest {
+        try loadCheckpoint(from: session).manifest
+    }
+
+    static func loadCheckpoint(from session: URL) throws -> (manifest: MeetingManifest, bytes: Data) {
         let url = try safeURL(session: session, relative: manifestName)
         let values = try url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
         guard values.isRegularFile == true, (values.fileSize ?? Int.max) <= maximumManifestBytes else {
             throw MeetingError.message("The meeting record could not be read safely. Its folder was left unchanged.")
         }
         let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
+        let data = try Data(contentsOf: url)
+        guard data.count <= maximumManifestBytes else { throw MeetingError.message("The meeting record grew while being read. Its folder was left unchanged.") }
         let manifest: MeetingManifest
-        do { manifest = try decoder.decode(MeetingManifest.self, from: Data(contentsOf: url)) }
+        do { manifest = try decoder.decode(MeetingManifest.self, from: data) }
         catch {
             throw MeetingError.message("The meeting record could not be read. Its folder and audio were left unchanged. \(error.localizedDescription)")
         }
@@ -331,7 +362,7 @@ enum MeetingStore {
             throw MeetingError.message("The meeting record does not match its folder. It was left unchanged.")
         }
         try validate(manifest, at: session)
-        return manifest
+        return (manifest, data)
     }
 
     /// A staged sibling plus one atomic rename: a failed write leaves the
@@ -418,7 +449,11 @@ enum MeetingStore {
             }
             end = segment.startSeconds + segment.seconds
         }
-        if [.recognized, .committed].contains(manifest.state), !manifest.isFullyRecognized {
+        // Keep historical records readable. Complete timeline admission is stricter
+        // and is checked before processing/committing or settling empty recovery.
+        let hasTextShape = manifest.liveText != nil || (!manifest.segments.isEmpty && manifest.segments.allSatisfy { $0.text != nil })
+        let tooShort = manifest.hasValidTimeline && manifest.timelineSeconds < MeetingSegmentPlan.minimumSegmentSeconds && manifest.segments.isEmpty
+        if [.recognized, .committed].contains(manifest.state), !hasTextShape && !tooShort {
             throw MeetingError.message("The meeting record is missing recognised segments. It was left unchanged.")
         }
     }

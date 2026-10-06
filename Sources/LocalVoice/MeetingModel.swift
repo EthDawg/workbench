@@ -1,4 +1,5 @@
 import AVFoundation
+import AppKit
 import Combine
 import Foundation
 
@@ -14,7 +15,13 @@ final class MeetingModel: ObservableObject {
     @Published private(set) var elapsed = 0.0
     @Published private(set) var voiceSession = LiveVoiceSnapshot()
     @Published private(set) var notice = "Choose an app and microphone, then start. Recording is limited to two hours."
-    @Published private(set) var error: String?
+    @Published private(set) var problem: MeetingProblem?
+    private(set) var error: String? {
+        get { problem?.message }
+        set { problem = newValue.map(MeetingProblem.unknown) }
+    }
+    @Published private(set) var admission = MeetingAdmission()
+    @Published private(set) var appEnumeration = MeetingAppEnumeration.unchecked
     /// Recordings that still hold audio without text, newest first. Each is retried, shown or
     /// moved to the Trash by its own row, never by whichever happens to sort first.
     @Published private(set) var recoveries: [MeetingRecoveryEntry] = []
@@ -48,12 +55,15 @@ final class MeetingModel: ObservableObject {
             configureDetection()
         }
     }
-    @Published var includeMicrophone = true
-    @Published var selectedAppID: Int32?
+    @Published var includeMicrophone = true { didSet { refreshAdmission() } }
+    @Published var selectedAppID: Int32? { didSet { refreshAdmission() } }
     @Published var purpose = "meeting"
 
     var isBusy: Bool { isRecording || isProcessing || isStarting }
-    var mayStart: (() -> String?)?
+    var hostAdmission: (() -> MeetingHostAdmission)? { didSet { refreshAdmission() } }
+    // Retained injected capture exclusion; speech readiness has its own typed projection.
+    var mayStart: (() -> String?)? { didSet { refreshAdmission() } }
+    private var host = MeetingHostAdmission(recognition: .init(admission: .localReady))
     let recordingPlayback = MeetingRecordingPlayback()
     var mayPlayRecording: (() -> Bool)?
     @Published private(set) var canPlayRecording = true
@@ -64,6 +74,7 @@ final class MeetingModel: ObservableObject {
         if !allowed { recordingPlayback.pause() }
     }
     var saveTranscript: ((Transcript, String) throws -> Void)?
+    var loadSavedTranscript: ((UUID) throws -> (transcript: Transcript, notes: [String])?)?
     /// Checks replace this so they never fill the person's Trash.
     var moveToTrash: @Sendable (URL) throws -> Void = { try FileManager.default.trashItem(at: $0, resultingItemURL: nil) }
     var onStateChange: (() -> Void)?
@@ -71,13 +82,15 @@ final class MeetingModel: ObservableObject {
     static let detectionKey = "workbench.meeting.detect.v1"
     static let keptForLater = "Recording was cancelled. Original audio was kept."
     /// The one refusal whose fix is in System Settings, so the page can offer it beside this message only.
-    static let microphoneRefused = "Allow Microphone access in Privacy & Security to include your voice, or choose app audio only."
+    static let microphoneRefused = MeetingProblem.microphoneDenied.message
     static let disabledAppsKey = "workbench.meeting.disabled-apps.v1"
     private let directory: URL
     private let defaults: UserDefaults
     private let detector: MeetingDetector
     private let transcribe: (URL) async throws -> String
     private let microphonePermission: () async -> Bool
+    private let microphoneStatus: () -> AVAuthorizationStatus
+    private let readSpeechSnapshot: (() async -> RecognitionSnapshot)?
     private let captureFactory: () -> MeetingCapture
     private let startupNoticeDelayNanoseconds: UInt64
     private var generation = UUID()
@@ -98,8 +111,12 @@ final class MeetingModel: ObservableObject {
     convenience init(engine: RecognitionEngine, directory: URL, defaults: UserDefaults = .standard) {
         self.init(directory: directory, defaults: defaults, processSource: MeetingSystemProcessSource(),
                   transcribe: { try await engine.transcribe($0) },
-                  microphonePermission: Self.requestMicrophone, captureFactory: { MeetingSystemCapture() })
+                  microphonePermission: Self.requestMicrophone, captureFactory: { MeetingSystemCapture() },
+                  microphoneStatus: { AVCaptureDevice.authorizationStatus(for: .audio) },
+                  readSpeechSnapshot: { await engine.snapshot() })
         liveEngine = engine
+        host = MeetingHostAdmission()
+        refreshAdmission()
     }
 
     /// These seams exercise the actual controller with synthetic capture and
@@ -108,10 +125,14 @@ final class MeetingModel: ObservableObject {
          transcribe: @escaping (URL) async throws -> String,
          microphonePermission: @escaping () async -> Bool,
          captureFactory: @escaping () -> MeetingCapture,
-         startupNoticeDelayNanoseconds: UInt64 = 10_000_000_000) {
+         startupNoticeDelayNanoseconds: UInt64 = 10_000_000_000,
+         microphoneStatus: @escaping () -> AVAuthorizationStatus = { .authorized },
+         readSpeechSnapshot: (() async -> RecognitionSnapshot)? = nil) {
         self.directory = directory; self.defaults = defaults
         self.detector = MeetingDetector(source: processSource)
         self.transcribe = transcribe; self.microphonePermission = microphonePermission
+        self.microphoneStatus = microphoneStatus
+        self.readSpeechSnapshot = readSpeechSnapshot
         self.captureFactory = captureFactory
         self.startupNoticeDelayNanoseconds = startupNoticeDelayNanoseconds
         detectionEnabled = defaults.bool(forKey: Self.detectionKey)
@@ -119,7 +140,49 @@ final class MeetingModel: ObservableObject {
         detector.disabledBundleIDs = Set(defaults.stringArray(forKey: Self.disabledAppsKey) ?? [])
         configureDetection()
         recoveryTask = Task { [weak self] in await self?.refreshRecovery() }
+        refreshAdmission()
     }
+
+    /// Hosts call this after their state has changed, not from a synchronous
+    /// objectWillChange read. It requests neither permission nor capture.
+    func refreshAdmission() {
+        if let hostAdmission { host = hostAdmission() }
+        let microphone = microphoneStatus()
+        let speech = host.recognition.canTranscribe ? nil : MeetingProblem.speech(host.recognition.line)
+        var refusal: MeetingProblem? = shuttingDown || host.closing ? .closing : speech
+        if refusal == nil { refusal = host.captureProblem ?? mayStart?().map(MeetingProblem.busy) }
+        if refusal == nil, selectedAppID != nil {
+            switch appEnumeration {
+            case .failed(let detail): refusal = .sourceProbe(detail)
+            case .unavailable(let detail): refusal = .appAudioUnavailable(detail)
+            case .unchecked: refusal = .sourceProbe("Refresh audio apps to check the selected source.")
+            case .available:
+                if !apps.contains(where: { $0.id == selectedAppID }) { refusal = .sourceDisappeared }
+            }
+        }
+        if refusal == nil, includeMicrophone {
+            if microphone == .denied { refusal = .microphoneDenied }
+            if microphone == .restricted { refusal = .microphoneRestricted }
+        }
+        if refusal == nil, selectedAppID == nil, !includeMicrophone { refusal = .noSource }
+        let next = MeetingAdmission(microphone: microphone, captureProblem: refusal, recognitionProblem: speech)
+        if admission != next { admission = next }
+        if let problem, [.microphoneDenied, .microphoneRestricted, .microphoneUnconfirmed].contains(problem), microphone == .authorized { setProblem(nil) }
+    }
+
+    func updateHostAdmission(_ value: MeetingHostAdmission) { host = value; refreshAdmission() }
+    private func setProblem(_ value: MeetingProblem?) { problem = value }
+    var openPrivacyPane: (URL) -> Bool = { NSWorkspace.shared.open($0) }
+    func openMicrophoneSettings() { openPrivacy("Microphone") }
+    func openAudioRecordingSettings() { openPrivacy("AudioCapture") }
+    private func openPrivacy(_ pane: String) {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_" + pane), openPrivacyPane(url) else {
+            setProblem(.unknown("System Settings could not be opened. Open Privacy & Security from System Settings to review access. No recording started.")); return
+        }
+    }
+    var canUseAppAudioOnly: Bool { selectedAppID != nil && appEnumeration == .available && apps.contains { $0.id == selectedAppID } }
+    func useAppAudioOnly() { guard !isBusy, canUseAppAudioOnly else { return }; includeMicrophone = false; setProblem(nil) }
+    func useMicrophoneOnly() { guard !isBusy else { return }; selectAudioSource(nil); setProblem(nil) }
 
     private static func requestMicrophone() async -> Bool {
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
@@ -170,19 +233,24 @@ final class MeetingModel: ObservableObject {
     }
 
     func refreshApps() {
-        apps = detector.availableApps()
-        if !detector.isAvailable { error = detector.unavailableReason }
-        else if let issue = detector.lastError { error = issue }
+        switch detector.enumerateApps() {
+        case .success(let current): apps = current; appEnumeration = .available
+        case .failure(let issue):
+            if case .appAudioUnavailable(let detail) = issue { appEnumeration = .unavailable(detail) }
+            else { appEnumeration = .failed(issue.message) }
+        }
+        refreshAdmission()
     }
 
     func start(expectedApp: MeetingAudioApp? = nil) async {
         guard !isBusy, !shuttingDown else { return }
-        if let issue = mayStart?() { error = issue; return }
+        if selectedAppID != nil { refreshApps() }
+        refreshAdmission()
+        if let issue = admission.captureProblem { setProblem(issue); return }
         let app: MeetingAudioApp?
         if let selectedAppID {
-            refreshApps()
             guard let chosen = apps.first(where: { $0.id == selectedAppID }) else {
-                error = "The selected audio app is no longer available. Choose its current audio source before starting."
+                setProblem(.sourceDisappeared)
                 return
             }
             if let expectedApp, chosen.id != expectedApp.id || chosen.bundleID != expectedApp.bundleID {
@@ -193,7 +261,7 @@ final class MeetingModel: ObservableObject {
         guard app != nil || includeMicrophone else { error = "Choose an app, the microphone, or both."; return }
         let token = UUID(); generation = token
         let microphone = includeMicrophone, kind = purpose == "call" ? "call" : "meeting"
-        error = nil; offer = nil; elapsed = 0; pendingTranscriptNotes = []; completedTranscriptID = nil; completedTranscriptText = nil; keptWithoutSpeech = nil; receipt = nil
+        setProblem(nil); offer = nil; elapsed = 0; pendingTranscriptNotes = []; completedTranscriptID = nil; completedTranscriptText = nil; keptWithoutSpeech = nil; receipt = nil
         autoFinish = MeetingAutoFinish(); autoFinishSeconds = nil; recordingApp = app
         notice = microphone ? "Waiting for microphone access…" : "Starting app audio… macOS may ask for Audio Recording access."
         phase(starting: true)
@@ -220,11 +288,30 @@ final class MeetingModel: ObservableObject {
         var createdLive: LiveVoiceService?
         do {
             if microphone {
-                let allowed = await microphonePermission()
+                let before = microphoneStatus()
+                let allowed: Bool
+                if before == .authorized { allowed = true }
+                else if before == .notDetermined { allowed = await microphonePermission() }
+                else { allowed = false }
                 try check(token)
-                guard allowed else { throw MeetingError.message(Self.microphoneRefused) }
+                let after = microphoneStatus()
+                guard allowed, after == .authorized else {
+                    throw after == .restricted ? MeetingProblem.microphoneRestricted : after == .denied ? MeetingProblem.microphoneDenied : MeetingProblem.microphoneUnconfirmed
+                }
             }
             try check(token)
+            if let readSpeechSnapshot {
+                let current = await readSpeechSnapshot()
+                try check(token)
+                guard current.canTranscribe else { throw MeetingProblem.speech(current.line) }
+                host.recognition = current
+            }
+            if app != nil { refreshApps() }
+            refreshAdmission()
+            try check(token)
+            if let issue = admission.captureProblem { throw issue }
+            guard selectedAppID == app?.id, includeMicrophone == microphone else { throw MeetingProblem.checkpoint("The prepared sources changed. Review them and start again.") }
+            if let app, !apps.contains(where: { $0.id == app.id && $0.bundleID == app.bundleID }) { throw MeetingProblem.sourceDisappeared }
             notice = app != nil ? "Starting app audio… macOS may ask for Audio Recording access." : "Starting microphone…"
             let manifest = MeetingManifest(id: UUID(), createdAt: Date(), updatedAt: Date(), purpose: purpose,
                                            appName: app?.name, appBundleID: app?.bundleID,
@@ -234,6 +321,8 @@ final class MeetingModel: ObservableObject {
             let session = try await MeetingFileWork.run { try MeetingStore.create(root: root, manifest: manifest) }
             createdSession = session; initial = manifest
             try check(token)
+            refreshAdmission()
+            if let issue = admission.captureProblem { throw issue }
             activeSession = session; activeManifest = manifest
             // Hold admission through the model reservation too. Cancel waits for this exact
             // startup owner instead of allowing its late completion into a newer capture.
@@ -254,6 +343,11 @@ final class MeetingModel: ObservableObject {
             } else if liveEngine != nil {
                 voiceSession.message = "This model transcribes saved audio when you finish. Live words are available with Parakeet."
             }
+            // A server reservation returns false; that awaited path needs the
+            // same cancellation/admission check as a live local reservation.
+            try check(token)
+            refreshAdmission()
+            if let issue = admission.captureProblem { throw issue }
             let input = liveVoice?.input
             try await recorder.start(MeetingCaptureRequest(tracksDirectory: session.appendingPathComponent(MeetingStore.tracksDirectory),
                 app: app, includeMicrophone: microphone, onAudio: { audio in
@@ -286,7 +380,7 @@ final class MeetingModel: ObservableObject {
             // A permission request can return after Cancel and a newer start.
             // It owns no capture then and must not change that newer operation.
             guard generation == token || activeSession == createdSession && createdSession != nil else { return }
-            if !(error is CancellationError), self.error == nil { self.error = error.localizedDescription }
+            if !(error is CancellationError), self.error == nil { setProblem((error as? MeetingProblem) ?? .unknown(error.localizedDescription)) }
             activeCapture = nil; activeSession = nil; activeManifest = nil; operation = nil
             notice = error is CancellationError ? "Cancelled. Any recorded audio was kept for explicit retry." : "Recording stopped. Any saved audio is available for retry."
             phase()
@@ -376,7 +470,7 @@ final class MeetingModel: ObservableObject {
                     self.error = reason ?? report.failure
                 }
             } catch {
-                if !(error is CancellationError) { self.error = error.localizedDescription }
+                if !(error is CancellationError) { self.setProblem((error as? MeetingProblem) ?? .unknown(error.localizedDescription)) }
                 self.notice = "Original audio was kept. Retry when you are ready."
             }
             self.activeCapture = nil; self.activeSession = nil; self.activeManifest = nil
@@ -396,7 +490,8 @@ final class MeetingModel: ObservableObject {
         if let reason, !reason.isEmpty { next.gaps.append(reason) }
         next.gaps += report.gaps
         // Cancellation never cancels the small atomic finalisation write.
-        try await Task.detached(priority: .utility) { try MeetingStore.save(next, at: session, replacing: previous) }.value
+        do { try await Task.detached(priority: .utility) { try MeetingStore.save(next, at: session, replacing: previous) }.value }
+        catch { throw MeetingProblem.save(error.localizedDescription) }
     }
 
     func cancel() async {
@@ -427,9 +522,8 @@ final class MeetingModel: ObservableObject {
     /// Transcribes the chosen kept recording, or the newest readable one when none is named.
     func retry(_ chosen: MeetingRecoveryEntry? = nil) async {
         guard !isBusy, !shuttingDown else { return }
-        if let issue = mayStart?() { error = issue; return }
         let token = UUID(); generation = token
-        error = nil; pendingTranscriptNotes = []; completedTranscriptID = nil; completedTranscriptText = nil; keptWithoutSpeech = nil; receipt = nil
+        setProblem(nil); pendingTranscriptNotes = []; completedTranscriptID = nil; completedTranscriptText = nil; keptWithoutSpeech = nil; receipt = nil
         notice = "Opening the saved recording…"; phase(processing: true)
         let task = Task { [weak self] in
             guard let self else { return }
@@ -442,10 +536,13 @@ final class MeetingModel: ObservableObject {
                     throw MeetingError.message(target?.problem ?? (chosen == nil ? entries.first?.problem : nil)
                         ?? "That recording is no longer waiting to be transcribed.")
                 }
-                try await self.process(session: entry.session, token: token)
+                if let expected = chosen?.checkpoint, let current = entry.checkpoint, !expected.matches(current) {
+                    throw MeetingProblem.checkpoint("The selected recording checkpoint changed. Review it again; no recognition or save was started.")
+                }
+                try await self.process(session: entry.session, token: token, reviewed: entry.checkpoint)
             } catch {
-                if !(error is CancellationError) { self.error = error.localizedDescription }
-                self.notice = "Saved audio remains available for explicit retry."
+                if !(error is CancellationError) { self.setProblem((error as? MeetingProblem) ?? .unknown(error.localizedDescription)) }
+                self.notice = "The saved checkpoint was kept for review."
             }
             // The kept list is current before the page sees the work end.
             await self.refreshRecovery()
@@ -454,24 +551,57 @@ final class MeetingModel: ObservableObject {
         operation = task; await task.value
     }
 
-    private func process(session: URL, token: UUID) async throws {
+    private func process(session: URL, token: UUID, reviewed: MeetingRecoveryCheckpoint? = nil) async throws {
         try check(token)
+        let inspected = try await MeetingFileWork.run { try MeetingRecovery.inspect(session: session) }
+        try check(token)
+        guard let checkpoint = inspected.checkpoint else { throw MeetingProblem.checkpoint("The recording checkpoint could not be read.") }
+        if let reviewed, !reviewed.matches(checkpoint) { throw MeetingProblem.checkpoint("The selected checkpoint changed. Review it again before saving or transcribing.") }
+        let intent: MeetingProcessor.Intent
+        if checkpoint.text != nil { intent = .commitOnly(checkpoint) }
+        else {
+            guard checkpoint.originalsAvailable else {
+                if checkpoint.manifest.tracks.isEmpty { throw MeetingProblem.noSamples }
+                throw MeetingProblem.checkpoint("Original audio is missing and this transcript is incomplete. Its remaining checkpoint was kept; the past recording cannot be recaptured.")
+            }
+            if let readSpeechSnapshot {
+                let current = await readSpeechSnapshot(); try check(token)
+                guard current.canTranscribe else { throw MeetingProblem.speech(current.line) }
+                host.recognition = current
+            }
+            refreshAdmission()
+            if let issue = admission.recognitionProblem { throw issue }
+            intent = .recognize(checkpoint)
+        }
         processingSessionID = UUID(uuidString: session.lastPathComponent)
         defer { processingSessionID = nil }
-        notice = "Transcribing saved audio…"
+        notice = checkpoint.text != nil ? "Saving complete transcript…" : "Transcribing saved audio…"
         let processor = MeetingProcessor(session: session, transcribe: transcribe, commit: { [weak self] transcript, purpose, notes in
             guard let self else { throw CancellationError() }
             try self.check(token)
+            if let existing = try self.loadSavedTranscript?(transcript.id) {
+                self.pendingTranscriptNotes = existing.notes; self.completedTranscriptText = existing.transcript.text
+                return
+            }
             guard let save = self.saveTranscript else { throw MeetingError.message("History is not ready to save this recording. Its original audio was kept.") }
             self.pendingTranscriptNotes = notes
             try save(transcript, purpose)
-            self.completedTranscriptText = transcript.text
+            if let resolve = self.loadSavedTranscript {
+                guard let saved = try resolve(transcript.id) else { throw MeetingProblem.save("History did not confirm the saved UUID.") }
+                self.completedTranscriptText = saved.transcript.text; self.pendingTranscriptNotes = saved.notes
+            } else { self.completedTranscriptText = transcript.text }
         }, isCurrent: { [weak self] in self?.generation == token })
-        let result = try await processor.run()
-        pendingTranscriptNotes = result.notes
+        let result: MeetingProcessor.Outcome
+        do { result = try await processor.run(intent: intent) }
+        catch is CancellationError { throw CancellationError() }
+        catch let issue as MeetingProblem { throw issue }
+        catch { throw checkpoint.text != nil ? MeetingProblem.save(error.localizedDescription) : MeetingProblem.recognition(error.localizedDescription) }
+        if let saved = try loadSavedTranscript?(result.manifest.id), result.committed {
+            pendingTranscriptNotes = saved.notes; completedTranscriptText = saved.transcript.text
+        } else { pendingTranscriptNotes = result.notes }
         if result.committed { completedTranscriptID = result.manifest.id }
         else { keptWithoutSpeech = KeptMeeting(session: session, message: result.manifest.failure ?? "No speech was recognised.") }
-        notice = ([result.committed ? "Saved to History." : "Original audio was kept."] + result.notes).joined(separator: " ")
+        notice = ([result.committed ? "Saved to History." : result.manifest.failure ?? "The recording checkpoint was kept."] + pendingTranscriptNotes).joined(separator: " ")
         elapsed = result.manifest.seconds
     }
 
@@ -514,6 +644,7 @@ final class MeetingModel: ObservableObject {
         isStarting = starting; isRecording = recording; isProcessing = processing
         if !starting { startupNoticeTask?.cancel(); startupNoticeTask = nil }
         detector.isSuppressed = isBusy
+        refreshAdmission()
         if isBusy { offer = nil }
         onStateChange?()
     }
@@ -550,7 +681,9 @@ final class MeetingModel: ObservableObject {
     /// It cannot request permission or open a capture.
     func refreshDetection() {
         guard detectionEnabled, !shuttingDown else { offer = nil; return }
-        detector.isSuppressed = isBusy || mayStart?() != nil
+        refreshAdmission()
+        detector.isSuppressed = isBusy || host.closing || !host.recognition.canTranscribe
+            || host.captureProblem != nil || mayStart?() != nil
         offer = detector.evaluate()
         if let issue = detector.lastError, !isBusy { error = issue }
     }
@@ -567,6 +700,8 @@ final class MeetingModel: ObservableObject {
         guard !isBusy, !shuttingDown else { return }
         guard offer == app else { error = "That call offer has changed. Choose the current audio source to start."; return }
         refreshApps()
+        if case .failed(let detail) = appEnumeration { setProblem(.sourceProbe(detail)); return }
+        if case .unavailable(let detail) = appEnumeration { setProblem(.appAudioUnavailable(detail)); return }
         guard apps.contains(where: { $0.id == app.id && $0.bundleID == app.bundleID }) else {
             offer = nil; error = "That audio source is no longer available. Choose its current source to start."; return
         }
@@ -597,7 +732,7 @@ final class MeetingModel: ObservableObject {
     }
 
     func dismissKeptWithoutSpeech() { keptWithoutSpeech = nil }
-    func dismissError() { error = nil }
+    func dismissError() { setProblem(nil) }
 
     func dismissOffer() { if let offer { detector.dismiss(offer) }; offer = nil }
     func snoozeOffers() { detector.snooze(); offer = nil }
@@ -610,6 +745,7 @@ final class MeetingModel: ObservableObject {
     /// The app's terminateLater hook awaits this before replying to macOS.
     func prepareForShutdown() async {
         shuttingDown = true
+        refreshAdmission()
         recordingPlayback.close()
         detectionTask?.cancel(); detectionTask = nil; offer = nil
         recoveryTask?.cancel(); recoveryTask = nil

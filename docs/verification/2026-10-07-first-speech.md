@@ -66,6 +66,19 @@ To reproduce without touching a user's cache: compile the same production declar
 
 This establishes real inference after pathname adoption/exchange and process-restarted offline preparation. Actual downloading, physical capture, OS denial and Settings-return behavior remain separate. The signed-app observations below cover cached preparation and synthetic file import only.
 
+## Real production download, Cancel and retry
+
+A later isolated probe compiled the same exact `281a5003` recognition sources and pinned dependency, this time keeping **both** production download and load operations unchanged. Only the cache destination and absolute temporary preferences location were supplied by the private driver. Network access was enabled for acquisition; the process sandbox denied writes to the installed FluidAudio models, both Workbench editions' saved data and real Preferences. A deliberately invalid previous scratch cache contained only a sentinel, so successful retry could not reuse an installed model.
+
+- Cancel was invoked after the production engine reported **1%** download progress. It settled to idle, unavailable admission with no failure; its private candidate was removed and the prior scratch sentinel remained exact.
+- Explicit retry downloaded and prepared all **22 files / 464,413,250 bytes**, adopted the candidate and transcribed the synthetic WAV to the exact same 96-byte sentence. Atomic replacement retained the previous scratch cache. Downloaded file hashes also matched the earlier installed-model baseline.
+- A separate new process then ran `prepareCached` against those actually downloaded scratch files under an explicit network-denying sandbox. File inference and live inference returned the expected words, with 16 valid timed word groups. Acquisition and server-transport counts were zero.
+- After all three stages, the original installed model directory still matched its complete pre-test hash manifest. No app was installed, no microphone opened and no real cache was renamed, purged or replaced.
+
+The download executable SHA256 is `248178b2aab56ce2de72b883a9f4bd01872fe6722a8776a5d7460d458baf3780`; the separate reload executable is `bc20e21a82d42f6da825369fcd229aff89d9827f7df40dbfce9b76f7cbcb8aa1`. The private evidence retains source hashes, sandbox profiles, Cancel/retry/reload receipts and before/after manifests. Two preliminary driver path-guard failures occurred before network or model work because macOS normalizes existing `/private/tmp` ancestors differently from not-yet-created child URLs; the driver now checks both lexical containment and the resolved existing ancestor. Those failures were retained and required no production repair. The pinned runtime again emitted its zero-shape warning while successful inference completed.
+
+This closes the real downloader/cancellation/retry and fresh-process cached-inference **runtime** gap. It is not a fresh-account signed-app Download/Not now/Cancel observation, a permission-denial test, or an accuracy/performance benchmark.
+
 ## Signed native acceptance, 7 October
 
 The sole Preview installer verified actual Copy build details on **Workbench Preview 2.4.1 (20261006173035)**, clean source `746d85f13e17c4ee1fcfcd6ea467a10816b5b74b`, local development, macOS 26.5.1 (25F80). Archive SHA256: `25587ff0da951b21b00029c265dddbae2527b5920ee7092ec32f6f8922be382c`. The lead used that installed app with the synthetic WAV from the runtime probe. No microphone recording or speaker playback occurred.
@@ -87,4 +100,4 @@ The direct Home download choice now shows the known approximate 450 MB size usin
 
 ## Remaining signed-native gates
 
-Verify the fresh-account explicit download/Not now/cancellation/retry journey, actual offline preparation and use, permission denial/Settings return/Stop, and ordinary-field delivery with unavailable Accessibility on the exact signed candidate. The real-CoreML probe resolves source-runtime inference after candidate adoption/exchange and a new-process network-denied reload; the installed checks above do not transfer that offline condition to the UI or establish real downloading. Keep those distinctions in the [model contract](../model-providers.md). Real disk exhaustion, model accuracy, device timing, VoiceOver and full keyboard behavior also remain native limits.
+Verify the fresh-account explicit download/Not now/cancellation/retry journey, actual offline preparation and use, permission denial/Settings return/Stop, and ordinary-field delivery with unavailable Accessibility on the exact signed candidate. The isolated runtime probes establish actual production download/Cancel/retry, candidate adoption/exchange and a new-process network-denied reload. The installed observations do not transfer those network conditions to the UI or complete the fresh-account setup journey. Keep those distinctions in the [model contract](../model-providers.md). Real disk exhaustion, model accuracy, device timing, VoiceOver and full keyboard behavior also remain native limits.
