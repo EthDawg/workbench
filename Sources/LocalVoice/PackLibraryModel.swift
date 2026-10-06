@@ -317,19 +317,24 @@ final class PackLibraryModel: ObservableObject {
         }
     }
 
+    private static let savedFileLibraryReview = "Library needs review. Choose Add saved file to Library to review its current saved contents and retry. Details remain in Resources → Library details."
+
     @discardableResult func addSavedResource(to library: DemoLibraryModel, reviewCurrentStore: Bool = false) -> Bool {
         guard let saved = savedResource else { return false }
         let access = saved.url.startAccessingSecurityScopedResource()
         defer { if access { saved.url.stopAccessingSecurityScopedResource() } }
         do {
             try saved.verify()
+            guard library.draft == nil, library.importReview == nil else {
+                throw VoiceError.message("Finish the current Library review before adding this file's reference.")
+            }
             if reviewCurrentStore {
                 guard library.reviewForSavedFileReference() else {
-                    throw VoiceError.message(library.storageFailure ?? "Finish the current Library review before adding this file's reference.")
+                    throw VoiceError.message(library.savingDisabled ? Self.savedFileLibraryReview : "The current Library could not be reviewed.")
                 }
             }
-            guard library.draft == nil, library.importReview == nil, !library.savingDisabled else {
-                throw VoiceError.message(library.storageFailure ?? "Finish the current Library review before adding this file's reference.")
+            guard !library.savingDisabled else {
+                throw VoiceError.message(Self.savedFileLibraryReview)
             }
             if let existing = library.resources.first(where: { $0.id == saved.id }) {
                 guard existing.kind == .file, existing.content == saved.url.path else {
@@ -343,7 +348,9 @@ final class PackLibraryModel: ObservableObject {
                 #endif
                 let bookmark = try saved.url.bookmarkData(options: options, includingResourceValuesForKeys: nil, relativeTo: nil)
                 let resource = DemoResource(id: saved.id, kind: .file, title: saved.title, content: saved.url.path, bookmark: bookmark)
-                guard library.save(resource) else { throw VoiceError.message(library.storageFailure ?? library.error ?? "Library could not be saved.") }
+                guard library.save(resource) else {
+                    throw VoiceError.message(library.savingDisabled ? Self.savedFileLibraryReview : (library.error ?? "Library could not be saved."))
+                }
             }
             guard try services.readLibrary(library.store).contains(where: { $0.id == saved.id && $0.kind == .file && $0.content == saved.url.path }) else {
                 throw VoiceError.message("The Library reference could not be verified.")

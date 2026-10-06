@@ -64,14 +64,14 @@ The atomic-update regression downloads a same-sized incorrect replacement into t
 
 Both themes render these actual production states: fresh empty Packs, explicit Add prefill, pending device code, verified installed content while disconnected, refused offline update with content still usable, and saved-file/reference recovery. The gallery injects the existing Packs owner into WorkbenchHome so it never reads real credentials, contacts GitHub or opens a browser. Layout/text were visually reviewed at minimum width; controls remain readable and recovery shows a filename before collapsed full-path details.
 
-Representative exact-source renders:
+Representative renders from the original source, with the recovery instruction updated by the copy correction recorded below:
 
 - [Fresh Packs](2026-10-07-library-packs/empty-light.png)
 - [Explicit Add](2026-10-07-library-packs/add-dark.png)
 - [Device code and cancellation](2026-10-07-library-packs/device-code-light.png)
 - [Offline installed content](2026-10-07-library-packs/offline-light.png)
 - [Refused update preserves content](2026-10-07-library-packs/update-refused-light.png)
-- [Saved-file reference recovery](2026-10-07-library-packs/reference-retry-dark.png)
+- [Saved-file reference recovery, current instruction](2026-10-07-library-packs/reference-retry-contextual-dark.png)
 
 The dynamic skill choice, pack action/removal menus, expanded appearance settings and native save-panel interactions have source/owner checks and registry coverage; the offscreen pass does not claim their native presentation or focus behavior.
 
@@ -88,3 +88,11 @@ Explicit Retry now always calls the existing current-store review before consult
 Ten additional cases begin with the real Library save succeeding, then restore a valid earlier store, remove the store, or corrupt it immediately before readback. Each verifies an initially unheld cache containing the committed UUID. Valid-store retry preserves active editor text and import choices until explicitly cleared; missing/corrupt retry establishes a persistent hold while preserving cached readable records and exact exported bytes. After valid storage is restored, the same owner creates exactly one reference with the original UUID, keeps the existing saved resource, selects the exported file and changes neither the chooser nor export counts. No second Library model bypasses the observed state.
 
 The exact repair release build passed in 111.80 seconds. `--check-readback-pack` passed 32 retained checks and 42 Packs-owner checks. `git diff --check` passed. Logs are `.build/library-packs-retry-build.log` and `.build/library-packs-retry-checks.log`. No view/control or PackStore code changed; the original render inventory and separate native limits above remain applicable. The repair is frozen for independent review, not recorded as installed acceptance.
+
+## Contextual recovery instruction
+
+Source `0d90d973326d174cb5d9c464ffd8f2192042f7b4` corrects one instruction found in visual review. Packs previously propagated Library's general “Reopen Workbench” guidance, despite holding a temporary saved-file retry that could finish in place. At the known Library review, held-write and failed-save points, Packs now uses the existing typed `savingDisabled` state to explain that the file is saved, Library needs review, and **Add saved file to Library** reviews current saved contents and retries. The unchanged persistent diagnostic remains in Resources → Library details. No string replacement, global Resources wording change, new control, state or store was added.
+
+The catch-all error path remains unchanged. File verification, pending drafts/imports and final readback retain their specific explanations rather than being mapped to a generic storage message merely because a hold exists. The owner check verifies the contextual instruction and retained Library diagnostic; existing assertions now also check those specific failure explanations.
+
+The exact release build passed in 104.43 seconds. `--check-readback-pack` passed 32 retained checks plus 43 Packs-owner checks. The synthetic production gallery passed 12 renders, three catalogue entries and zero flags. Both affected minimum-width renders were inspected: [light](2026-10-07-library-packs/reference-retry-contextual-light.png) and [dark](2026-10-07-library-packs/reference-retry-contextual-dark.png). The message and retry controls are readable, without the contradictory restart instruction. These supersede the original recovery render's wording; the original image remains historical evidence. Logs use `.build/library-packs-copy-{build,checks,gallery}.log`; the full render set is `.build/library-packs-copy-gallery`. Native acceptance remains separate.
