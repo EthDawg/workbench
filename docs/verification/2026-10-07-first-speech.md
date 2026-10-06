@@ -1,6 +1,6 @@
 # First speech: deliberate setup and retained cache
 
-Foundation J ([#15](https://github.com/Ship-Work/workbench/issues/15), [#165](https://github.com/Ship-Work/workbench/issues/165)). Source starts at `7cd3b0a923d1119861a7e4524f0dc2b1aeb229b4`; independent-review repairs and retained fixture updates are frozen at `281a5003fd2add67377189d37952844326f8497d`. The latter includes the parent Packs preference-isolation repair `e61322e` and its preceding signed Library evidence. This record covers source, synthetic owner checks and offscreen production renders, not an installed first-speech acceptance.
+Foundation J ([#15](https://github.com/Ship-Work/workbench/issues/15), [#165](https://github.com/Ship-Work/workbench/issues/165)). Source starts at `7cd3b0a923d1119861a7e4524f0dc2b1aeb229b4`; independent-review repairs and retained fixture updates are frozen at `281a5003fd2add67377189d37952844326f8497d`. The latter includes the parent Packs preference-isolation repair `e61322e` and its preceding signed Library evidence. This record covers source, synthetic owner checks, offscreen production renders and the isolated real-CoreML probe below. It is not an installed first-speech acceptance.
 
 ## Ownership and behavior
 
@@ -12,7 +12,7 @@ Home has one visible deferral in its fresh guide. Models provides explicit Downl
 
 ## Focused verification
 
-All model acquisition, model loading, credential and OS-permission boundaries below are injected or use synthetic files. The existing transport checks use local loopback HTTP fixtures. No real model, account, live cache, privacy setting or installed application was changed.
+All model acquisition, model loading, credential and OS-permission boundaries in this focused-check section are injected or use synthetic files. The existing transport checks use local loopback HTTP fixtures. No real model, account, live cache, privacy setting or installed application was changed.
 
 | Check | Result |
 | --- | --- |
@@ -44,6 +44,28 @@ The focused gallery uses the production Home, Models, Dictate and Snap & Talk vi
 
 The local server and deferred Snap & Talk renders remain in the local gallery. The latter is the first-run session page; it does not establish a loaded saved-session journey. Native keyboard focus, VoiceOver, real permission dialogs and live capture were not exercised by rendering.
 
+Integration with merged main at `c04dacfa1615cb29f8f9b83e99d205e9f34180ee` preserved the reviewed app and capture-harness source exactly. The integrated release build passed in 119.17 seconds; providers/lifecycle, core, the 184-check capture-persistence harness and the 628-entry surface registry passed again. Integration logs use `.build/first-speech-integration-`. Only this verification record changed after that source checkpoint.
+
+## Real CoreML adoption and offline reload
+
+The lead compiled the exact `281a5003` recognition/readiness/local-loader/ending sources and unchanged `VoiceError`/`LiveVoiceWord` declarations into a disposable command-line probe, linked against the existing pinned FluidAudio `4dbf4f9f9a5ff3a53ade848d7ba4e3df13db859b` objects. The production loader, engine admission, atomic adoption and both inference paths were unchanged. Only the acquisition dependency copied an already-cached model into the private candidate using an APFS clone; no download was exercised.
+
+Three separate processes ran on arm64 macOS 26.5.1 under an explicit network-denying sandbox that also denied writes to the real FluidAudio model directory, both editions' saved data and real Preferences. Each engine used an absolute temporary preferences path and scratch-owned models. A 6.72-second mono 16 kHz synthetic Daniel-voice WAV supplied the same sentence, without microphone recording or speaker playback.
+
+| Runtime case | Result |
+| --- | --- |
+| Initial adoption into an absent scratch cache | Production loading and adoption succeeded; file transcription and live timed words returned the asserted sentence after the candidate path was removed. |
+| Atomic replacement of an existing scratch cache | The previous compiled directories were renamed unusable **only in scratch**, so reopening those old paths could not silently pass. After production `RENAME_SWAP`, both inference paths returned the sentence; the entire previous scratch cache remained byte-exact in the retained candidate. |
+| New-process offline reload | Production `prepareCached` succeeded and both inference paths returned the sentence. Acquisition and server transport were forbidden by the injected services; their call counts were zero. |
+
+All three returned “This is a synthetic workbench acceptance test. The meeting starts at 9. Keep the original words.” The live path returned 16 nonempty timed word groups with finite, ordered start/end values. Initial/replacement invoked one clone acquisition each and no server transport. All adopted files matched the fixture; the original 22-file, 464,413,250-byte user model cache matched its pre-probe SHA-256 manifest afterward. The WAV SHA-256 is `cebe673460bf1fd5290a50de7075a596497c0fec9a399f2c676ad4257181d744`; the final probe executable is `20d0fc572e0417daaa2535c270d1568dd074a890498c06a72fcb5f64fe74894b`.
+
+The pinned runtime emitted an E5RT zero-shape inference warning in each process; both recognition paths still completed with the asserted content. This is a short usability/correctness probe, not an accuracy or performance benchmark. Two earlier private-driver path-guard failures happened before model loading; the driver was corrected to resolve existing ancestors for not-yet-created scratch paths. No production repair was required by these probes.
+
+To reproduce without touching a user's cache: compile the same production declarations with their pinned dependency, give `RecognitionLocalModels.acquire(cache:operations:)` an explicit scratch destination, replace only `operations.download` with a clone into `candidate/cache.lastPathComponent`, and keep `Operations.live.load`. Inject those services into a fresh engine. Test initial adoption, deliberately unusable old scratch contents, then cached-only loading in a new network-denied process; assert known words, live timing, adoption/retention manifests and unchanged originals. Do not use the legacy `--check-live-voice-model` for this check: it selects the real default cache and the dependency's repair-capable wrapper. Private source hashes, driver, logs and manifests remain in the local first-speech evidence folder.
+
+This establishes real inference after pathname adoption/exchange and process-restarted offline preparation. Actual downloading, signed app controls, physical capture, OS denial and Settings-return behavior remain separate.
+
 ## Remaining signed-native gates
 
-Verify actual cached-only preparation and speech inference offline, relaunch without hidden acquisition, explicit download/cancellation/retry, initial candidate adoption and replacement of an existing cache followed by inference, and permission denial/Settings return/Stop on the exact signed candidate. Successful model construction and synthetic atomic adoption do not establish CoreML's lazy file behavior after a pathname exchange. That post-adoption inference requirement is retained in the [model contract](../model-providers.md). Real disk exhaustion, model accuracy and device timing also remain native limits.
+Verify actual cached-only preparation and speech inference offline, relaunch without hidden acquisition, explicit download/cancellation/retry, initial candidate adoption and replacement of an existing cache followed by inference, and permission denial/Settings return/Stop on the exact signed candidate. The real-CoreML probe above resolves the source-runtime inference check after pathname exchange; it does not transfer its result to untested signed UI or real-download journeys. Keep those distinctions in the [model contract](../model-providers.md). Real disk exhaustion, model accuracy and device timing also remain native limits.
