@@ -6,6 +6,28 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>Workbench</title>
         <item>
+            <title>2.4.1</title>
+            <pubDate>Tue, 06 Oct 2026 13:25:02 +1100</pubDate>
+            <sparkle:version>20261005234010</sparkle:version>
+            <sparkle:shortVersionString>2.4.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h2>Workbench 2.4.1</h2>
+<p>Follow your words as you speak, keep conversations together and move more easily from saved work to the next step.</p>
+<ul>
+<li><strong>See words while you speak.</strong> Meetings and Dictate show a live transcript with local Parakeet v2. Compatible text fields can receive live dictation directly; other fields keep the existing delivery when you finish. The floating pill stays compact.</li>
+<li><strong>Keep a conversation together.</strong> Start a detected supported call in one click, pause and resume the same recording, and see when audio is reconnecting. Supported calls offer a cancellable finish countdown after their app stops using audio; silence alone never ends a recording.</li>
+<li><strong>Prepare what comes next.</strong> A saved meeting keeps its transcript visible with review and follow-up preparation beside it. Send the conversation to your chosen destination for decisions, commitments and a useful draft; nothing is sent automatically.</li>
+<li><strong>Keep saved work dependable.</strong> History reuses unchanged search results while you select captures. Screenshot imports avoid duplicate Snaps after a failed Trash move, and unreadable Dictate preferences are preserved before replacement.</li>
+<li><strong>See your voice in the controls.</strong> Dictation has a responsive seven-bar trace, and Persona&#x27;s optional voice ring has a colour you choose. Reduce Motion keeps both still. Persona uses its microphone only while shown and records nothing.</li>
+</ul>
+<p>Choose Settings › Workbench updates when you&#x27;re ready. Your saved work stays in this edition&#x27;s library.</p>
+<p>First download: unzip Workbench, move it to Applications in your home folder, then open it there. When replacing an existing copy, quit it and use the same Applications folder.</p>
+<p>New live meeting recordings need Workbench 2.4.1 or later for review. Keep the recording folders and original audio if you roll back to an earlier version.</p>
+]]></description>
+            <enclosure url="https://github.com/Ship-Work/workbench/releases/download/v2.4.1/Workbench.zip" length="72720026" type="application/octet-stream" sparkle:edSignature="MtJYcmxw0nqKMCxzLc6egmqZMzT8DAWYZDnKIPzzo9o94BgS+sIHLgdiUUKqfj3ng1GrPWhZuDBDMNZWfc3LCg=="/>
+        </item>
+        <item>
             <title>2.4.0</title>
             <pubDate>Thu, 01 Oct 2026 13:24:26 +1000</pubDate>
             <sparkle:version>20261001032329</sparkle:version>
@@ -47,29 +69,9 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
 ]]></description>
             <enclosure url="https://github.com/EthDawg/workbench/releases/download/v2.3.1+20260930054504/Workbench.zip" length="71415995" type="application/octet-stream" sparkle:edSignature="3iglQYvA4delWp3CNE+/u7WwGayZNei4K/9diIg2NP1hjn/HqmR0SwHTQW8YgybuqnFEzNeXT2+c6BENLKzwAQ=="/>
         </item>
-        <item>
-            <title>2.3.1</title>
-            <pubDate>Tue, 29 Sep 2026 14:42:10 +1000</pubDate>
-            <sparkle:version>20260929044112</sparkle:version>
-            <sparkle:shortVersionString>2.3.1</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description><![CDATA[<h2>Workbench 2.3.1</h2>
-<p>A calmer Mac toolbar and clearer navigation, with fixes for captured work, reading and Persona controls.</p>
-<ul>
-<li>A quiet resting handle, compact contextual controls and Tab / Shift-Tab navigation.</li>
-<li>Recording, playback and results share one floating host. Starting independent activities preserves pending dictation recovery and clipboard receipts.</li>
-<li>A smaller Home with current work and recent History, pinned Settings and one Floating toolbar switch.</li>
-<li>Clearer Persona selection and shown states, portrait drafts and Circle / Card / Original appearance.</li>
-<li>Read preserves its draft when copied text is rejected, and timer menus act only on the step they displayed.</li>
-</ul>
-<p>For Apple Silicon Macs running macOS 14 or later. Your saved work stays in this edition's library.</p>
-]]></description>
-            <enclosure url="https://github.com/EthDawg/workbench/releases/download/v2.3.1/Workbench.zip" length="71020601" type="application/octet-stream" sparkle:edSignature="AI9FBpzsFp529+9VkYa44BKsHG8n5+NigZYLY8sya1WBGHg96wYXtDAHG/ADudhT5yoWe5K4nvwzFmzXGb9NCg=="/>
-        </item>
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: VMxjaNP3xA8pq7VskfC4gX8PmZ3OE7KGdehKP/XKx1HvLqIhXTGMaYpXzc1nm0x4ShUMqQhUsySkVikR++HsDQ==
-length: 6733
+edSignature: ErLUUmDQykeShojBx8WnNYE9deIc2Tx9LZEFTpQpZWTMzuWxILBxNwbH6Pmdbj3XcwYbqJH3jrIMesD0JlYODg==
+length: 7885
 -->
