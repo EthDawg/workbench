@@ -17,9 +17,8 @@
 # local time) and is filtered to the mode's own process id, so an installed edition running at
 # the same time is not counted.
 #
-# MODES lists the check modes the binary has on main. When a PR adds a mode (for example
-# --check-insertion-boundary from PR #265), add it here once that PR is merged; a mode the
-# binary does not know prints exit 1 and no log counts.
+# MODES lists the check modes the binary has on main. When a PR adds a mode, add it here
+# once that PR is merged; a mode the binary does not know prints exit 1 and no log counts.
 #
 # It never installs or replaces an app, never opens the app's UI, needs no microphone or
 # screen access, and never reads or writes the installed editions' saved data or preferences.
@@ -30,7 +29,7 @@ BIN="$APP/Contents/MacOS/$(/usr/libexec/PlistBuddy -c 'Print CFBundleExecutable'
 echo "binary: $BIN"
 /usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' -c 'Print CFBundleVersion' -c 'Print WorkbenchSourceRevision' "$APP/Contents/Info.plist" | tr '\n' ' '; echo
 codesign -dv --verbose=2 "$APP" 2>&1 | grep -E "Authority=Developer ID|Identifier=" | head -2
-MODES=(--check-core --check-reading --check-reading-render --check-reading-service --check-live-dictation-delivery --check-floating-toolbar --check-refinement --check-readback --check-feedback)
+MODES=(--check-core --check-reading --check-reading-render --check-reading-service --check-live-dictation-delivery --check-insertion-boundary --check-floating-toolbar --check-refinement --check-readback --check-feedback)
 PRED='(subsystem == "com.apple.Accessibility" AND eventMessage CONTAINS "unsafeForcedSync") OR (subsystem == "com.apple.siri" AND eventMessage CONTAINS "AFLocalization") OR (subsystem == "com.apple.runtime-issues")'
 printf "%-34s %6s %8s %6s %8s\n" mode exit axsync siri runtime | tee "$OUT/summary.txt"
 for m in "${MODES[@]}"; do
