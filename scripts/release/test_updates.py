@@ -646,14 +646,13 @@ class PinnedPublicationTests(ReleaseHistoryFixture, unittest.TestCase):
                 del self.acceptance['journeys'][index]
                 self.save_acceptance()
                 self.assert_acceptance_rejected()
-        self.acceptance = copy.deepcopy(original)
-        next(r for r in self.acceptance['journeys'] if r['id']=='X3')['status']='fail'
-        self.save_acceptance()
-        self.assert_acceptance_rejected()
-        self.acceptance = copy.deepcopy(original)
-        next(r for r in self.acceptance['journeys'] if r['id']=='I1')['status']='pass'
-        self.save_acceptance()
-        self.assert_acceptance_rejected()
+        for identity,status in [('X3','fail'),('I1','pass')]:
+            self.acceptance = copy.deepcopy(original)
+            row=next((r for r in self.acceptance['journeys'] if r['id']==identity),None)
+            if row is not None:  # Only declared variants are required by a bounded policy.
+                row['status']=status
+                self.save_acceptance()
+                self.assert_acceptance_rejected()
 
     def test_missing_changed_escaping_or_symlink_evidence_rejects(self):
         path = self.prepared/'acceptance-evidence/native.md'
@@ -766,7 +765,35 @@ class PinnedPublicationTests(ReleaseHistoryFixture, unittest.TestCase):
         contract=(build_info.ROOT/'docs/mac-foundation.md').read_text()
         declared=set(re.findall(r'^\| ([A-Z]+[0-9]+) \|',contract,re.MULTILINE))
         policy=json.loads((build_info.ROOT/'scripts/release/config.json').read_text())['acceptance']
-        self.assertEqual({row['id'] for row in policy['journeys']},declared)
+        configured={row['id'] for row in policy['journeys']}
+        if policy['claim']=='foundation-candidate':
+            self.assertEqual(configured,declared)
+        else:
+            self.assertEqual(policy['claim'],'bounded-slice')
+            self.assertTrue(configured and configured <= declared)
+
+    def test_reviewed_bounded_slice_keeps_smoke_and_affected_journey_required(self):
+        policy_path=self.checkout/'scripts/release/config.json'
+        config=json.loads(policy_path.read_text())
+        policy=config['acceptance']
+        policy['claim']='bounded-slice'
+        policy['impact']={'packages':['C'],'reason':'Only manual saved-transcript handoff is promoted.'}
+        policy['journeys']=[row for row in policy['journeys'] if row['id']=='H1']
+        policy_path.write_text(json.dumps(config))
+        self.acceptance['policySHA256']=prepare_update.policy_digest(policy)
+        self.acceptance['journeys']=[row for row in self.acceptance['journeys'] if row['id']=='H1']
+        self.save_acceptance()
+        files=prepare_update.validate_acceptance(self.prepared,self.receipt,self.verified_info,self.checkout)
+        self.assertIn(prepare_update.ACCEPTANCE_NAME,files)
+        accepted=copy.deepcopy(self.acceptance)
+        for failure in ('journey','smoke','evidence'):
+            with self.subTest(failure=failure):
+                self.acceptance=copy.deepcopy(accepted)
+                if failure=='journey': self.acceptance['journeys']=[]
+                elif failure=='smoke': self.acceptance['candidateSmoke']['status']='not-tested'
+                else: self.acceptance['journeys'][0]['evidence']=[]
+                self.save_acceptance()
+                self.assert_acceptance_rejected()
 
     def late_evidence_mutation(self, symlink):
         native=self.prepared/'acceptance-evidence/native.md'
