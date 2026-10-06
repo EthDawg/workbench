@@ -92,14 +92,14 @@ struct DemoLibraryView: View {
             if library.resources.isEmpty && library.savingDisabled {
                 WorkbenchEmptyState(symbol: "exclamationmark.triangle", title: "Your saved Library could not be displayed",
                     detail: "Its file has not been replaced.") { EmptyView() }
-                    .frame(maxWidth: 520).frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .frame(maxWidth: 520, alignment: .leading).frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if library.resources.isEmpty {
                 emptyLibrary
             } else if library.matches.isEmpty {
                 WorkbenchEmptyState(symbol: "magnifyingglass", title: "No matching resources",
                     detail: "Try other words, or show every resource.") {
                     Button("Clear filters") { library.query = ""; library.favoritesOnly = false }
-                }.frame(maxWidth: 520).frame(maxWidth: .infinity, maxHeight: .infinity)
+                }.frame(maxWidth: 520, alignment: .leading).frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 HSplitView {
                     List(selection: $library.selection) {
@@ -212,7 +212,7 @@ struct DemoLibraryView: View {
                 Button("Add local file…") { library.chooseFile() }
                 Button("New link…") { library.draft = DemoResource(kind: .link) }
             }.disabled(library.savingDisabled)
-        }.frame(maxWidth: 520).frame(maxWidth: .infinity, maxHeight: .infinity)
+        }.frame(maxWidth: 520, alignment: .leading).frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     private func detail(_ item: DemoResource) -> some View {
         VStack(alignment: .leading, spacing: 16) {

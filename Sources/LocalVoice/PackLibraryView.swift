@@ -135,7 +135,7 @@ struct PackLibraryView: View {
                     WorkbenchEmptyState(symbol: "shippingbox", title: "Add reusable content when you need it",
                         detail: "Packs bring shared skills, scenes, personas and resources. Your ordinary Workbench tools are ready to use without one.") {
                         Button("Add a pack…") { showingAdd = true }.buttonStyle(.borderedProminent)
-                    }.frame(maxWidth: 520).frame(maxWidth: .infinity, maxHeight: centred ? .infinity : nil)
+                    }.frame(maxWidth: 520, alignment: .leading).frame(maxWidth: .infinity, maxHeight: centred ? .infinity : nil)
                         // Centred, it starts below the space Resources gives its search row (a
                         // 22-point field and 16 points), so both empty states sit at one height.
                         .padding(.top, 38).padding(.bottom, centred ? 0 : 38)

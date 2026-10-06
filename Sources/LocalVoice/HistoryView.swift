@@ -333,7 +333,7 @@ struct HistoryView: View {
                 WorkbenchEmptyState(symbol: "clock", title: "Nothing here yet",
                     detail: "Dictations, Snaps and Hand off results land here, newest first. "
                         + (dictate.enabled ? "Press \(dictate.label) to dictate, or choose Snap in the menu bar." : "Choose Dictate or Snap in the menu bar.")) { EmptyView() }
-                    .frame(maxWidth: 520).frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .frame(maxWidth: 520, alignment: .leading).frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 TextField("Search transcripts, Snaps and results", text: $query).textFieldStyle(.roundedBorder)
                     .accessibilityLabel("Search History")
@@ -347,7 +347,7 @@ struct HistoryView: View {
                         detail: (appliedQuery.isEmpty ? emptyFilterDetail : "Try other words, or another filter.")
                             + (library.selected.isEmpty ? "" : " Your selection is kept.")) {
                         if !appliedQuery.isEmpty { Button("Clear search") { query = ""; appliedQuery = "" } }
-                    }.frame(maxWidth: 520).frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }.frame(maxWidth: 520, alignment: .leading).frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     list(entries, stores: stores)
                 }
