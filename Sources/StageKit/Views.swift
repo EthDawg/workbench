@@ -8,7 +8,6 @@ private let inkAccent = Workbench.accent
 struct ControlCenter: View {
     @ObservedObject var app: AppCoordinator
     @ObservedObject var settings: SettingsStore
-    @State private var choosingPersonas = false
     private let tabs: [(String, String)] = [("Present", "play.rectangle"), ("Drawing", "pencil.tip"), ("Pointer", "cursorarrow.rays"), ("Boards", "rectangle.on.rectangle"), ("Timer", "timer"), ("Shortcuts", "command")]
     var body: some View {
         HStack(spacing: 0) {
@@ -65,7 +64,7 @@ struct ControlCenter: View {
                         .accessibilityAddTraits(.isHeader)
                     Spacer()
                     // In Workbench, Persona is its own page; a second library sheet here was a parallel door.
-                    if !app.embedded { Button { choosingPersonas = true } label: { Label("Persona…", systemImage: "person.crop.rectangle") } }
+                    if !app.embedded { Button { app.choosingPersonas = true } label: { Label("Persona…", systemImage: "person.crop.rectangle") } }
                     HStack(spacing: 6) {
                         Circle().fill(inkAccent).frame(width: 6, height: 6)
                         Text("Ready on \(app.displayCount) \(app.displayCount == 1 ? "display" : "displays")")
@@ -102,7 +101,7 @@ struct ControlCenter: View {
                 }.id(app.selectedTab)
             }
         }.background(inkBackground).tint(inkAccent).workbenchTheme()
-            .sheet(isPresented: $choosingPersonas) { PersonaLibraryView(library: app.demoScenes.personas) }
+            .sheet(isPresented: $app.choosingPersonas) { PersonaLibraryView(library: app.demoScenes.personas) }
     }
     private var present: some View {
         VStack(alignment: .leading, spacing: 16) {

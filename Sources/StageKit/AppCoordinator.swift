@@ -39,6 +39,9 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
     var onShortcutsChanged: (() -> Void)?
     @Published var recordingAction: Action?
     @Published var selectedTab = "Present"
+    /// The standalone Persona sheet's door. It belongs beside the page's tab so a check that
+    /// reads the page's view value outside a window sees real state, not a detached @State.
+    @Published var choosingPersonas = false
     @Published var quickTab = QuickTab.draw
     @Published private(set) var quickControlsVisible = false
     @Published private(set) var screenshotHandoffActive = false
