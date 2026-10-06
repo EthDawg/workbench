@@ -114,6 +114,8 @@ The bounded macOS Service accepts an explicit text selection into Read; it is no
 
 ## History and optional assistance
 
+The [creation and handoff decision record](research/creation-handoff-2026-10.md) connects current host capabilities, standards and experiments to this contract. [Research and decisions](research/README.md) retains earlier alternatives, reasons for deferral and conditions for reconsideration; it does not add product scope.
+
 History lists transcripts, Snaps and Hand off results newest first, with one search and the filters All, Transcripts, Snaps, Results and Archived. It is a view: the existing transcript store, the one Snap store and each task's own folder remain authoritative. Transcripts retain original wording and editable purpose/person/company/tags. Ordinary dictation defaults to Prompt; meetings and calls are distinct purposes. Search keeps each kind's own matcher: a transcript's original and edited text and details, a Snap's title, notes, tags and image text, and each result's title, request and available saved answer. One shared selection owner keeps typed UUID references across filters and restarts; a filter never changes the selection, and results are not selectable. Named selections are loaded, renamed and updated deliberately; tags describe items and do not create another grouping store. New recordings cannot evict older selected evidence.
 
 **Review transcript** opens the complete saved current text and original wording in a read-only History sheet. Home’s recent transcript and Meetings’ Review transcript open that same exact record. Inspecting, switching wording or closing never replaces the Dictate draft or changes the shared selection. Copy current text names its wording explicitly; export follows the chosen wording. More → Open in Dictate remains a deliberate action through the existing draft-replacement decision.
@@ -215,7 +217,7 @@ A build, an installed Preview, a reviewed merge, a notarized archive and a publi
 
 ## Small-project maintenance
 
-Use GitHub issues for agreed work, PRs for review and releases for downloadable versions. A substantial shared change needs an owner before implementation and another person's review before acceptance. [CONTRIBUTING](../CONTRIBUTING.md#proposed-ethanmatt-working-agreement) records the proposed Ethan–Matt practices; it does not assert that repository permissions or approval rules have been configured.
+Use GitHub issues for agreed work, PRs for review and releases for downloadable versions. A substantial shared change needs an owner before implementation and another person's review before acceptance. [CONTRIBUTING](../CONTRIBUTING.md#send-your-change) records the contribution and review workflow; it does not assert that repository permissions or approval rules have been configured.
 
 The short implementation map is [design.md](design.md). The earlier suite model of two independently shipped apps is superseded by this consolidation contract.
 

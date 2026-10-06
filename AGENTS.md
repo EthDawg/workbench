@@ -8,6 +8,8 @@ Before adding or renaming anything a person can click, read the [Grammar](docs/w
 
 Read [the product contract](docs/workbench.md), [the source map](docs/design.md) and [CONTRIBUTING](CONTRIBUTING.md) before changing behavior. Inspect current source and release state; an illustration, passing build or another agent's answer is not proof of a working feature.
 
+Before repeating research or proposing a broader workflow, consult [research and decisions](docs/research/README.md). Preserve useful evidence, declined alternatives and specific reconsideration conditions beside the owning contract; clearly mark superseded research. Promote a sanitized result from disposable build folders when future work depends on it. GitHub issues remain the work queue.
+
 For Mac wallpaper and presentation, [the structured experience contract](site/handbook/contract.json) owns capability status, lifecycle and acceptance scenarios. The website generates its human and agent records from it. For the separate iOS target, [the mobile specification](docs/ios-preview.md) owns scope, platform limits and acceptance. For selected-photo iPhone/Mac transfer, [the photo handoff contract](docs/photo-handoff.md) owns account, transport, deletion and delivery evidence. Mobile image export does not change the status of a Mac desktop capability. Update the owning record when the implemented contract changes; use GitHub issues for agreed work rather than creating another backlog.
 
 Choose one user outcome, its state owner and a bounded change. Preserve originals, later manual desktop choices and independent jobs. Validate with synthetic data and report the tests actually run, screenshots, source revision and hardware/receiver limits. Do not replace live user data for tests.

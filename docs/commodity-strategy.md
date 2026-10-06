@@ -2,6 +2,8 @@
 
 Decision record · 13 September 2026. Read with [Workbench's product boundary](workbench.md) and [the category comparison](utility-comparison.md). GitHub issues are the contribution queue; this document explains the enduring direction.
 
+Later evidence is indexed in [research and decisions](research/README.md). The [6 October creation/handoff review](research/creation-handoff-2026-10.md) records current host/standards findings, implemented repairs and specific reasons to revisit deferred work. The broader September alternatives remain a [historical decision snapshot](research/product-direction-decisions-2026-09.md), not a replacement roadmap.
+
 Workbench should make a few everyday jobs dependable and pleasant without a required subscription. Better models and better coding agents should improve the implementation behind those jobs. They should not require people to relearn the app, surrender originals or migrate to another service.
 
 ## Keep the jobs stable
