@@ -1,6 +1,8 @@
 # Accessibility bridge: the AXCommon fault flood, 6 October 2026
 
-Source: branch `claude/ax-structured-sync` from `main` 5f209cab. Nothing visible changed, so there are no renders; this folder records the measurement that grounds the fix and its result. macOS 26.5.1 (25F80), the development Mac.
+Source: branch `claude/ax-structured-sync` with `claude/read-voice-errors` (#269) merged in, from `main` 5f209cab. Nothing visible changed, so there are no renders; this folder records the measurement that grounds the two fixes and the bridge's own reruns. macOS 26.5.1 (25F80), the development Mac.
+
+The split, after review: the flood is the voice listing, and #269 fixes it inside `MacVoiceCatalog` (the catalogue from `AVSpeechSynthesisVoice` identifiers alone, the `NSSpeechSynthesizer` scan only when a saved choice needs it, refreshes on a GCD utility queue; `docs/verification/2026-10-06-read-voice/`). `AccessibilityBridge` is the one door for `AXUIElement*` and `AXObserver*` calls, which never fault (the table below), so it runs each call in place on the calling thread, with no queue, no wait and no process-wide timeout; `scripts/check-accessibility-bridge.py` keeps element calls there and voice listings in `ReadingVoices.swift`, outside `Task` closures.
 
 ## What the installed app logged
 
@@ -19,33 +21,20 @@ Source: branch `claude/ax-structured-sync` from `main` 5f209cab. Nothing visible
 | `AVSpeechSynthesizer.write` rendering 216 buffers | 0 | 1 (the voice lookup) | 1 | 0 | – |
 | `AXIsProcessTrusted()` | 0 | – | 0 | – | – |
 
-So on this macOS the fault belongs to the speech-voice side of the Accessibility framework, not to AXUIElement IPC, and `dispatch_sync` does not help because it runs the block on the task's own thread. The bridge therefore hops to its queue with `async` and waits.
-
-## Two lanes, and what a waiting caller pays
-
-The first bridge had one serial queue, so a field read made from a main-actor task waited behind the voice listing that `AppModel.refreshVoices(inBackground:)` runs in a detached task on every `didBecomeActive`. `lanes.swift` (built with `xcrun swiftc -O`) times that: a detached task lists the voices on one queue while, 20 ms later, a main-actor task reads Finder's focused element and looks one voice up through the bridge's hop (a `DispatchWorkItem` waited on). Two runs each, warm listing:
-
-| Listing on | Listing | Main-actor AX read of Finder, blocked on main | Main-actor voice lookup, blocked on main |
-| --- | --- | --- | --- |
-| the same queue as the read (one lane, before) | 83 ms, 365 voices | 103 ms, 96 ms | 0 ms (the read ahead of it had already waited) |
-| its own queue (two lanes, after) | 85 ms, 86 ms | 27 ms, 29 ms (Finder's own answer time; 33 ms with nothing in flight) | 33 ms, 34 ms (behind the rest of the listing on the voice lane) |
-
-A voice lookup from the main actor (a voice preview, Listen's renderer) still waits for an in-flight listing on the voice lane; that is the same catalogue and the wait is bounded by the listing. The launch listing in `AppModel.init` is a plain frame and runs inline, as before.
-
-Waiting on a `DispatchWorkItem` instead of a semaphore is what libdispatch documents for `dispatch_block_wait`: the block and everything ahead of it on the serial queue run at the waiting thread's class or higher. `qos_class_self()` on the queue reports user-initiated for a main-actor caller and for a utility task alike, GCD's ceiling for work handed off the main thread, and the override from the wait is not visible to it, so `AccessibilityBridgeChecks` asserts the floor and the lane separation (a main-actor field read returns while the voice lane is held for up to two seconds), not the override.
+So on this macOS the fault belongs to the speech-voice side of the Accessibility framework, not to AXUIElement IPC, and `dispatch_sync` does not help because it runs the block on the task's own thread. That is why the bridge runs element calls in place and the voice fix lives with the catalogue (#269).
 
 ## Production reproduction
 
-`.build/debug/LocalVoice` under the same capture (`process == "LocalVoice"`), before and after the bridge:
+`.build/debug/LocalVoice` under the same capture (`--process LocalVoice`, `subsystem == "com.apple.Accessibility"`), base `main` before either fix, then this branch with #269 merged and the bridge inline. The measured faults on this branch are all speech-voice calls made from Swift task contexts in #269's checks and in `MacSpeechRenderer.start`, which the table attributes; none is an element call.
 
-| Mode | Before | After |
+| Mode | `main` before | This branch (bridge inline, #269 merged) |
 | --- | --- | --- |
-| `--check-live-dictation-delivery` | 0 (synthetic AX only) | 0 |
-| `--check-floating-toolbar` (TextDeliveryChecks, PromptPickerChecks) | 0 (synthetic AX only) | 0 |
-| `--check-reading` | 0 (no voice listing) | 0 |
-| `--check-reading-render` (lists the voices, renders three) | 931 | 0 |
-| `--check-core` | 0 | 0 (now includes AccessibilityBridgeChecks, 19 checks) |
+| `--check-live-dictation-delivery` | 0 (synthetic AX only) | 0 (27 field checks) |
+| `--check-floating-toolbar` (TextDeliveryChecks, PromptPickerChecks) | 0 (synthetic AX only) | 0 (`TEXT_DELIVERY_CHECKS_OK: 64`, `PROMPT_PICKER_CHECKS_OK: 38`) |
+| `--check-core` (now includes AccessibilityBridgeChecks) | 0 | 2: `ReadingChecks.run` lists the catalogue twice (`MacVoiceCatalog.installed`, lines 157 and 160) from the `MainActor.run` task; `ACCESSIBILITY_BRIDGE_CHECKS_OK: 12 checks` logged none |
+| `--check-reading` | 0 (no voice listing on `main`'s checks) | 2: the same two listings (`READING_CHECKS_OK: 106`) |
+| `--check-reading-render` | 931 | 8: one listing (`runRender`, line 441), the three `AVSpeechSynthesisVoice(identifier:)` lookups of its guard (line 449) and one lookup per `MacSpeechRenderer.start` from the async check (four) (`READING_RENDER_OK` Daniel, Karen, Samantha; `READING_STREAM_OK` 25) |
 
-Rerun after the two-lane change, same capture, `.build/debug/LocalVoice`: `--check-core` 0 faults (exit 0, `ACCESSIBILITY_BRIDGE_CHECKS_OK: 19 checks`), `--check-reading-render` 0 (three `READING_RENDER_OK`, `READING_STREAM_OK` 24), `--check-live-dictation-delivery` 0 (27 field checks), `--check-floating-toolbar` 0 (`TEXT_DELIVERY_CHECKS_OK: 64`, `PROMPT_PICKER_CHECKS_OK: 38`), `--check-reading` 0 (`READING_CHECKS_OK: 99`). The release-binary reruns are in the pull request's Validation.
+Each row was run once, in this order, on the final source. The Siri `AFLocalization` lines did not appear in any run (0 in all five), which is #269's `say`-list rule at work. The eight and the two are the checks' own task-context voice calls, which the bridge no longer wraps by the lead's decision that the voice side belongs to the catalogue; they are listed for the lead in the pull request's Not verified.
 
-Not verified here: the installed app's own count after this change, which needs a Preview build and a day of use; that is owed to the lead.
+Not verified here: the installed app's own count after this change, which needs a Preview build and a day of use.
