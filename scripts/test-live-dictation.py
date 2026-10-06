@@ -18,6 +18,6 @@ with tempfile.TemporaryDirectory(prefix='workbench-live-field-') as directory:
     executable = directory / 'checks'
     subprocess.run(['xcrun', 'swiftc', '-parse-as-library', '-swift-version', '5', '-module-cache-path', str(directory / 'ModuleCache'),
                     str(harness), *[str(root / 'Sources/LocalVoice' / name) for name in [
-                        'TextDelivery.swift', 'OpaqueEditorDestination.swift', 'LiveDictationDelivery.swift', 'LiveDictationDeliveryChecks.swift']],
+                        'TextDelivery.swift', 'OpaqueEditorDestination.swift', 'InsertionBoundary.swift', 'LiveDictationDelivery.swift', 'LiveDictationDeliveryChecks.swift']],
                     '-o', str(executable)], check=True)
     subprocess.run([str(executable)], check=True)

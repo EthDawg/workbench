@@ -53,6 +53,8 @@ These are read-speech recordings, not microphone dictation, and one Mac. A model
 
 ## Reading voices
 
+**Retired target, 6 October 2026:** the [foundation decision](mac-foundation.md#read-retirement-is-a-narrow-removal-not-an-audio-rewrite) removes Workbench TTS and its setup. The following is retained source/history for safe removal, not a recommendation to download or improve voices. Preserve recognition providers and their shared FluidAudio dependency.
+
 | Choice | Model and execution | Setup | Follow-along |
 | --- | --- | --- | --- |
 | Mac voices (default) | Installed macOS voices through `AVSpeechSynthesizer` | None. Free Enhanced and Premium voices are added in System Settings | Word by word |

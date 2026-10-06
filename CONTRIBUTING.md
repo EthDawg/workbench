@@ -22,6 +22,10 @@ Before revisiting an idea, check [research and decisions](docs/research/README.m
 
 ## Choose a first step
 
+For the current refinement work, start with the [focused Mac foundation](docs/mac-foundation.md) and its issue/owner map. Complete one bounded journey, including unavailable setup and usable output, and keep implementation, native acceptance and release claims distinct. Existing owners and preserved data take priority over a fresh rewrite.
+
+Apply [Value before scope](docs/workbench.md#value-before-scope) in the existing issue/PR: explain the evidenced outcome, simpler alternative, existing owner, net complexity and complete-use acceptance. This includes infrastructure and marketing. Prefer removing friction over adding choices; a small fix needs a concise explanation, not another proposal document.
+
 1. Check the [open issues](https://github.com/Ship-Work/workbench/issues). An unassigned [good first issue](https://github.com/Ship-Work/workbench/issues?q=is%3Aissue%20is%3Aopen%20label%3A%22good%20first%20issue%22) is a useful starting point. Comment that you want to take it so others can coordinate; no repository write access is needed.
 2. A typo or clear, small fix can go directly to a PR. Discuss a larger feature in an issue or [Discussions](https://github.com/Ship-Work/workbench/discussions) first. Agree the smallest useful outcome and who is working on it.
 3. Ask for help on the issue when stuck. Incomplete attempts and draft PRs are welcome. Coordinate before replacing work another contributor has offered to do.

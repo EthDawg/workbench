@@ -1,5 +1,7 @@
 # Shortcuts dictation and optional Speko reading
 
+**6 October 2026 product decision:** The [Read retirement contract](mac-foundation.md#read-retirement-is-a-narrow-removal-not-an-audio-rewrite) supersedes selected-text and Speko reading setup below. These describe existing source, not the target offer. Audio-to-text Shortcuts remain supported; do not remove recognition while retiring TTS.
+
 Matt ([@mattywhitenz](https://github.com/mattywhitenz)) proposed these workflows in [#10](https://github.com/Ship-Work/workbench/issues/10) and [#11](https://github.com/Ship-Work/workbench/issues/11). Credit is for the proposals; no unsubmitted contributor code has been attributed.
 
 These workflows are now part of the unified Workbench app. The 9 September validation below records the earlier Voice package; use [Workbench 2 Preview evidence](preview-2.0.md) for the current installed app and its remaining checks.

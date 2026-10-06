@@ -1,5 +1,7 @@
 # A small app that benefits from better engines
 
+**6 October 2026 product decision:** The [focused foundation](mac-foundation.md) now retires Read and freezes unproven optional expansion. The listening rows and incremental reading improvements below retain historical rationale; they do not authorize further work. Useful ownership and preservation principles remain applicable.
+
 Decision record · 13 September 2026. Read with [Workbench's product boundary](workbench.md) and [the category comparison](utility-comparison.md). GitHub issues are the contribution queue; this document explains the enduring direction.
 
 Later evidence is indexed in [research and decisions](research/README.md). The [6 October creation/handoff review](research/creation-handoff-2026-10.md) records current host/standards findings, implemented repairs and specific reasons to revisit deferred work. The broader September alternatives remain a [historical decision snapshot](research/product-direction-decisions-2026-09.md), not a replacement roadmap.
