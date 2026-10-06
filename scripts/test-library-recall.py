@@ -40,7 +40,7 @@ struct StateStore {
 @MainActor enum TextDelivery {
     static func copy(_ text: String) -> Int? { fatalError("The fixture must inject its private Copy action") }
 }
-struct FixtureShortcut { var label = "⌃⌥J" }
+struct FixtureShortcut { var label = "⌃⌥J"; var enabled = true }
 struct FixturePreferences { func shortcut(_ id: UInt32) -> FixtureShortcut { FixtureShortcut() } }
 @MainActor final class AppModel: ObservableObject {
     @Published var transcript = "A synthetic transcript for this disposable app."
@@ -75,6 +75,10 @@ enum Workbench {
     static let accent = Color.accentColor
     static let surface = Color(nsColor: .controlBackgroundColor)
     static let border = Color(nsColor: .separatorColor)
+    static let attention = Color.orange
+    static let bodyText = Font.body
+    static let tileRadius: CGFloat = 12
+    static let tilePadding: CGFloat = 16
 }
 extension View { func workbenchTheme() -> some View { self } }
 '''
@@ -278,6 +282,9 @@ def compile_fixture(directory: Path, main: str, binary: Path) -> None:
             "CaptureMode", "DeliveryMode", "FirstDictationGuide", "VoiceShortcut", "VoicePreferences"]),
         SwiftFile(PROJECT / "Sources/LocalVoice/DictationCleanup.swift").extract(["CleanupStyle"]),
         SwiftFile(PROJECT / "Sources/StageKit/Hotkeys.swift").extract(["GlobalShortcutCombination", "GlobalShortcutRule"]),
+        # The page kit's status and empty state, and History's wrapping note, as Resources draws them.
+        SwiftFile(PROJECT / "Sources/LocalVoice/WorkbenchPageStyle.swift").extract(["WorkbenchTone", "WorkbenchStatusBadge", "WorkbenchEmptyState"]),
+        SwiftFile(PROJECT / "Sources/LocalVoice/HistoryView.swift").extract(["WorkbenchNote"]),
     ]
     dependencies.write_text(DEPENDENCIES + "\n" + "\n".join(preference_types))
     checks = directory / "FixtureMain.swift"

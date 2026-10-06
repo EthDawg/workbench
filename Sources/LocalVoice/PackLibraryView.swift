@@ -59,50 +59,18 @@ struct PackLibraryView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
-                // Library's title and switcher name this section, so it opens on its summary (#134).
-                HStack(alignment: .firstTextBaseline) {
-                    Text("Reusable skills, scenes, personas and resources.").foregroundStyle(.secondary)
-                    Spacer()
-                    if !model.packs.isEmpty && !showingAdd {
-                        Button("Add a pack…") { showingAdd = true }
-                    }
+        Group {
+            if model.packs.isEmpty && !showingAdd {
+                // An empty Packs centres its one empty state in the page, as Resources does, so
+                // switching between the two tabs moves neither the summary nor the empty state.
+                // It scrolls only when open Pack settings no longer fit.
+                ViewThatFits(in: .vertical) {
+                    page(centred: true)
+                    ScrollView { page(centred: false) }
                 }
-                if model.noticePackID == nil || !model.packs.contains(where: { $0.id == model.noticePackID }) { feedback }
-                if let saved = model.savedResource {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Saved file: \(saved.url.lastPathComponent)").fontWeight(.medium)
-                        Text("The file is kept. Retry reviews the current Library and adds only this file's verified reference; it does not export another copy.")
-                            .font(.caption).foregroundStyle(.secondary)
-                        DisclosureGroup("Saved file details") { Text(saved.url.path).font(.caption).textSelection(.enabled) }
-                        HStack {
-                            Button("Add saved file to Library") { onRetrySavedResource() }
-                            Button("Show saved file") { NSWorkspace.shared.activateFileViewerSelecting([saved.url]) }
-                            Button("Keep file only") { model.keepSavedFileOnly() }
-                        }
-                    }.padding(16).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 12))
-                }
-                if model.packs.isEmpty {
-                    if !showingAdd { VStack(spacing: 12) {
-                        Image(systemName: "shippingbox").font(.system(size: 34)).foregroundStyle(Workbench.accent)
-                        Text("Add reusable content when you need it.").font(.title3.weight(.semibold))
-                        Text("Your ordinary Workbench tools are ready to use without a pack.")
-                            .font(.caption).foregroundStyle(.secondary)
-                        Button("Add a pack…") { showingAdd = true }.buttonStyle(.borderedProminent)
-                    }.frame(maxWidth: .infinity).padding(.vertical, 38) }
-                } else {
-                    ForEach(model.packs) { pack in packCard(pack) }
-                }
-                if showingAdd { addSource }
-                if model.isBusy && (model.operationPackID == nil || !model.packs.contains(where: { $0.id == model.operationPackID })) { progress }
-                DisclosureGroup("Pack settings", isExpanded: $showingAccount) {
-                    if !showingAdd || model.login != nil { connection }
-                    Toggle("Keep packs up to date automatically", isOn: $model.automaticUpdates)
-                    Text("Updates apply to shared starters. Existing sessions and personal copies keep their own content.")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-            }.padding(Workbench.pagePadding).frame(maxWidth: 920, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                ScrollView { page(centred: false) }
+            }
         }
         .onAppear {
             acceptPendingSource()
@@ -134,6 +102,58 @@ struct PackLibraryView: View {
         }
     }
 
+    /// The summary, then the packs or the one empty state, then Pack settings, at the page's full
+    /// width as Resources has it.
+    private func page(centred: Bool) -> some View {
+        VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
+            // Library's title and switcher name this section, so it opens on its summary (#134).
+            HStack(alignment: .firstTextBaseline) {
+                Text("Reusable skills, scenes, personas and resources.").foregroundStyle(.secondary)
+                Spacer()
+                if !model.packs.isEmpty && !showingAdd {
+                    Button("Add a pack…") { showingAdd = true }
+                }
+            // Resources' summary row is 26 points high (its Saved Prompts… and Add), so this one is
+            // too: the summary keeps its place when the tab changes.
+            }.frame(minHeight: 26)
+            if model.noticePackID == nil || !model.packs.contains(where: { $0.id == model.noticePackID }) { feedback }
+            if let saved = model.savedResource {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Saved file: \(saved.url.lastPathComponent)").fontWeight(.medium)
+                    Text("The file is kept. Retry reviews the current Library and adds only this file's verified reference; it does not export another copy.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    DisclosureGroup("Saved file details") { Text(saved.url.path).font(.caption).textSelection(.enabled) }
+                    HStack {
+                        Button("Add saved file to Library") { onRetrySavedResource() }
+                        Button("Show saved file") { NSWorkspace.shared.activateFileViewerSelecting([saved.url]) }
+                        Button("Keep file only") { model.keepSavedFileOnly() }
+                    }
+                }.savedPageCard()
+            }
+            if model.packs.isEmpty {
+                if !showingAdd {
+                    WorkbenchEmptyState(symbol: "shippingbox", title: "Add reusable content when you need it",
+                        detail: "Packs bring shared skills, scenes, personas and resources. Your ordinary Workbench tools are ready to use without one.") {
+                        Button("Add a pack…") { showingAdd = true }.buttonStyle(.borderedProminent)
+                    }.frame(maxWidth: 520).frame(maxWidth: .infinity, maxHeight: centred ? .infinity : nil)
+                        // Centred, it starts below the space Resources gives its search row (a
+                        // 22-point field and 16 points), so both empty states sit at one height.
+                        .padding(.top, 38).padding(.bottom, centred ? 0 : 38)
+                }
+            } else {
+                ForEach(model.packs) { pack in packCard(pack) }
+            }
+            if showingAdd { addSource }
+            if model.isBusy && (model.operationPackID == nil || !model.packs.contains(where: { $0.id == model.operationPackID })) { progress }
+            DisclosureGroup("Pack settings", isExpanded: $showingAccount) {
+                if !showingAdd || model.login != nil { connection }
+                Toggle("Keep packs up to date automatically", isOn: $model.automaticUpdates)
+                Text("Updates apply to shared starters. Existing sessions and personal copies keep their own content.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }.padding(Workbench.pagePadding).frame(maxWidth: .infinity, maxHeight: centred ? .infinity : nil, alignment: .topLeading)
+    }
+
     private func acceptPendingSource() {
         guard let pending = model.pendingSource else { return }
         source = pending; showingAdd = true; model.pendingSource = nil
@@ -144,9 +164,8 @@ struct PackLibraryView: View {
     }
     @ViewBuilder private var feedback: some View {
         if let message = model.notice {
-            Label(message, systemImage: model.hasError ? "exclamationmark.circle" : "checkmark.circle")
-                .font(.callout).foregroundStyle(model.hasError ? Color.orange : Color.secondary)
-                .textSelection(.enabled).accessibilityLabel(message)
+            WorkbenchNote(message, symbol: model.hasError ? "exclamationmark.circle.fill" : "checkmark.circle",
+                          tone: model.hasError ? .attention : .neutral).accessibilityLabel(message)
         }
     }
     private var progress: some View {
@@ -189,7 +208,7 @@ struct PackLibraryView: View {
                     Button("Cancel") { model.cancel() }
                 }
             }
-        }.padding(20).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 14))
+        }.savedPageCard()
     }
 
     private var addSource: some View {
@@ -216,7 +235,7 @@ struct PackLibraryView: View {
                     .foregroundStyle(.secondary)
                 Link("Pack owner setup", destination: URL(string: "https://github.com/apps/workbench-packs")!)
             }.font(.caption)
-        }.padding(18).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 12))
+        }.savedPageCard()
     }
 
     private func addPack() {
@@ -248,7 +267,7 @@ struct PackLibraryView: View {
                     .menuStyle(.borderlessButton).fixedSize().accessibilityLabel("Actions for \(pack.name)")
             }
             Divider()
-            if let problem = pack.problem { Text(problem).font(.callout).foregroundStyle(.orange).textSelection(.enabled) }
+            if let problem = pack.problem { WorkbenchNote(problem) }
             if model.operationPackID == pack.id { progress }
             if model.noticePackID == pack.id { feedback }
             ForEach(pack.entries) { entry in entryRow(entry, pack: pack) }
@@ -260,7 +279,7 @@ struct PackLibraryView: View {
                     Button("Use workspace appearance") { model.setBrand(pack.id) }.buttonStyle(.link).font(.caption)
                 }
             } }
-        }.padding(22).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 14))
+        }.savedPageCard()
     }
 
     private func entryRow(_ entry: PackShelfEntry, pack: PackShelfItem) -> some View {
