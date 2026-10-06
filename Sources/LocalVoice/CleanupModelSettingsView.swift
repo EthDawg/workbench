@@ -15,27 +15,39 @@ struct CleanupModelSettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Label("Text refinement", systemImage: "text.badge.checkmark").font(Workbench.sectionTitle).accessibilityAddTraits(.isHeader)
-            Text("Speech recognition hears your words. Refinement adjusts punctuation and layout after transcription. Light cleanup works without a text model; Natural uses the choice below.")
-                .font(.callout).foregroundStyle(.secondary)
-            Picker("Natural cleanup model", selection: $draft.naturalProvider) {
+            VStack(alignment: .leading, spacing: 4) {
+                ModelSectionHeader(title: "Text style", symbol: "text.badge.checkmark")
+                Text("Speech recognition hears your words; the text style tidies punctuation and layout afterwards. Original and Light need no text model. Natural uses the model below.")
+                    .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            Picker("Natural style model", selection: $draft.naturalProvider) {
                 ForEach(NaturalCleanupProvider.allCases, id: \.self) { provider in Text(provider.title).tag(provider) }
             }.disabled(locked)
             if draft.naturalProvider == .apple {
                 Text(CleanupEngine.availability).font(.callout).foregroundStyle(.secondary)
+                if manager.isWorking || manager.failure != nil { downloadProgress }
             } else {
-                TextField("Ollama address", text: $draft.endpoint).textFieldStyle(.roundedBorder).disabled(locked)
-                    .help("The base address of Ollama running on this Mac; no /api path.")
-                HStack {
-                    TextField("Model name", text: $draft.model).textFieldStyle(.roundedBorder).disabled(locked)
-                    if !manager.models.isEmpty {
-                        Menu("Installed models") {
-                            ForEach(manager.models) { model in
-                                Button("\(model.name) · \(ByteCountFormatter.string(fromByteCount: model.size, countStyle: .file))") {
-                                    draft.model = model.name
+                // Caption labels above each field, as the speech server's fields have.
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Ollama address").font(.caption).foregroundStyle(.secondary)
+                    TextField("Ollama address", text: $draft.endpoint, prompt: Text(verbatim: "http://127.0.0.1:11434")).textFieldStyle(.roundedBorder).disabled(locked)
+                        .accessibilityLabel("Ollama address")
+                        .help("The base address of Ollama running on this Mac; no /api path.")
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Model name").font(.caption).foregroundStyle(.secondary)
+                    HStack {
+                        TextField("Model name", text: $draft.model, prompt: Text(verbatim: "gemma3:1b")).textFieldStyle(.roundedBorder).disabled(locked)
+                            .accessibilityLabel("Model name")
+                        if !manager.models.isEmpty {
+                            Menu("Installed models") {
+                                ForEach(manager.models) { model in
+                                    Button("\(model.name) · \(ByteCountFormatter.string(fromByteCount: model.size, countStyle: .file))") {
+                                        draft.model = model.name
+                                    }
                                 }
-                            }
-                        }.disabled(locked)
+                            }.disabled(locked).fixedSize()
+                        }
                     }
                 }
                 HStack {
@@ -43,6 +55,8 @@ struct CleanupModelSettingsView: View {
                     Button("Load model") { manager.load(operationConfiguration) }.disabled(locked)
                     Button("Download model…") { confirmDownload = true }.disabled(locked)
                 }
+                // Progress and its reason sit directly under the buttons that started them.
+                downloadProgress
                 Text("Ollama must already be installed and running. Downloads use the internet and disk space, and keep going if you leave this page; Cancel stops one. Load checks the draft model; Save applies it to future Natural captures. A failed or meaning-changing edit falls back to Light, and the original is retained.")
                     .font(.caption).foregroundStyle(.secondary)
                 HStack {
@@ -53,31 +67,16 @@ struct CleanupModelSettingsView: View {
                 Text("Workbench connects only to loopback and refuses cloud model metadata. You control the local server; enable Ollama’s local-only mode for a stronger boundary.")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            // A running or failed download shows whichever model is drafted above: the request is
-            // the app's, so it is never hidden by a draft change, and Cancel is the explicit stop.
-            if draft.naturalProvider == .ollama || manager.isWorking || manager.failure != nil {
-                if manager.isWorking {
-                    HStack(spacing: 10) {
-                        if let progress = manager.progress { ProgressView(value: progress) }
-                        else { ProgressView().controlSize(.small) }
-                        Button("Cancel") { manager.cancel() }
-                    }
-                }
-                if let failure = manager.failure {
-                    Label(failure, systemImage: "exclamationmark.triangle").font(.callout).foregroundStyle(.red).textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Text(manager.status).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
             HStack {
-                Button("Save refinement choice") { save() }.disabled(locked || (draft == saved && saved.settingsIssue == nil))
+                Button("Save") { save() }.disabled(locked || (draft == saved && saved.settingsIssue == nil))
                 if isBusy { Text("Available after the current operation.").font(.caption).foregroundStyle(.secondary) }
             }
             if let notice { Text(notice).font(.callout).foregroundStyle(.secondary).textSelection(.enabled) }
-            Text("Applied to Natural: \(saved.naturalProvider.title)\(saved.naturalProvider == .ollama ? " · " + saved.model : ""). Original and Light do not call a text model.")
+            // The same sentence Dictate settings shows for the saved choice.
+            Text("Natural text style uses \(saved.naturalSummary).")
                 .font(.caption).foregroundStyle(.secondary)
         }
+        .frame(maxWidth: 720, alignment: .leading)
         .onAppear {
             let loaded = manager.store.snapshot()
             saved = loaded; draft = loaded; draft.settingsIssue = nil
@@ -92,6 +91,23 @@ struct CleanupModelSettingsView: View {
             Text("Ollama at \(draft.endpoint) will fetch this model from its library. Model sizes vary and may use several gigabytes. This does not change your cleanup selection. Cancelling stops Workbench’s request; Ollama may keep downloaded layers.")
         }
     }
+    /// A running or failed download, whichever model is drafted: the request is the app's, so a
+    /// draft change never hides it, and Cancel is the explicit stop.
+    @ViewBuilder private var downloadProgress: some View {
+        if manager.isWorking {
+            HStack(spacing: 10) {
+                if let progress = manager.progress { ProgressView(value: progress) }
+                else { ProgressView().controlSize(.small) }
+                Button("Cancel") { manager.cancel() }
+            }
+        }
+        if let failure = manager.failure { VoiceAttentionNote(text: failure) }
+        if draft.naturalProvider == .ollama || manager.isWorking || manager.failure != nil {
+            Text(manager.status).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
     private var operationConfiguration: CleanupConfiguration {
         var copy = draft; copy.settingsIssue = nil; copy.naturalProvider = .ollama; return copy
     }

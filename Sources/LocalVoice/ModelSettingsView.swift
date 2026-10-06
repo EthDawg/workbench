@@ -5,7 +5,9 @@ struct ModelSettingsView: View {
     let engine: RecognitionEngine
     var isBusy: Bool
     var snapshot: RecognitionSnapshot
-    var onNotNow: () -> Void = {}
+    /// Only a first-use caller passes this: Not now then leaves setup for later. Settings › Models
+    /// is a place, not a step, so without it there is nothing to defer.
+    var onNotNow: (() -> Void)? = nil
     var onSnapshot: @MainActor (RecognitionSnapshot) -> Void = { _ in }
     @State private var draft = RecognitionConfiguration()
     @State private var active = RecognitionConfiguration()
@@ -16,12 +18,9 @@ struct ModelSettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top) {
-                Image(systemName: "waveform.badge.magnifyingglass").font(.title2).foregroundStyle(Workbench.accent)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Speech model").font(Workbench.sectionTitle).accessibilityAddTraits(.isHeader)
-                    Text("Choose what turns your recordings into text.").foregroundStyle(.secondary)
-                }
+            VStack(alignment: .leading, spacing: 4) {
+                ModelSectionHeader(title: "Speech model", symbol: "waveform.badge.magnifyingglass")
+                Text("Choose what turns your recordings into text.").font(.callout).foregroundStyle(.secondary)
             }
             Label(current.line, systemImage: current.canTranscribe ? "checkmark.circle" : "circle.dotted")
                 .font(.callout).foregroundStyle(current.canTranscribe ? .primary : .secondary)
@@ -57,9 +56,7 @@ struct ModelSettingsView: View {
                 }
             }
 
-            if let failure {
-                Label(failure, systemImage: "exclamationmark.triangle").font(.callout).foregroundStyle(.red).textSelection(.enabled)
-            }
+            if let failure { VoiceAttentionNote(text: failure) }
             if let details = current.failure?.details {
                 DisclosureGroup("Details") { Text(details).font(.callout).textSelection(.enabled) }
             }
@@ -73,8 +70,11 @@ struct ModelSettingsView: View {
                         .buttonStyle(.borderedProminent)
                         .disabled(isBusy || applying || !loaded || (current.canTranscribe && draft == active))
                     if draft == active && draft.provider == .parakeet && !current.canTranscribe {
-                        Button("Retry saved files") { Task { await prepareCached() } }.disabled(isBusy || applying)
-                        Button("Not now", action: onNotNow)
+                        // Retrying saved files means something only after they failed to prepare.
+                        if current.failure != nil {
+                            Button("Retry saved files") { Task { await prepareCached() } }.disabled(isBusy || applying)
+                        }
+                        if let onNotNow { Button("Not now", action: onNotNow) }
                     }
                 }
             }
@@ -82,6 +82,7 @@ struct ModelSettingsView: View {
                 Text("Model changes are available when recording and processing finish.").font(.caption).foregroundStyle(.secondary)
             }
         }
+        .frame(maxWidth: 720, alignment: .leading)
         .task {
             draft = await engine.configuration(); active = draft
             await refresh(); loaded = true
@@ -132,5 +133,19 @@ struct ModelSettingsView: View {
             failure = Self.operationFailure(error, snapshot: await engine.snapshot())
         }
         await refresh()
+    }
+}
+
+/// The Models page's section header: one form for Speech model and Text style, its symbol in the
+/// accent as on a WorkbenchTile, read as a heading by VoiceOver.
+struct ModelSectionHeader: View {
+    let title: String
+    let symbol: String
+    var body: some View {
+        Label {
+            Text(title)
+        } icon: {
+            Image(systemName: symbol).foregroundStyle(Workbench.accent).accessibilityHidden(true)
+        }.font(Workbench.sectionTitle).accessibilityAddTraits(.isHeader)
     }
 }

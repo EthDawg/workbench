@@ -397,7 +397,7 @@ final class CleanupModelManager: ObservableObject {
                     let saved = store.snapshot()
                     status = saved.naturalProvider == .ollama && saved.model == configuration.model
                         ? "\(configuration.model) downloaded and verified · ready for the Natural text style."
-                        : "\(configuration.model) downloaded and verified. Save refinement choice to use it for Natural."
+                        : "\(configuration.model) downloaded and verified. Save it under Text style to use it for Natural."
                 }
             } catch {
                 guard operationID == id else { return }
