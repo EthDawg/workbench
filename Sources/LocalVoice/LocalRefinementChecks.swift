@@ -1,5 +1,7 @@
+import AppKit
 import Foundation
 import Network
+import SwiftUI
 
 enum LocalRefinementChecks {
     static func run() throws {
@@ -176,6 +178,88 @@ enum LocalRefinementChecks {
         try check(Date().timeIntervalSince(frameworkCancelStart) < 1, "framework cancellation does not wait for child")
         cancellationGate.release()
         print("REFINEMENT_TRANSPORT_CHECKS_OK: \(count) checks passed")
+    }
+}
+
+extension LocalRefinementChecks {
+    /// The app owns an Ollama download (#134, 1 October): Settings › Models leaving changes nothing,
+    /// Cancel is explicit and prompt, a failure keeps its reason for the readiness line, and a finished
+    /// download says whether Natural is ready. Loopback fixtures only; no Ollama runs.
+    @MainActor static func runOwnershipChecks() async throws {
+        var count = 0
+        func check(_ value: Bool, _ label: String) throws {
+            guard value else { throw LocalRefinementError.message("REFINEMENT OWNERSHIP FAILED: " + label) }
+            count += 1
+        }
+        let suite = FileManager.default.temporaryDirectory.appendingPathComponent("Workbench.RefinementOwnership." + UUID().uuidString).path
+        guard let defaults = UserDefaults(suiteName: suite) else { throw LocalRefinementError.message("Cannot create isolated test defaults") }
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = CleanupConfigurationStore(defaults: defaults)
+        func config(_ fixture: RefinementFixture) -> CleanupConfiguration {
+            .init(naturalProvider: .ollama, endpoint: "http://127.0.0.1:\(fixture.port)", model: "fixture:small")
+        }
+        func settle(_ seconds: TimeInterval) async { try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000)) }
+
+        // A download that never answers stands in for a long one. The view that started it goes away.
+        let stalled = try await RefinementFixture.start { _ in nil }
+        defer { stalled.stop() }
+        let manager = CleanupModelManager(store: store)
+        manager.download(config(stalled))
+        await settle(0.15)
+        try check(manager.isWorking && manager.downloading == "fixture:small" && manager.downloadLine == "Downloading fixture:small…", "download starts with its one line")
+        manager.resetStatus()
+        try check(manager.downloading == "fixture:small" && manager.status == "Downloading fixture:small…", "a draft change does not disturb the running download")
+        _ = NSApplication.shared
+        NSApp.setActivationPolicy(.accessory); NSApp.finishLaunching()
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 480), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false; window.alphaValue = 0; window.ignoresMouseEvents = true
+        window.contentViewController = NSHostingController(rootView: CleanupModelSettingsView(manager: manager, isBusy: false))
+        window.orderFrontRegardless()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+        window.contentViewController = nil; window.close()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+        try check(manager.isWorking && manager.downloading == "fixture:small", "leaving Settings › Models does not cancel the download")
+        try check(manager.operation != nil, "the request still belongs to the app's manager")
+        let cancelStart = Date()
+        manager.cancel()
+        try check(!manager.isWorking && manager.downloading == nil && manager.downloadLine == nil && manager.failure == nil && manager.status.contains("cancelled"), "explicit Cancel clears the line without a failure")
+        try check(Date().timeIntervalSince(cancelStart) < 2, "cancel returns promptly")
+
+        // A refused download keeps its reason wherever readiness shows, until the next request or Save.
+        let refused = try await RefinementFixture.start { _ in RefinementFixture.json("{}", status: 503) }
+        defer { refused.stop() }
+        manager.download(config(refused))
+        await manager.operation?.value
+        try check(!manager.isWorking && manager.downloadLine == nil, "a refused download ends its line")
+        try check(manager.failure?.hasPrefix("fixture:small couldn’t be downloaded.") == true && manager.failure?.contains("503") == true, "the failure names the model and the reason")
+        try check(manager.status.contains("Light cleanup remains available"), "Models keeps the Light fallback in its status")
+        manager.clearFailure()
+        try check(manager.failure == nil, "Save clears the failure")
+
+        // A finished download says whether Natural can use it now.
+        let pull = try await RefinementFixture.start { request in
+            switch request.path {
+            case "/api/show": return RefinementFixture.json(localMetadata)
+            case "/api/pull": return RefinementFixture.json("{\"status\":\"pulling\",\"total\":100,\"completed\":50}\n{\"status\":\"success\"}\n")
+            default: return RefinementFixture.json("{\"models\":[{\"name\":\"fixture:small\",\"size\":1000,\"details\":{\"format\":\"gguf\"}}]}")
+            }
+        }
+        defer { pull.stop() }
+        manager.download(config(pull))
+        await manager.operation?.value
+        try check(manager.failure == nil && manager.status.contains("Save refinement choice to use it for Natural"), "a model that is not the saved choice asks for Save, never opting anyone in")
+        try store.save(config(pull))
+        manager.download(config(pull))
+        await manager.operation?.value
+        try check(manager.status.contains("ready for the Natural text style"), "the saved model's download makes Natural ready")
+        try check(manager.models.map(\.name) == ["fixture:small"], "the installed list refreshes after a download")
+
+        // The render-only presentation reads as a real download and clears the same way.
+        manager.presentDownload("gemma3:1b", fraction: 0.42)
+        try check(manager.downloadLine == "Downloading gemma3:1b · 42%" && manager.isWorking, "the one line carries the percentage")
+        manager.cancel()
+        try check(manager.downloadLine == nil && !manager.isWorking, "presentation clears with Cancel")
+        print("REFINEMENT_OWNERSHIP_CHECKS_OK: \(count) checks passed")
     }
 }
 

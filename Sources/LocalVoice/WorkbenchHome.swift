@@ -332,7 +332,7 @@ struct WorkbenchHome: View {
                         model.ready = ready; model.modelMessage = message
                     }
                     Divider()
-                    CleanupModelSettingsView(isBusy: model.phase != .idle || model.preparing || model.rendering)
+                    CleanupModelSettingsView(manager: model.cleanupModels, isBusy: model.phase != .idle || model.preparing || model.rendering)
                     Divider()
                     // Read's voice source is an engine too, so Models shows it with the others (rule 9).
                     VStack(alignment: .leading, spacing: 14) {
@@ -692,9 +692,13 @@ struct WorkbenchHomePage: View {
     }
     private var engineBanner: some View {
         HStack {
-            if model.preparing { ProgressView().controlSize(.small) }
+            if model.preparing || model.cleanupModels.downloading != nil { ProgressView().controlSize(.small) }
             VStack(alignment: .leading, spacing: 4) {
                 Text(model.modelMessage).font(.callout)
+                // The writing model's download or its failure, as Dictate's line shows it (#134).
+                if let line = model.writingModelLine {
+                    Text(line).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
                 // A failed preparation belongs here, beside Retry model: the menu-bar panel's
                 // Open Home… leads to these words (#134).
                 if let attention = model.attention, attention.page == .home {

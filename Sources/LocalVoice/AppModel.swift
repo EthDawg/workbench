@@ -108,6 +108,16 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     @Published var ready = false
     @Published var preparing = false
     @Published var modelMessage = "Preparing local speech…"
+    /// The writing model's one download, Ollama's, owned here as Parakeet's setup is: leaving
+    /// Settings › Models changes nothing, and its line reaches wherever readiness shows (#134).
+    private(set) lazy var cleanupModels: CleanupModelManager = {
+        let manager = CleanupModelManager()
+        cleanupModelsObserver = manager.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        return manager
+    }()
+    private var cleanupModelsObserver: AnyCancellable?
+    /// The writing model's progress or failure beside the speech model's line, or nothing.
+    var writingModelLine: String? { cleanupModels.downloadLine ?? cleanupModels.failure }
     /// Why the speech model could not be prepared, for Settings › Models beside its Try again.
     @Published var modelFailure: String?
     @Published var status = "Ready when you are."

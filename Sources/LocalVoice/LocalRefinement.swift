@@ -316,31 +316,58 @@ final class OllamaTransport: NSObject, URLSessionDataDelegate, @unchecked Sendab
     }
 }
 
+/// Ollama model work for Settings › Models. The app owns one of these, as it owns Parakeet's
+/// setup: a download keeps going when Settings › Models is left, Cancel is the only thing that
+/// stops it short of quitting, and its one line and failure reason reach the readiness line
+/// wherever it shows (#134, 1 October).
 @MainActor
 final class CleanupModelManager: ObservableObject {
     @Published private(set) var models: [OllamaInstalledModel] = []
     @Published private(set) var isWorking = false
     @Published private(set) var status = "Open Ollama on this Mac, then check installed models."
     @Published private(set) var progress: Double?
-    private var operation: Task<Void, Never>?
+    /// The model a running download fetches; nil while nothing downloads.
+    @Published private(set) var downloading: String?
+    /// Why the last download stopped short, until the next request, Cancel or Save.
+    @Published private(set) var failure: String?
+    /// The running request, for checks that wait for it to settle.
+    private(set) var operation: Task<Void, Never>?
     private var operationID: UUID?
+    private let store: CleanupConfigurationStore
 
-    func resetStatus() { models = []; status = "Settings changed. Check installed models again."; progress = nil }
+    init(store: CleanupConfigurationStore = .init()) { self.store = store }
+
+    /// The download's one line: "Downloading gemma3:1b · 42%", or its name while the size is unknown.
+    var downloadLine: String? {
+        guard let downloading else { return nil }
+        return progress.map { "Downloading \(downloading) · \(Int($0 * 100))%" } ?? "Downloading \(downloading)…"
+    }
+
+    /// A draft change asks for a fresh check; a running request keeps its own line.
+    func resetStatus() { guard !isWorking else { return }; models = []; status = "Settings changed. Check installed models again."; progress = nil; failure = nil }
+    func clearFailure() { failure = nil }
     func refresh(_ configuration: CleanupConfiguration) { perform(configuration, kind: .refresh) }
     func load(_ configuration: CleanupConfiguration) { perform(configuration, kind: .load) }
     func download(_ configuration: CleanupConfiguration) { perform(configuration, kind: .download) }
     func cancel() {
         guard isWorking else { return }
-        operation?.cancel(); operation = nil; operationID = nil; isWorking = false; progress = nil
+        operation?.cancel(); operation = nil; operationID = nil; isWorking = false; progress = nil; downloading = nil; failure = nil
         status = "Request cancelled. Ollama may retain downloaded layers or finish work already accepted."
+    }
+    /// Presentation only, for renders of Models during a download: no request runs, and Cancel clears it.
+    func presentDownload(_ model: String, fraction: Double?) {
+        guard !isWorking else { return }
+        isWorking = true; downloading = model; progress = fraction; failure = nil
+        status = downloadLine ?? "Downloading \(model)…"
     }
     private enum Operation { case refresh, load, download }
     private func perform(_ input: CleanupConfiguration, kind: Operation) {
         guard !isWorking else { return }
-        let id = UUID(); operationID = id; isWorking = true; progress = nil
+        let id = UUID(); operationID = id; isWorking = true; progress = nil; failure = nil
+        downloading = kind == .download ? input.model : nil
         status = kind == .refresh ? "Checking Ollama…" : kind == .load ? "Loading \(input.model)…" : "Downloading \(input.model)…"
         operation = Task {
-            defer { if operationID == id { isWorking = false; progress = nil; operation = nil; operationID = nil } }
+            defer { if operationID == id { isWorking = false; progress = nil; downloading = nil; operation = nil; operationID = nil } }
             do {
                 let configuration = try input.validated()
                 let client = OllamaClient(configuration: configuration)
@@ -350,7 +377,7 @@ final class CleanupModelManager: ObservableObject {
                         Task { @MainActor in
                             guard let self, self.operationID == id else { return }
                             self.progress = update.fraction
-                            self.status = update.fraction.map { "Downloading layer · \(Int($0 * 100))%" } ?? update.status
+                            self.status = self.downloadLine.map { update.fraction == nil ? "\($0) · \(update.status)" : $0 } ?? update.status
                         }
                     }
                 }
@@ -361,11 +388,19 @@ final class CleanupModelManager: ObservableObject {
                 switch kind {
                 case .refresh: status = installed.isEmpty ? "Ollama is running. No eligible local models were found." : "Ollama is running · \(installed.count) local model(s) installed. Load your choice to check readiness."
                 case .load: status = "\(configuration.model) loaded. Ollama keeps it in memory for about 5 minutes; the next request can reload it."
-                case .download: status = "\(configuration.model) downloaded and verified. Load it to check readiness."
+                case .download:
+                    // Natural with this model is ready as soon as it is the saved choice; otherwise
+                    // the download never opts anyone in, so Save stays the explicit step.
+                    let saved = store.snapshot()
+                    status = saved.naturalProvider == .ollama && saved.model == configuration.model
+                        ? "\(configuration.model) downloaded and verified · ready for the Natural text style."
+                        : "\(configuration.model) downloaded and verified. Save refinement choice to use it for Natural."
                 }
             } catch {
                 guard operationID == id else { return }
-                status = error is CancellationError ? "Request cancelled." : error.localizedDescription + " Light cleanup remains available."
+                if error is CancellationError { status = "Request cancelled."; return }
+                if kind == .download { failure = "\(input.model) couldn’t be downloaded. \(error.localizedDescription)" }
+                status = error.localizedDescription + " Light cleanup remains available."
             }
         }
     }

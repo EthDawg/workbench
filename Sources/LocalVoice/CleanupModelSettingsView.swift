@@ -2,10 +2,11 @@ import SwiftUI
 
 /// Embeddable next to speech recognition settings. Model management never opts a
 /// user into Natural cleanup; the existing Original/Light/Natural choice owns that.
+/// The manager is the app's: a download started here outlives this view (#134, 1 October).
 struct CleanupModelSettingsView: View {
+    @ObservedObject var manager: CleanupModelManager
     var isBusy: Bool
     var onChange: (CleanupConfiguration) -> Void = { _ in }
-    @StateObject private var manager = CleanupModelManager()
     @State private var draft = CleanupConfiguration()
     @State private var saved = CleanupConfiguration()
     @State private var notice: String?
@@ -41,14 +42,8 @@ struct CleanupModelSettingsView: View {
                     Button("Check installed") { manager.refresh(operationConfiguration) }.disabled(locked)
                     Button("Load model") { manager.load(operationConfiguration) }.disabled(locked)
                     Button("Download model…") { confirmDownload = true }.disabled(locked)
-                    if manager.isWorking { Button("Cancel") { manager.cancel() } }
                 }
-                if manager.isWorking {
-                    if let progress = manager.progress { ProgressView(value: progress) }
-                    else { ProgressView().controlSize(.small) }
-                }
-                Text(manager.status).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
-                Text("Ollama must already be installed and running. Downloads use the internet and disk space. Load checks the draft model; Save applies it to future Natural captures. A failed or meaning-changing edit falls back to Light, and the original is retained.")
+                Text("Ollama must already be installed and running. Downloads use the internet and disk space, and keep going if you leave this page; Cancel stops one. Load checks the draft model; Save applies it to future Natural captures. A failed or meaning-changing edit falls back to Light, and the original is retained.")
                     .font(.caption).foregroundStyle(.secondary)
                 HStack {
                     Link("Get Ollama", destination: URL(string: "https://ollama.com/download/mac")!)
@@ -57,6 +52,24 @@ struct CleanupModelSettingsView: View {
                 }.font(.caption)
                 Text("Workbench connects only to loopback and refuses cloud model metadata. You control the local server; enable Ollama’s local-only mode for a stronger boundary.")
                     .font(.caption).foregroundStyle(.secondary)
+            }
+            // A running or failed download shows whichever model is drafted above: the request is
+            // the app's, so it is never hidden by a draft change, and Cancel is the explicit stop.
+            if draft.naturalProvider == .ollama || manager.isWorking || manager.failure != nil {
+                if manager.isWorking {
+                    HStack(spacing: 10) {
+                        if let progress = manager.progress { ProgressView(value: progress) }
+                        else { ProgressView().controlSize(.small) }
+                        Button("Cancel") { manager.cancel() }
+                    }
+                }
+                if let failure = manager.failure {
+                    Label(failure, systemImage: "exclamationmark.triangle").font(.callout).foregroundStyle(.red).textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    Text(manager.status).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             HStack {
                 Button("Save refinement choice") { save() }.disabled(locked || (draft == saved && saved.settingsIssue == nil))
@@ -73,7 +86,6 @@ struct CleanupModelSettingsView: View {
         }
         .onChange(of: draft.endpoint) { _, _ in manager.resetStatus() }
         .onChange(of: draft.model) { _, _ in manager.resetStatus() }
-        .onDisappear { manager.cancel() }
         .confirmationDialog("Download \(draft.model)?", isPresented: $confirmDownload, titleVisibility: .visible) {
             Button("Download model") { if !locked { manager.download(operationConfiguration) } }
             Button("Cancel", role: .cancel) {}
@@ -89,7 +101,7 @@ struct CleanupModelSettingsView: View {
             var configuration = draft; configuration.settingsIssue = nil
             configuration = try configuration.validated()
             try CleanupConfigurationStore().save(configuration)
-            saved = configuration; draft = configuration
+            saved = configuration; draft = configuration; manager.clearFailure()
             notice = "Saved for future Natural captures. Select Natural in dictation to use it."
             onChange(configuration)
         } catch { notice = error.localizedDescription }
