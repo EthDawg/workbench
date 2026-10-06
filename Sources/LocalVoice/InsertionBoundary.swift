@@ -294,6 +294,8 @@ enum InsertionBoundary {
         "my", "your", "our", "their", "his", "her", "me", "him", "them", "us",
         "who", "what", "which", "how", "why", "because",
         "into", "onto", "over", "under", "up", "down", "out", "off", "let's",
+        "may", "might", "must", "shall", "after", "before", "until", "only", "never", "always", "already",
+        "something", "nothing", "anything", "everything", "one", "once", "even", "either", "neither", "both",
     ]
     /// The same Title-case word used as a whole word somewhere that is not a sentence start.
     private static func capitalisedMidSentence(_ word: String, in text: String) -> Bool {
