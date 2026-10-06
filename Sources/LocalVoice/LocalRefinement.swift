@@ -328,12 +328,14 @@ final class CleanupModelManager: ObservableObject {
     @Published private(set) var progress: Double?
     /// The model a running download fetches; nil while nothing downloads.
     @Published private(set) var downloading: String?
-    /// Why the last download stopped short, until the next request, Cancel or Save.
+    /// Why the last download stopped short, until the next request, Cancel or Save. A draft change
+    /// leaves it: Settings › Models loads its draft on every visit, and the reason must outlive that.
     @Published private(set) var failure: String?
     /// The running request, for checks that wait for it to settle.
     private(set) var operation: Task<Void, Never>?
     private var operationID: UUID?
-    private let store: CleanupConfigurationStore
+    /// The saved refinement choice, the app's one store: the view it is shown in reads and saves here.
+    let store: CleanupConfigurationStore
 
     init(store: CleanupConfigurationStore = .init()) { self.store = store }
 
@@ -343,8 +345,9 @@ final class CleanupModelManager: ObservableObject {
         return progress.map { "Downloading \(downloading) · \(Int($0 * 100))%" } ?? "Downloading \(downloading)…"
     }
 
-    /// A draft change asks for a fresh check; a running request keeps its own line.
-    func resetStatus() { guard !isWorking else { return }; models = []; status = "Settings changed. Check installed models again."; progress = nil; failure = nil }
+    /// A draft change asks for a fresh check; a running request keeps its own line, and a kept
+    /// failure keeps its reason.
+    func resetStatus() { guard !isWorking else { return }; models = []; status = "Settings changed. Check installed models again."; progress = nil }
     func clearFailure() { failure = nil }
     func refresh(_ configuration: CleanupConfiguration) { perform(configuration, kind: .refresh) }
     func load(_ configuration: CleanupConfiguration) { perform(configuration, kind: .load) }
@@ -399,8 +402,10 @@ final class CleanupModelManager: ObservableObject {
             } catch {
                 guard operationID == id else { return }
                 if error is CancellationError { status = "Request cancelled."; return }
-                if kind == .download { failure = "\(input.model) couldn’t be downloaded. \(error.localizedDescription)" }
-                status = error.localizedDescription + " Light cleanup remains available."
+                // A download's reason is its own line, kept for the readiness line wherever it
+                // shows; the status beside it says only what still works.
+                if kind == .download { failure = "\(input.model) couldn’t be downloaded. \(error.localizedDescription)"; status = "Light cleanup remains available." }
+                else { status = error.localizedDescription + " Light cleanup remains available." }
             }
         }
     }

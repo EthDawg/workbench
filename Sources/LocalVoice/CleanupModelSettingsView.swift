@@ -66,10 +66,9 @@ struct CleanupModelSettingsView: View {
                 if let failure = manager.failure {
                     Label(failure, systemImage: "exclamationmark.triangle").font(.callout).foregroundStyle(.red).textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
-                } else {
-                    Text(manager.status).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
+                Text(manager.status).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             HStack {
                 Button("Save refinement choice") { save() }.disabled(locked || (draft == saved && saved.settingsIssue == nil))
@@ -80,7 +79,7 @@ struct CleanupModelSettingsView: View {
                 .font(.caption).foregroundStyle(.secondary)
         }
         .onAppear {
-            let loaded = CleanupConfigurationStore().snapshot()
+            let loaded = manager.store.snapshot()
             saved = loaded; draft = loaded; draft.settingsIssue = nil
             notice = loaded.settingsIssue
         }
@@ -100,7 +99,7 @@ struct CleanupModelSettingsView: View {
         do {
             var configuration = draft; configuration.settingsIssue = nil
             configuration = try configuration.validated()
-            try CleanupConfigurationStore().save(configuration)
+            try manager.store.save(configuration)
             saved = configuration; draft = configuration; manager.clearFailure()
             notice = "Saved for future Natural captures. Select Natural in dictation to use it."
             onChange(configuration)

@@ -211,28 +211,44 @@ extension LocalRefinementChecks {
         try check(manager.downloading == "fixture:small" && manager.status == "Downloading fixture:small…", "a draft change does not disturb the running download")
         _ = NSApplication.shared
         NSApp.setActivationPolicy(.accessory); NSApp.finishLaunching()
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 480), styleMask: [.titled], backing: .buffered, defer: false)
-        window.isReleasedWhenClosed = false; window.alphaValue = 0; window.ignoresMouseEvents = true
-        window.contentViewController = NSHostingController(rootView: CleanupModelSettingsView(manager: manager, isBusy: false))
-        window.orderFrontRegardless()
-        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
-        window.contentViewController = nil; window.close()
-        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+        /// Settings › Models hosted and left again, as a visit does it: its appearance loads the saved
+        /// draft, which fires the draft's change handlers, and its disappearance must change nothing.
+        func visitModels() {
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 480), styleMask: [.titled], backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false; window.alphaValue = 0; window.ignoresMouseEvents = true
+            window.contentViewController = NSHostingController(rootView: CleanupModelSettingsView(manager: manager, isBusy: false))
+            window.orderFrontRegardless()
+            RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+            window.contentViewController = nil; window.close()
+            RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+        }
+        visitModels()
         try check(manager.isWorking && manager.downloading == "fixture:small", "leaving Settings › Models does not cancel the download")
         try check(manager.operation != nil, "the request still belongs to the app's manager")
+        let running = manager.operation
         let cancelStart = Date()
         manager.cancel()
         try check(!manager.isWorking && manager.downloading == nil && manager.downloadLine == nil && manager.failure == nil && manager.status.contains("cancelled"), "explicit Cancel clears the line without a failure")
-        try check(Date().timeIntervalSince(cancelStart) < 2, "cancel returns promptly")
+        await running?.value
+        try check(Date().timeIntervalSince(cancelStart) < 2, "the cancelled request itself ends promptly, as quit needs it to")
 
-        // A refused download keeps its reason wherever readiness shows, until the next request or Save.
+        // A refused download keeps its reason wherever readiness shows, until the next request or Save:
+        // a visit to Settings › Models loads a saved draft unlike the defaults, and that change must not
+        // clear it (review of #270).
         let refused = try await RefinementFixture.start { _ in RefinementFixture.json("{}", status: 503) }
         defer { refused.stop() }
         manager.download(config(refused))
         await manager.operation?.value
         try check(!manager.isWorking && manager.downloadLine == nil, "a refused download ends its line")
         try check(manager.failure?.hasPrefix("fixture:small couldn’t be downloaded.") == true && manager.failure?.contains("503") == true, "the failure names the model and the reason")
-        try check(manager.status.contains("Light cleanup remains available"), "Models keeps the Light fallback in its status")
+        try check(manager.status == "Light cleanup remains available.", "Models keeps the Light fallback in its status beside the reason")
+        try store.save(.init(naturalProvider: .ollama, endpoint: "http://127.0.0.1:\(refused.port)", model: "fixture:other"))
+        let kept = manager.failure
+        visitModels()
+        try check(manager.status == "Settings changed. Check installed models again.", "the visit's draft load asks for a fresh check")
+        try check(manager.failure == kept, "opening Settings › Models keeps the failure and its reason")
+        manager.resetStatus()
+        try check(manager.failure == kept, "a draft change keeps the failure and its reason")
         manager.clearFailure()
         try check(manager.failure == nil, "Save clears the failure")
 
