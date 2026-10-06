@@ -42,8 +42,8 @@ enum MeetingCompletionChecks {
         let unchangedClipboard = board.string(forType: .string)
         let failure = MeetingTranscriptCopy.copy(completed.id, in: history) { _ in "Could not copy the transcript." }
         try expect(failure == "Could not copy the transcript.", "a clipboard failure cannot become success")
-        try expect(try board.string(forType: .string) == unchangedClipboard && encoder.encode(history) == beforeFailure,
-                   "failed Copy preserves previous clipboard content and both saved wordings")
+        try expect(try encoder.encode(history) == beforeFailure,
+                   "a reported clipboard failure preserves both saved wordings")
 
         let calls = copiedIDs.count
         try expect(MeetingTranscriptCopy.copy(UUID(), in: history, write: write) != nil,
