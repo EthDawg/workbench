@@ -339,11 +339,18 @@ final class TextDelivery {
                 ? "still copied." : "the clipboard has since changed."))
         }
         var confirmed = false
+        // The fitted words served one caret; what stays copied after the paste is the
+        // transcript. Every post-paste exit, cancellation included, leaves it so when
+        // Workbench still owns the clipboard, and the recopy becomes the owned change.
+        func recopyTranscript() {
+            if delivered != text, pasteboard.changeCount == ownedChange, let recopied = copy(text, to: pasteboard) { ownedChange = recopied }
+        }
         // Web/Electron accessibility updates can arrive after the paste itself.
         // Poll for at most 1.2 seconds; never retry the paste or retarget a field.
         for _ in 0..<(before.value == nil ? 0 : 15) {
             do { try await system.pause(80_000_000); try Task.checkCancellation() }
             catch {
+                recopyTranscript()
                 return outcome("Paste was sent before cancellation. Check the destination; insertion was not confirmed or undone.", failure: .cancelled)
             }
             guard system.isEligible(target) else { break }
@@ -365,8 +372,7 @@ final class TextDelivery {
                                failure: restored ? nil : .clipboardRestoreFailed, pasteWasAttempted: true)
             }
         }
-        // The fitted words served one caret; what stays copied is the transcript.
-        if delivered != text, pasteboard.changeCount == ownedChange, let recopied = copy(text, to: pasteboard) { ownedChange = recopied }
+        recopyTranscript()
         if confirmed { return outcome("Pasted into \(destinationName ?? "your app").", wasPasted: true) }
         return outcome(pasteboard.changeCount == ownedChange
                        ? "Paste sent · insertion could not be confirmed. The transcript remains copied."

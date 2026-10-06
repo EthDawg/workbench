@@ -434,6 +434,17 @@ enum TextDeliveryChecks {
                                                         validateTarget: { validations += 1; return validations < 2 }, fit: .init(), system: cancelledFit.system)
         try check(cancelledPaste.failure == .cancelled && cancelledFit.posted == 0 && cancelledFit.reads == 1 && board.string(forType: .string) == "The blue folder",
                   "cancellation after the fit leaves the transcript copied")
+        // Cancellation during the confirmation poll is a post-paste exit like the others:
+        // the fitted words were pasted once and the transcript is what stays copied.
+        let cancelledPoll = DeliveryFixture(board)
+        cancelledPoll.state = caretState
+        var cancelledPollSystem = cancelledPoll.system
+        cancelledPollSystem.pause = { _ in throw CancellationError() }
+        let cancelledPollPaste = await TextDelivery.deliver("The blue folder", target: cancelledPoll.target, mode: .paste, restoreClipboard: false,
+                                                            validateTarget: { true }, fit: .init(), system: cancelledPollSystem)
+        try check(cancelledPollPaste.failure == .cancelled && cancelledPollPaste.pasteWasAttempted && cancelledPoll.posted == 1
+                  && board.string(forType: .string) == "The blue folder" && cancelledPollPaste.clipboardChangeCount == board.changeCount,
+                  "cancellation during the confirmation poll leaves the transcript copied and owned, not the fitted words")
         let unreadableFit = DeliveryFixture(board)
         unreadableFit.state = .init(value: nil, selection: nil)
         let unreadablePaste = await unreadableFit.deliver("The blue folder", fit: .init())
