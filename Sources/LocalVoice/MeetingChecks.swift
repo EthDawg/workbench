@@ -356,6 +356,7 @@ enum MeetingChecks {
         try await offerLifecycleChecks(root: root, expect: expect)
         try await liveLifecycleChecks(root: root, expect: expect)
         checks += try MeetingRemovalChecks.run(root: root.appendingPathComponent("removal-checks"))
+        checks += try MeetingCompletionChecks.run()
         print("Meeting checks passed (\(checks)): synthetic detection, source timing, >30-minute segmentation, recovery, cancellation and stable history commits. No live devices were used.")
     }
 
