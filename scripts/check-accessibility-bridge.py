@@ -5,11 +5,13 @@ On macOS 26 an Accessibility call that waits on another process from a Swift
 task's thread logs an AXCommon fault, "unsafeForcedSync called from Swift
 Concurrent context"; the installed app logged more than 126,000 of them in a
 week, nearly all from listing the Mac voices. `AccessibilityBridge` runs such
-calls where macOS counts them as plain code, so this check fails when a call
-appears anywhere else: element IPC (AXUIElement*), observers (AXObserver*) and
-the voice catalogue (AVSpeechSynthesisVoice.speechVoices, the voice-by-identifier
-initializer, NSSpeechSynthesizer's voice list and attributes). AXValue helpers
-and AXIsProcessTrusted stay free: they do not message another process.
+calls where macOS counts them as plain code, so this check fails when one is
+named anywhere else, called or merely referenced: element IPC (AXUIElement*),
+observers (AXObserver*) and the voice catalogue (AVSpeechSynthesisVoice.speechVoices,
+the voice-by-identifier initializer, NSSpeechSynthesizer's voice list and
+attributes). The types AXUIElement, AXObserver and AXObserverCallback, AXValue
+helpers and AXIsProcessTrusted stay free: they do not message another process.
+Comments, line and block, are not code.
 
     python3 scripts/check-accessibility-bridge.py          # the repository
     python3 scripts/check-accessibility-bridge.py DIR...   # other roots, for its test
@@ -20,10 +22,18 @@ import sys
 
 PROJECT = Path(__file__).resolve().parents[1]
 BRIDGE = Path('Sources/LocalVoice/AccessibilityBridge.swift')
-CALLS = re.compile(r'\bAXUIElement\w*\(|\bAXObserver\w*\(|\bAVSpeechSynthesisVoice\.speechVoices\('
-                   r'|\bAVSpeechSynthesisVoice\(identifier:|\bNSSpeechSynthesizer\.availableVoices\b'
-                   r'|\bNSSpeechSynthesizer\.attributes\(forVoice:')
-LINE_COMMENT = re.compile(r'//.*')
+# Bare identifiers, so a function reference or a call split after its name
+# counts too; the framework's types are the only names left free.
+CALLS = re.compile(r'\b(?:AXUIElement|AXObserver)\w*\b|\bAVSpeechSynthesisVoice\.speechVoices\b'
+                   r'|\bAVSpeechSynthesisVoice(?:\.init)?\s*\(\s*identifier\s*:|\bNSSpeechSynthesizer\.availableVoices\b'
+                   r'|\bNSSpeechSynthesizer\.attributes\s*\(\s*forVoice\s*:')
+TYPES = {'AXUIElement', 'AXObserver', 'AXObserverCallback', 'AXObserverCallbackWithInfo'}
+COMMENTS = re.compile(r'/\*.*?\*/|//[^\n]*', re.DOTALL)
+
+
+def code(text):
+    """The text with every comment blanked, line numbers kept."""
+    return COMMENTS.sub(lambda match: re.sub(r'[^\n]', ' ', match.group()), text)
 
 
 def strays(root):
@@ -33,9 +43,11 @@ def strays(root):
         relative = path.relative_to(root)
         if relative == BRIDGE:
             continue
-        for number, line in enumerate(path.read_text().splitlines(), 1):
-            for match in CALLS.finditer(LINE_COMMENT.sub('', line)):
-                found.append((str(relative), number, match.group().rstrip('(')))
+        for number, line in enumerate(code(path.read_text()).splitlines(), 1):
+            for match in CALLS.finditer(line):
+                name = re.sub(r'\s*\(.*', '', match.group())
+                if name not in TYPES:
+                    found.append((str(relative), number, name))
     return found
 
 

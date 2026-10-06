@@ -34,7 +34,10 @@ class BridgeCheck(unittest.TestCase):
                      'Sources/LocalVoice/TextDelivery.swift': 'let a = AccessibilityBridge.attribute(e, k)\n'
                                                               '// AXUIElementCopyAttributeValue( in a comment is text\n'
                                                               'let r = AXValueGetType(v); let t = AXIsProcessTrusted()\n'
-                                                              'let o = LiveDictationAXObserver(target: t)\n'})
+                                                              'let o = LiveDictationAXObserver(target: t)\n'
+                                                              '/* AXObserverCreate(pid, cb, &o) in a block\n'
+                                                              '   comment is text too */ var e: AXUIElement?\n'
+                                                              'var ob: AXObserver?; let cb: AXObserverCallback = f\n'})
         code, out = run(root)
         self.assertEqual((code, out.strip()), (0, 'Accessibility bridge OK'))
 
@@ -46,15 +49,20 @@ class BridgeCheck(unittest.TestCase):
                                                        'let w = AVSpeechSynthesisVoice(identifier: id)\n'
                                                        'let s = NSSpeechSynthesizer.availableVoices\n'
                                                        'let x = NSSpeechSynthesizer.attributes(forVoice: s[0])\n',
+                     'Sources/LocalVoice/Reference.swift': 'let read = AXUIElementCopyAttributeValue\n'
+                                                           'let value = AXUIElementCopyParameterizedAttributeValue\n'
+                                                           '    (e, k, p, &v)\n'
+                                                           'let w = AVSpeechSynthesisVoice.init(identifier: id)\n',
                      'Sources/StageKit/Other.swift': 'let t = AXUIElementCreateApplication(pid) // not here\n'})
         code, out = run(root)
         self.assertEqual(code, 1)
         for line in ['Stray.swift:1: AXUIElementSetAttributeValue', 'Stray.swift:2: AXObserverCreate',
                      'Stray.swift:3: AVSpeechSynthesisVoice.speechVoices', 'Stray.swift:4: AVSpeechSynthesisVoice',
                      'Stray.swift:5: NSSpeechSynthesizer.availableVoices', 'Stray.swift:6: NSSpeechSynthesizer.attributes',
-                     'Other.swift:1: AXUIElementCreateApplication']:
+                     'Reference.swift:1: AXUIElementCopyAttributeValue', 'Reference.swift:2: AXUIElementCopyParameterizedAttributeValue',
+                     'Reference.swift:4: AVSpeechSynthesisVoice', 'Other.swift:1: AXUIElementCreateApplication']:
             self.assertIn(line, out)
-        self.assertEqual(out.count('belongs in'), 7)
+        self.assertEqual(out.count('belongs in'), 10)
 
     def test_missing_bridge_fails(self):
         code, out = run(tree({'Sources/LocalVoice/A.swift': 'let a = 1\n'}))
