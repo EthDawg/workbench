@@ -26,13 +26,16 @@ import Foundation
 ///    `github.com`, `e.g.` and code keep their spelling.
 /// 6. Mid-sentence lowercasing applies only when the first token is a single
 ///    Title-case word (one capital, then lowercase letters, apostrophes or hyphens)
-///    ending at a space or clause punctuation, is not `I` or a contraction of it, is not
-///    a dictionary term and is not already written with that capital mid-sentence in
-///    the field or later in the dictation. Names the recogniser capitalised at the
-///    start of an utterance are indistinguishable from `The`, so the dictionary and the
-///    field's own spelling are the evidence; everything else keeps the dictated spelling:
-///    all-caps acronyms, numbers, URLs, code, `McDonald`, `O'Brien`, and a title
-///    abbreviation such as `Dr.`.
+///    ending at a space or clause punctuation and its lowercase form is one of the
+///    everyday words a recogniser capitalises at the start of an utterance (`the`, `a`,
+///    `it`, `we`, `this`, `and`, `is`, `can't`, and so on: the closed list below). A name
+///    the recogniser capitalised at the start of an utterance is indistinguishable from
+///    a product name or a verb such as `Make`, so everything outside that list keeps the
+///    dictated spelling: `Mark`, `Google Docs`, `Send`, all-caps acronyms, numbers, URLs,
+///    code, `McDonald`, `O'Brien`, and a title abbreviation such as `Dr.`. `I` and its
+///    contractions stay, a dictionary term keeps its capital even when it is in the list
+///    (a dictionary entry `Will`), and so does a word already written with that capital
+///    mid-sentence in the field or later in the dictation.
 /// 7. One final full stop is dropped when the sentence continues after it (the next
 ///    character, past spaces, is a lowercase letter or digit) or the field already ends
 ///    it there (`. , ; : ! ?`). A full stop before a line break or a capital stays, and
@@ -51,6 +54,9 @@ enum InsertionBoundary {
         case notOneTitleCaseWord, pronounI, dictionaryTerm, capitalisedElsewhere
         /// A title or Latin abbreviation with its full stop: `Dr.`, `e.g.`.
         case abbreviation
+        /// Not in the closed list of everyday words a recogniser capitalises at an
+        /// utterance start, so it is read as a name or a dictated capital: `Mark`, `Google`, `Send`.
+        case notAnEverydayWord
     }
     enum Decision: Equatable, CustomStringConvertible {
         case nothingToInsert, trimmedEdges
@@ -267,8 +273,28 @@ enum InsertionBoundary {
                                     && term.dropFirst(text.count).first?.isLetter == false)
         }) { return .dictionaryTerm }
         if [before, after, String(rest)].contains(where: { capitalisedMidSentence(text, in: $0) }) { return .capitalisedElsewhere }
+        guard everydayWords.contains(text.lowercased().replacingOccurrences(of: "\u{2019}", with: "'")) else { return .notAnEverydayWord }
         return nil
     }
+    /// The everyday words a recogniser capitalises at the start of an utterance: articles,
+    /// pronouns and their contractions, conjunctions, prepositions, determiners, auxiliaries
+    /// and modals, common adverbs and discourse words. Mid-sentence these are lowercased;
+    /// any other Title-case first word is taken to be a name and kept. `I` has its own rule.
+    static let everydayWords: Set<String> = [
+        "the", "a", "an", "and", "but", "or", "so", "nor", "yet",
+        "it", "it's", "its", "this", "that", "these", "those", "there", "there's", "here",
+        "we", "we're", "we'll", "you", "you're", "you'll", "they", "they're", "he", "she",
+        "is", "are", "was", "were", "be", "been", "being", "am",
+        "can", "can't", "could", "would", "should", "will", "won't",
+        "do", "don't", "does", "doesn't", "did", "didn't", "have", "haven't", "has", "hasn't", "had", "not",
+        "to", "for", "of", "in", "on", "at", "with", "from", "by", "about", "as",
+        "if", "when", "where", "while", "then", "than", "also", "just", "please", "okay", "ok", "yes", "no",
+        "now", "again", "still", "very", "really", "maybe",
+        "some", "any", "all", "each", "every", "more", "most", "much", "many",
+        "my", "your", "our", "their", "his", "her", "me", "him", "them", "us",
+        "who", "what", "which", "how", "why", "because",
+        "into", "onto", "over", "under", "up", "down", "out", "off", "let's",
+    ]
     /// The same Title-case word used as a whole word somewhere that is not a sentence start.
     private static func capitalisedMidSentence(_ word: String, in text: String) -> Bool {
         var search = text.startIndex
