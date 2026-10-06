@@ -629,6 +629,7 @@ struct TestRunner {
             ("phone link: ended until a deliberate action", phoneLink.testEndedSaysSoAndOffersOnlyADeliberateWayBack),
             ("phone link: a failed USB check is not an empty bus", phoneLink.testAFailedUSBCheckIsNotAnEmptyBus),
             ("phone link: monitor keeps a failed look and drops a late one", phoneLink.testTheMonitorKeepsAFailedLookAndDropsALateOne),
+            ("phone link: bounded capture faults and QuickTime only when busy", phoneLink.testCaptureFaultsStayBoundedAndOnlyABusyDeviceNamesQuickTime),
             ("phone link: reports carry kinds, never personal names", phoneLink.testReportsCarryKindsNeverPersonalNames),
             ("phone End: a late permission answer stays ended", phoneEnd.testEndWithAPendingPermissionStaysEndedWhenTheAnswerArrivesLate),
             ("phone End: a late frame neither goes live nor reopens", phoneEnd.testALateFrameAfterEndNeitherGoesLiveNorReopens),

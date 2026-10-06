@@ -28,9 +28,10 @@ enum PhoneConnectionSupport {
 }
 
 /// One compact answer to "Can’t see your phone?": the live status, the three
-/// checks that happen away from Workbench, a QuickTime check that separates the
-/// Mac from Workbench, and the honest ways to show a phone in a call when this
-/// Mac cannot receive it. No route picker, no policy detection, no setting changed.
+/// checks that happen away from Workbench, a QuickTime check while the picture is
+/// missing for a reason the Mac might explain, and the honest ways to show a phone
+/// in a call when this Mac cannot receive it. No route picker, no policy detection,
+/// no setting changed.
 struct PhoneConnectionHelp: View {
     let status: PhoneLinkStatus
     let diagnostic: () -> String
@@ -66,11 +67,13 @@ struct PhoneConnectionHelp: View {
                             }
                         }
                     }
-                    VStack(alignment: .leading, spacing: 6) {
-                        Button(endsPresentation ? "End presentation & check in QuickTime Player" : "Check in QuickTime Player") { openApp(.quickTime) }
-                            .disabled(!NativePresentationApp.quickTime.isAvailable)
-                        Text("File › New Movie Recording, then the source menu beside the record button. If QuickTime can’t see the phone either, this Mac isn’t receiving it: the cable, trust or a policy, not Workbench.")
-                            .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    if status.suggestsQuickTimeCheck {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Button(endsPresentation ? "End presentation & check in QuickTime Player" : "Check in QuickTime Player") { openApp(.quickTime) }
+                                .disabled(!NativePresentationApp.quickTime.isAvailable)
+                            Text("File › New Movie Recording, then the source menu beside the record button. Whether QuickTime sees the phone is one more observation for your report; it doesn’t say why.")
+                                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                     VStack(alignment: .leading, spacing: 8) {
                         Text("In a call, without the stage").font(.headline)

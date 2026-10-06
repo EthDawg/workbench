@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 
 /// Every row of the PhoneLink table, from synthetic signals only: no device,
 /// permission prompt, capture session or IOKit notification is touched.
@@ -170,6 +171,7 @@ final class PhoneLinkTests {
         XCTAssertTrue(ended.detail?.contains("Reconnect") == true)
         XCTAssertEqual(ended.step, .reconnect, "The page's preview comes back only when asked")
         XCTAssertFalse(ended.offersHelp, "Nothing is wrong: Workbench let go on purpose")
+        XCTAssertFalse(ended.suggestsQuickTimeCheck)
         XCTAssertEqual(PhoneLink.status(signals { $0.released = .ended; $0.sources = [screen]; $0.capturing = true }).phase, .ended,
                        "A visible page does not turn End into connecting")
         XCTAssertTrue(PhoneLink.diagnostic(signals { $0.released = .ended }, build: "b").contains("Session: released when the presentation ended"))
@@ -218,6 +220,33 @@ final class PhoneLinkTests {
         settle()
         XCTAssertEqual(monitor.signals.usb, [], "A look after the watch stopped brings nothing back")
         XCTAssertEqual(monitor.signals.usbProbe, .notChecked)
+    }
+
+    func testCaptureFaultsStayBoundedAndOnlyABusyDeviceNamesQuickTime() {
+        let base: (inout PhoneLinkSignals) -> Void = { $0.sources = [self.screen]; $0.rememberedID = self.screen.id; $0.access = .authorized; $0.usbProbe = .checked }
+        let fault = CaptureFault(NSError(domain: AVFoundationErrorDomain, code: -11814,
+                                         userInfo: [NSLocalizedDescriptionKey: "Ethan’s iPhone could not be opened", "device": "udid-1"]))
+        XCTAssertEqual(fault.text, "\(AVFoundationErrorDomain) -11814")
+        let unopenable = signals { base(&$0); $0.phase = .failed(self.screen.id, .couldNotOpen, fault) }
+        let report = PhoneLink.diagnostic(unopenable, build: "b")
+        XCTAssertTrue(report.contains("Session: could not open the device (\(AVFoundationErrorDomain) -11814)"), "The underlying code is kept for the report")
+        XCTAssertFalse(report.contains("could not be opened"), "The error's message and user info stay out of the report")
+        XCTAssertFalse(report.contains("udid-1"))
+        XCTAssertEqual(CaptureFault(domain: String(repeating: "x", count: 500), code: 1).domain.count, 64)
+        let interrupted = signals { base(&$0); $0.phase = .interrupted(self.screen.id, CaptureFault(domain: AVFoundationErrorDomain, code: -11819)) }
+        XCTAssertTrue(PhoneLink.diagnostic(interrupted, build: "b").contains("Session: interrupted (\(AVFoundationErrorDomain) -11819)"))
+        for failure in [CapturePhase.Failure.couldNotOpen, .couldNotStart] {
+            let status = PhoneLink.status(signals { base(&$0); $0.phase = .failed(self.screen.id, failure) })
+            XCTAssertFalse(status.detail?.contains("QuickTime") == true, "A generic failure never blames QuickTime")
+            XCTAssertFalse(status.detail?.contains("other") == true, "or any other app")
+            XCTAssertTrue(status.suggestsQuickTimeCheck, "QuickTime is offered as a check, not a cause")
+        }
+        let busy = PhoneLink.status(signals { base(&$0); $0.phase = .failed(self.screen.id, .busy) })
+        XCTAssertTrue(busy.detail?.contains("QuickTime") == true, "Only macOS's own in-use answer names QuickTime")
+        XCTAssertFalse(busy.suggestsQuickTimeCheck, "Another app already holds the screen: opening QuickTime is no check")
+        for phase in [PhoneLinkStatus.Phase.live, .connecting, .available, .accessDenied, .accessRestricted, .released, .ended, .chooseScreen] {
+            XCTAssertFalse(PhoneLinkStatus(phase: phase, title: "", detail: nil, step: nil).suggestsQuickTimeCheck, "No QuickTime check while \(phase)")
+        }
     }
 
     /// The report replaces every device's own name with its kind, including where the status

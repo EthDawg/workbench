@@ -150,6 +150,16 @@ public struct PhoneLinkStatus: Equatable {
         default: return true
         }
     }
+    /// Checking in QuickTime Player is worth suggesting only while the picture is missing for a
+    /// reason the Mac itself might explain. Not when another app already holds the screen, the
+    /// screen is offered, the permission is Workbench's own, or Workbench let go on purpose.
+    /// What QuickTime shows is another observation, never proof of a cause.
+    public var suggestsQuickTimeCheck: Bool {
+        switch phase {
+        case .noPhone, .usbUnavailable, .phoneOnUSB, .waitingForRemembered, .stalled, .interrupted, .couldNotOpen, .couldNotStart: return true
+        default: return false
+        }
+    }
     public var symbol: String {
         switch phase {
         case .live: return "iphone"
@@ -182,14 +192,15 @@ public enum PhoneLink {
             return .init(phase: .interrupted, title: "\(Noun) disconnected",
                          detail: "Reconnect the cable and unlock it. The stage waits here.", step: .reconnect)
         case .failed(_, .busy, _):
+            // Only here has macOS said another app holds the device, so only here is QuickTime named.
             return .init(phase: .busy, title: "Another app is using the \(noun)’s screen",
                          detail: "Close QuickTime Player or the other preview, then Reconnect.", step: .reconnect)
         case .failed(_, .couldNotOpen, _):
             return .init(phase: .couldNotOpen, title: "Workbench can’t open the \(noun)",
-                         detail: "Unlock it and close any other preview using it, then Reconnect.", step: .reconnect)
+                         detail: "Unlock it, then Reconnect. Copy connection details records what macOS answered.", step: .reconnect)
         case .failed(_, .couldNotStart, _):
             return .init(phase: .couldNotStart, title: "The \(noun)’s screen didn’t start",
-                         detail: "Unlock the phone, close any other app previewing it, then Reconnect.", step: .reconnect)
+                         detail: "Unlock the phone, then Reconnect.", step: .reconnect)
         case .waitingForAccess:
             return .init(phase: .accessPending, title: "Allow device video in the macOS prompt",
                          detail: "Workbench shows the phone’s picture only. It never opens the phone’s microphone.", step: nil)
