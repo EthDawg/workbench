@@ -451,6 +451,46 @@ public final class PhoneLinkMonitor: ObservableObject {
     /// Facts for a report, with no identifiers.
     public func diagnostic(build: String) -> String { PhoneLink.diagnostic(signals, status: status, build: build) }
 
+    /// Like `observe`, but also runs the one capture session headless, so a Mac can
+    /// prove that frames arrive, and at what size, without opening a window. The
+    /// session uses a temporary root, so what it adopts never reaches the person's
+    /// scenes; macOS asks for camera access on first use, as the page would.
+    public static func observeLive(seconds: TimeInterval, build: String, onChange: @escaping (String) -> Void) async -> (signals: PhoneLinkSignals, status: PhoneLinkStatus, report: String, firstFrame: TimeInterval?, size: CGSize) {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("workbench-phone-link-live-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let capture = DemoCapture(root: root)
+        let monitor = PhoneLinkMonitor()
+        monitor.mirror(capture)
+        monitor.setCapturing(true)
+        var last: PhoneLinkStatus?
+        let subscription = monitor.$status.sink { status in
+            guard status != last else { return }
+            last = status; onChange(status.title + (status.detail.map { " — " + $0 } ?? ""))
+        }
+        monitor.setActive(true)
+        let started = Date()
+        capture.start()
+        let deadline = started.addingTimeInterval(seconds)
+        var firstFrame: TimeInterval?
+        var size = CGSize.zero
+        while Date() < deadline {
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            monitor.refresh()
+            if case .live(_, let dimensions) = capture.phase {
+                if firstFrame == nil { firstFrame = Date().timeIntervalSince(started) }
+                size = dimensions
+            }
+        }
+        subscription.cancel()
+        let frames = firstFrame.map { String(format: "Frames: first after %.1f s, %d×%d", $0, Int(size.width), Int(size.height)) }
+            ?? "Frames: none within \(Int(seconds)) s"
+        let final = (signals: monitor.signals, status: monitor.status, report: monitor.diagnostic(build: build) + "\n" + frames, firstFrame: firstFrame, size: size)
+        monitor.setActive(false)
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in capture.stop { continuation.resume() } }
+        return final
+    }
+
     /// Runs the bus watch and the source discovery headless for a while and reports
     /// what the Mac showed, for a receipt from a Mac where the phone never appeared.
     /// It starts no capture session and asks for no permission.

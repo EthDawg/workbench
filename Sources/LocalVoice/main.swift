@@ -872,8 +872,8 @@ func runCLI(_ args: [String]) async -> Int32 {
             }
         // What this Mac shows of a phone, watched headless; the new folder is the receipt (#276).
         case "--phone-link":
-            let (folder, seconds) = try PhoneLinkChecks.arguments(args)
-            try await PhoneLinkChecks.run(folder: folder, seconds: seconds)
+            let (folder, seconds, live) = try PhoneLinkChecks.arguments(args)
+            try await PhoneLinkChecks.run(folder: folder, seconds: seconds, live: live)
         case "--check-readback-pack":
             try await MainActor.run { try ReadbackPackChecks.run() }
         case "--check-readback-ordering-ui":
@@ -912,7 +912,7 @@ func runCLI(_ args: [String]) async -> Int32 {
             let second = try await engine().transcribe(m4a)
             guard second.lowercased().contains("blue notebook") else { throw VoiceError.message("M4A recognition failed: \(second)") }
             print("M4A_TRANSCRIPTION_OK")
-        default: throw VoiceError.message("Usage: LocalVoice [--prepare-model | --transcribe AUDIO_FILE | --check-core | --check-readback | --check-speko | --check-reading-cancellation | --check-library | --check-quick-look-panel FILE… | --check-reading-service | --check-reading-service-native | --render-reading-service-fixture OUTPUT.png | --render-surfaces OUTPUT_DIRECTORY | --phone-link NEW_FOLDER [SECONDS] | --self-test]")
+        default: throw VoiceError.message("Usage: LocalVoice [--prepare-model | --transcribe AUDIO_FILE | --check-core | --check-readback | --check-speko | --check-reading-cancellation | --check-library | --check-quick-look-panel FILE… | --check-reading-service | --check-reading-service-native | --render-reading-service-fixture OUTPUT.png | --render-surfaces OUTPUT_DIRECTORY | --phone-link NEW_FOLDER [SECONDS] [--live] | --self-test]")
         }
         return 0
     } catch { fputs("Local Voice: \(error.localizedDescription)\n", stderr); return 1 }
