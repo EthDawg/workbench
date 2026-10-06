@@ -37,6 +37,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var terminating = false
     private var terminationPending = false
     private var meetingOffer: MeetingOfferPanelController?
+    /// Report a problem (#296): one owner for the composer, its draft and outbox.
+    var bugReports: BugReportModel?
+    var bugReportWindow: BugReportWindowController?
+    /// The report's own region capture, separate from Snap's, so Snap's draft and host are untouched.
+    var bugReportCapture: SnapCapture?
+    private var bugReportObserver: NSObjectProtocol?
+    var isTerminatingForReports: Bool { terminating }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let editions = ["com.ethdawg.workbench", "com.ethdawg.workbench.preview", "com.ethdawg.localvoice", "com.ethdawg.localvoice.preview", "local.ethan.StageMark", "local.ethan.StageMark.preview"]
@@ -73,7 +80,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         snap.mayBeginCapture = { [weak self] in
             guard let self, !self.terminating else { return "Workbench is closing." }
-            return self.readback.isCapturing || self.shortcutsSuspended || self.stage?.isTakingScreenshot == true
+            return self.readback.isCapturing || self.shortcutsSuspended || self.stage?.isTakingScreenshot == true || self.bugReports?.capturing == true
                 ? "Finish the current screen capture or shortcut edit first." : nil
         }
         // One completion path for every Snap door: the editor opens on the Snap
@@ -110,8 +117,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         model.meetings.hostAdmission = { [weak self] in
             guard let self else { return MeetingHostAdmission(closing: true) }
             return MeetingHostAdmission(recognition: self.model.recognition,
-                captureProblem: self.model.phase == .idle && !self.readback.blocksDictation && !self.shortcutsSuspended
-                    ? nil : .busy("Finish Dictate or Snap & Talk before starting a meeting."), closing: self.terminating)
+                captureProblem: self.bugReportMicrophoneBusy.map { .busy($0) }
+                    ?? (self.model.phase == .idle && !self.readback.blocksDictation && !self.shortcutsSuspended
+                    ? nil : .busy("Finish Dictate or Snap & Talk before starting a meeting.")), closing: self.terminating)
         }
         model.meetings.mayPlayRecording = { [weak self] in
             guard let self, !self.terminating else { return false }
@@ -165,6 +173,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             guard let self else { return "Workbench is unavailable." }
             if self.readback.blocksDictation { return "Finish the current Snap & Talk capture, narration and transcription queue before starting ordinary dictation." }
             if self.model.meetings.isBusy { return "Finish the meeting recording or transcription before starting Dictate." }
+            if let reason = self.bugReportMicrophoneBusy { return reason }
             return CaptureInputPolicy.canStart(isPresenting: self.stage.isPresenting, hasExternalMacTarget: target != nil, delivery: self.model.preferences.delivery)
                 ? nil : "Choose Copy to clipboard to capture a thought, or focus a Mac text field. To enter text on your phone, use its keyboard or Dictation button."
         }
@@ -172,6 +181,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             guard let self else { return "Workbench is unavailable." }
             if self.shortcutsSuspended { return "Finish changing the shortcut before starting Snap & Talk." }
             if self.snap.isCapturing { return "Finish the current Snap before starting Snap & Talk." }
+            if let reason = self.bugReportMicrophoneBusy { return reason }
+            if self.bugReports?.capturing == true { return "Finish the problem report's screenshot before starting Snap & Talk." }
             return self.model.phase == .idle && !self.model.meetings.isBusy
                 ? nil : "Finish the current dictation or meeting before starting Snap & Talk narration."
         }
@@ -329,12 +340,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             guard let self else { return WorkbenchUpdateActivity(interaction: true) }
             return WorkbenchUpdateActivity(voice: self.model.phase != .idle || self.model.preparing,
                 insertion: self.model.promptInsertion.running,
-                capture: self.readback.blocksDictation || self.snap.isBusy || self.stage.isTakingScreenshot || self.model.meetings.isBusy || self.model.handoffJobs.isBusy,
+                capture: self.readback.blocksDictation || self.snap.isBusy || self.stage.isTakingScreenshot || self.model.meetings.isBusy || self.model.handoffJobs.isBusy
+                    || self.bugReports?.isBusy == true,
                 presentation: self.stage.isPresenting || self.stage.hasActivePersona, drawing: self.stage.isDrawing,
                 timer: self.stage.hasActiveTimer,
                 interaction: self.shortcutsSuspended || NSApp.modalWindow != nil || NSApp.windows.contains(where: { $0.attachedSheet != nil }))
         }
         WorkbenchUpdates.shared.showUpdate = { [weak self] in self?.showWindow() }
+        bugReports = makeBugReports()
+        bugReportObserver = NotificationCenter.default.addObserver(forName: BugReportRequest.name, object: nil, queue: .main) { [weak self] notification in
+            guard let origin = (notification.object as? BugReportRequest.Box)?.origin else { return }
+            MainActor.assumeIsolated { self?.openBugReport(origin) }
+        }
         WorkbenchUpdates.shared.start()
         setupMenus()
         registerShortcuts(); showWindow()
@@ -463,6 +480,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let help = NSMenuItem(); help.title = "Help"
         let helpMenu = NSMenu(title: "Help")
         helpMenu.addItem(withTitle: "Workbench Guide", action: #selector(showGuide), keyEquivalent: "")
+        helpMenu.addItem(withTitle: "Report a problem…", action: #selector(reportProblem), keyEquivalent: "")
         help.submenu = helpMenu; main.addItem(help)
         return (main, services, menu, helpMenu)
     }
@@ -515,6 +533,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         showFloatingToolbar()
     }
     @objc func showGuide() { NSWorkspace.shared.open(URL(string: "https://workbench-mac.vercel.app/guide/")!) }
+    /// Help › Report a problem… (#296). With the Workbench window in front, the report names its
+    /// page; otherwise it names Help. The page is read now, before the composer takes focus.
+    @objc func reportProblem() {
+        let surface = window != nil && NSApp.keyWindow === window ? BugReportSurface.page(model.page) : .help
+        openBugReport(BugReportOrigin(surface: surface, errorCode: nil))
+    }
     func showControls() {
         guard let button = statusItem.button, button.window?.isVisible == true else {
             showFloatingToolbar(); return
@@ -674,8 +698,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         capturePanel?.close()
         meetingOffer?.close()
         snap?.cancelCapture()
+        bugReports?.shutdown()
         model?.promptInsertion.cancel(); keyboard?.stopInteraction(); stage?.shutdown(); readback?.shutdown(); model?.cleanupModels.cancel(); model?.shutdown(); hotkeys.unregister()
         if let navigationObserver { NotificationCenter.default.removeObserver(navigationObserver) }
+        if let bugReportObserver { NotificationCenter.default.removeObserver(bugReportObserver) }
     }
     func navigate(_ page: String) {
         keyboard?.stopInteraction(); keyboard?.replaceEntries(shortcutEntries()); model.page = page; showWindow()
@@ -814,6 +840,10 @@ func runCLI(_ args: [String]) async -> Int32 {
             try await MainActor.run { try ReadbackOrderingChecks.run() }
         case "--check-readback-resources":
             try ReadbackChecks.runPackagedResources()
+        case "--check-bug-report":
+            // Report a problem (#296), against the shared schema document; stubs only, nothing is sent.
+            let document = URL(fileURLWithPath: args.count > 1 ? args[1] : "docs/bug-reporting-schema.md")
+            print(try await BugReportChecks.run(schemaDocument: document).joined(separator: "\n"))
         case "--check-snap-capture":
             try await SnapCaptureChecks.run()
         case "--check-transcript-handoff":

@@ -1,0 +1,6 @@
+{
+  "production": {
+    "dsn": "https://a839282de76ebabd96a4cacae63ba2eb@o4512211018121216.ingest.us.sentry.io/4512211067011072",
+    "verifier": "https://workbench-report-check.vercel.app/api/v1/verify"
+  }
+}

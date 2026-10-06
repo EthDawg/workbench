@@ -72,7 +72,7 @@ enum TextDelivery {
     func recordFirstDictation() {}
     __EXACT_PROPERTIES__
     var error: String? { attention?.message }
-    func report(_ message: String, on page: Attention.Page) { attention = Attention(message: message, page: page) }
+    func report(_ message: String, on page: Attention.Page, code: String? = nil) { attention = Attention(message: message, page: page, code: code) }
     init(draft: String = " \ngit hub and cat.\t ", rules: [Replacement] = []) {
         transcript = draft
         rawTranscript = "Untouched recognition original"

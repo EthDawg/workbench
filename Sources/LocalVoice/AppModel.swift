@@ -363,13 +363,13 @@ final class AppModel: NSObject, ObservableObject {
         guard recordingAttempt == attempt else { return }
         microphoneAuthorization = readMicrophoneAuthorization()
         guard granted, microphoneAuthorization == .authorized else {
-            fail(Self.microphoneMessage(microphoneAuthorization)); microphoneFailure = microphoneAuthorization; return
+            fail(Self.microphoneMessage(microphoneAuthorization), code: "dictate.microphone_unavailable"); microphoneFailure = microphoneAuthorization; return
         }
         let admitted = await readSpeechAdmission(engine)
         // Cancel or a new Start can run while the actor replies. Neither a true
         // nor a false old reply may create recovery files or fail the new attempt.
         guard recordingAttempt == attempt else { return }
-        guard ready, admitted else { fail("Speech is no longer ready. Open Models, then start a new recording when setup is complete."); return }
+        guard ready, admitted else { fail("Speech is no longer ready. Open Models, then start a new recording when setup is complete.", code: "dictate.speech_not_ready"); return }
         var startedAudio: URL?
         do {
             let url = try captureRecovery.beginRecording()
@@ -455,7 +455,7 @@ final class AppModel: NSObject, ObservableObject {
                 if let failure = report.failure {
                     self.elapsed = report.seconds; self.canRetry = true
                     self.voiceSession.phase = .recoverableFailure
-                    self.fail("Recording stopped. Original audio was kept for retry. \(failure)")
+                    self.fail("Recording stopped. Original audio was kept for retry. \(failure)", code: "dictate.recording_stopped")
                     return
                 }
                 self.completeStoppedRecording(url, duration: report.seconds,
@@ -593,7 +593,7 @@ final class AppModel: NSObject, ObservableObject {
             }
             guard admitNewCapture() else { return }
             destination = nil; transcribe(url, duration: duration, temporary: false)
-        } catch { fail("Could not read this audio file. \(error.localizedDescription)") }
+        } catch { fail("Could not read this audio file. \(error.localizedDescription)", code: "dictate.audio_unreadable") }
     }
     func retryTranscription() {
         guard phase == .idle else { return }
@@ -715,7 +715,7 @@ final class AppModel: NSObject, ObservableObject {
                     status = deliveryProblem ?? (discarded ? "Transcription cancelled. No text was added." : "Transcription cancelled. Recovery files are still kept; open Workbench to review them.")
                     onPhaseChange?(); return
                 }
-                canRetry = temporary && shortcutID == nil; fail("Transcription failed. \(error.localizedDescription)")
+                canRetry = temporary && shortcutID == nil; fail("Transcription failed. \(error.localizedDescription)", code: "dictate.transcription_failed")
             }
         }
     }
@@ -775,7 +775,7 @@ final class AppModel: NSObject, ObservableObject {
             canRetry = true
             let recovery = journalError == nil ? "The recovery copy is kept." : "Recovery text could not be written either. Copy or Save text before quitting. Your existing audio files are kept."
             let delivery = liveDictation?.attempted == true ? "Live text may already be in your app; no final insertion was attempted." : "No text was sent."
-            fail("Could not save this capture. \(recovery) Use Retry saving. \(delivery) \(error.localizedDescription)")
+            fail("Could not save this capture. \(recovery) Use Retry saving. \(delivery) \(error.localizedDescription)", code: "dictate.save_failed")
             captureFailure = self.error; onPhaseChange?(); return false
         }
         history = nextHistory
@@ -1041,8 +1041,8 @@ final class AppModel: NSObject, ObservableObject {
 
     /// Raises a problem with the page that shows it in full (#134): the menu-bar panel's door
     /// opens that page, so it is chosen here, where the problem is known, never from the words.
-    func report(_ message: String, on page: Attention.Page) {
-        attention = Attention(message: message, page: page)
+    func report(_ message: String, on page: Attention.Page, code: String? = nil) {
+        attention = Attention(message: message, page: page, code: code)
     }
     /// Dismiss the error banner without changing saved work.
     func dismissError() {
@@ -1197,12 +1197,12 @@ final class AppModel: NSObject, ObservableObject {
         guard Set(result.map(\.reference)) == selected else { throw VoiceError.message("Some selected items are missing. Review the selection before starting.") }
         return result
     }
-    func fail(_ text: String) {
+    func fail(_ text: String, code: String = "dictate.failed") {
         dismissCaptureCue()
         if phase != .idle { captureFailure = text }
         if let id = shortcutRequest.id { shortcutRequest.finish(id: id, result: .failure(VoiceError.message(text))) }
         let message = liveDictation?.attempted == true ? text + " Live text may remain in your app. Review it before copying the kept result." : text
-        report(message, on: .dictate); phase = .idle; status = "Needs attention"; onPhaseChange?()
+        report(message, on: .dictate, code: code); phase = .idle; status = "Needs attention"; onPhaseChange?()
     }
     /// A dictation that ended without words (#156). Routine outcomes are not
     /// failures: no recovery panel and no error, just a cue in place of the
@@ -1222,7 +1222,7 @@ final class AppModel: NSObject, ObservableObject {
         if case .tooQuiet = reason { quietCapturesInARow += 1 } else { quietCapturesInARow = 0 }
         if quietCapturesInARow >= 2 {
             quietCapturesInARow = 0
-            fail("No speech heard twice in a row. Check the input in System Settings › Sound, and open the lid of a MacBook.")
+            fail("No speech heard twice in a row. Check the input in System Settings › Sound, and open the lid of a MacBook.", code: "dictate.no_speech_repeated")
             return
         }
         if let id = shortcutRequest.id {

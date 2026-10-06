@@ -2,6 +2,7 @@
 """Stamp the actual package, never a mutable tracked Info.plist."""
 import json
 import os
+import re
 from pathlib import Path
 import plistlib
 import subprocess
@@ -9,6 +10,20 @@ import sys
 from datetime import datetime, timezone
 
 ROOT = Path(__file__).resolve().parents[2]
+REPORTING_KEYS = ('WorkbenchReportDSN', 'WorkbenchReportVerifierURL')
+
+
+def reporting(config):
+    """Report a problem (#296): the Stable release's Sentry DSN (a public client key) and optional
+    delivery verifier. Preview and local builds carry neither; a developer override sends from them
+    under the preview environment instead (docs/bug-reporting.md)."""
+    dsn = config.get('dsn', '')
+    if not re.fullmatch(r'https://[A-Za-z0-9]+@[A-Za-z0-9.-]+(:[0-9]+)?(/[A-Za-z0-9._-]+)*/[0-9]+', dsn):
+        raise RuntimeError('scripts/release/reporting.json needs the Stable edition\'s https Sentry DSN')
+    verifier = config.get('verifier', '')
+    if verifier and not re.fullmatch(r'https://[A-Za-z0-9.-]+(:[0-9]+)?(/[A-Za-z0-9._~-]+)*/?', verifier):
+        raise RuntimeError('The report verifier must be an https URL without credentials, query or fragment')
+    return dsn, verifier
 
 def stamp(info, channel, *, released=False, source=None, dirty=None, build=None):
     config = json.loads((ROOT / 'scripts/release/updates.json').read_text())
@@ -30,8 +45,13 @@ def stamp(info, channel, *, released=False, source=None, dirty=None, build=None)
                 WorkbenchBuildKind='release' if released else 'local',
                 CFBundleVersion=build or datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S'))
     for key in ['SUFeedURL', 'SUPublicEDKey', 'SUEnableAutomaticChecks', 'SUAutomaticallyUpdate',
-                'SUEnableSystemProfiling', 'SURequireSignedFeed', 'SUVerifyUpdateBeforeExtraction']:
+                'SUEnableSystemProfiling', 'SURequireSignedFeed', 'SUVerifyUpdateBeforeExtraction', *REPORTING_KEYS]:
         info.pop(key, None)
+    if released and channel == 'production':
+        dsn, verifier = reporting(json.loads((ROOT / 'scripts/release/reporting.json').read_text())['production'])
+        info['WorkbenchReportDSN'] = dsn
+        if verifier:
+            info['WorkbenchReportVerifierURL'] = verifier
     if released:
         info.update(SUFeedURL=f"{config['feed_base']}/{channel}.xml", SUPublicEDKey=config['public_key'],
                     SUEnableAutomaticChecks=True, SUAutomaticallyUpdate=True, SUEnableSystemProfiling=False,
