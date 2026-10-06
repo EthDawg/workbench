@@ -1510,7 +1510,9 @@ private struct HistoryNativeAcceptanceView: View {
         if let index = pass.pages.firstIndex(where: { $0.route == "speak" }) { pass.pages[index].shots += try renderReadStates(to: output) }
         if let index = pass.pages.firstIndex(where: { $0.route == "dictate" }) { pass.pages[index].shots += dictate.shots }
         if let index = pass.pages.firstIndex(where: { $0.route == "meeting" }) { pass.pages[index].shots += [completed.meeting, try renderMeetingKept(to: output)] }
-        if let index = pass.pages.firstIndex(where: { $0.route == "history" }) { pass.pages[index].shots.append(completed.history) }
+        if let index = pass.pages.firstIndex(where: { $0.route == "history" }) {
+            pass.pages[index].shots += [completed.history, try renderResultReuse(to: output)]
+        }
         if let index = pass.pages.firstIndex(where: { $0.route == "readback" }) { pass.pages[index].shots += try renderSnapTalkStates(to: output) }
         pass.checks += dictate.checks + completed.checks
         pass.menus = menus()
@@ -1892,18 +1894,24 @@ private struct HistoryNativeAcceptanceView: View {
         jobs.cancel()
         try wait("the running task to stop") { !jobs.isBusy }
         library.setSelected([])
-        // The production result body, with exact synthetic words and its two
-        // reuse actions. Parent History fixtures cover its full task card.
+        shots.append(try renderResultReuse(to: output))
+        return shots
+    }
+
+    /// Mount native result actions in an invisible window, as the real History
+    /// page does. Detached hosting views do not draw AppKit button labels.
+    func renderResultReuse(to output: URL) throws -> SurfaceGallery.Shot {
         let preview = NSHostingView(rootView: HandoffResultPreview(
             text: "Follow-up for Sam\n\nWe agreed to review the pilot on Friday.\nSam will share the revised notes before the review.",
             context: "Synthetic follow-up", copyText: {}, readAloud: {}).padding(16).workbenchTheme())
-        preview.frame = NSRect(x: 0, y: 0, width: 620, height: 230)
-        preview.appearance = NSAppearance(named: theme == "dark" ? .darkAqua : .aqua)
+        let window = offscreenWindow(size: NSSize(width: 620, height: 230), styleMask: [.borderless])
+        defer { window.contentView = nil; window.close() }
+        window.contentView = preview
+        window.appearance = NSAppearance(named: theme == "dark" ? .darkAqua : .aqua)
         settle(preview)
-        shots.append(try save(snapshot(preview), id: "state-result-reuse", title: "History, saved result reuse",
+        return try save(snapshot(preview), id: "state-result-reuse", title: "History, saved result reuse",
             detail: "The reviewed assistant result has Copy result and Read aloud. Both use these exact words; reading starts only from Read.",
-            file: "page-history-state-result-reuse-\(theme).png", to: output))
-        return shots
+            file: "page-history-state-result-reuse-\(theme).png", to: output)
     }
 
     // MARK: Image preview
