@@ -141,7 +141,7 @@ struct TranscriptHistoryRow: View {
                         .help("Remove transcript…")
                 }.buttonStyle(.borderless).font(.callout)
             }
-        }.savedPageCard(outlined: shown)
+        }.workbenchCard(outlined: shown)
             // The row's whole action set, where a Mac person looks for it first.
             .contextMenu {
                 Button("Copy") { model.copyCapture(item) }

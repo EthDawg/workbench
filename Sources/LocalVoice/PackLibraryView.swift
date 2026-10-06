@@ -128,7 +128,7 @@ struct PackLibraryView: View {
                         Button("Show saved file") { NSWorkspace.shared.activateFileViewerSelecting([saved.url]) }
                         Button("Keep file only") { model.keepSavedFileOnly() }
                     }
-                }.savedPageCard()
+                }.workbenchCard()
             }
             if model.packs.isEmpty {
                 if !showingAdd {
@@ -164,8 +164,8 @@ struct PackLibraryView: View {
     }
     @ViewBuilder private var feedback: some View {
         if let message = model.notice {
-            WorkbenchNote(message, symbol: model.hasError ? "exclamationmark.circle.fill" : "checkmark.circle",
-                          tone: model.hasError ? .attention : .neutral).accessibilityLabel(message)
+            WorkbenchNote(message, tone: model.hasError ? .attention : .neutral,
+                          symbol: model.hasError ? nil : "checkmark.circle").accessibilityLabel(message)
         }
     }
     private var progress: some View {
@@ -208,7 +208,7 @@ struct PackLibraryView: View {
                     Button("Cancel") { model.cancel() }
                 }
             }
-        }.savedPageCard()
+        }.workbenchCard()
     }
 
     private var addSource: some View {
@@ -235,7 +235,7 @@ struct PackLibraryView: View {
                     .foregroundStyle(.secondary)
                 Link("Pack owner setup", destination: URL(string: "https://github.com/apps/workbench-packs")!)
             }.font(.caption)
-        }.savedPageCard()
+        }.workbenchCard()
     }
 
     private func addPack() {
@@ -279,7 +279,7 @@ struct PackLibraryView: View {
                     Button("Use workspace appearance") { model.setBrand(pack.id) }.buttonStyle(.link).font(.caption)
                 }
             } }
-        }.savedPageCard()
+        }.workbenchCard()
     }
 
     private func entryRow(_ entry: PackShelfEntry, pack: PackShelfItem) -> some View {

@@ -282,9 +282,8 @@ def compile_fixture(directory: Path, main: str, binary: Path) -> None:
             "CaptureMode", "DeliveryMode", "FirstDictationGuide", "VoiceShortcut", "VoicePreferences"]),
         SwiftFile(PROJECT / "Sources/LocalVoice/DictationCleanup.swift").extract(["CleanupStyle"]),
         SwiftFile(PROJECT / "Sources/StageKit/Hotkeys.swift").extract(["GlobalShortcutCombination", "GlobalShortcutRule"]),
-        # The page kit's status and empty state, and History's wrapping note, as Resources draws them.
-        SwiftFile(PROJECT / "Sources/LocalVoice/WorkbenchPageStyle.swift").extract(["WorkbenchTone", "WorkbenchStatusBadge", "WorkbenchEmptyState"]),
-        SwiftFile(PROJECT / "Sources/LocalVoice/HistoryView.swift").extract(["WorkbenchNote"]),
+        # The page kit's status, wrapping note and empty state, as Resources draws them.
+        SwiftFile(PROJECT / "Sources/LocalVoice/WorkbenchPageStyle.swift").extract(["WorkbenchTone", "WorkbenchStatusBadge", "WorkbenchNote", "WorkbenchEmptyState"]),
     ]
     dependencies.write_text(DEPENDENCIES + "\n" + "\n".join(preference_types))
     checks = directory / "FixtureMain.swift"

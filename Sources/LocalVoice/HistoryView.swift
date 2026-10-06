@@ -85,41 +85,6 @@ enum HistoryDate {
     }
 }
 
-/// A sentence that needs the person: the words in the primary colour, so they keep their
-/// contrast, and the symbol tinted (docs/desktop.md § Status). Attention is orange; red stays for
-/// recording and removal. Unlike `WorkbenchStatusBadge` it wraps, for a full reason.
-struct WorkbenchNote: View {
-    let text: String
-    var symbol = "exclamationmark.circle.fill"
-    var tone = WorkbenchTone.attention
-    init(_ text: String, symbol: String = "exclamationmark.circle.fill", tone: WorkbenchTone = .attention) {
-        self.text = text; self.symbol = symbol; self.tone = tone
-    }
-    var body: some View {
-        Label {
-            Text(text).foregroundStyle(tone == .neutral ? Color.secondary : Color.primary)
-                .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
-        } icon: {
-            Image(systemName: symbol).foregroundStyle(tone == .attention ? Workbench.attention : tone == .done ? Workbench.accent : Color.secondary)
-                .accessibilityHidden(true)
-        }.font(.callout).labelStyle(.titleAndIcon)
-    }
-}
-
-extension View {
-    /// The Saved pages' card: the page kit's tile (12 pt corners, 16 pt inside, the control surface
-    /// and a hairline), so cards read as cards on macOS 26, where the window and control surfaces
-    /// are one colour, and every History row's checkbox and trailing actions line up. A row a door
-    /// revealed is outlined in the accent instead.
-    func savedPageCard(outlined: Bool = false) -> some View {
-        padding(Workbench.tilePadding)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Workbench.surface, in: RoundedRectangle(cornerRadius: Workbench.tileRadius))
-            .overlay(RoundedRectangle(cornerRadius: Workbench.tileRadius)
-                .strokeBorder(outlined ? Workbench.accent : Workbench.border, lineWidth: outlined ? 2 : 1))
-    }
-}
-
 /// The page's logic, kept apart from its view so checks can run it on
 /// synthetic stores. Each kind keeps its own search.
 @MainActor
@@ -476,7 +441,7 @@ struct HistoryView: View {
                                 HistoryMadeFrom(jobs: jobs, job: job) {
                                     HistoryList.availability(of: $0, transcripts: stores.transcripts, snaps: stores.snaps)
                                 }
-                            }.savedPageCard(outlined: target?.card == job.id && target?.task == job.id)
+                            }.workbenchCard(outlined: target?.card == job.id && target?.task == job.id)
                         }
                     }
                 }.padding(.vertical, 2)
@@ -608,7 +573,7 @@ struct HistorySnapRow: View {
                         .accessibilityLabel((archived ? "Restore " : "Archive ") + item.title)
                 }.buttonStyle(.borderless).font(.callout)
             }
-        }.savedPageCard()
+        }.workbenchCard()
             .contextMenu { Button("View image") { CaptureImagePreview.shared.show(.snap(item, store: snap.store), collection: images) } }
     }
 }
