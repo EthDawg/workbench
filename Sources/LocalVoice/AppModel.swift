@@ -112,7 +112,10 @@ final class AppModel: NSObject, ObservableObject {
     @Published private(set) var microphoneAuthorization = AVAuthorizationStatus.notDetermined
     @Published private(set) var microphoneFailure: AVAuthorizationStatus?
     var readMicrophoneAuthorization: () -> AVAuthorizationStatus = { AVCaptureDevice.authorizationStatus(for: .audio) }
-    var requestMicrophoneAuthorization: () async -> Bool = { await AVCaptureDevice.requestAccess(for: .audio) }
+    var requestMicrophoneAuthorization: @MainActor () async -> Bool = { await AVCaptureDevice.requestAccess(for: .audio) }
+    /// The engine remains authoritative; the isolated gallery can hold this reply
+    /// to exercise cancellation without constructing any audio capture.
+    var readSpeechAdmission: @MainActor (RecognitionEngine) async -> Bool = { await $0.isReady }
     var openMicrophonePrivacy: () -> Bool = { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!) }
     /// The writing model's one download, Ollama's, owned here as Parakeet's setup is: leaving
     /// Settings › Models changes nothing, and its line reaches wherever readiness shows (#134).
@@ -356,7 +359,11 @@ final class AppModel: NSObject, ObservableObject {
         guard granted, microphoneAuthorization == .authorized else {
             fail(Self.microphoneMessage(microphoneAuthorization)); microphoneFailure = microphoneAuthorization; return
         }
-        guard ready, await engine.isReady else { fail("Speech is no longer ready. Open Models, then start a new recording when setup is complete."); return }
+        let admitted = await readSpeechAdmission(engine)
+        // Cancel or a new Start can run while the actor replies. Neither a true
+        // nor a false old reply may create recovery files or fail the new attempt.
+        guard recordingAttempt == attempt else { return }
+        guard ready, admitted else { fail("Speech is no longer ready. Open Models, then start a new recording when setup is complete."); return }
         var startedAudio: URL?
         do {
             let url = try captureRecovery.beginRecording()
@@ -974,6 +981,13 @@ final class AppModel: NSObject, ObservableObject {
         }
     }
     var canOpenMicrophoneSettings: Bool { microphoneFailure == .denied }
+    var idleMicrophoneTitle: String? {
+        switch microphoneFailure {
+        case .denied: return "Microphone access is off"
+        case .restricted: return "Microphone access is restricted"
+        default: return nil
+        }
+    }
     func refreshMicrophoneAuthorization() {
         microphoneAuthorization = readMicrophoneAuthorization()
         guard microphoneFailure != nil else { return }

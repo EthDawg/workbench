@@ -1694,10 +1694,12 @@ private struct HistoryNativeAcceptanceView: View {
         state(admission: .serverUnverified, detail: "Local server configured, not yet verified")
         try shot("dictate", "server", "Unverified server admits a deliberate first attempt")
         state(); try shot("readback", "deferred-narration", "Deferred speech with usable saved Snap & Talk work")
+        model.voiceSession = .init(sessionID: UUID(), phase: .listening,
+                                   sources: [.init(source: .microphone, name: "Microphone")])
         model.phase = .recording
         guard model.canToggleRecording else { throw VoiceError.message("Readiness loss hid Stop.") }
         try shot("dictate", "stop-without-readiness", "Stop remains reachable after readiness loss")
-        model.phase = .idle
+        model.phase = .idle; model.voiceSession = .init()
 
         // Real owner admission/cancellation with injected OS responses. None of these
         // cases reaches audio capture, and all stores are in the verified child home.
@@ -1713,7 +1715,7 @@ private struct HistoryNativeAcceptanceView: View {
             let granted = await withCheckedContinuation { reply = $0 }
             returned = true; return granted
         }
-        model.ready = true; model.toggleRecording()
+        state(admission: .localReady); model.toggleRecording()
         try wait("synthetic microphone request") { reply != nil }
         model.ready = false
         guard model.canToggleRecording else { throw VoiceError.message("Readiness loss hid permission Cancel.") }
@@ -1722,19 +1724,56 @@ private struct HistoryNativeAcceptanceView: View {
         try wait("cancelled permission callback") { returned }
         guard model.phase == .idle, model.voiceSession.sessionID == nil, model.transcript == original,
               !model.hasCaptureRecovery else { throw VoiceError.message("Late permission completion started capture or changed saved work.") }
-        model.ready = true; authorization = .denied; model.toggleRecording()
+        state(admission: .localReady); authorization = .denied; model.toggleRecording()
         try wait("denied microphone") { model.microphoneFailure == .denied }
         guard model.canOpenMicrophoneSettings else { throw VoiceError.message("Denied access lacks its Settings recovery.") }
         model.openMicrophonePrivacy = { false }; model.openMicrophoneSettings()
         guard model.captureFailure?.contains("could not be opened") == true else { throw VoiceError.message("Failed Settings opening was reported as success.") }
-        model.ready = true; authorization = .restricted; model.toggleRecording()
+        state(admission: .localReady); authorization = .restricted; model.toggleRecording()
         try wait("restricted microphone") { model.microphoneFailure == .restricted }
         guard !model.canOpenMicrophoneSettings, requests == 1, model.transcript == original else {
             throw VoiceError.message("Restricted access repeated a request or lost saved work.")
         }
         try shot("dictate", "microphone-restricted", "Actual restricted microphone status with saved work")
         authorization = .authorized; model.refreshMicrophoneAuthorization()
-        guard model.phase == .idle, model.microphoneFailure == nil, requests == 1 else { throw VoiceError.message("Returning from Settings started or requested capture.") }
+        guard model.phase == .idle, model.microphoneFailure == nil, model.idleMicrophoneTitle == nil, requests == 1 else { throw VoiceError.message("Returning from Settings started or requested capture.") }
+        // Keep the real engine unavailable, so even a regression cannot reach
+        // hardware after the injected old true reply. Its beginLiveSession gate
+        // runs before MeetingSystemCapture.start. Only synthetic stores can change.
+        var checkedEngine = false, actualAdmission = true
+        Task { actualAdmission = await model.engine.isReady; checkedEngine = true }
+        try wait("real engine remains unavailable in fixture") { checkedEngine }
+        guard !actualAdmission else { throw VoiceError.message("A held-admission fixture cannot use a live engine.") }
+        var admissions: [CheckedContinuation<Bool, Never>] = [], admissionReturns = 0
+        model.readSpeechAdmission = { _ in
+            let value = await withCheckedContinuation { admissions.append($0) }
+            admissionReturns += 1; return value
+        }
+        state(admission: .localReady)
+        model.toggleRecording()
+        try wait("held speech admission") { admissions.count == 1 }
+        model.cancelRecording(); admissions[0].resume(returning: true)
+        try wait("cancelled true admission reply") { admissionReturns == 1 }
+        settle(window.contentView!)
+        guard model.phase == .idle, !model.hasCaptureRecovery, model.voiceSession.sessionID == nil,
+              model.captureFailure == nil else { throw VoiceError.message("An old true readiness reply started or failed cancelled capture.") }
+        model.toggleRecording()
+        try wait("second held speech admission") { admissions.count == 2 }
+        model.cancelRecording(); model.toggleRecording()
+        try wait("new attempt held speech admission") { admissions.count == 3 }
+        admissions[1].resume(returning: false)
+        try wait("old false admission reply") { admissionReturns == 2 }
+        settle(window.contentView!)
+        guard model.phase == .requesting, model.captureFailure == nil, !model.hasCaptureRecovery else {
+            throw VoiceError.message("An old false readiness reply failed the newer recording attempt.")
+        }
+        model.cancelRecording(); admissions[2].resume(returning: true)
+        try wait("new attempt cancelled reply") { admissionReturns == 3 }
+        settle(window.contentView!)
+        guard model.phase == .idle, !model.hasCaptureRecovery, model.voiceSession.sessionID == nil,
+              model.transcript == original else { throw VoiceError.message("Cancelled readiness replies changed saved work.") }
+        model.readSpeechAdmission = { await $0.isReady }
+        print("FIRST_SPEECH_READINESS_RACE_CHECKS_OK: held true reply after Cancel; held false reply after Cancel and new Start; no capture files or stale failure")
         print("FIRST_SPEECH_OWNER_CHECKS_OK: pending Cancel, late grant, readiness loss, denied, restricted, Settings-open failure, exact saved words")
         return SurfaceGallery.Pass(theme: theme, panels: [], toolbar: [], host: [], pickers: [], pickerHost: [],
             pages: [.init(route: "models", title: "First speech lifecycle", fallsThrough: false, shots: shots)],

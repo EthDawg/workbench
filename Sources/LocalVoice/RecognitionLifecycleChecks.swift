@@ -11,7 +11,7 @@ enum RecognitionLifecycleChecks {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("Workbench.SpeechChecks." + UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
-        let suite = "Workbench.SpeechChecks." + UUID().uuidString
+        let suite = root.appendingPathComponent("Preferences").path
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         let probe = SpeechPreparationProbe()
@@ -70,6 +70,26 @@ enum RecognitionLifecycleChecks {
         try check(try await engine.transcribeLive(Array(repeating: 0, count: 4_800), sessionID: session).isEmpty, "live windows use admitted backend without preparing assets")
         await engine.endLiveSession(session)
 
+        for phase in [RecognitionSnapshot.Phase.downloading, .checkingCache, .loading] {
+            let cancelProbe = SpeechPreparationProbe(phase: phase)
+            let interrupted: @Sendable (RecognitionLocalModels.Progress) async throws -> PreparedRecognition = { progress in
+                await cancelProbe.prepare(acquire: true, progress: progress)
+                throw URLError(.cancelled)
+            }
+            let cancelledEngine = RecognitionEngine(store: .init(defaults: defaults), services: .init(prepareCached: interrupted,
+                acquire: interrupted, send: { _ in throw CheckFailure.expectedRefusal }))
+            let cancellation = Task { try await cancelledEngine.acquireSelectedModel() }
+            try await cancelProbe.waitForCall(1)
+            await cancelledEngine.cancelPreparation(); await cancelProbe.release()
+            do { try await cancellation.value; throw CheckFailure.expectedRefusal }
+            catch is CancellationError {
+                let state = await cancelledEngine.snapshot()
+                let message = await MainActor.run { ModelSettingsView.operationFailure(CancellationError(), snapshot: state) }
+                try check(state.failure == nil && state.phase == .idle && message == nil,
+                    "intentional cancellation normalizes transport errors and remains neutral in Models at \(phase)")
+            }
+        }
+
         let cache = root.appendingPathComponent("parakeet-tdt-0.6b-v2-coreml", isDirectory: true)
         try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
         let sentinel = cache.appendingPathComponent("old-cache")
@@ -109,8 +129,13 @@ enum RecognitionLifecycleChecks {
         catch let error as NSError where error.domain == NSPOSIXErrorDomain { }
         try check(FileManager.default.fileExists(atPath: cache.appendingPathComponent("new-cache").path), "failed atomic adoption retains active cache")
 
-        let vocabulary = Dictionary(uniqueKeysWithValues: (0..<1024).map { (String($0), "token-\($0)") })
+        var vocabulary = Dictionary(uniqueKeysWithValues: (0..<1024).map { (String($0), "token-\($0)") })
+        vocabulary["0"] = "A colon: an escaped quote \" and a slash \\."
         try check(try RecognitionLocalModels.vocabulary(JSONEncoder().encode(vocabulary)).count == 1024, "v2 vocabulary accepts complete token coverage")
+        let encodedVocabulary = String(data: try JSONEncoder().encode(vocabulary), encoding: .utf8)!
+        let duplicateVocabulary = Data(("{\"0\":\"conflict\"," + encodedVocabulary.dropFirst()).utf8)
+        do { _ = try RecognitionLocalModels.vocabulary(duplicateVocabulary); throw CheckFailure.expectedRefusal }
+        catch let failure as RecognitionFailure { try check(failure.kind == .invalidCache, "v2 vocabulary rejects duplicate identical JSON keys before dictionary normalization hides them") }
         for invalid in [["0": "only one"], vocabulary.merging(["01": "alias"]) { _, new in new }] {
             do { _ = try RecognitionLocalModels.vocabulary(JSONEncoder().encode(invalid)); throw CheckFailure.expectedRefusal }
             catch let failure as RecognitionFailure { try check(failure.kind == .invalidCache, "v2 vocabulary rejects missing or ambiguous token identifiers") }
@@ -135,10 +160,12 @@ private actor SpeechPreparationProbe {
     private(set) var calls = 0, acquisitions = 0, active = 0, maximumActive = 0
     private var continuation: CheckedContinuation<Void, Never>?
     private var firstProgress: RecognitionLocalModels.Progress?
+    private let phase: RecognitionSnapshot.Phase
+    init(phase: RecognitionSnapshot.Phase = .loading) { self.phase = phase }
     func prepare(acquire: Bool, progress: @escaping RecognitionLocalModels.Progress) async {
         calls += 1; if acquire { acquisitions += 1 }; active += 1; maximumActive = max(maximumActive, active)
         if firstProgress == nil { firstProgress = progress }
-        await progress(.loading, "Synthetic noninterruptible load")
+        await progress(phase, "Synthetic noninterruptible load")
         await withCheckedContinuation { continuation = $0 }
         active -= 1
     }

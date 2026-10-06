@@ -25,9 +25,24 @@ enum RecognitionLocalModels {
     }
 
     static func vocabulary(_ data: Data) throws -> [Int: String] {
-        guard data.count <= 4 * 1024 * 1024,
+        guard data.count <= 4 * 1024 * 1024, String(data: data, encoding: .utf8) != nil,
               let values = (try? JSONSerialization.jsonObject(with: data)) as? [String: String], !values.isEmpty else {
             throw RecognitionFailure(kind: .invalidCache, message: "The saved speech vocabulary is invalid. Download a replacement to try again.")
+        }
+        // JSONSerialization otherwise collapses repeated identical keys. After
+        // validating an object of string values, each unquoted ':' is exactly
+        // one member separator; quoted/escaped punctuation is not a separator.
+        var quoted = false, escaped = false, members = 0
+        for byte in data {
+            if quoted {
+                if escaped { escaped = false }
+                else if byte == 92 { escaped = true }
+                else if byte == 34 { quoted = false }
+            } else if byte == 34 { quoted = true }
+            else if byte == 58 { members += 1 }
+        }
+        guard members == values.count else {
+            throw RecognitionFailure(kind: .invalidCache, message: "The saved speech vocabulary repeats a token identifier. Download a replacement to try again.")
         }
         var result: [Int: String] = [:]
         for (key, value) in values {

@@ -100,6 +100,11 @@ struct ModelSettingsView: View {
     @MainActor private func refresh() async {
         onSnapshot(await engine.snapshot())
     }
+    static func operationFailure(_ error: Error, snapshot: RecognitionSnapshot) -> String? {
+        // Cancel is a completed user choice, not a stopped setup to diagnose.
+        guard !(error is CancellationError), snapshot.failure == nil else { return nil }
+        return error.localizedDescription
+    }
     @MainActor private func prepareCached() async {
         guard !isBusy, !applying else { return }
         applying = true; failure = nil
@@ -124,7 +129,7 @@ struct ModelSettingsView: View {
         } catch {
             // Configuration refusals belong to this draft. Current admission is always
             // read back from the engine, preserving a still-ready previous selection.
-            if (await engine.snapshot()).failure == nil { failure = error.localizedDescription }
+            failure = Self.operationFailure(error, snapshot: await engine.snapshot())
         }
         await refresh()
     }

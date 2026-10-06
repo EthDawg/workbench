@@ -136,10 +136,12 @@ actor RecognitionEngine {
             backend = prepared.backend; state.admission = .localReady
             finishPreparation()
         } catch {
-            if !cancelled, state.configurationRevision == revision, !(error is CancellationError) {
+            let intentionallyCancelled = cancelled || Task.isCancelled || state.configurationRevision != revision || error is CancellationError
+            if !intentionallyCancelled {
                 state.failure = RecognitionFailure.classify(error, acquiring: acquire)
             }
             finishPreparation()
+            if intentionallyCancelled { throw CancellationError() }
             throw error
         }
     }

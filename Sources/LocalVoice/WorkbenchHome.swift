@@ -662,7 +662,7 @@ struct WorkbenchHomePage: View {
             if model.preparing { Button("Cancel setup") { model.cancelSpeechPreparation() }.disabled(model.recognition.phase == .cancelling) }
             else if !model.ready && model.recognition.configuration.provider == .parakeet {
                 Button("Download Parakeet") { Task { await model.downloadSpeechModel() } }
-                Button("Not now") { skipGuide() }
+                if !journey.offersSkip { Button("Not now") { skipGuide() } }
             }
             Button("Models…") { model.page = "models" }
         }.padding(16).background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
