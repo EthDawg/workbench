@@ -65,3 +65,13 @@ identity, fresh/upgraded menu and shortcut absence, conditional recovery export/
 ordinary URL opening, and refusal of an older real extension across two app launches.
 The app cannot stop Chrome's independent retry process or uninstall its extension.
 This change neither resumes the extension nor establishes cross-profile native acceptance.
+
+## Bounded installed check, 7 October
+
+Signed Preview **2.4.1 (20261006123415)**, clean combined source `dec1f343413b9c3ce68583e81863e6c9278ec0df`, was identified through actual Copy build details on macOS 26.5.1 (25F80). The native Keyboard page omitted browser switching and retired Read; Connections omitted browser setup. Library retained an existing bound public link with an explicit paused explanation, default-browser action and inactive shortcut label. Choosing **Open in default browser** opened the public Workbench URL in the browser; its exact tab URL/title were observed. A capture-tool error after the click did not prevent that observed opening. No old browser profile was activated or promised.
+
+**More → Export saved browser settings…** opened the native Save dialog with an inert-recovery explanation; **Cancel** returned to Library without saving. Reopening either the recovery or ordinary Library export through subsequent CUA menu activations did not reliably show a dialog. Complete export is therefore not passed; this observation does not isolate an application defect from the automation/focus path. Recheck it in the next native acceptance slot.
+
+The saved browser connection/shortcut values and all Library bytes were compared before and after the bounded check and were unchanged. Private baselines and the local result remain under `.build/native-foundation-dec1f34`; no private settings, fingerprints or names are published. Search was cleared and Preview returned to Home. No integration was enabled, preference edited, provider started or installed app replaced during this check.
+
+Fresh-profile behavior, complete successful export, older-extension refusal across actual relaunches, native shortcut dispatch and VoiceOver remain open. This addendum supersedes only the corresponding pending observations above, not the complete G acceptance gate or any public release claim.
