@@ -29,3 +29,9 @@ All stores, preferences, audio, sockets, pasteboards and signing/update fixtures
 ## Remaining native gate
 
 The integration owner must verify the exact signed Preview build, an upgrade containing an existing Read draft, preserved file use and two actual relaunches, removed Services/menu/shortcut/contextual doors, and retained Dictate/Meetings/Snap & Talk plus original-recording/narration playback. Installed signature, replacement/rollback, physical microphone/audio, VoiceOver and the two skipped native toolbar interactions are not proved by these source checks or renders. Do not describe the broader foundation reset or a production release as accepted from this record alone.
+
+## Integration follow-up
+
+Integrated merged handoff #291, current main through #294 and independently accepted verifier #277. The verifier now runs `--check-read-retirement` instead of the retired speech modes; its seven failure/receipt fixtures pass, and the four retirement source checks pass. The registry retains all handoff and recovery entries (541 on this integration).
+
+CI run 37458609236 found the isolated Library harness omitted the new preservation dependency. The harness now compiles production `ReadRetirement` and `AtomicPrivateFile`; recall (31), import/concurrent-write protection (37) and image reuse (30) checks pass. This fixes the harness compile failure without changing preservation behavior. These remain source checks; signed upgrade acceptance is still required.
