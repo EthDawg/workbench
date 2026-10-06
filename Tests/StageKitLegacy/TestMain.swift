@@ -614,6 +614,7 @@ struct TestRunner {
             ("phone link: several screens and a remembered absent phone", phoneLink.testSeveralScreensAskForAChoiceAndARememberedAbsentPhoneWaits),
             ("phone link: remembered phone reads as connecting", phoneLink.testRememberedPhonePresentReadsAsConnectingUntilTheSessionSpeaks),
             ("phone link: monitor fixture and mirror", phoneLink.testMonitorFixtureAndMirrorAreIndependent),
+            ("phone link: released for an Apple app", phoneLink.testReleasedForAnAppleAppSaysSoUntilReconnect),
             ("phone link: session phases outrank availability", phoneLink.testSessionPhasesOutrankAvailability),
             ("phone link: permission outranks availability", phoneLink.testPermissionOutranksAvailabilityAndRestrictedOffersNoToggle),
             ("phone link: nouns follow the device", phoneLink.testNounsFollowTheDeviceNotTheSerial),

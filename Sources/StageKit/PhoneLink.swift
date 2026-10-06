@@ -38,6 +38,9 @@ public struct PhoneLinkSignals: Equatable {
     public var rememberedID: String?
     public var access: VideoAccess = .notDetermined
     public var phase: CapturePhase = .idle
+    /// Workbench let go of the phone so an Apple app could use it, and stays out of
+    /// the way until the person asks for it back.
+    public var released = false
     public init() {}
 }
 
@@ -65,7 +68,7 @@ public enum CapturePhase: Equatable {
 public struct PhoneLinkStatus: Equatable {
     public enum Phase: Equatable {
         case noPhone, phoneOnUSB, screenFound, chooseScreen, waitingForRemembered, connecting, live, stalled,
-             interrupted, busy, couldNotOpen, accessPending, accessDenied, accessRestricted
+             interrupted, busy, couldNotOpen, accessPending, accessDenied, accessRestricted, released
     }
     /// The one next action a surface renders beside the words. nil means the words
     /// already say what to do away from the Mac (unlock, trust, a cable).
@@ -100,7 +103,7 @@ public struct PhoneLinkStatus: Equatable {
     /// the surface offers "Can't see your phone?".
     public var offersHelp: Bool {
         switch phase {
-        case .live, .connecting, .screenFound, .accessPending: return false
+        case .live, .connecting, .screenFound, .accessPending, .released: return false
         default: return true
         }
     }
@@ -146,6 +149,11 @@ public enum PhoneLink {
                          detail: "Workbench shows the phone’s picture only. It never opens the phone’s microphone.", step: nil)
         case .idle:
             break
+        }
+        if signals.released {
+            return .init(phase: .released, title: "Let go for another app",
+                         detail: "Workbench released the \(noun) so QuickTime Player or iPhone Mirroring could use it. Reconnect to show it here again.",
+                         step: .reconnect)
         }
         switch signals.access {
         case .restricted:
@@ -224,7 +232,7 @@ public enum PhoneLink {
         lines.append("Device video access: " + access)
         let phase: String
         switch signals.phase {
-        case .idle: phase = "no session"
+        case .idle: phase = signals.released ? "released for another app" : "no session"
         case .waitingForAccess: phase = "waiting for the permission prompt"
         case .connecting: phase = "connecting"
         case .live(_, let size): phase = "live \(Int(size.width))×\(Int(size.height))"
@@ -378,6 +386,8 @@ public final class PhoneLinkMonitor: ObservableObject {
         guard running, fixture == nil else { return }
         update { $0.access = Self.access() }
     }
+    /// The capture was let go for an Apple app, or taken back.
+    func setReleased(_ released: Bool) { update { $0.released = released } }
     private func start() {
         running = true
         observers.append(NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in self?.refresh() })

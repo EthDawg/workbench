@@ -134,6 +134,19 @@ final class PhoneLinkTests {
         XCTAssertEqual(live.phase, .live, "A session that is already live is the truth, whatever the cached permission says")
     }
 
+    func testReleasedForAnAppleAppSaysSoUntilReconnect() {
+        let released = PhoneLink.status(signals { $0.sources = [screen]; $0.rememberedID = screen.id; $0.usb = [phone]; $0.released = true })
+        XCTAssertEqual(released.phase, .released)
+        XCTAssertEqual(released.title, "Let go for another app")
+        XCTAssertTrue(released.detail?.contains("QuickTime Player") == true)
+        XCTAssertEqual(released.step, .reconnect)
+        XCTAssertFalse(released.offersHelp)
+        XCTAssertFalse(released.offersReconnect, "Reconnect is already the step")
+        let live = PhoneLink.status(signals { $0.released = true; $0.phase = .live(screen.id, CGSize(width: 1, height: 2)); $0.sources = [screen] })
+        XCTAssertEqual(live.phase, .live, "A session that is running was never released")
+        XCTAssertTrue(PhoneLink.diagnostic(signals { $0.released = true }, status: released, build: "b").contains("Session: released for another app"))
+    }
+
     func testNounsFollowTheDeviceNotTheSerial() {
         XCTAssertEqual(PhoneLink.noun(for: .init(id: "x", name: "Ethan’s iPad", isScreen: true), usb: []), "iPad")
         XCTAssertEqual(PhoneLink.noun(for: .init(id: "x", name: "Screen 00008030", isScreen: true), usb: [phone]), "iPhone")

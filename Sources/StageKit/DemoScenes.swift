@@ -266,23 +266,28 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
     var heldDeviceID: String? { capture.heldDeviceID }
     /// The Present page is on screen (its preview is visible), so the phone can show there.
     func setPageVisible(_ visible: Bool) {
-        if visible { releasedForHandoff = false }
         guard pageVisible != visible else { return }
         pageVisible = visible
+        if !visible { setReleasedForHandoff(false) }
         reconsiderCapture()
     }
+    private func setReleasedForHandoff(_ value: Bool) {
+        guard releasedForHandoff != value else { return }
+        releasedForHandoff = value
+        MainActor.assumeIsolated { phoneLink.setReleased(value) }
+    }
     /// Asked for explicitly: the capture may hold the device again after a handoff.
-    func reconnectPhone() { releasedForHandoff = false; reconsiderCapture(); capture.reconnect() }
+    func reconnectPhone() { setReleasedForHandoff(false); reconsiderCapture(); capture.reconnect() }
     /// Opens QuickTime Player or iPhone Mirroring from the page. The capture releases
     /// the phone first, and stays released until the person comes back to Present.
     func openNativeApp(_ app: NativePresentationApp) {
-        releasedForHandoff = true
+        setReleasedForHandoff(true)
         reconsiderCapture { [weak self] in app.open { message in self?.notice = message } }
     }
     /// The one next step the status names, from the page.
     func performPhoneStep(_ step: PhoneLinkStatus.Step, chooseSource: () -> Void) {
         switch step {
-        case .showSource(let id, _): releasedForHandoff = false; reconsiderCapture(); capture.select(id)
+        case .showSource(let id, _): setReleasedForHandoff(false); reconsiderCapture(); capture.select(id)
         case .chooseSource: chooseSource()
         case .reconnect: reconnectPhone()
         case .openCameraSettings: NSWorkspace.shared.open(PhoneConnectionSupport.cameraSettingsURL)
@@ -439,12 +444,12 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
         if scene.persona != nil && personaImage(for: scene) == nil { notice = SceneError.missingPersona.localizedDescription; return }
         if presentation != nil { presentation?.bringForward(); return }
         onBeginPresentation?()
-        releasedForHandoff = false
+        setReleasedForHandoff(false)
         let presenter = DemoPresentation(scene: scene, image: image, logo: logoImage(for: scene), hand: handImage(for: scene), persona: personaImage(for: scene), ambience: ambienceImages(for: scene), screen: targetScreen, root: root, capture: capture, phoneLink: phoneLink, mode: mode, sharedControls: usesSharedControls)
         presenter.onRevealSharedControls = { [weak self] in self?.onFocusSharedControls?() }
         presenter.releaseCapture = { [weak self] forHandoff, completion in
             guard let self else { completion(); return }
-            if forHandoff { releasedForHandoff = true }
+            if forHandoff { setReleasedForHandoff(true) }
             reconsiderCapture(completion: completion)
         }
         presenter.onEnd = { [weak self] in
