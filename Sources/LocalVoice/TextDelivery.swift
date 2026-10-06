@@ -239,7 +239,7 @@ final class TextDelivery {
 
     static func deliver(_ text: String, target: Target?, mode: DeliveryMode, restoreClipboard: Bool,
                         validateTarget: (() -> Bool)? = nil, expectedValue: String? = nil, expectedSelection: NSRange? = nil,
-                        system: System? = nil) async -> Outcome {
+                        fit: InsertionBoundary.Context? = nil, system: System? = nil) async -> Outcome {
         let system = system ?? .live
         defer { target?.opaqueEditor?.end() }
         let pasteboard = system.pasteboard
@@ -261,7 +261,11 @@ final class TextDelivery {
             } ?? []
         } else { previous = [] }
         let priorSnapshotIsStable = pasteboard.changeCount == priorCount
-        guard let ownedChange = copy(text, to: pasteboard) else {
+        // The clipboard holds the transcript as dictated; words fitted to the field
+        // (#14) are copied only for the paste itself, so every earlier return
+        // leaves the person pasting what they said.
+        var delivered = text
+        guard var ownedChange = copy(text, to: pasteboard) else {
             return Outcome(message: "Could not copy the transcript. It is still available in Workbench.",
                            clipboardChangeCount: nil, wasPasted: false, destinationName: destinationName, failure: .copyFailed)
         }
@@ -287,6 +291,11 @@ final class TextDelivery {
         }
         // Snapshot immediately before insertion so an unrelated user edit is not mistaken for our paste.
         let before = system.readField(target)
+        // Dictated words fit this snapshot (#14); an unreadable value or range changes nothing.
+        if let fit, target.opaqueEditor == nil,
+           let adjusted = InsertionBoundary.fit(dictated: text, value: before.value, selection: before.selection, context: fit) {
+            delivered = adjusted.text
+        }
         guard let paste = system.preparePaste(target) else {
             return outcome("Copied. " + copiedDetail(.pasteUnavailable), failure: .pasteUnavailable)
         }
@@ -298,6 +307,12 @@ final class TextDelivery {
         }
         guard system.isEligible(target) else {
             return outcome("Copied. " + copiedDetail(.focusChanged), failure: .focusChanged)
+        }
+        if delivered != text {
+            guard let fitted = copy(delivered, to: pasteboard) else {
+                return outcome("Could not copy the transcript. It is still available in Workbench.", failure: .copyFailed)
+            }
+            ownedChange = fitted
         }
         pasteWasAttempted = true
         // The captured opaque editor was rechecked above. Stop observing before
@@ -320,7 +335,7 @@ final class TextDelivery {
                 return outcome("Paste was sent before cancellation. Check the destination; insertion was not confirmed or undone.", failure: .cancelled)
             }
             guard system.isEligible(target) else { break }
-            if confirms(text, before: before, after: system.readField(target),
+            if confirms(delivered, before: before, after: system.readField(target),
                         expectedValue: expectedValue, expectedSelection: expectedSelection) {
                 confirmed = true; break
             }
@@ -338,6 +353,8 @@ final class TextDelivery {
                                failure: restored ? nil : .clipboardRestoreFailed, pasteWasAttempted: true)
             }
         }
+        // The fitted words served one caret; what stays copied is the transcript.
+        if delivered != text, pasteboard.changeCount == ownedChange, let recopied = copy(text, to: pasteboard) { ownedChange = recopied }
         if confirmed { return outcome("Pasted into \(destinationName ?? "your app").", wasPasted: true) }
         return outcome(pasteboard.changeCount == ownedChange
                        ? "Paste sent · insertion could not be confirmed. The transcript remains copied."
