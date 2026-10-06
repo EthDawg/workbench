@@ -115,6 +115,10 @@ struct ReadbackHandoffApplication {
         "Handoff prompt copied and \(title) is opening. Give it access to this folder, then paste the prompt. Nothing was uploaded."
     }
 
+    var openedNotice: String {
+        "Handoff prompt copied and \(title) opened. Give it access to this folder, then paste the prompt. Nothing was uploaded."
+    }
+
     func failureNotice(_ error: Error) -> String {
         "\(title) could not open: \(error.localizedDescription) The prompt is copied and the session is shown in Finder. Nothing was uploaded."
     }
@@ -381,7 +385,9 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
     private struct RecordingContext { let root: URL; let sectionID: UUID; let pendingURL: URL; let previousSection: ReadbackSection }
 
-    @Published private(set) var sessionURL: URL?
+    @Published private(set) var sessionURL: URL? {
+        didSet { handoffFeedbackGeneration = UUID() }
+    }
     @Published private(set) var manifest: ReadbackManifest? {
         didSet {
             // Review follows an identity, never a row number or background completion.
@@ -429,7 +435,18 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     @Published private(set) var screenPermissionGranted = false
     @Published private(set) var microphonePermission = AVCaptureDevice.authorizationStatus(for: .audio)
     @Published private(set) var shortcutFailure: String?
-    @Published var notice: String?
+    @Published var notice: String? {
+        didSet { handoffFeedbackGeneration = UUID() }
+    }
+    private var handoffFeedbackGeneration = UUID()
+    // Platform seams let checks exercise this action without the global clipboard,
+    // Finder or LaunchServices. Production keeps the existing local handoff path.
+    var handoffCopy: (String) -> Bool = { TextDelivery.copy($0) != nil }
+    var handoffReveal: (URL) -> Void = { NSWorkspace.shared.activateFileViewerSelecting([$0]) }
+    var handoffResolve: (ReadbackHandoffTarget) -> ReadbackHandoffApplication? = { $0.resolveApplication() }
+    var handoffOpen: (ReadbackHandoffApplication, @escaping (Error?) -> Void) -> Void = { application, completion in
+        NSWorkspace.shared.openApplication(at: application.url, configuration: .init()) { _, error in completion(error) }
+    }
     @Published private(set) var transcriptDrafts: [UUID: String] = [:]
     @Published private(set) var transcriptSaveFailures: [UUID: String] = [:]
     var hasUnsavedNarration: Bool { !transcriptSaveFailures.isEmpty }
@@ -740,14 +757,14 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
             notice = activeSections.isEmpty ? "Add a screenshot before handing off this session." : "Finish this session's capture and transcription before handing it off."
             return
         }
-        guard TextDelivery.copy(target.prompt(for: sessionURL)) != nil else {
+        guard handoffCopy(target.prompt(for: sessionURL)) else {
             notice = "The handoff prompt could not be copied. The session was not sent anywhere."
             stateChanged()
             return
         }
 
-        NSWorkspace.shared.activateFileViewerSelecting([sessionURL])
-        guard let application = target.resolveApplication() else {
+        handoffReveal(sessionURL)
+        guard let application = handoffResolve(target) else {
             notice = "Handoff prompt copied and the session shown in Finder. Open \(target.title), add this folder, then paste the prompt. Nothing was uploaded."
             stateChanged()
             return
@@ -755,11 +772,13 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
 
         notice = application.openingNotice
         stateChanged()
-        NSWorkspace.shared.openApplication(at: application.url, configuration: .init()) { [weak self] _, error in
-            guard let error else { return }
+        let attempt = handoffFeedbackGeneration, sessionID = manifest?.id
+        handoffOpen(application) { [weak self] error in
             Task { @MainActor in
-                self?.notice = application.failureNotice(error)
-                self?.stateChanged()
+                guard let self, self.handoffFeedbackGeneration == attempt,
+                      self.sessionURL == sessionURL, self.manifest?.id == sessionID else { return }
+                self.notice = error.map(application.failureNotice) ?? application.openedNotice
+                self.stateChanged()
             }
         }
     }

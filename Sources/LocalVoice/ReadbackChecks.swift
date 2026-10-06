@@ -279,7 +279,7 @@ enum ReadbackChecks {
 
     @MainActor
     static func runAdmissionChecks() async throws {
-        var passed = 0
+        var passed = try await ReadbackHandoffDeliveryChecks.run()
         func check(_ condition: @autoclosure () -> Bool, _ message: String) throws {
             guard condition() else { throw ReadbackError.message("READBACK_ADMISSION_CHECK_FAILED: \(message)") }
             passed += 1
