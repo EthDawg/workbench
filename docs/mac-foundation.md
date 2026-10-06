@@ -1,6 +1,6 @@
 # Focused Mac foundation
 
-Decided implementation brief, 6 October 2026, revised after adversarial product review. Prepared at main `7989426b41f84afaf8e38bf57ae4b2a68935aacb`, still current at review. **Specification, not a claim that these changes work in the installed or public app.** [Research, dissent and review findings](research/mac-foundation-2026-10.md) distinguish current source, limited native inspection, user reports and platform evidence. The review reverses the original decision to retain Read and reduces the first implementation tranche.
+Decided implementation brief, 6 October 2026, revised after adversarial product review. Prepared at main `7989426b41f84afaf8e38bf57ae4b2a68935aacb`. Concurrent research-only PR #275 was merged into the branch before final handoff; the inspected app-source baseline is unchanged. **Specification, not a claim that these changes work in the installed or public app.** [Research, dissent and review findings](research/mac-foundation-2026-10.md) distinguish current source, limited native inspection, user reports and platform evidence. The review reverses the original decision to retain Read and reduces the first implementation tranche.
 
 ## Outcome and authority
 
