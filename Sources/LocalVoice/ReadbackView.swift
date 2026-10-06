@@ -64,19 +64,21 @@ struct ReadbackView: View {
     enum Sheet: String, Identifiable { case sessions, settings, ordering, deleted; var id: String { rawValue } }
 
     /// The host's speech readiness as Snap & Talk shows it: the one readiness line's words, whether
-    /// narration can be transcribed now, and why not when preparation failed. The failure is the one
-    /// signal, as Home's is: a model that is not ready and has not failed is preparing, whichever
-    /// door started it (launch, Retry model or Settings › Models), and only a failure needs Retry.
+    /// narration can be transcribed now, and why not when preparation failed. Readiness comes
+    /// first, as Home's does: a ready engine is the engine in use whatever a failed switch in
+    /// Settings › Models reported (that reason stays on the Models page beside its own Try again),
+    /// a model that is not ready and has not failed is preparing, whichever door started it
+    /// (launch, Retry model or Settings › Models), and only a failure with no ready engine needs Retry.
     struct NarrationEngine: Equatable {
         var name: String
         var ready: Bool
         var failure: String?
         /// Still on its way: the line carries its progress and needs only patience.
         var preparing: Bool { !ready && failure == nil }
-        /// A stopped preparation needs Retry model.
-        var needsAttention: Bool { failure != nil }
-        /// The line beside Record narration: the engine, or the readiness line with its reason.
-        var line: String { failure.map { ready ? name : "\(name). \($0)" } ?? name }
+        /// A stopped preparation with no ready engine needs Retry model.
+        var needsAttention: Bool { failure != nil && !ready }
+        /// The line beside Record narration: the ready engine's name, or the readiness line with its reason.
+        var line: String { ready ? name : failure.map { "\(name). \($0)" } ?? name }
     }
 
     var body: some View {
