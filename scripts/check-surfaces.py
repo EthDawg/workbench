@@ -148,6 +148,7 @@ ENTRY_POINTS = [
     ('StageKit/LocalPersonaProfile.swift', 'LocalPersonaProfileView', 'local profile', 'page'),
     # The window's own controls around the pages: the sidebar column.
     ('LocalVoice/WorkbenchHome.swift', 'WorkbenchHome.body', 'window sidebar', 'controls'),
+    ('LocalVoice/WorkbenchDesktopChrome.swift', 'WorkbenchUpdateSidebar', 'window sidebar', 'controls'),
     # Capability pages own their options (Grammar: options live with their
     # capability). The page body is scanned in mode 'options', so its transient
     # controls (editor buttons, selection, the current draft) stay out while a

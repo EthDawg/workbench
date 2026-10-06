@@ -149,14 +149,7 @@ struct WorkbenchHome: View {
                         }
                     }
                 }
-                if updates.availableVersion != nil || updates.restartWaiting {
-                    Button { hoveredSidebarItem = nil; model.page = "settings"; updates.checkForUpdates() } label: {
-                        sidebarRow("update", symbol: "arrow.down.circle", name: Text(updates.buttonTitle))
-                            .foregroundStyle(Workbench.accent)
-                    }.buttonStyle(WorkbenchNavigationStyle()).padding(.vertical, 6)
-                        .modifier(SidebarHintTarget(id: "update", title: updates.buttonTitle, enabled: collapsed, hovered: $hoveredSidebarItem))
-                        .accessibilityLabel(updates.buttonTitle)
-                }
+                WorkbenchUpdateSidebar(updates: updates, collapsed: collapsed, hovered: $hoveredSidebarItem)
                 // Settings stays reachable below the list, whatever it scrolls to (#134).
                 if let settings = Self.navItems.first(where: { $0.id == Self.pinnedPage }) {
                     Divider().padding(.vertical, 6)
