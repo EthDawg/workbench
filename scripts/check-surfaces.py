@@ -143,6 +143,7 @@ ENTRY_POINTS = [
     ('StageKit/Persona.swift', 'PersonaLibrary.makeControlsMenu', 'Persona menu', 'controls'),
     ('StageKit/StageKitController.swift', 'StageKitController.makeTimerMenu', 'Timer menu', 'controls'),
     ('LocalVoice/PromptPicker.swift', 'PromptPickerView', 'Saved Prompts picker', 'controls'),
+    ('LocalVoice/PackLibraryView.swift', 'PackLibraryView', 'Library Packs', 'controls'),
     ('LocalVoice/main.swift', 'AppDelegate', 'app menu bar', 'controls'),
     ('LocalVoice/WorkbenchHome.swift', 'WorkbenchHome.settings', 'settings page', 'page'),
     ('LocalVoice/WorkbenchHome.swift', 'WorkbenchHome.welcome', 'window home', 'page'),

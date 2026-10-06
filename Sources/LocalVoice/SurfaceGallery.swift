@@ -2,6 +2,7 @@ import AppKit
 import AVFoundation
 import ObjectiveC
 import PhotoHandoffKit
+import PrivatePackKit
 import SwiftUI
 import StageKit
 import ToolbarCore
@@ -518,6 +519,7 @@ private struct HistoryNativeAcceptanceView: View {
     }
 
     func render(to output: URL) throws -> SurfaceGallery.Pass {
+        if ProcessInfo.processInfo.environment["WORKBENCH_PACKS_GALLERY_ONLY"] == "1" { return try renderPacks(to: output) }
         if ProcessInfo.processInfo.environment["WORKBENCH_RESOURCES_GALLERY_ONLY"] == "1" { return try renderResources(to: output) }
         if ProcessInfo.processInfo.environment["WORKBENCH_FOUNDATION_OWNERSHIP_GALLERY_ONLY"] == "1" { return try renderFoundationOwnership(to: output) }
         if ProcessInfo.processInfo.environment["WORKBENCH_READ_RETIREMENT_GALLERY_ONLY"] == "1" { return try renderReadRetirement(to: output) }
@@ -1659,6 +1661,68 @@ private struct HistoryNativeAcceptanceView: View {
 
     /// A bounded pass for desktop Home changes. It uses the same isolated fixtures and actual
     /// SwiftUI views as the full gallery, including History's draft/selection preservation check.
+    func renderPacks(to output: URL) throws -> SurfaceGallery.Pass {
+        let preferences = try SurfaceGallery.isolatedDefaults("Packs", home: home)
+        let root = home.appendingPathComponent("Synthetic Packs")
+        let authorization = PackAuthorizationFixture(pending: true)
+        var services = PackLibraryServices()
+        services.readCredential = { nil }
+        services.saveCredential = { _ in throw VoiceError.message("The gallery never saves credentials.") }
+        services.removeCredential = {}
+        services.openURL = { _ in true }
+        services.copyCode = { _ in true }
+        services.authorization = { try GitHubPackAuthorization(clientID: "Iv1.fixture", client: authorization) }
+        services.contentSource = { _, _ in throw VoiceError.message("The gallery never contacts a repository.") }
+        let packs = PackLibraryModel(defaults: preferences, root: root, services: services)
+        let window = homeWindow(size: SurfaceGallery.sizes[1].size, packs: packs)
+        defer { packs.cancel(); window.contentViewController = nil; window.close() }
+        var shots: [SurfaceGallery.Shot] = []
+        func shot(_ id: String, _ title: String) throws {
+            let (image, _) = try renderPage("packs", in: window)
+            shots.append(try save(image, id: id, title: title,
+                detail: "Production Packs at minimum width; isolated repository, account and file fixtures, no network or browser.",
+                file: "packs-\(id)-\(theme).png", to: output))
+        }
+        try shot("empty", "Fresh Packs without account setup")
+        guard packs.acceptLink(URL(string: "workbench://packs/add?source=example%2Fworkbench-fixture")!) else {
+            throw VoiceError.message("The synthetic Add link was refused.")
+        }
+        try shot("add", "Explicit Add prefill")
+        packs.connect()
+        try wait("Packs device code") { packs.deviceCode != nil }
+        try shot("device-code", "Contextual cancellable device code")
+        packs.cancel()
+        // Recreate only the view to close its local Add disclosure; the same owner persists.
+        window.contentViewController = NSHostingController(rootView: WorkbenchHome(model: model, stage: stage,
+            keyboard: keyboard, readback: readback, snap: snap, packs: packs))
+        var loaded = false, failure: Error?
+        Task {
+            do { _ = try await PackStore(root: root).install(from: PackLibraryFixtureSource(), appVersion: PackVersion("2.2.0")!) }
+            catch { failure = error }
+            loaded = true
+        }
+        try wait("verified installed pack") { loaded }
+        if let failure { throw failure }
+        packs.refreshInstalled(); try wait("offline pack content") { !packs.packs.isEmpty }
+        packs.notice = nil
+        try shot("offline", "Installed content before account")
+        packs.update(packs.packs[0].id)
+        try wait("failed offline update") { !packs.isBusy }
+        guard packs.hasError, packs.packs[0].entries.count == 4 else { throw VoiceError.message("The update fixture did not retain its content.") }
+        try shot("update-refused", "Failed update retains usable installed content")
+        let library = model.library
+        _ = try library.store.save(library.resources + [DemoResource(title: "A newer saved record", content: "Keep the newer Library.")])
+        let file = home.appendingPathComponent("Workshop reference.txt")
+        guard !packs.saveResource(Data("Synthetic saved reference\n".utf8), title: "Workshop reference",
+            filename: file.lastPathComponent, library: library, chooseDestination: { _ in file }), packs.savedResource != nil else {
+            throw VoiceError.message("The reference recovery fixture did not reach its refusal.")
+        }
+        try shot("reference-retry", "Saved file retained while its Library reference needs recovery")
+        return SurfaceGallery.Pass(theme: theme, panels: [], toolbar: [], host: [], pickers: [], pickerHost: [],
+            pages: [.init(route: "packs", title: "Packs", fallsThrough: false, shots: shots)],
+            entries: entries().filter { $0.route == "packs" }, menus: [], placement: [])
+    }
+
     func renderResources(to output: URL) throws -> SurfaceGallery.Pass {
         let library = model.library
         guard library.resources.isEmpty else { throw VoiceError.message("The Resources pass requires a fresh synthetic Library.") }
@@ -3287,13 +3351,13 @@ private struct HistoryNativeAcceptanceView: View {
     /// (Home asks macOS for the login item status each time it is created, which can be slow).
     /// The Workbench window at `size`. `sectionFrames`, when given, hears where this window's pages
     /// lay out their named sections (`pageSectionFrames`), and no other window's.
-    func homeWindow(size: NSSize, hostsSheets: Bool = false, sectionFrames: ((String, CGRect) -> Void)? = nil) -> NSWindow {
+    func homeWindow(size: NSSize, hostsSheets: Bool = false, packs: PackLibraryModel? = nil, sectionFrames: ((String, CGRect) -> Void)? = nil) -> NSWindow {
         // A preceding toolbar-host fixture closes its controller. Restore this pass's
         // retained settings owner before rendering desktop pages, as the live app has one.
         if model.toolbarControls == nil { model.toolbarControls = toolbarSettingsControls }
         let window = offscreenWindow(size: size, styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], hostsSheets: hostsSheets)
         window.titlebarAppearsTransparent = true; window.titleVisibility = .hidden
-        window.contentViewController = NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard, readback: readback, snap: snap)
+        window.contentViewController = NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard, readback: readback, snap: snap, packs: packs)
             .environment(\.pageSectionFrames, sectionFrames))
         window.setContentSize(size)
         if hostsSheets {
