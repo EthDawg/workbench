@@ -2724,18 +2724,19 @@ private struct HistoryNativeAcceptanceView: View {
             controls.toolbar.send(.holdEnded(.keyboard)); settle(.resting)
             expect("Free on the \(side), collapsed again", [at(centre, "collapsed again"), compact("collapsed again")])
         }
-        // A row that widens, here by Present's accessory, must neither move its launcher nor turn
-        // round: released just left of the middle, and on the right half, then Present is chosen.
+        // A row that widens, here by Draw's retained Tools accessory, must neither move its launcher nor turn
+        // round: released just left of the middle, and on the right half, then Draw is chosen.
         for (place, x) in [("just left of the middle", screen.midX - 5), ("on the right half", screen.minX + screen.width * 0.7)] {
             let centre = CGPoint(x: x.rounded(), y: (screen.minY + screen.height * 0.45).rounded())
             model.toolbarMode = .dictate
             host.releaseTools(atLauncher: centre); controls.toolbar.send(.holdBegan(.keyboard)); settle(.revealed)
             let leftward = controls.rowAnchor.growsLeftward, width = host.window?.frame.width ?? 0
-            for mode in [ToolbarMode.present, .dictate] {
+            for mode in [ToolbarMode.draw, .dictate] {
                 model.toolbarMode = mode; settle(.revealed)
                 let grown = (host.window?.frame.width ?? 0) - width
                 expect("Released \(place), revealed, then \(mode.title) is chosen", [
-                    mode == .present && abs(grown) < 0.5 ? "the row stayed \(Int(width)) pt wide, so this step shows nothing" : nil,
+                    mode == .draw && grown < 0.5 ? "the row did not grow from \(Int(width)) pt for Draw's Tools, so this step shows nothing" : nil,
+                    mode == .dictate && abs(grown) > 0.5 ? "the row did not shrink back to Dictate's \(Int(width)) pt" : nil,
                     controls.rowAnchor.growsLeftward != leftward ? "the row turned round, from growing \(leftward ? "leftward" : "rightward")" : nil,
                     at(centre, "after the width changed")])
             }
@@ -3614,7 +3615,7 @@ private struct SurfaceIndex {
             "<li>\($0): needs a live StageKit session (overlay windows or device capture). The options menus below show these rows' idle menus.</li>" }.joined() + "</ul>"
         html += "<h2>Home and the floating toolbar's switch</h2><p>Checked with the pass's own models; the pass fails if any of these does not hold (#134).</p><ul>"
             + light.checks.map { "<li class=\"ok\">\(esc($0))</li>" }.joined() + "</ul>"
-        html += "<h2>Floating toolbar host</h2><p>The production host (<code>CapturePanelController</code>) driven offscreen for every mode, at rest and revealed, then switched between Dictate and Present while revealed, with its panel invisible. Each window is compared with what its row wants; a smaller window clips the row and its corners.</p>"
+        html += "<h2>Floating toolbar host</h2><p>The production host (<code>CapturePanelController</code>) driven offscreen for every mode, at rest and revealed, then switched between Dictate and Draw while revealed, with its panel invisible. Each window is compared with what its row wants; a smaller window clips the row and its corners.</p>"
         if light.host.isEmpty { html += light.scope == "desktop" ? "<p>Omitted by the bounded desktop pass.</p>" : "<p>Not run: this Mac reported no display.</p>" }
         html += "<table><tr><th>State</th><th>Window</th><th>Row wants</th><th>Host heard the row</th><th>Twin heard its row</th><th>Check</th></tr>"
         for check in light.host {

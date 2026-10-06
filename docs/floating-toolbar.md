@@ -565,7 +565,7 @@ approximations. Visual acceptance still requires inspecting the images.
 
 The surface gallery (`LocalVoice --render-surfaces`) adds the host: it drives the
 production `CapturePanelController` offscreen for every mode at rest and revealed,
-then switches between Dictate and Present with the row open, a width change that
+then switches between Dictate and Draw with the row open, a width change from Draw's retained Tools accessory that
 reaches the host only through the row's own report, then shows Present at the
 right-hand dock, revealed and at rest, and the compact mark while a synthetic
 meeting records. It flags a window smaller than
@@ -580,9 +580,21 @@ panel can cause in a local run, is reported and its sizes are not compared; the
 gallery's other flags are reported without failing it too. A Mac with no display
 renders no host states and has nothing to fail.
 
+On 7 October 2026, source `7d80fb20c7f26fc7b76b4cd56b447167de9055dd`
+corrected the stale Present width-growth fixture after A1 removed its Prompts
+accessory. The exact release build passed, and the full synthetic surface gallery
+passed 298 renders, 147 entries and zero flags. Dictate → Draw → Dictate rendered
+96 → 136 → 96 pt in both themes; the launcher reference and direction stayed
+fixed at both free positions. A temporary negative control suppressing Draw's
+Tools failed all four growth checks and four existing accessory-focus checks,
+then production source and the exact positive executable were restored. Local
+evidence is under `.build/a1-toolbar-fixture-gallery` and
+`.build/a1-toolbar-negative-gallery`; this is offscreen evidence, not installed
+pointer, keyboard or VoiceOver acceptance. No production toolbar behavior changed.
+
 The gallery also releases the same host at free positions on each half of the
 display and near an edge, and reads the placement reference after an update, a reveal
-and a collapse, while choosing Present widens the row (released just left of the
+and a collapse, while choosing Draw widens the row and returning to Dictate shrinks it (released just left of the
 middle and on the right half), in a new host as after a relaunch, in new hosts
 reading each earlier build's save and a later move by one, at the right-hand dock,
 after Reset position, and at rest while a synthetic meeting records, where the
