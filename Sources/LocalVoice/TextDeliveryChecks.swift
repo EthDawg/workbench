@@ -375,34 +375,65 @@ enum TextDeliveryChecks {
         try check(!TextDelivery.confirms("words", before: unchangedText, after: unchangedText)
                   && TextDelivery.confirms("words", before: unchangedText, after: .init(value: "words", selection: NSRange(location: 5, length: 0))),
                   "replacing identical selected text needs the resulting caret to confirm")
-        // Dictated words fit the field (#14): the pasted text carries the boundary's
-        // spaces and case; the saved transcript is the caller's and is untouched.
+        // Dictated words fit the field (#14): the fitted words are copied only for the
+        // paste itself, from the snapshot taken just before it; the clipboard holds the
+        // transcript as dictated before and after, and the saved transcript is the caller's.
+        let caretState = TextDelivery.FieldState(value: "Please bringtomorrow", selection: NSRange(location: 12, length: 0))
         let joined = DeliveryFixture(board)
-        joined.state = .init(value: "Please bringtomorrow", selection: NSRange(location: 12, length: 0))
+        joined.state = caretState
+        var pastedWords: String?
+        var recording = joined.system
+        recording.preparePaste = { _ in { pastedWords = board.string(forType: .string); joined.posted += 1 } }
         joined.duringConfirmation = { joined.state = .init(value: "Please bring the blue folder tomorrow", selection: NSRange(location: 29, length: 0)) }
-        let fittedPaste = await joined.deliver("The blue folder", fit: .init())
-        try check(fittedPaste.wasPasted && joined.posted == 1 && joined.reads == 3,
-                  "a fitted paste reads the field once more and confirms the fitted text")
+        let fittedPaste = await joined.deliver("The blue folder", restore: false, fit: .init(), system: recording)
+        try check(fittedPaste.wasPasted && joined.posted == 1 && joined.reads == 2 && pastedWords == " the blue folder ",
+                  "a fitted paste fits the pre-paste snapshot without an extra read and pastes the fitted words")
+        try check(board.string(forType: .string) == "The blue folder" && fittedPaste.clipboardChangeCount == board.changeCount,
+                  "after a confirmed paste the transcript is copied back, as the live span leaves it")
+        _ = TextDelivery.copy("earlier clipboard", to: board)
+        let restoredFit = DeliveryFixture(board)
+        restoredFit.state = caretState
+        restoredFit.duringConfirmation = { restoredFit.state = joined.state }
+        let restoredPaste = await restoredFit.deliver("The blue folder", fit: .init())
+        try check(restoredPaste.wasPasted && board.string(forType: .string) == "earlier clipboard",
+                  "a fitted paste restores the previous clipboard like any other")
+        let unconfirmedFit = DeliveryFixture(board)
+        unconfirmedFit.state = caretState
+        let unconfirmedPaste = await unconfirmedFit.deliver("The blue folder", restore: false, fit: .init())
+        try check(unconfirmedPaste.failure == .pasteUnconfirmed && unconfirmedFit.posted == 1 && board.string(forType: .string) == "The blue folder",
+                  "an unconfirmed fitted paste leaves the transcript copied once polling ends")
         let unfitted = DeliveryFixture(board)
         unfitted.state = joined.state
         _ = await unfitted.deliver("The blue folder")
         try check(board.string(forType: .string) == "The blue folder", "without a boundary context the words are copied as dictated")
-        let copyFit = DeliveryFixture(board)
-        copyFit.state = .init(value: "Please bringtomorrow", selection: NSRange(location: 12, length: 0))
-        _ = await copyFit.deliver("The blue folder", restore: false, fit: .init())
-        try check(board.string(forType: .string) == " the blue folder ", "the fitted words are what reaches the clipboard for pasting")
-        let drifted = DeliveryFixture(board)
-        drifted.state = .init(value: "Please bringtomorrow", selection: NSRange(location: 12, length: 0))
-        var driftingSystem = drifted.system
-        driftingSystem.readField = { _ in
-            drifted.reads += 1
-            if drifted.reads == 2 { drifted.state = .init(value: "Please bring tomorrow", selection: NSRange(location: 13, length: 0)) }
-            return drifted.state
-        }
-        drifted.duringConfirmation = { drifted.state = .init(value: "Please bring The blue foldertomorrow", selection: NSRange(location: 28, length: 0)) }
-        let driftedPaste = await drifted.deliver("The blue folder", restore: false, fit: .init(), system: driftingSystem)
-        try check(driftedPaste.wasPasted && drifted.posted == 1 && board.string(forType: .string) == "The blue folder",
-                  "a field that changed before insertion receives the dictated words unchanged")
+        // Every return before the paste leaves the transcript on the clipboard, never
+        // words shaped for a caret that is no longer the target.
+        let movedFit = DeliveryFixture(board)
+        movedFit.state = caretState
+        movedFit.beforePosting = { movedFit.eligible = false }
+        let movedPaste = await movedFit.deliver("The blue folder", restore: false, fit: .init())
+        try check(movedPaste.failure == .focusChanged && movedFit.posted == 0 && movedFit.reads == 1 && board.string(forType: .string) == "The blue folder",
+                  "a focus change after the fit leaves the transcript copied")
+        let unavailableFit = DeliveryFixture(board)
+        unavailableFit.state = caretState
+        var noPaste = unavailableFit.system
+        noPaste.preparePaste = { _ in nil }
+        let unavailablePaste = await unavailableFit.deliver("The blue folder", restore: false, fit: .init(), system: noPaste)
+        try check(unavailablePaste.failure == .pasteUnavailable && board.string(forType: .string) == "The blue folder",
+                  "unavailable paste after the fit leaves the transcript copied")
+        let changedFit = DeliveryFixture(board)
+        changedFit.state = caretState
+        changedFit.beforePosting = { _ = TextDelivery.copy("newer before paste", to: board) }
+        let changedPaste = await changedFit.deliver("The blue folder", restore: false, fit: .init())
+        try check(changedPaste.failure == .clipboardChanged && changedFit.posted == 0 && board.string(forType: .string) == "newer before paste",
+                  "a clipboard change after the fit is left alone")
+        let cancelledFit = DeliveryFixture(board)
+        cancelledFit.state = caretState
+        var validations = 0
+        let cancelledPaste = await TextDelivery.deliver("The blue folder", target: cancelledFit.target, mode: .paste, restoreClipboard: false,
+                                                        validateTarget: { validations += 1; return validations < 2 }, fit: .init(), system: cancelledFit.system)
+        try check(cancelledPaste.failure == .cancelled && cancelledFit.posted == 0 && cancelledFit.reads == 1 && board.string(forType: .string) == "The blue folder",
+                  "cancellation after the fit leaves the transcript copied")
         let unreadableFit = DeliveryFixture(board)
         unreadableFit.state = .init(value: nil, selection: nil)
         let unreadablePaste = await unreadableFit.deliver("The blue folder", fit: .init())
