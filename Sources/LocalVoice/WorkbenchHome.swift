@@ -179,7 +179,7 @@ struct WorkbenchHome: View {
                         handoffReview = HandoffReviewRequest(task: "Prepare a clear summary and follow-up from these screenshots and their paired narration.", evidenceURL: session)
                     }, onSaveImageToLibrary: { model.library.saveCapturedImageToLibrary($0) },
                     initialSheet: openSnapTalkSessions ? .sessions : nil,
-                    engine: .init(name: model.modelMessage, ready: model.ready, preparing: model.preparing, failure: model.modelFailure),
+                    engine: .init(name: model.modelMessage, ready: model.ready, failure: model.modelFailure),
                     onOpenModels: { model.page = "models" }, onRetryModel: { Task { await model.prepare() } })
                         .onAppear { openSnapTalkSessions = false }
                 case "snap": SnapWorkspaceView(model: snap, selectedIDs: Binding(get: {
@@ -330,7 +330,8 @@ struct WorkbenchHome: View {
             case "models":
                 ScrollView { VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
                     ModelSettingsView(engine: model.engine, isBusy: model.phase != .idle || model.preparing || model.rendering || model.meetings.isBusy || readback.isRecording || readback.isCapturing || readback.hasPendingTranscriptions,
-                                      progress: model.modelMessage, hostPreparing: model.preparing, hostFailure: model.modelFailure) { ready, message in
+                                      progress: model.modelMessage, hostPreparing: model.preparing, hostFailure: model.modelFailure,
+                                      onFailure: { model.modelFailure = $0 }) { ready, message in
                         model.ready = ready; model.modelMessage = message
                     }
                     Divider()

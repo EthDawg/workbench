@@ -51,7 +51,10 @@ struct ReadbackView: View {
                     Button("Models…", action: onOpenModels).buttonStyle(.link).font(.caption)
                         .help("Choose the speech model in Settings › Models")
                 }
-                if !engine.ready {
+                if engine.needsAttention {
+                    Text("You can record now. If the model still can’t be prepared, the recording is kept with Retry transcription.").font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else if !engine.ready {
                     Text("You can record now; transcription waits for the speech model.").font(.caption).foregroundStyle(.secondary)
                 }
             }
@@ -61,14 +64,17 @@ struct ReadbackView: View {
     enum Sheet: String, Identifiable { case sessions, settings, ordering, deleted; var id: String { rawValue } }
 
     /// The host's speech readiness as Snap & Talk shows it: the one readiness line's words, whether
-    /// narration can be transcribed now, and why not when preparation failed.
+    /// narration can be transcribed now, and why not when preparation failed. The failure is the one
+    /// signal, as Home's is: a model that is not ready and has not failed is preparing, whichever
+    /// door started it (launch, Retry model or Settings › Models), and only a failure needs Retry.
     struct NarrationEngine: Equatable {
         var name: String
         var ready: Bool
-        var preparing = false
         var failure: String?
-        /// A stopped preparation needs Retry model; preparing only needs patience.
-        var needsAttention: Bool { !ready && !preparing }
+        /// Still on its way: the line carries its progress and needs only patience.
+        var preparing: Bool { !ready && failure == nil }
+        /// A stopped preparation needs Retry model.
+        var needsAttention: Bool { failure != nil }
         /// The line beside Record narration: the engine, or the readiness line with its reason.
         var line: String { failure.map { ready ? name : "\(name). \($0)" } ?? name }
     }

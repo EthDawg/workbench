@@ -196,11 +196,13 @@ enum ReadbackChecks {
         // The engine line beside Record narration (#134 follow-up): the readiness line's words while
         // ready or preparing, the reason with Retry model once preparation stopped.
         let readyEngine = ReadbackView.NarrationEngine(name: RecognitionConfiguration().summary, ready: true)
-        try check(readyEngine.line == "Parakeet v2 · English · on this Mac" && !readyEngine.needsAttention, "a ready engine shows the one readiness line")
-        let preparingEngine = ReadbackView.NarrationEngine(name: "Downloading Parakeet · 42%", ready: false, preparing: true)
-        try check(preparingEngine.line == "Downloading Parakeet · 42%" && !preparingEngine.needsAttention, "a preparing engine shows its progress without Retry")
+        try check(readyEngine.line == "Parakeet v2 · English · on this Mac" && !readyEngine.needsAttention && !readyEngine.preparing, "a ready engine shows the one readiness line")
+        let preparingEngine = ReadbackView.NarrationEngine(name: "Downloading Parakeet · 42%", ready: false)
+        try check(preparingEngine.line == "Downloading Parakeet · 42%" && preparingEngine.preparing && !preparingEngine.needsAttention, "a preparing engine shows its progress without Retry")
+        let applying = ReadbackView.NarrationEngine(name: "Preparing Parakeet · first setup may take a few minutes", ready: false)
+        try check(applying.preparing && !applying.needsAttention, "Settings › Models' own Use or Download is preparing too, never a failure with a second Retry")
         let failedEngine = ReadbackView.NarrationEngine(name: "The speech model couldn’t be prepared", ready: false, failure: "Check your connection.")
-        try check(failedEngine.line == "The speech model couldn’t be prepared. Check your connection." && failedEngine.needsAttention, "a failed preparation names its reason and needs Retry model")
+        try check(failedEngine.line == "The speech model couldn’t be prepared. Check your connection." && failedEngine.needsAttention && !failedEngine.preparing, "a failed preparation names its reason and needs Retry model")
         print("READBACK_CHECKS_OK: \(passed) checks")
     }
 
