@@ -268,7 +268,7 @@ struct DemoLibraryView: View {
                 }
                 // How the toolbar's Prompts delivers, kept here with the prompts rather than in the picker (#159).
                 if item.kind == .prompt {
-                    Text("While presenting, the toolbar's Prompts types this into the field you clicked, or pastes it once where typing isn't supported. Saved Prompts… here copies it for ⌘V. Nothing is submitted automatically.")
+                    Text("With Present on the toolbar, its Prompts types this into the field in front, or pastes it once where typing isn't supported. Saved Prompts… here copies it for ⌘V. Nothing is submitted automatically.")
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }

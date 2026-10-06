@@ -88,6 +88,7 @@ final class ToolbarGalleryTests: XCTestCase {
         XCTAssertEqual(saving?.actionHint, "saving · ⌥C")
         XCTAssertEqual(saving?.isBusy, true)
         XCTAssertEqual(ToolbarGallery.activity.first { $0.name == "activity-presenting" }?.accessoryTitle, "Prompts")
+        XCTAssertEqual(ToolbarGallery.accessories.first { $0.name == "accessory-present-view" }?.quickControl, .presentationView)
         XCTAssertNil(ToolbarGallery.modes.first { $0.mode == .dictate }?.accessoryTitle)
     }
 

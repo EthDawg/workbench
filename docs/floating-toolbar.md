@@ -190,7 +190,7 @@ adjustments stay in their workspace and capability’s menu-bar Options. Present
 live controls bind the running snapshot even while another saved scene is selected.
 They include window/full-screen, source and connection recovery, device proportions
 and applicable motion controls. Apple-app handoffs remain in the connection guide
-and release capture before opening the chosen app. While presenting, the toolbar's
+and release capture before opening the chosen app. Present's toolbar
 Prompts inserts a saved prompt; Library's Saved Prompts… copies one. Browser
 switching remains paused. Persona’s workspace has
 live-copy Appearance, size, position, lock, replace/update, visibility, add/remove,

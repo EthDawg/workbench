@@ -1450,7 +1450,7 @@
     "label": "Me",
     "kind": "action",
     "belongsTo": "persona",
-    "aliasOf": "persona",
+    "aliasOf": "StageKit.PersonaLibraryView.PersonaLibraryView.Button.me",
     "note": "Restored 7 Oct at Ethan's request: Home shows your profile photo and opens the same local Me profile editor as Persona's Me…; opening starts no camera."
   },
   {
