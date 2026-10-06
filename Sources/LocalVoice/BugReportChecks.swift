@@ -32,6 +32,10 @@ enum BugReportChecks {
     static func expect(_ condition: @autoclosure () throws -> Bool, _ message: String) throws {
         guard try condition() else { throw VoiceError.message("Report a problem check failed: \(message)") }
     }
+    static func expectValue<T>(_ value: T?, _ message: String) throws -> T {
+        guard let value else { throw VoiceError.message("Report a problem check failed: \(message)") }
+        return value
+    }
 
     // MARK: Fixtures
 
@@ -297,6 +301,12 @@ enum BugReportChecks {
                    "429 without a feedback limit waits for Retry-After or 60 s")
         try expect(BugReportTransport.session().configuration.timeoutIntervalForResource >= 1_800, "an upload may take 30 minutes on a slow uplink")
         try expect(BugReportView.sendShortcut == KeyboardShortcut(.return, modifiers: .command), "Send is Command-Return; plain Return in the email field never sends")
+        // The email caption and the privacy page say the team can see and search an added address.
+        try expect(BugReportView.emailNote == "If you add your email, the team sees it with your report, and can search for it, so they can reply.", "the email caption")
+        let privacy = try String(contentsOf: repository.appendingPathComponent("site/privacy.html"), encoding: .utf8)
+        try expect(privacy.contains("If you add your email, the team sees it with your report, and can search for it in their private inbox, so they can reply.")
+                   && privacy.contains("keeps reports for up to 90 days"), "the privacy page's email and retention wording")
+
         // Every other recorder asks one microphone rule while a report records or transcribes.
         try expect(BugReportAdmission.microphone(recording: true, transcribing: false) != nil && BugReportAdmission.microphone(recording: false, transcribing: true) != nil
                    && BugReportAdmission.microphone(recording: false, transcribing: false) == nil, "the report's microphone rule")
@@ -422,10 +432,35 @@ enum BugReportChecks {
         try expect(h.model.receipts.first?.title == "Sending…", "receipt while asked to wait: Sending…")
 
         // 200 limiting only attachments: the event went through, so it is Sent and the verifier decides.
-        (h, id) = try frozen("attachments-limited")
+        // A 200 limiting only attachments: the words arrived without their files. Sent · words only,
+        // nothing checked or resent by itself, and Send attachments again under a new event ID.
+        let words = harness(root.appendingPathComponent("words-only"), destination: .init(dsn: dsn, verifier: verifier, environment: "production", isOverride: false))
+        try fill(words.model)
+        words.model.send()
+        let wid = words.store.deliveries()[0].id
         sentry.script = [.status(200, ["X-Sentry-Rate-Limits": "60:attachment:organization"])]
-        await h.transport.runDue()
-        try expect(state(h, id).state == .sent, "a 200 limiting only attachments is Sent, never resent under the same event ID")
+        await words.transport.runDue()
+        var wd = words.store.delivery(wid)!
+        try expect(wd.state == .sent && wd.wordsOnly && wd.nextAttemptAt == nil && !wd.isSettled && !wd.isUnsent, "a 200 limiting only attachments is Sent · words only")
+        let quiet = sentry.bodies.count
+        words.clock.advance(3_600); await words.transport.runDue()
+        try expect(sentry.bodies.count == quiet, "words only: nothing is checked or resent by itself")
+        let short = BugReportText.shortID(wid)
+        let wordsReceipt = words.model.receipts.first
+        try expect(wordsReceipt?.title == "Sent · words only · \(short)" && wordsReceipt?.detail.contains("The screenshot and voice note couldn't go with it.") == true
+                   && wordsReceipt?.actions == [.sendAttachmentsAgain, .saveCopy, .remove] && wordsReceipt?.detail.contains("didn't confirm") == false,
+                   "the receipt says the words arrived and offers Send attachments again, not Send again")
+        let firstWordsEvent = wd.eventID
+        words.model.perform(.sendAttachmentsAgain, on: wid)
+        sentry.script = []
+        await words.transport.runDue()
+        wd = words.store.delivery(wid)!
+        let resent = try BugReportEnvelope.parse(sentry.bodies.last!)
+        let resentEvent = try JSONSerialization.jsonObject(with: resent.items[0].payload) as! [String: Any]
+        try expect(wd.eventID != firstWordsEvent && wd.previousEventIDs == [firstWordsEvent] && !wd.wordsOnly && wd.state == .sent
+                   && wd.files.count == 3 && wd.nextAttemptAt == words.clock.now + 15, "Send attachments again goes under a new event ID and is checked")
+        try expect(resent.items.dropFirst().map(\.filename) == ["context.json", "screenshot.png", "voice.wav"]
+                   && (resentEvent["tags"] as? [String: String])?["report_id"] == wid, "with every attachment and the same report ID")
 
         // A lost reply may have arrived: after 55 minutes the same event ID is not sent again by itself.
         (h, id) = try frozen("lost-then-late")
@@ -456,12 +491,70 @@ enum BugReportChecks {
         await h.transport.runDue()
         try expect(state(h, id).state == .sent, "sent by itself three hours later")
 
-        // A time-out mid-upload is not offline: it may have arrived, so it backs off as busy.
+        // A time-out after the upload's bytes went may have arrived, so it backs off as busy; one that
+        // sent no bytes never connected and waits for a connection without starting the clock.
         (h, id) = try frozen("timed-out")
-        sentry.script = [.failure(.timedOut)]
+        sentry.script = [.timeoutAfterUpload]
         await h.transport.runDue()
         try expect(state(h, id).state == .sending && state(h, id).problem == .busy && state(h, id).mayHaveArrivedAt != nil
-                   && h.model.receipts.first?.title == "Sending…", "a time-out backs off as busy, not offline")
+                   && h.model.receipts.first?.title == "Sending…", "a time-out after sending bytes backs off as busy, not offline")
+        (h, id) = try frozen("timed-out-early")
+        sentry.script = [.failure(.timedOut)]
+        await h.transport.runDue()
+        try expect(state(h, id).state == .waiting && state(h, id).problem == .offline && state(h, id).mayHaveArrivedAt == nil,
+                   "a time-out that sent no bytes is never-connected")
+        try expect(BugReportTransport.neverConnected(.timedOut, bytesSent: 0) && !BugReportTransport.neverConnected(.timedOut, bytesSent: 1)
+                   && BugReportTransport.neverConnected(.cannotFindHost, bytesSent: 9) && !BugReportTransport.neverConnected(.networkConnectionLost, bytesSent: 0),
+                   "never-connected classification")
+
+        // The clock is saved before the request: a Quit mid-upload still counts it, and a relaunch
+        // past the hour sends nothing by itself.
+        (h, id) = try frozen("quit-mid-upload")
+        let store = h.store, crashed = root.appendingPathComponent("quit-mid-upload-relaunched")
+        var seenDuringRequest: Date?
+        sentry.onRequest = {
+            DispatchQueue.main.sync { MainActor.assumeIsolated {
+                seenDuringRequest = store.delivery(id)?.mayHaveArrivedAt
+                try? FileManager.default.copyItem(at: store.root, to: crashed)
+            } }
+        }
+        await h.transport.runDue()
+        sentry.onRequest = nil
+        try expect(seenDuringRequest == h.clock.now, "the possible-arrival time is on disk before the request")
+        let afterQuit = harness(crashed, clock: h.clock)
+        h.clock.advance(56 * 60)
+        let beforeRelaunch = sentry.bodies.count
+        await afterQuit.transport.runDue()
+        try expect(afterQuit.store.delivery(id)?.state == .unconfirmed && afterQuit.store.delivery(id)?.problem == .uncertain && sentry.bodies.count == beforeRelaunch,
+                   "an upload cut off by Quit is not resent by itself past the hour")
+        // A never-connected failure puts the earlier value back.
+        (h, id) = try frozen("never-connected-restores")
+        sentry.script = [.failure(.cannotConnectToHost)]
+        await h.transport.runDue()
+        try expect(state(h, id).mayHaveArrivedAt == nil, "a never-connected failure clears the clock it saved")
+
+        // Budget: an automatic resend must finish inside Sentry's hour.
+        let t0 = Date(timeIntervalSince1970: 1_791_349_200)
+        try expect(BugReportTransport.sendDeadline(mayHaveArrivedAt: nil, now: t0) == BugReportTransport.uploadLimit
+                   && BugReportTransport.sendDeadline(mayHaveArrivedAt: t0, now: t0 + 50 * 60) == 600
+                   && BugReportTransport.sendDeadline(mayHaveArrivedAt: t0, now: t0 + 10 * 60) == BugReportTransport.uploadLimit
+                   && BugReportTransport.sendDeadline(mayHaveArrivedAt: t0, now: t0 + 56 * 60) == nil, "send deadlines inside the hour")
+        (h, id) = try frozen("budget")
+        sentry.script = [.lostResponse, .status(200, [:])]
+        await h.transport.runDue()
+        h.clock.advance(50 * 60)
+        await h.transport.runDue()
+        try expect(h.transport.lastSendDeadline == 600 && state(h, id).state == .sent, "a resend 50 minutes on may take 10 minutes at most")
+
+        // A list of due reports taken earlier (a run that started before a connectivity burst) never
+        // sends a report again before its saved time: attempt reads the report fresh and checks it.
+        (h, id) = try frozen("stale-list")
+        sentry.script = [.lostResponse]
+        await h.transport.runDue()
+        let staleEvent = state(h, id).eventID, sentOnce = sentry.count(staleEvent)
+        try expect(state(h, id).nextAttemptAt! > h.clock.now, "after a lost reply the next attempt is later")
+        await h.transport.attempt(id)
+        try expect(sentry.count(staleEvent) == sentOnce && sentOnce == 1, "a stale due list cannot send it again at once")
 
         // 413, 401, 400 and a TLS failure stop, with no loop.
         for (name, reply, problem) in [("413", FakeSentry.Reply.status(413, [:]), BugReportDelivery.Problem.tooLarge),
@@ -524,7 +617,7 @@ enum BugReportChecks {
         let sent = sentry.bodies.count
         await h.transport.runDue()
         try expect(state(h, id).state == .failed && state(h, id).problem == .unreadable && sentry.bodies.count == sent, "changed bytes are refused, not sent")
-        return ["transport: 200, 200+feedback limit, 200+attachment-only limit is Sent, 429 Retry-After, 413/401/403/400/TLS without loops, Retry, offline then relaunch with the same event and bytes, no automatic resend 55 minutes after a possible arrival, time-out as busy, 5xx backoff, removal in flight, changed bytes"]
+        return ["transport: 200, 200+feedback limit, 200+attachment-only limit is Sent · words only with Send attachments again, clock saved before the request (Quit mid-upload), uploads finish inside Sentry's hour, time-outs with no bytes never connected, stale due lists, 429 Retry-After, 413/401/403/400/TLS without loops, Retry, offline then relaunch with the same event and bytes, no automatic resend 55 minutes after a possible arrival, time-out as busy, 5xx backoff, removal in flight, changed bytes"]
     }
 
     // MARK: Verifier
@@ -587,6 +680,7 @@ enum BugReportChecks {
         // A clock moved backwards counts as 0 elapsed seconds.
         (h, id) = try await frozen("clock")
         h.clock.advance(-120); answers = ["pending"]
+        var due = h.store.delivery(id)!; due.nextAttemptAt = h.clock.now; try h.store.save(due)
         await h.transport.attempt(id)
         try expect(elapsed() == 0 && h.store.delivery(id)?.state == .sent, "a clock moved backwards sends 0")
 
@@ -681,7 +775,54 @@ enum BugReportChecks {
         delivery = h.store.delivery(id)!
         try expect(requests.count == before && delivery.state == .sent && delivery.nextAttemptAt == nil && delivery.verifierState == "local_error_no_files",
                    "an empty file list stops checking without asking")
-        return ["verifier: first check at 15 s with elapsed_seconds, pending then received, mismatch and not_found are Couldn't confirm delivery, Send again resets the count, 503/422/non-JSON/unreachable stay Sent, a lost network never ends checking, checks at most 5 minutes apart and on reconnection, one more check at launch, file list kept in delivery.json"]
+        // An older delivery.json without the file list and later fields still loads; checking it is a
+        // local error, never a request.
+        (h, id) = try await frozen("old-format")
+        let file = h.store.outboxFolder.appendingPathComponent(id).appendingPathComponent("delivery.json")
+        var old = try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as! [String: Any]
+        for key in ["files", "contents", "previousEventIDs", "attempts", "verifyAttempts", "verifyAtLaunch", "launchCheckUsed",
+                    "evidenceRemoved", "wordsOnly", "unansweredOnline", "checkLaunches"] { old.removeValue(forKey: key) }
+        try JSONSerialization.data(withJSONObject: old).write(to: file)
+        delivery = try expectValue(h.store.delivery(id), "an older delivery.json loads")
+        try expect(delivery.files.isEmpty && !delivery.wordsOnly && delivery.checkLaunches == 0, "missing fields take their defaults")
+        let beforeOld = requests.count
+        h.clock.advance(15); await h.transport.runDue()
+        try expect(requests.count == beforeOld && h.store.delivery(id)?.verifierState == "local_error_no_files", "and its empty file list is a local error")
+
+        // No HTTP answer at all: checking ends after 24 hours with the Mac online, then settles as Sent.
+        let day = Clock()
+        (h, id) = try await frozen("unanswered-day", clock: day)
+        answers = Array(repeating: nil, count: 2_000)
+        h.transport.connectivity(false)
+        for _ in 0..<200 { day.advance(600); await h.transport.runDue() }
+        delivery = h.store.delivery(id)!
+        try expect(delivery.nextAttemptAt != nil && delivery.unansweredOnline == 0, "time offline does not count")
+        h.transport.connectivity(true)
+        var rounds = 0
+        while let next = h.store.delivery(id)?.nextAttemptAt, rounds < 1_000 {
+            day.now = max(day.now, next); await h.transport.runDue(); rounds += 1
+        }
+        delivery = h.store.delivery(id)!
+        try expect(delivery.state == .sent && delivery.nextAttemptAt == nil && delivery.verifierState == "unanswered" && delivery.isSettled
+                   && delivery.unansweredOnline >= BugReportTransport.unansweredLimit && delivery.unansweredOnline < BugReportTransport.unansweredLimit + 900,
+                   "24 hours online without an answer settles as Sent (\(Int(delivery.unansweredOnline)) s)")
+        try expect(h.model.receipts.first?.title == "Sent · \(BugReportText.shortID(id))", "the receipt stays Sent")
+
+        // Or after 3 launches that found it still unanswered past its window.
+        let launches = Clock()
+        (h, id) = try await frozen("unanswered-launches", clock: launches)
+        answers = Array(repeating: nil, count: 2_000)
+        for _ in 0..<20 { launches.advance(60); await h.transport.runDue() }
+        try expect(h.store.delivery(id)?.nextAttemptAt != nil, "still checking after its window")
+        for launch in 1...3 {
+            let relaunch = harness(root.appendingPathComponent("unanswered-launches"), clock: launches)
+            relaunch.transport.start(watchConnectivity: false); relaunch.transport.stop()
+            delivery = relaunch.store.delivery(id)!
+            try expect((delivery.nextAttemptAt == nil) == (launch == 3), "launch \(launch) of 3")
+        }
+        try expect(delivery.isSettled && delivery.verifierState == "unanswered", "3 launches without an answer settle as Sent")
+
+        return ["verifier: first check at 15 s with elapsed_seconds, pending then received, mismatch and not_found are Couldn't confirm delivery, Send again resets the count, 503/422/non-JSON/unreachable stay Sent, a lost network never ends checking, checks at most 5 minutes apart and on reconnection, one more check at launch, file list kept in delivery.json, older delivery.json loads, no answer settles after 24 h online or 3 launches"]
     }
 
     // MARK: Outbox, draft and Save a copy
@@ -753,6 +894,7 @@ enum BugReportChecks {
         try fill(h.model, screenshot: false, voice: false)
         h.model.send()
         try expect(h.store.deliveries().count == 2 && h.model.problemAction == .saveCopy && h.store.loadDraft() != nil, "a full outbox refuses and keeps the draft")
+        try expect(h.model.problem?.contains("2 reports that haven't been sent") == true, "the refusal counts the reports not yet sent")
         let countBefore = try FileManager.default.contentsOfDirectory(atPath: exports.path).count
         h.model.saveDraftCopy()
         try expect(try FileManager.default.contentsOfDirectory(atPath: exports.path).count == countBefore + 1, "the refused draft can be saved as a copy")
@@ -778,20 +920,39 @@ enum BugReportChecks {
         pair = h.store.deliveries()
         try fill(h.model, screenshot: false, voice: false); h.model.send()
         try expect(h.model.problemAction == .saveCopy && h.store.delivery(checking.id)?.evidenceRemoved == false, "a report still being checked is never evicted")
-
-        // Send uses the running build and current facts, keeping the origin's surface and code.
-        var facts = BugReportContext(); facts.microphone = .denied; facts.screenCapture = .authorized; facts.activeTools = [.timer]
-        h = harness(root.appendingPathComponent("refresh"), folder: exports)
-        try fill(h.model, screenshot: false, voice: false)
-        var newer = build; newer.version = "2.6.0"; newer.build = "20261008000000"
-        h.model.services.build = { newer }
-        h.model.services.context = { origin in var context = facts; context.surface = .home; context.errorCode = "dictate.failed"; _ = origin; return context }
+        try expect(h.model.problem?.contains("1 report that hasn't been sent") == true, "only the unsent report is counted: \(h.model.problem ?? "")")
+        for var other in h.store.deliveries() where other.isUnsent {
+            other.state = .sent; other.sentAt = h.clock.now; other.verifyUntil = h.clock.now + 960; other.nextAttemptAt = h.clock.now + 15
+            try h.store.save(other)
+        }
         h.model.send()
-        let sentManifest = try JSONSerialization.jsonObject(with: try BugReportEnvelope.parse(try h.store.envelope(h.store.deliveries()[0].id)).items[1].payload) as! [String: Any]
+        try expect(h.model.problem?.contains("outbox is full for now") == true && h.model.problem?.contains("haven't been sent") == false
+                   && h.model.problem?.contains("unsent") == false, "with only sent reports being checked, no report is called unsent")
+
+        // The report describes the moment the person chose to report: a draft resumed in a later
+        // launch keeps its open-time build, tools, surface and code; Send reads access and speech again.
+        var opened = BugReportContext(); opened.activeTools = [.draw]; opened.microphone = .authorized
+        opened.recognitionProvider = .parakeet; opened.recognitionReady = true
+        h = harness(root.appendingPathComponent("refresh"), folder: exports)
+        h.model.services.context = { origin in var context = opened; context.surface = origin.surface; context.errorCode = origin.errorCode; return context }
+        try fill(h.model, screenshot: false, voice: false)
+        let later = harness(root.appendingPathComponent("refresh"), folder: exports)
+        var newer = build; newer.version = "2.6.0"; newer.build = "20261008000000"
+        var now = BugReportContext(); now.activeTools = [.timer]; now.microphone = .denied; now.screenCapture = .authorized
+        now.recognitionProvider = .localServer; now.recognitionReady = false
+        later.model.services.build = { newer }
+        later.model.services.context = { origin in var context = now; context.surface = .home; context.errorCode = "dictate.failed"; _ = origin; return context }
+        later.model.open(origin: .help)
+        later.model.send()
+        let sentManifest = try JSONSerialization.jsonObject(with: try BugReportEnvelope.parse(try later.store.envelope(later.store.deliveries()[0].id)).items[1].payload) as! [String: Any]
         let sentContext = sentManifest["context"] as? [String: Any], sentBuild = sentManifest["build"] as? [String: Any]
-        try expect(sentBuild?["version"] as? String == "2.6.0" && (sentContext?["permissions"] as? [String: String])?["microphone"] == "denied"
-                   && sentContext?["active_tools"] as? [String] == ["timer"], "Send refreshes build, permissions and active tools")
-        try expect(sentContext?["surface"] as? String == "snap" && sentContext?["error_code"] as? String == "snap.capture_failed", "and keeps the origin's surface and problem code")
+        try expect(sentBuild?["version"] as? String == "2.5.0" && sentBuild?["build"] as? String == "20261007010203"
+                   && sentContext?["active_tools"] as? [String] == ["draw"], "a resumed draft keeps the build and tools from when it was reported")
+        try expect(sentContext?["surface"] as? String == "snap" && sentContext?["error_code"] as? String == "snap.capture_failed", "and the origin's surface and problem code")
+        let recognition = sentContext?["recognition"] as? [String: Any]
+        try expect((sentContext?["permissions"] as? [String: String]) == ["microphone": "denied", "screen_capture": "authorized"]
+                   && recognition?["provider"] as? String == "local_server" && recognition?["ready"] as? Bool == false,
+                   "Send reads access and speech readiness again")
 
         // Add screenshot never captures without Screen Recording, and never prompts.
         h = harness(root.appendingPathComponent("screen-off"), folder: exports)
@@ -836,7 +997,7 @@ enum BugReportChecks {
         h.clock.advance(200 * 86_400)
         h.store.prune()
         try expect(h.store.delivery(unsent) != nil, "pruning never removes an unsent report")
-        return ["outbox: 0700/0600, draft resume and origin rules, over-limit text kept, Save a copy without overwrite, entry/byte/disk quota with the draft kept, only settled copies make room (with a verifier), Send refreshes facts, Screen Recording preflight, no-DSN build"]
+        return ["outbox: 0700/0600, draft resume and origin rules, over-limit text kept, Save a copy without overwrite, entry/byte/disk quota with the draft kept, only settled copies make room (with a verifier), refusal names only unsent reports, facts from the moment of reporting with fresh access and speech, older delivery.json loads, Screen Recording preflight, no-DSN build"]
     }
 }
 
@@ -854,6 +1015,8 @@ final class BugReportStub: URLProtocol {
     enum Reply {
         case status(Int, [String: String], Data)
         case failure(URLError.Code)
+        /// Fails after reading the whole request body, as an upload cut off part-way would.
+        case failureAfterSending(URLError.Code)
     }
     nonisolated(unsafe) static var route: ((Request) -> Reply)?
     static func reset() { route = nil }
@@ -882,6 +1045,8 @@ final class BugReportStub: URLProtocol {
             client?.urlProtocolDidFinishLoading(self)
         case .failure(let code):
             client?.urlProtocol(self, didFailWithError: URLError(code))
+        case .failureAfterSending(let code):
+            client?.urlProtocol(self, didFailWithError: URLError(code, userInfo: [BugReportTransport.bytesSentKey: body.count]))
         }
     }
 }
@@ -893,6 +1058,8 @@ final class FakeSentry: @unchecked Sendable {
         case failure(URLError.Code)
         /// Sentry stores the event, but the reply never arrives.
         case lostResponse
+        /// The upload times out after its bytes went, so it may have arrived.
+        case timeoutAfterUpload
     }
     var script: [Reply] = []
     var bodies: [Data] = []
@@ -902,6 +1069,7 @@ final class FakeSentry: @unchecked Sendable {
     var paths: [String] = []
     var lastEventID: String?
     var onRequest: (() -> Void)?
+    func count(_ id: String) -> Int { bodies.filter { (try? BugReportEnvelope.parse($0).header["event_id"] as? String) == id }.count }
 
     func handle(_ request: BugReportStub.Request) -> BugReportStub.Reply {
         onRequest?()
@@ -921,6 +1089,7 @@ final class FakeSentry: @unchecked Sendable {
             }
             return .status(code, headers.merging(["Content-Type": "application/json"]) { a, _ in a }, Data(#"{"id":"\#(id)"}"#.utf8))
         case .failure(let code): return .failure(code)
+        case .timeoutAfterUpload: return .failureAfterSending(.timedOut)
         case .lostResponse:
             if events[id] == nil { events[id] = request.body }
             return .failure(.networkConnectionLost)

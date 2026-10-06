@@ -154,6 +154,14 @@
     "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. After Couldn't confirm delivery: the same report under a new event ID, only when chosen."
   },
   {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.send-attachments-again",
+    "surface": "report a problem window",
+    "label": "Send attachments again",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. After Sent · words only (Sentry's 200 limited the attachment category): sends the whole report again under a new event ID with the same report ID, only when chosen."
+  },
+  {
     "id": "LocalVoice.BugReportView.BugReportView.Button.send-report",
     "surface": "report a problem window",
     "label": "Send report",

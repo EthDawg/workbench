@@ -57,8 +57,8 @@ struct BugReportDelivery: Codable, Equatable, Identifiable {
     }
     enum Problem: String, Codable {
         case offline, busy, rateLimited, tooLarge, rejected, unauthorized, secureConnection, unreadable, mismatch, notFound
-        /// An earlier attempt may have reached Sentry more than 55 minutes ago, past its
-        /// one-hour duplicate filter, so the same event ID is not sent again by itself.
+        /// An earlier attempt may have reached Sentry too long ago to send the same event ID again
+        /// inside its one-hour duplicate filter, so it is not sent again by itself.
         case uncertain
     }
     /// The report ID, also the folder's name.
@@ -92,12 +92,57 @@ struct BugReportDelivery: Codable, Equatable, Identifiable {
     var launchCheckUsed = false
     var receivedAt: Date?
     var evidenceRemoved = false
+    /// Sentry took the words but its 200 limited the attachment category: the files did not go
+    /// with them. Send attachments again sends the whole report under a new event ID.
+    var wordsOnly = false
+    /// Seconds of checking, with the Mac online, that brought no HTTP answer from the verifier.
+    var unansweredOnline: TimeInterval = 0
+    var lastUnansweredAt: Date?
+    /// Launches that found this report still being checked after its window.
+    var checkLaunches = 0
 
     var shortID: String { BugReportText.shortID(id) }
+    /// Not yet accepted by Sentry, or refused: the reports a full outbox is waiting on.
     var isUnsent: Bool { [.waiting, .sending, .failed, .unconfirmed].contains(state) }
     /// Delivered, and nothing more will be asked about it: its local copy may go to make room.
+    /// A words-only report keeps its files for Send attachments again.
     var isSettled: Bool {
-        state == .received || (state == .sent && nextAttemptAt == nil && !verifyAtLaunch)
+        state == .received || (state == .sent && !wordsOnly && nextAttemptAt == nil && !verifyAtLaunch)
+    }
+}
+
+extension BugReportDelivery {
+    /// Fields added after the first outbox format default when missing, so an older delivery.json
+    /// still loads. An empty file list stays this Mac's error when checking.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        eventID = try c.decode(String.self, forKey: .eventID)
+        previousEventIDs = try c.decodeIfPresent([String].self, forKey: .previousEventIDs) ?? []
+        destination = try c.decode(BugReportDestination.self, forKey: .destination)
+        envelopeSHA256 = try c.decode(String.self, forKey: .envelopeSHA256)
+        envelopeBytes = try c.decode(Int.self, forKey: .envelopeBytes)
+        files = try c.decodeIfPresent([BugReportVerifiedFile].self, forKey: .files) ?? []
+        contents = try c.decodeIfPresent([String].self, forKey: .contents) ?? []
+        state = try c.decode(State.self, forKey: .state)
+        problem = try c.decodeIfPresent(Problem.self, forKey: .problem)
+        status = try c.decodeIfPresent(Int.self, forKey: .status)
+        attempts = try c.decodeIfPresent(Int.self, forKey: .attempts) ?? 0
+        nextAttemptAt = try c.decodeIfPresent(Date.self, forKey: .nextAttemptAt)
+        mayHaveArrivedAt = try c.decodeIfPresent(Date.self, forKey: .mayHaveArrivedAt)
+        createdAt = try c.decode(Date.self, forKey: .createdAt)
+        sentAt = try c.decodeIfPresent(Date.self, forKey: .sentAt)
+        verifyAttempts = try c.decodeIfPresent(Int.self, forKey: .verifyAttempts) ?? 0
+        verifyUntil = try c.decodeIfPresent(Date.self, forKey: .verifyUntil)
+        verifierState = try c.decodeIfPresent(String.self, forKey: .verifierState)
+        verifyAtLaunch = try c.decodeIfPresent(Bool.self, forKey: .verifyAtLaunch) ?? false
+        launchCheckUsed = try c.decodeIfPresent(Bool.self, forKey: .launchCheckUsed) ?? false
+        receivedAt = try c.decodeIfPresent(Date.self, forKey: .receivedAt)
+        evidenceRemoved = try c.decodeIfPresent(Bool.self, forKey: .evidenceRemoved) ?? false
+        wordsOnly = try c.decodeIfPresent(Bool.self, forKey: .wordsOnly) ?? false
+        unansweredOnline = try c.decodeIfPresent(TimeInterval.self, forKey: .unansweredOnline) ?? 0
+        lastUnansweredAt = try c.decodeIfPresent(Date.self, forKey: .lastUnansweredAt)
+        checkLaunches = try c.decodeIfPresent(Int.self, forKey: .checkLaunches) ?? 0
     }
 }
 
@@ -218,7 +263,11 @@ final class BugReportStore {
             }
         }
         guard fits() else {
-            throw BugReportError.full("Workbench is still holding \(usage().entries) unsent reports, so this one can't be added. Save a copy instead; your draft is kept.")
+            // Name only reports that have not been sent; sent reports still being checked settle by themselves.
+            let unsent = deliveries().filter { $0.isUnsent && !$0.evidenceRemoved }.count
+            throw BugReportError.full(unsent > 0
+                ? "Workbench is still holding \(unsent) \(unsent == 1 ? "report that hasn't" : "reports that haven't") been sent, so this one can't be added yet. Save a copy instead; your draft is kept."
+                : "Workbench's outbox is full for now, so this report can't be added yet. Save a copy instead; your draft is kept.")
         }
         if let free = availableCapacity(), free < bytes + 8 * 1_024 * 1_024 {
             throw BugReportError.full("This Mac doesn't have room to keep the report for sending. Save a copy somewhere with space; your draft is kept.")

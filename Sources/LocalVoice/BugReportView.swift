@@ -197,7 +197,7 @@ struct BugReportView: View {
             TextField("Your email address", text: $model.replyEmail)
                 .textFieldStyle(.roundedBorder).textContentType(.emailAddress)
                 .accessibilityLabel("Email me about this (optional)")
-            Text("If you add your email, the team sees it with your report so they can reply.")
+            Text(Self.emailNote)
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if let problem = model.emailProblem { Text(problem).font(.caption).foregroundStyle(.red) }
         }
@@ -298,6 +298,7 @@ struct BugReportView: View {
                         switch action {
                         case .retry: Button("Retry") { model.perform(.retry, on: receipt.id) }
                         case .sendAgain: Button("Send again") { model.perform(.sendAgain, on: receipt.id) }
+                        case .sendAttachmentsAgain: Button("Send attachments again") { model.perform(.sendAttachmentsAgain, on: receipt.id) }
                         case .saveCopy: Button("Save a copy…") { model.perform(.saveCopy, on: receipt.id) }
                         case .remove: Button("Remove…") { removing = receipt }
                         }
@@ -321,6 +322,7 @@ struct BugReportView: View {
     }
 
     static let sendShortcut = KeyboardShortcut(.return, modifiers: .command)
+    static let emailNote = "If you add your email, the team sees it with your report, and can search for it, so they can reply."
 
     static func time(_ seconds: TimeInterval) -> String {
         let whole = max(0, Int(seconds.rounded(.down)))

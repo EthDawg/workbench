@@ -50,7 +50,7 @@ final class BugReportRecorder: NSObject, BugReportRecording, AVAudioRecorderDele
 /// What a receipt says and offers, derived from the delivery's saved state.
 struct BugReportReceipt: Identifiable, Equatable {
     enum Tone { case progress, done, problem }
-    enum Action: Equatable { case retry, sendAgain, saveCopy, remove }
+    enum Action: Equatable { case retry, sendAgain, sendAttachmentsAgain, saveCopy, remove }
     var id: String
     var title: String
     var detail: String
@@ -190,11 +190,11 @@ final class BugReportModel: ObservableObject {
         return String(decoding: data, as: UTF8.self)
     }
 
-    /// Unsent reports, then the newest delivered one.
+    /// Unsent and words-only reports, then the newest other delivered one.
     var receipts: [BugReportReceipt] {
         let all = transport.deliveries
-        let unsent = all.filter(\.isUnsent)
-        let delivered = all.first { !$0.isUnsent }
+        let unsent = all.filter { $0.isUnsent || $0.wordsOnly }
+        let delivered = all.first { !$0.isUnsent && !$0.wordsOnly }
         return (unsent + (delivered.map { [$0] } ?? [])).map(receipt)
     }
 
@@ -215,6 +215,12 @@ final class BugReportModel: ObservableObject {
             let when = delivery.nextAttemptAt.map { " It tries again at \($0.formatted(date: .omitted, time: .shortened))." } ?? ""
             let why = delivery.problem == .rateLimited ? "The team's inbox asked Workbench to wait." : "The team's inbox didn't answer."
             return .init(id: delivery.id, title: "Sending…", detail: why + when, tone: .progress, actions: [.saveCopy, .remove])
+        case .sent where delivery.wordsOnly:
+            let files = [delivery.contents.contains("screenshot") ? "screenshot" : nil, delivery.contents.contains("voice") ? "voice note" : nil].compactMap { $0 }
+            let missing = files.isEmpty ? "The report's details couldn't go with it." : "The \(files.joined(separator: " and ")) couldn't go with it."
+            return .init(id: delivery.id, title: "Sent · words only · \(short)",
+                         detail: "Your words reached the Workbench team. \(missing) Send attachments again sends them as a new copy of report \(short).",
+                         tone: .problem, actions: [.sendAttachmentsAgain, .saveCopy, .remove])
         case .sent:
             let confirming = delivery.nextAttemptAt != nil && delivery.destination.verifier != nil
             return .init(id: delivery.id, title: "Sent · \(short)",
@@ -274,11 +280,16 @@ final class BugReportModel: ObservableObject {
     /// The draft as it would be sent now: the running build and the current permission,
     /// recognition and active-tool facts, keeping the origin's surface and problem code.
     private func refreshed(_ draft: BugReportDraft) -> BugReportDraft {
+        // The report describes the moment the person chose to report: the build, active tools,
+        // surface and problem code stay as recorded when the composer opened, even in a later
+        // launch. Only access and speech readiness, which the person may have just fixed, are read again.
         var draft = draft
-        draft.build = services.build()
-        var context = services.context(draft.origin)
-        context.surface = draft.context.surface; context.errorCode = draft.context.errorCode
-        draft.context = context
+        let now = services.context(draft.origin)
+        draft.context.microphone = now.microphone
+        draft.context.screenCapture = now.screenCapture
+        draft.context.accessibility = now.accessibility
+        draft.context.recognitionProvider = now.recognitionProvider
+        draft.context.recognitionReady = now.recognitionReady
         return draft
     }
 
@@ -526,7 +537,7 @@ final class BugReportModel: ObservableObject {
     func perform(_ action: BugReportReceipt.Action, on id: String) {
         switch action {
         case .retry: transport.retry(id)
-        case .sendAgain:
+        case .sendAgain, .sendAttachmentsAgain:
             do { try transport.sendAgain(id) } catch { show((error as? BugReportError)?.errorDescription ?? "The report couldn't be sent again.") }
         case .saveCopy:
             guard let parent = services.chooseFolder() else { return }

@@ -6,12 +6,15 @@ import Network
 // report, event ID and bytes. Nothing here blocks Quit or an update: an interrupted request is
 // simply tried again later.
 //
-//   waiting / sending  --POST envelope, 200 without a feedback or attachment limit-->  sent
+//   waiting / sending  --POST envelope, 200 without a feedback limit-->  sent
+//   200 limiting only attachments  -->  sent, words only  (Send attachments again: new event ID)
 //   sent  --verifier: received-->  received   (local copy dropped, receipt kept)
 //   sent  --verifier: mismatch or not_found-->  unconfirmed  (Send again: new event ID, only when chosen)
-//   sent  --pending, any other status, no answer-->  stays sent, never downgraded; checked for about
+//   sent  --pending or any other answer-->  stays sent, never downgraded; checked for about
 //          16 minutes after Sent, then once more at the next launch
+//   sent  --no HTTP answer-->  checked until 24 hours online or 3 launches, then settled as sent
 //   400, 401, 403, 404, 413, TLS  -->  failed  (Retry is the person's choice; no loop)
+//   a send that may have arrived  -->  never repeated by itself past Sentry's one-hour duplicate filter
 
 @MainActor
 final class BugReportTransport: ObservableObject {
@@ -29,10 +32,20 @@ final class BugReportTransport: ObservableObject {
     static let firstCheck: TimeInterval = 15
     /// Verifier checks back off to at most five minutes apart.
     static let verifyBackoffCap: TimeInterval = 300
-    /// Sentry filters a repeated event ID for about an hour, so the same event ID is never sent
-    /// again by itself once an attempt that may have arrived is older than this.
-    static let sameEventLimit: TimeInterval = 55 * 60
+    /// Sentry filters a repeated event ID for about an hour. Once an attempt may have arrived, every
+    /// automatic resend of that event ID must finish inside that hour, with at least this much left.
+    static let sentryDuplicateWindow: TimeInterval = 60 * 60
+    static let minimumSendBudget: TimeInterval = 5 * 60
     nonisolated static let uploadLimit: TimeInterval = 30 * 60
+    /// Checking that brings no HTTP answer stops after this long online, or after this many launches,
+    /// and the report settles as Sent.
+    static let unansweredLimit: TimeInterval = 24 * 3_600
+    static let unansweredLaunches = 3
+    /// A URL protocol (such as the checks' stub) can name the request bytes it consumed under this
+    /// key of its URLError, since `countOfBytesSent` counts only the system's own transfers.
+    nonisolated static let bytesSentKey = "WorkbenchBytesSent"
+    /// The time limit of the most recent Sentry request, for checks.
+    private(set) var lastSendDeadline: TimeInterval?
     private var wake: Task<Void, Never>?
     private var running = false
     private var monitor: NWPathMonitor?
@@ -61,11 +74,19 @@ final class BugReportTransport: ObservableObject {
         guard !running else { return }
         running = true
         store.prune()
-        // One more check at launch for reports whose window ended without an answer.
-        for var delivery in store.deliveries() where delivery.state == .sent && delivery.verifyAtLaunch {
-            delivery.verifyAtLaunch = false; delivery.launchCheckUsed = true
-            delivery.nextAttemptAt = now()
-            try? store.save(delivery)
+        let time = now()
+        for var delivery in store.deliveries() where delivery.state == .sent && !delivery.wordsOnly {
+            if delivery.verifyAtLaunch {
+                // One more check at launch for reports whose window ended with an answer but no finding.
+                delivery.verifyAtLaunch = false; delivery.launchCheckUsed = true
+                delivery.nextAttemptAt = time
+                try? store.save(delivery)
+            } else if delivery.nextAttemptAt != nil, let until = delivery.verifyUntil, time >= until {
+                // Still unanswered past its window: a launch counts against the limit.
+                delivery.checkLaunches += 1
+                if delivery.checkLaunches >= Self.unansweredLaunches { Self.settleUnanswered(&delivery) }
+                try? store.save(delivery)
+            }
         }
         reload()
         if watchConnectivity {
@@ -130,8 +151,11 @@ final class BugReportTransport: ObservableObject {
         reload()
     }
 
+    /// One request for a report that is due now, read fresh from disk: a list of due reports taken
+    /// earlier can never send a report again before its saved time.
     func attempt(_ id: String) async {
-        guard !active.contains(id), let delivery = store.delivery(id) else { return }
+        guard !active.contains(id), let delivery = store.delivery(id), isScheduled(delivery),
+              (delivery.nextAttemptAt ?? .distantFuture) <= now() else { return }
         active.insert(id)
         defer { active.remove(id); reload() }
         switch delivery.state {
@@ -155,10 +179,10 @@ final class BugReportTransport: ObservableObject {
         kick()
     }
 
-    /// Send again after an unconfirmed delivery: the same report and files under a new event ID,
-    /// only when the person asks.
+    /// Send again after an unconfirmed delivery, or Send attachments again after a words-only one:
+    /// the same report and files under a new event ID, only when the person asks.
     func sendAgain(_ id: String) throws {
-        guard var delivery = store.delivery(id), delivery.state == .unconfirmed else { return }
+        guard var delivery = store.delivery(id), delivery.state == .unconfirmed || (delivery.state == .sent && delivery.wordsOnly) else { return }
         let items = try BugReportEnvelope.parse(try store.envelope(id)).items
         func payload(_ name: String) -> Data? { items.first { $0.type == "attachment" && $0.filename == name }?.payload }
         guard let manifest = payload("context.json") else { throw BugReportError.message("The saved report could not be read.") }
@@ -173,7 +197,8 @@ final class BugReportTransport: ObservableObject {
         delivery.state = .waiting; delivery.problem = nil; delivery.status = nil
         delivery.attempts = 0; delivery.nextAttemptAt = now(); delivery.sentAt = nil
         delivery.verifyAttempts = 0; delivery.verifyUntil = nil; delivery.verifierState = nil
-        delivery.verifyAtLaunch = false; delivery.launchCheckUsed = false
+        delivery.verifyAtLaunch = false; delivery.launchCheckUsed = false; delivery.wordsOnly = false
+        delivery.unansweredOnline = 0; delivery.lastUnansweredAt = nil; delivery.checkLaunches = 0
         try store.replaceEnvelope(id, with: envelope, delivery: delivery)
         kick()
     }
@@ -192,11 +217,19 @@ final class BugReportTransport: ObservableObject {
 
     // MARK: Sentry
 
+    /// How long an automatic send of this event ID may take: the upload limit, or what is left of
+    /// Sentry's duplicate filter after an earlier attempt that may have arrived. Nil when too little
+    /// is left, so only the person's Send again (a new event ID) may go on.
+    static func sendDeadline(mayHaveArrivedAt: Date?, now: Date) -> TimeInterval? {
+        guard let arrived = mayHaveArrivedAt else { return uploadLimit }
+        let remaining = arrived.addingTimeInterval(sentryDuplicateWindow).timeIntervalSince(now)
+        return remaining < minimumSendBudget ? nil : min(uploadLimit, remaining)
+    }
+
     private func send(_ delivery: BugReportDelivery) async {
         var sending = delivery
-        // Past Sentry's one-hour duplicate filter, an attempt that may have arrived makes another
-        // send of the same event ID a possible second report: only the person's Send again may go on.
-        if let arrived = sending.mayHaveArrivedAt, now().timeIntervalSince(arrived) > Self.sameEventLimit {
+        let started = now()
+        guard let deadline = Self.sendDeadline(mayHaveArrivedAt: sending.mayHaveArrivedAt, now: started) else {
             sending.state = .unconfirmed; sending.problem = .uncertain; sending.nextAttemptAt = nil
             try? store.save(sending); return
         }
@@ -208,20 +241,25 @@ final class BugReportTransport: ObservableObject {
         do {
             let frozen = try store.envelope(sending.id)
             guard BugReportText.sha256(frozen) == sending.envelopeSHA256 else { throw BugReportError.message("changed") }
-            body = try BugReportEnvelope.transmission(frozen, sentAt: now())
+            body = try BugReportEnvelope.transmission(frozen, sentAt: started)
         } catch {
             // Never send changed bytes under the same report and event ID.
             sending.state = .failed; sending.problem = .unreadable; sending.nextAttemptAt = nil
             try? store.save(sending); return
         }
+        // Saved before the request: a Quit or crash mid-upload still counts this attempt as one
+        // that may have arrived. A failure that never connected puts the earlier value back.
+        let earlier = sending.mayHaveArrivedAt
+        sending.mayHaveArrivedAt = earlier ?? started
+        try? store.save(sending)
         var request = URLRequest(url: dsn.envelopeURL)
         request.httpMethod = "POST"
         request.timeoutInterval = 120
         request.setValue("application/x-sentry-envelope", forHTTPHeaderField: "Content-Type")
         request.setValue(dsn.authorization(client: client), forHTTPHeaderField: "X-Sentry-Auth")
         request.httpBody = body
-        let started = now()
-        let outcome = await perform(request)
+        lastSendDeadline = deadline
+        let (outcome, bytesSent) = await perform(request, deadline: deadline)
         // A report removed, or sent again, while this request was in flight keeps its newer state.
         guard var current = store.delivery(sending.id), current.eventID == sending.eventID, [.waiting, .sending].contains(current.state) else { return }
         current.attempts += 1
@@ -233,8 +271,12 @@ final class BugReportTransport: ObservableObject {
                                                     retryAfter: response.value(forHTTPHeaderField: "Retry-After"), now: time)
             current.status = status
             switch status {
-            case 200..<300 where limit == nil || limit?.attachmentsOnly == true:
-                // Sent. With only attachments limited, the verifier decides whether the files arrived.
+            case 200..<300 where limit?.attachmentsOnly == true:
+                // The words arrived without their files. Nothing is checked or sent again by itself:
+                // Send attachments again is the person's choice, under a new event ID.
+                current.state = .sent; current.wordsOnly = true; current.problem = nil; current.status = nil
+                current.sentAt = time; current.nextAttemptAt = nil; current.verifyAtLaunch = false
+            case 200..<300 where limit == nil:
                 current.state = .sent; current.problem = nil; current.status = nil; current.sentAt = time
                 current.verifyAtLaunch = false; current.launchCheckUsed = false
                 if current.destination.verifier != nil {
@@ -244,35 +286,46 @@ final class BugReportTransport: ObservableObject {
                 } else { current.nextAttemptAt = nil }
             case 200..<300, 429:
                 // Refused for now, before Sentry kept anything: the same event ID may go again later.
+                current.mayHaveArrivedAt = earlier
                 current.state = .sending; current.problem = .rateLimited
                 current.nextAttemptAt = time.addingTimeInterval(limit?.wait ?? 60)
             case 413:
+                current.mayHaveArrivedAt = earlier
                 current.state = .failed; current.problem = .tooLarge; current.nextAttemptAt = nil
             case 401, 403, 404:
+                current.mayHaveArrivedAt = earlier
                 current.state = .failed; current.problem = .unauthorized; current.nextAttemptAt = nil
             case 408, 500..<600:
+                // It may have arrived: the clock saved before the request stands.
                 current.state = .sending; current.problem = .busy
-                current.mayHaveArrivedAt = current.mayHaveArrivedAt ?? started
                 current.nextAttemptAt = time.addingTimeInterval(Self.backoff(current.attempts, random: random()))
             default:
+                current.mayHaveArrivedAt = earlier
                 current.state = .failed; current.problem = .rejected; current.nextAttemptAt = nil
             }
         case .failure(let error):
             current.status = nil
             if Self.secureFailures.contains(error.code) {
+                current.mayHaveArrivedAt = earlier
                 current.state = .failed; current.problem = .secureConnection; current.nextAttemptAt = nil
-            } else if Self.neverConnected.contains(error.code) {
+            } else if Self.neverConnected(error.code, bytesSent: bytesSent) {
                 // Nothing reached Sentry, so waiting for a connection keeps the same event ID safe.
+                current.mayHaveArrivedAt = earlier
                 current.state = .waiting; current.problem = .offline
                 current.nextAttemptAt = time.addingTimeInterval(Self.backoff(current.attempts, random: random()))
             } else {
-                // A lost reply or a time-out mid-upload: it may have arrived. Try again with backoff.
+                // A lost reply or a time-out mid-upload: it may have arrived. Try again with backoff,
+                // inside what is left of the duplicate filter.
                 current.state = .sending; current.problem = .busy
-                current.mayHaveArrivedAt = current.mayHaveArrivedAt ?? started
                 current.nextAttemptAt = time.addingTimeInterval(Self.backoff(current.attempts, random: random()))
             }
         }
         try? store.save(current)
+    }
+
+    /// Failures before any connection, and a time-out that sent no bytes: nothing reached Sentry.
+    static func neverConnected(_ code: URLError.Code, bytesSent: Int64) -> Bool {
+        neverConnectedCodes.contains(code) || (code == .timedOut && bytesSent == 0)
     }
 
     // MARK: Verifier
@@ -314,6 +367,7 @@ final class BugReportTransport: ObservableObject {
         current.verifyAttempts += 1
         if case .response(let response, let data) = outcome {
             answered = true
+            current.lastUnansweredAt = nil
             if response.statusCode == 200, let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let state = object["state"] as? String, ["received", "pending", "mismatch", "not_found"].contains(state) {
                 answer = state
@@ -336,10 +390,22 @@ final class BugReportTransport: ObservableObject {
             current.nextAttemptAt = nil; current.verifyAtLaunch = false
         default:
             // Pending, any other status or no answer: Sent stays, and checking continues. Only an
-            // HTTP answer counts against the window, so a lost network never ends checking.
-            if time < until || !answered {
-                let next = time.addingTimeInterval(wait ?? Self.backoff(current.verifyAttempts, random: random(), cap: Self.verifyBackoffCap))
-                current.nextAttemptAt = time < until ? min(until, next) : next
+            // HTTP answer counts against the window, so a lost network never ends checking early;
+            // checking with no answer at all ends after 24 hours online or 3 launches.
+            if !answered {
+                if online, let last = current.lastUnansweredAt {
+                    // Gaps longer than a few checks mean the app was not running; they do not count.
+                    current.unansweredOnline += min(max(0, time.timeIntervalSince(last)), 2 * Self.verifyBackoffCap)
+                }
+                current.lastUnansweredAt = time
+            }
+            let next = time.addingTimeInterval(wait ?? Self.backoff(current.verifyAttempts, random: random(), cap: Self.verifyBackoffCap))
+            if !answered && current.unansweredOnline >= Self.unansweredLimit {
+                Self.settleUnanswered(&current)
+            } else if time < until {
+                current.nextAttemptAt = min(until, next)
+            } else if !answered {
+                current.nextAttemptAt = next
             } else {
                 current.nextAttemptAt = nil
                 // One more check at the next launch, unless this was it.
@@ -347,6 +413,11 @@ final class BugReportTransport: ObservableObject {
             }
         }
         try? store.save(current)
+    }
+
+    /// Checking found no verifier to answer for long enough: the report stays Sent, settled.
+    static func settleUnanswered(_ delivery: inout BugReportDelivery) {
+        delivery.nextAttemptAt = nil; delivery.verifyAtLaunch = false; delivery.verifierState = "unanswered"
     }
 
     // MARK: HTTP
@@ -357,19 +428,42 @@ final class BugReportTransport: ObservableObject {
     }
 
     private func perform(_ request: URLRequest) async -> Outcome {
-        do {
-            let (data, response) = try await session.data(for: request, delegate: BugReportNoRedirects())
-            guard let http = response as? HTTPURLResponse else { return .failure(URLError(.badServerResponse)) }
-            return .response(http, data)
-        } catch let error as URLError {
-            return .failure(error)
-        } catch {
-            return .failure(URLError(.unknown))
+        await perform(request, deadline: nil).0
+    }
+
+    /// A request that ends by `deadline` seconds at the latest, as a time-out, and the request
+    /// bytes it sent.
+    private func perform(_ request: URLRequest, deadline: TimeInterval?) async -> (Outcome, Int64) {
+        let delegate = BugReportNoRedirects()
+        let session = self.session
+        let outcome: Outcome = await withTaskGroup(of: Outcome?.self) { group in
+            group.addTask {
+                do {
+                    let (data, response) = try await session.data(for: request, delegate: delegate)
+                    guard let http = response as? HTTPURLResponse else { return .failure(URLError(.badServerResponse)) }
+                    return .response(http, data)
+                } catch let error as URLError {
+                    if let sent = error.userInfo[Self.bytesSentKey] as? Int { delegate.record(Int64(sent)) }
+                    return .failure(error)
+                } catch {
+                    return .failure(URLError(.unknown))
+                }
+            }
+            if let deadline {
+                group.addTask {
+                    try? await Task.sleep(nanoseconds: UInt64(max(1, deadline) * 1_000_000_000))
+                    return nil
+                }
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first ?? .failure(URLError(.timedOut))
         }
+        return (outcome, delegate.bytesSent)
     }
 
     /// Failures before any connection: nothing can have reached Sentry.
-    static let neverConnected: Set<URLError.Code> = [.notConnectedToInternet, .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed,
+    static let neverConnectedCodes: Set<URLError.Code> = [.notConnectedToInternet, .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed,
         .internationalRoamingOff, .dataNotAllowed, .callIsActive]
 
     /// Certificate and TLS failures are not retried automatically.
@@ -377,8 +471,25 @@ final class BugReportTransport: ObservableObject {
         .serverCertificateNotYetValid, .clientCertificateRejected, .clientCertificateRequired, .secureConnectionFailed, .appTransportSecurityRequiresSecureConnection]
 }
 
-/// Report requests never follow a redirect.
-final class BugReportNoRedirects: NSObject, URLSessionTaskDelegate {
+/// Report requests never follow a redirect, and count the request bytes they sent.
+final class BugReportNoRedirects: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    private let lock = NSLock()
+    private var task: URLSessionTask?
+    private var recorded: Int64 = 0
+
+    var bytesSent: Int64 {
+        lock.lock(); defer { lock.unlock() }
+        return max(recorded, task?.countOfBytesSent ?? 0)
+    }
+    func record(_ bytes: Int64) { lock.lock(); recorded = max(recorded, bytes); lock.unlock() }
+
+    func urlSession(_ session: URLSession, didCreateTask task: URLSessionTask) {
+        lock.lock(); self.task = task; lock.unlock()
+    }
+    func urlSession(_ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64, totalBytesSent: Int64,
+                    totalBytesExpectedToSend: Int64) {
+        record(totalBytesSent)
+    }
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
                     newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
         completionHandler(nil)
