@@ -660,6 +660,13 @@ enum BugReportChecks {
         h.model.saveDraftCopy()
         try expect(try FileManager.default.contentsOfDirectory(atPath: exports.path).count == exported + 1 && h.model.note != nil, "Save a copy works without a DSN")
 
+        // The destination is read again when the composer opens, so an override needs no relaunch.
+        var current: BugReportDestination?
+        h.model.services.currentDestination = { current }
+        current = .init(dsn: dsn, verifier: nil, environment: "preview", isOverride: true)
+        h.model.open(origin: .help)
+        try expect(h.model.available && h.model.destination?.environment == "preview", "an override set later applies when the composer opens")
+
         // Removal of a delivered receipt, and pruning keeps unsent reports.
         h = harness(root.appendingPathComponent("prune"))
         try fill(h.model, screenshot: false, voice: false); h.model.send()

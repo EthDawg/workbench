@@ -84,12 +84,16 @@ final class BugReportModel: ObservableObject {
         var announce: @MainActor (String) -> Void = { FeedbackAnnouncement.post($0) }
         /// The report's busy state changed: recording or capturing started or ended.
         var onBusyChange: () -> Void = {}
+        /// Reads the edition's destination again when the composer opens; nil keeps the initial one.
+        var currentDestination: (() -> BugReportDestination?)?
     }
     enum ProblemAction: Equatable { case chooseImage, microphoneSettings, saveCopy }
 
     let store: BugReportStore
     let transport: BugReportTransport
-    let destination: BugReportDestination?
+    /// Where Send goes now. Read again each time the composer opens, so a developer override set
+    /// with `defaults write` applies without a rebuild or relaunch.
+    @Published private(set) var destination: BugReportDestination?
     var services: Services
     private let recorder: BugReportRecording?
 
@@ -118,6 +122,8 @@ final class BugReportModel: ObservableObject {
     private var player: AVAudioPlayer?
     private var playerDelegate: BugReportPlayerDelegate?
     private var transportObservation: AnyCancellable?
+    private var screenshotDescriptor: BugReportAttachment?
+    private var voiceDescriptor: BugReportAttachment?
 
     init(store: BugReportStore, transport: BugReportTransport, destination: BugReportDestination?,
          recorder: BugReportRecording? = nil, services: Services = Services()) {
@@ -127,7 +133,10 @@ final class BugReportModel: ObservableObject {
             draft = saved
             explanation = saved.explanation; replyEmail = saved.replyEmail
             screenshot = saved.screenshot; voiceSeconds = saved.voiceSeconds
-            screenshotPreview = saved.screenshot != nil ? store.draftScreenshot().flatMap(NSImage.init(data:)) : nil
+            let shot = saved.screenshot != nil ? store.draftScreenshot() : nil
+            screenshotPreview = shot.flatMap(NSImage.init(data:))
+            screenshotDescriptor = shot.map { BugReportAttachment(name: BugReportAttachment.screenshot, data: $0) }
+            voiceDescriptor = saved.voiceSeconds != nil ? store.draftVoice().map { BugReportAttachment(name: BugReportAttachment.voice, data: $0) } : nil
         }
         recorder?.onFinish = { [weak self] in self?.stopRecording() }
         transportObservation = transport.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
@@ -169,8 +178,9 @@ final class BugReportModel: ObservableObject {
     /// The exact context.json this draft would freeze now, pretty-printed for Details.
     var detailsJSON: String {
         guard let draft = currentDraft() else { return "" }
-        let manifest = manifest(for: draft, reportID: "00000000-0000-4000-8000-000000000000",
-                                screenshot: screenshot != nil ? store.draftScreenshot() : nil, voice: voiceSeconds != nil ? store.draftVoice() : nil)
+        var manifest = manifest(for: draft, reportID: "00000000-0000-4000-8000-000000000000", screenshot: nil, voice: nil)
+        // Descriptors are computed once per file, not on every keystroke.
+        manifest.attachments = [screenshot != nil ? screenshotDescriptor : nil, voiceSeconds != nil ? voiceDescriptor : nil].compactMap { $0 }
         guard let data = try? JSONSerialization.data(withJSONObject: manifest.object, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]) else { return "" }
         return String(decoding: data, as: UTF8.self)
     }
@@ -248,6 +258,7 @@ final class BugReportModel: ObservableObject {
             draft = fresh
         }
         problem = nil; problemAction = nil; note = nil
+        if let currentDestination = services.currentDestination { destination = currentDestination() }
         transport.reload()
     }
 
@@ -307,6 +318,7 @@ final class BugReportModel: ObservableObject {
 
     func setScreenshot(_ image: BugReportImage) throws {
         try store.setDraftScreenshot(image.png)
+        screenshotDescriptor = BugReportAttachment(name: BugReportAttachment.screenshot, data: image.png)
         screenshot = image.info
         screenshotPreview = NSImage(data: image.png)
         persist()
@@ -368,6 +380,7 @@ final class BugReportModel: ObservableObject {
     func setVoice(_ recording: Data) throws {
         let (wav, seconds) = try BugReportMedia.canonicalWAV(recording)
         try store.setDraftVoice(wav)
+        voiceDescriptor = BugReportAttachment(name: BugReportAttachment.voice, data: wav)
         voiceSeconds = seconds; transcript = nil
         persist()
     }

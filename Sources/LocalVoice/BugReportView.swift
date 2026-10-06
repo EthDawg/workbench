@@ -429,6 +429,7 @@ extension AppDelegate {
             return try await self.model.engine.transcribe(url)
         }
         services.onBusyChange = { [weak self] in self?.updateRecordingUI() }
+        services.currentDestination = { BugReportConfiguration.destination(build: build) }
         let reports = BugReportModel(store: store, transport: transport, destination: BugReportConfiguration.destination(build: build),
                                      recorder: BugReportRecorder(), services: services)
         transport.start()
