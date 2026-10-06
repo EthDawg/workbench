@@ -6,10 +6,11 @@ import re
 import subprocess
 
 NATIVE_LABEL = "ci:native"
+QUEUE_ACTOR = "github-merge-queue[bot]"
 QUEUE_MERGE = re.compile(r"\AMerge pull request #\d+ from \S+")
 
 
-def native_required(base, head, event="pull_request", labels=(), head_message=""):
+def native_required(base, head, event="pull_request", labels=(), head_message="", pusher=""):
     """Whether the five macOS jobs run for this event.
 
     pull_request: not by default. The merge queue tests every group with current
@@ -17,16 +18,17 @@ def native_required(base, head, event="pull_request", labels=(), head_message=""
     shared macOS runners. The label ci:native asks for a native run on the PR itself.
     merge_group: native unless the group's complete diff is documentation or site
     content that the always-run Site job validates.
-    push: a merge the queue made (GitHub's "Merge pull request #N from …") was
-    validated by that group's run and skips native; any other push to main, such as
-    an admin bypass or a rewrite, is classified by its diff like a merge group.
+    push: a merge the queue made, pushed by github-merge-queue[bot] with GitHub's
+    "Merge pull request #N from …" title, was validated by that group's run and
+    skips native; any other push to main, such as an admin bypass merge (same title,
+    a person as pusher) or a rewrite, is classified by its diff like a merge group.
     workflow_dispatch and unknown events: native, always.
     """
     if event == "pull_request":
         return NATIVE_LABEL in {label.strip() for label in labels}
     if event not in {"merge_group", "push"}:
         return True
-    if event == "push" and QUEUE_MERGE.match(head_message or ""):
+    if event == "push" and pusher == QUEUE_ACTOR and QUEUE_MERGE.match(head_message or ""):
         return False
     if not all(re.fullmatch(r"[0-9a-f]{40}", ref or "") for ref in (base, head)):
         return True
@@ -55,6 +57,7 @@ if __name__ == "__main__":
     parser.add_argument("--event", default="pull_request")
     parser.add_argument("--labels", default="", help="comma-separated pull request labels")
     parser.add_argument("--head-message", default="", help="the pushed head commit's message")
+    parser.add_argument("--pusher", default="", help="the actor of a push event")
     args = parser.parse_args()
     labels = [label for label in args.labels.split(",") if label.strip()]
-    print("native=" + str(native_required(args.base, args.head, args.event, labels, args.head_message)).lower())
+    print("native=" + str(native_required(args.base, args.head, args.event, labels, args.head_message, args.pusher)).lower())

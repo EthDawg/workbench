@@ -73,12 +73,27 @@ class ScopeTests(unittest.TestCase):
         self.write("Sources/New.swift")
         head = self.commit()
         queued = "Merge pull request #290 from Ship-Work/claude/readiness-fixes\n\nKeep dictated names"
-        self.assertFalse(scope.native_required(self.base, head, "push", head_message=queued))
+        bot = "github-merge-queue[bot]"
+        self.assertFalse(scope.native_required(self.base, head, "push", head_message=queued, pusher=bot))
         for message in ("Fix the thing", "Merge pull request from nowhere", "", "merge pull request #1 from x"):
             with self.subTest(message=message):
-                self.assertTrue(scope.native_required(self.base, head, "push", head_message=message))
+                self.assertTrue(scope.native_required(self.base, head, "push", head_message=message, pusher=bot))
+        # An admin bypass merge carries the same title but a person as pusher: classified by diff.
+        for pusher in ("EthDawg", "", "github-actions[bot]"):
+            with self.subTest(pusher=pusher):
+                self.assertTrue(scope.native_required(self.base, head, "push", head_message=queued, pusher=pusher))
         # Only a push is a queue merge; a merge group with the same words is still classified.
-        self.assertTrue(scope.native_required(self.base, head, "merge_group", head_message=queued))
+        self.assertTrue(scope.native_required(self.base, head, "merge_group", head_message=queued, pusher=bot))
+
+    def test_command_line_splits_labels_and_takes_equals_forms(self):
+        script = Path(__file__).with_name("ci-scope.py")
+        def run(*args):
+            return subprocess.run(["python3", str(script), *args], capture_output=True, text=True)
+        self.assertEqual(run("--event", "pull_request", "--labels=bug,ci:native").stdout.strip(), "native=true")
+        self.assertEqual(run("--event", "pull_request", "--labels=bug, ci:native ").stdout.strip(), "native=true")
+        self.assertEqual(run("--event", "pull_request", "--labels=").stdout.strip(), "native=false")
+        # A message or label starting with a dash is a value, not an option, in the = form.
+        self.assertEqual(run("--event", "push", "--head-message=-wip", "--pusher=EthDawg").stdout.strip(), "native=true")
 
     def test_documentation_and_site_changes_for_each_event(self):
         for path in ("README.md", "AGENTS.md", "CONTRIBUTING.md", "SECURITY.md",
