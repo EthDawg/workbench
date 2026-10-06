@@ -13,16 +13,21 @@ import plistlib
 import subprocess
 import tempfile
 import time
+import sys
+
+sys.dont_write_bytecode = True
+from swift_extract import SwiftFile
 
 
 PROJECT = Path(__file__).resolve().parents[1]
-SOURCES = [PROJECT / "Sources/LocalVoice" / name for name in ("DemoLibrary.swift", "DemoLibraryImages.swift", "DemoLibraryView.swift", "DemoQuickLook.swift", "DemoLibraryImport.swift", "DemoLibraryImportView.swift")]
+SOURCES = [PROJECT / "Sources/LocalVoice" / name for name in ("DemoLibrary.swift", "SavedBrowserSettings.swift", "DemoLibraryImages.swift", "DemoLibraryView.swift", "DemoQuickLook.swift", "DemoLibraryImport.swift", "DemoLibraryImportView.swift")]
 SOURCES.append(PROJECT / "Sources/PresenterKit/PresenterProtocol.swift")
 
 DEPENDENCIES = r'''
 import AppKit
 import Combine
 import SwiftUI
+import Carbon
 
 enum VoiceError: LocalizedError {
     case message(String)
@@ -268,7 +273,13 @@ def compile_fixture(directory: Path, main: str, binary: Path) -> None:
         path.write_text(source.read_text().replace("import PresenterKit\n", ""))
         copied.append(path)
     dependencies = directory / "FixtureDependencies.swift"
-    dependencies.write_text(DEPENDENCIES)
+    preference_types = [
+        SwiftFile(PROJECT / "Sources/LocalVoice/VoicePreferences.swift").extract([
+            "CaptureMode", "DeliveryMode", "FirstDictationGuide", "VoiceShortcut", "VoicePreferences"]),
+        SwiftFile(PROJECT / "Sources/LocalVoice/DictationCleanup.swift").extract(["CleanupStyle"]),
+        SwiftFile(PROJECT / "Sources/StageKit/Hotkeys.swift").extract(["GlobalShortcutCombination", "GlobalShortcutRule"]),
+    ]
+    dependencies.write_text(DEPENDENCIES + "\n" + "\n".join(preference_types))
     checks = directory / "FixtureMain.swift"
     checks.write_text(main)
     binary.parent.mkdir(parents=True, exist_ok=True)
@@ -284,6 +295,7 @@ parser.add_argument("--image-reuse", action="store_true", help="Check image reus
 parser.add_argument("--render-image-reuse", type=Path, help="Render Library image actions using synthetic data offscreen")
 parser.add_argument("--import-review", action="store_true", help="Check the import transaction with the actual model and store")
 parser.add_argument("--render-import-review", type=Path, help="Render the actual import review with synthetic records")
+parser.add_argument("--render-browser-pause", type=Path, help="Render a retained browser link and ordinary-open failure offscreen")
 args = parser.parse_args()
 started = time.monotonic()
 if args.native_fixture:
@@ -302,11 +314,13 @@ else:
     with tempfile.TemporaryDirectory(prefix="workbench-library-recall-", dir="/private/tmp") as temporary:
         directory = Path(temporary)
         binary = directory / "Checks"
-        if args.image_reuse or args.render_image_reuse:
+        if args.render_browser_pause:
+            main = (PROJECT / "scripts/fixtures/LibraryBrowserPauseRender.swift").read_text()
+        elif args.image_reuse or args.render_image_reuse:
             main = (PROJECT / "scripts/fixtures/LibraryImageReuseChecks.swift").read_text()
         else:
             main = (PROJECT / "scripts/fixtures/LibraryImportChecks.swift").read_text() if args.import_review or args.render_import_review else CHECKS
         compile_fixture(directory, main, binary)
-        render = args.render_image_reuse or args.render_import_review
+        render = args.render_image_reuse or args.render_import_review or args.render_browser_pause
         subprocess.run([str(binary), *([str(render.resolve())] if render else [])], check=True, timeout=30)
 print(f"Compilation and checks: {time.monotonic() - started:.3f}s")

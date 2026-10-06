@@ -423,7 +423,6 @@ private struct HistoryNativeAcceptanceView: View {
         keyboard = KeyboardCoachModel(entries: shell.shortcutEntries(), update: { _, _ in "The surface gallery does not save shortcuts." },
                                       suspend: { _ in }, probe: { _ in nil })
         panelEditor = PanelShortcutEditor(keyboard: keyboard)
-        model.onShowPresenter = { [weak self] in self?.actions.append("Opens the Switch to panel") }
         // StageKit's page callbacks, wired to the routes AppDelegate gives them.
         stage.onOpenControls = { [weak self] in self?.opened.append("annotate") }
         stage.onOpenScenes = { [weak self] in self?.opened.append("present") }
@@ -3550,7 +3549,6 @@ private struct HistoryNativeAcceptanceView: View {
                  action("Settings · General", "Keep open / Position…", "Uses the toolbar's existing preference and placement owner"),
                  action("Persona workspace", "Live copy controls", "Appearance, size, lock, position, replace, update, visibility and explicit layout saving"),
                  action("Present workspace", "Live presentation", "Controls the running snapshot while saved scene preparation stays separate"),
-                 action("Present workspace", "Switch to Browser Tab…", "Opens the existing Switch to panel"),
                  action("Present workspace", "Saved Prompts…", "The same picker and delivery owner as the pill's Prompts")]
         for tool in WorkbenchControlTool.allCases {
             let options = "\(tool.title) · Options"
@@ -3642,10 +3640,10 @@ private struct HistoryNativeAcceptanceView: View {
         list += [action("Library page", "Resources · Add · Save clipboard as prompt…, or ⇧⌘S while Resources shows", "Opens a new prompt with the clipboard's text")]
         list += [page(other, "Library shortcut", "library"), page(other, "Read shortcut, when nothing is playing", "speak"),
                  page(other, "Snap & Talk shortcut, without a session or access", "readback"), page(other, "Present shortcut, without a scene", "present"),
-                 action(other, "Quick controls shortcut", "Opens this panel"), action(other, "Switch to shortcut", "Opens the Switch to panel"),
+                 action(other, "Quick controls shortcut", "Opens this panel"),
                  page(other, "Read Selection service (selected text)", "speak"), page(other, "Private pack link", "packs"),
                  page(other, "Meeting offer panel", "meeting"), page(other, "Pack persona import", "personas"),
-                 page(other, "Switch to panel · Set up", "library"), page(other, "StageKit controls and drawing settings", "annotate"),
+                 page(other, "StageKit controls and drawing settings", "annotate"),
                  page(other, "StageKit shortcut editing", "shortcuts"), page(other, "StageKit persona preparation", "personas")]
         return list
     }
@@ -3661,7 +3659,7 @@ extension SurfacePass {
                        "Copy build details": "Copies build details", "Hide Workbench": "Hides Workbench", "Quit Workbench": "Quits Workbench",
                        "Close Window": "Closes the front window", "Open Workbench": "Opens Home on its current page",
                        "Show floating toolbar": "Shows the toolbar between actions", "Hide floating toolbar": "Hides the toolbar between actions", "Focus floating toolbar": "Moves keyboard focus to the toolbar",
-                       "Restore menu-bar icon": "Shows the icon and the toolbar", "Switch to…": "Opens the Switch to panel", "Workbench Guide": "Opens the web guide"]
+                       "Restore menu-bar icon": "Shows the icon and the toolbar", "Workbench Guide": "Opens the web guide"]
         return shell.makeMainMenu().main.items.compactMap(\.submenu).filter { ["Workbench", "Window", "Help"].contains($0.title) }.flatMap { menu in
             menu.items.filter { !$0.isSeparatorItem && $0.submenu == nil }.map { item in
                 let label = "\(menu.title) › \(item.title)"

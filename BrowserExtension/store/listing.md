@@ -1,5 +1,7 @@
 # Workbench Preview — Chrome Web Store draft
 
+> **Historical submission material — 6 October 2026.** Chrome distribution and Workbench browser runtime admission are paused under Foundation G (#283). The instructions and status below record earlier work; do not submit, install or repair from this document. Existing store/extension identities are retained for compatibility only.
+
 This is submission copy and a release handoff, not evidence of store approval or publication. Confirm the public Mac companion download and privacy page contain this feature before submitting.
 
 ## Existing store identity

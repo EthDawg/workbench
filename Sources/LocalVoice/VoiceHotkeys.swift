@@ -37,7 +37,8 @@ final class VoiceHotkeys {
         return event
     }
     /// A repeated key-down is ignored, so a held key keeps its first press time.
-    private func dispatch(_ id: UInt32, down: Bool, at time: TimeInterval) {
+    func dispatch(_ id: UInt32, down: Bool, at time: TimeInterval) {
+        guard shortcuts[id] != nil, VoicePreferences.shortcutIDs.contains(id) else { return }
         if down { guard pressed.insert(id).inserted else { return } }
         else { guard pressed.remove(id) != nil else { return } }
         onKey?(id, down, time)

@@ -24,7 +24,7 @@ struct DemoResource: Codable, Identifiable, Equatable {
     var browserTarget: BrowserTarget?
 
     var group: String { [product, persona].filter { !$0.isEmpty }.joined(separator: " · ") }
-    var primaryActionTitle: String { switch kind { case .prompt: "Copy prompt"; case .link: browserTarget == nil ? "Open link" : "Switch to tab"; case .file: "Open file" } }
+    var primaryActionTitle: String { switch kind { case .prompt: "Copy prompt"; case .link: browserTarget == nil ? "Open link" : BrowserIntegration.isAvailable ? "Switch to tab" : "Open in default browser"; case .file: "Open file" } }
     var primaryActionAvailable: Bool {
         switch kind {
         case .prompt: return !content.isEmpty
@@ -423,7 +423,7 @@ final class DemoLibraryModel: ObservableObject {
     func open(_ item: DemoResource, reveal: Bool = false) {
         if !reveal && showImage(item) { return }
         if item.kind == .link {
-            if item.browserTarget != nil {
+            if item.browserTarget != nil && BrowserIntegration.isAvailable {
                 guard let switchBrowser else { error = "Open the complete Workbench app to switch to this Chrome destination."; return }
                 switchBrowser(item.id); return
             }
@@ -490,6 +490,25 @@ final class DemoLibraryModel: ObservableObject {
         } catch {
             self.error = "Saved file access could not be refreshed. Use Locate file before the next demo."
             return false
+        }
+    }
+    func exportSavedBrowserSettings(_ snapshot: SavedBrowserSettings, chooseDestination: (() -> URL?)? = nil) {
+        guard snapshot.hasSavedSettings else { return }
+        do {
+            let data = try snapshot.encoded()
+            let url: URL
+            if let chooseDestination {
+                guard let chosen = chooseDestination() else { return }; url = chosen
+            } else {
+                let panel = NSSavePanel(); panel.allowedContentTypes = [.json]
+                panel.nameFieldStringValue = "Workbench Saved Browser Settings.json"
+                panel.message = "Save a readable copy of the old connection, profile-bound links and inactive shortcut. This file cannot enable or import browser switching."
+                guard panel.runModal() == .OK, let chosen = panel.url else { return }; url = chosen
+            }
+            try data.write(to: url, options: .atomic)
+            error = nil; notice = "Saved browser settings exported. Browser switching stays paused."
+        } catch {
+            notice = nil; self.error = "Could not export saved browser settings. " + error.localizedDescription
         }
     }
     func exportLibrary() {
