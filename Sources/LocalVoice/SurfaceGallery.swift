@@ -4156,6 +4156,13 @@ extension SurfacePass {
         try wait("microphone refusal") { microphone.problem != nil }
         refused.cancel()
         try shot(microphone, "microphone-off", "Microphone access off", "Words and the screenshot stay usable; Microphone Settings… opens the Mac's setting.")
+        let screenOff = composer("screen-off"); screenOff.open(origin: .help)
+        screenOff.services.screenCaptureGranted = { false }
+        screenOff.explanation = "The toolbar vanished after I changed displays."
+        let preflight = Task { await screenOff.addScreenshot() }
+        try wait("Screen Recording refusal") { screenOff.problem != nil }
+        preflight.cancel()
+        try shot(screenOff, "screen-off", "Screen Recording off", "Add screenshot checks access first: nothing is captured or requested, and Choose image… or Open System Settings… is offered beside it.")
         try shot(try receipt("sending", { _ in }, active: true), "sending", "Sending…", "The report is frozen in the outbox before any network; the composer is ready for another.")
         try shot(try receipt("waiting", { $0.problem = .offline; $0.attempts = 1; $0.nextAttemptAt = clock.addingTimeInterval(40) }), "waiting",
                  "Waiting for connection", "Saved on this Mac; it sends by itself when the Mac is back online, even after a restart.")
