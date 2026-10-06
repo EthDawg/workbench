@@ -117,6 +117,13 @@ enum ReadingChecks {
                   "a saved name in several locales prefers the person's locale")
         try check(resolved("Eddy", "en-AU") == "com.apple.eloquence.en-GB.Eddy", "without a locale match the choice is still deterministic")
         try check(resolved("Eddy (English (UK))", "en-US") == "com.apple.eloquence.en-GB.Eddy", "the exact name `say` listed keeps its accent")
+        try check(resolved("Eddy (English (US))", "en-GB") == "com.apple.eloquence.en-US.Eddy"
+                  && MacVoiceCatalog.sayDescriptor(for: "en-IN") == "English (India)" && MacVoiceCatalog.sayDescriptor(for: "ja-JP") == "Japanese (Japan)",
+                  "a `say` name keeps its accent without the `say` list")
+        let tiers = [voice("com.apple.voice.compact.en-GB.Daniel", "Daniel", "en-GB"), voice("com.apple.voice.enhanced.en-GB.Daniel", "Daniel", "en-GB", .enhanced)]
+        try check(resolved("Daniel", "en-AU", in: tiers) == "com.apple.voice.compact.en-GB.Daniel"
+                  && resolved("Daniel (Enhanced)", "en-AU", in: tiers) == "com.apple.voice.enhanced.en-GB.Daniel",
+                  "a `say` name keeps its tier: the bare name was the compact voice")
         try check(resolved("com.apple.voice.compact.en-AU.Karen", "en-US") == "com.apple.voice.super-compact.en-AU.Karen",
                   "a renamed quality tier still finds the same voice")
         try check(resolved("Aman", "en-AU") == "com.apple.voice.Aman", "a voice only `say` can speak keeps working")
@@ -124,6 +131,34 @@ enum ReadingChecks {
                   "a missing chosen voice is reported, not replaced")
         try check(MacVoiceCatalog.resolve("Zelda", in: voices, preferredLanguage: "en-AU") == .missing("Zelda"), "a missing saved name is reported")
         try check(MacVoiceCatalog.resolve(" ", in: voices, preferredLanguage: "en-AU") == nil, "no saved choice means the default applies")
+        // The `say` list is the one lookup that asks macOS about voices by
+        // language and name (#140); the catalogue asks for it only when a
+        // saved choice can be nothing else.
+        let bare = voices.map { voice in MacVoice(id: voice.id, name: voice.name, language: voice.language, quality: voice.quality,
+                                                   isNovelty: voice.isNovelty, sayOnly: voice.sayOnly) }
+        let plain = bare.filter { !$0.sayOnly }
+        try check(["", "com.apple.voice.super-compact.en-AU.Karen", "com.apple.voice.compact.en-AU.Karen", "Karen", "Eddy (English (UK))"]
+                  .allSatisfy { !MacVoiceCatalog.needsSayVoices(for: $0, in: plain, preferredLanguage: "en-AU") },
+                  "an identifier, a name or no choice never needs the `say` list")
+        try check(MacVoiceCatalog.needsSayVoices(for: "Aman", in: plain, preferredLanguage: "en-AU")
+                  && MacVoiceCatalog.needsSayVoices(for: "com.apple.voice.Aman", in: plain, preferredLanguage: "en-AU")
+                  && !MacVoiceCatalog.needsSayVoices(for: "Aman", in: bare, preferredLanguage: "en-AU"),
+                  "only a choice that can be a voice `say` alone lists asks for it, and once listed it resolves")
+        try check(!MacVoiceCatalog.needsSayVoices(for: "com.apple.voice.premium.en-AU.Matilda", in: plain, preferredLanguage: "en-AU")
+                  && !MacVoiceCatalog.needsSayVoices(for: "com.apple.eloquence.en-AU.Zelda", in: plain, preferredLanguage: "en-AU")
+                  && MacVoiceCatalog.resolve("com.apple.voice.premium.en-AU.Matilda", in: plain, preferredLanguage: "en-AU") == .missing("Matilda"),
+                  "a removed voice's identifier is reported missing without the `say` list, which cannot have it")
+        // Returning to the app lists voices on a GCD queue, not the main thread
+        // and not a Swift task; the picker order is applied on the main thread.
+        let offMain = DispatchGroup(); offMain.enter()
+        nonisolated(unsafe) var listedOffMain: [MacVoice] = []
+        DispatchQueue.global(qos: .utility).async { listedOffMain = MacVoiceCatalog.listed(preferredLanguage: "en-AU"); offMain.leave() }
+        try check(offMain.wait(timeout: .now() + 10) == .success
+                  && MacVoiceCatalog.catalogue(listedOffMain, preferredLanguage: "en-AU") == MacVoiceCatalog.installed(preferredLanguage: "en-AU")
+                  && MacVoiceCatalog.sayScanCount == 0,
+                  "the listing read on the utility queue, ordered on the main thread, is the launch catalogue, without the `say` list")
+        try check(MacVoiceCatalog.installed(preferredLanguage: "en-AU").allSatisfy { !$0.sayOnly && $0.legacyNames.isEmpty }
+                  && MacVoiceCatalog.sayScanCount == 0, "listing installed voices never asks NSSpeechSynthesizer")
         func fresh(_ language: String, _ catalogue: [MacVoice] = compactCatalogue) -> String? {
             MacVoiceCatalog.preferredDefault(in: catalogue, preferredLanguage: language)?.id
         }
@@ -409,6 +444,12 @@ enum ReadingChecks {
         if voices.isEmpty, let any = installed.first(where: { !$0.isNovelty && !$0.sayOnly && $0.language.hasPrefix("en") }) { voices = [any] }
         guard let first = voices.first else { print("READING_RENDER_SKIPPED: no installed English Mac voice"); return }
         var count = 0
+        // A listed voice is reachable by its installed identifier alone, so
+        // rendering never looks a voice up by language or name (#140).
+        guard voices.allSatisfy({ AVSpeechSynthesisVoice(identifier: $0.id) != nil }), MacVoiceCatalog.sayScanCount == 0 else {
+            throw Failure(label: "a listed voice is constructed from its identifier without the `say` list")
+        }
+        count += 1
         for voice in voices {
             func check(_ value: @autoclosure () throws -> Bool, _ label: String) throws {
                 guard try value() else { throw Failure(label: "\(label) (\(voice.id))") }
