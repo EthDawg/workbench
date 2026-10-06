@@ -615,15 +615,28 @@ final class DemoLibraryModel: ObservableObject {
             let latest = try data.map(DemoLibraryStore.decode) ?? []
             let refreshed = try DemoLibraryImport(incoming: review.entries.map(\.incoming), existing: latest, sourceName: review.sourceName)
             closePreview(); savedData = data; resources = latest; importChoices = []; importError = nil; importReview = refreshed
-        } catch { importError = "The saved library could not be reloaded. \(error.localizedDescription)" }
+            savingDisabled = false; storageFailure = nil; error = nil; notice = nil
+        } catch {
+            let problem = "The saved Library could not be reloaded. Its file is preserved and editing is paused. Choose Review again to retry, or reopen Workbench after resolving the file. \(error.localizedDescription)"
+            holdWrites(problem); importError = problem
+        }
     }
 
     @discardableResult func applyImport() -> Bool {
         guard !savingDisabled, draft == nil, let review = importReview else { return false }
+        let current: Data?
+        do { current = try store.currentData() }
+        catch {
+            let problem = "The saved Library could not be verified. Its file is preserved and editing is paused. Choose Review again to retry, or reopen Workbench after resolving the file. \(error.localizedDescription)"
+            holdWrites(problem); importError = problem
+            return false
+        }
+        guard review.baseline == resources, current == savedData else {
+            let problem = "The saved Library changed during review. The newer file is preserved and editing is paused. Choose Review again to reload it and reset your choices, or reopen Workbench."
+            holdWrites(problem); importError = problem
+            return false
+        }
         do {
-            guard review.baseline == resources, try store.currentData() == savedData else {
-                throw VoiceError.message("The saved library changed during review. Choose Review again to reload it and reset your choices.")
-            }
             let next = try review.applying(useIncoming: importChoices)
             let added = review.count(.new), updated = importChoices.count
             if next != resources { savedData = try store.save(next); resources = next }
