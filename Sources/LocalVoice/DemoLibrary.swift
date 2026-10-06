@@ -608,6 +608,25 @@ final class DemoLibraryModel: ObservableObject {
 
     func cancelImport() { importReview = nil; importChoices = []; importError = nil }
 
+    /// Explicit Pack-file recovery reviews current storage before retrying its one
+    /// reference. This never discards an editor/import decision or writes the store.
+    @discardableResult func reviewForSavedFileReference() -> Bool {
+        guard draft == nil, importReview == nil else { return false }
+        do {
+            let data = try store.currentData()
+            guard data != nil || savedData == nil else {
+                throw VoiceError.message("The saved Library file is missing. Restore it before retrying this reference.")
+            }
+            let latest = try data.map(DemoLibraryStore.decode) ?? []
+            closePreview(); savedData = data; resources = latest
+            savingDisabled = false; storageFailure = nil; error = nil; notice = nil
+            return true
+        } catch {
+            holdWrites("The saved Library could not be reviewed. Its file is preserved and editing is paused. Resolve the file and retry adding the saved reference. \(error.localizedDescription)")
+            return false
+        }
+    }
+
     func refreshImportReview() {
         guard let review = importReview, draft == nil else { return }
         do {

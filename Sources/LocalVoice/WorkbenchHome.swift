@@ -13,7 +13,7 @@ struct WorkbenchHome: View {
     @ObservedObject var readback: ReadbackModel
     @ObservedObject var snap: SnapModel
     @ObservedObject var history: WorkbenchHistoryModel
-    @ObservedObject private var packs = PackLibraryModel.shared
+    @ObservedObject private var packs: PackLibraryModel
     @ObservedObject private var updates = WorkbenchUpdates.shared
     @StateObject private var introduction = FounderIntroductionModel()
     @State private var loginEnabled = SMAppService.mainApp.status == .enabled
@@ -92,9 +92,10 @@ struct WorkbenchHome: View {
         return navItems.first { $0.id == page }?.symbol ?? "questionmark"
     }
     // Optional sidebar values are only supplied by the isolated surface gallery.
-    init(model: AppModel, stage: StageKitController, keyboard: KeyboardCoachModel, readback: ReadbackModel, snap: SnapModel, sidebarCollapsed: Bool? = nil, sidebarHint: String? = nil) {
+    init(model: AppModel, stage: StageKitController, keyboard: KeyboardCoachModel, readback: ReadbackModel, snap: SnapModel, sidebarCollapsed: Bool? = nil, sidebarHint: String? = nil, packs: PackLibraryModel? = nil) {
         self.model = model; self.stage = stage; self.keyboard = keyboard; self.readback = readback
         self.snap = snap; self.history = model.historyLibrary
+        self._packs = ObservedObject(wrappedValue: packs ?? .shared)
         self.sidebarOverride = sidebarCollapsed
         self._hoveredSidebarItem = State(initialValue: sidebarHint)
     }
@@ -286,7 +287,11 @@ struct WorkbenchHome: View {
         return VStack(alignment: .leading, spacing: 0) {
             sectionedHeader("library", selection: section)
             switch section {
-            case "packs": PackLibraryView(model: packs) { pack, entry in packs.use(entry, from: pack, readback: readback, app: model, stage: stage) }
+            case "packs": PackLibraryView(model: packs, onUseEntry: { pack, entry, input in
+                packs.use(entry, from: pack, input: input, readback: readback, app: model, stage: stage)
+            }, onRetrySavedResource: {
+                if packs.addSavedResource(to: model.library, reviewCurrentStore: true) { model.page = "library" }
+            })
             case "photos":
                 PhotoHandoffView(handoff: model.photoHandoff, onUseAsBackdrop: model.onUsePhotoAsBackdrop)
                     .padding(Workbench.pagePadding).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

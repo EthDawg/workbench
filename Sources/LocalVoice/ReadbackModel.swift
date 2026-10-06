@@ -674,12 +674,22 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         packSkills = skills
         refreshSkillPacks()
     }
-    func selectSkill(_ id: String) {
-        if id == "legacy-neutral" { selectNewSessionStyle(.neutral); return }
-        if id == "legacy-serviceNow" { selectNewSessionStyle(.serviceNow); return }
+    @discardableResult func selectSkill(_ id: String) -> Bool {
+        guard !hasUnsavedNarration else { notice = Self.unsavedNarrationNotice; return false }
+        guard !isRecording, !isCapturing, !hasPendingTranscriptions else {
+            notice = "Finish capture and transcription before choosing the skill for a new session."; return false
+        }
+        if id == "legacy-neutral" { selectNewSessionStyle(.neutral); return true }
+        if id == "legacy-serviceNow" { selectNewSessionStyle(.serviceNow); return true }
+        guard let skill = packSkills.first(where: { $0.id == id }) else {
+            notice = "This skill is unavailable. Refresh Packs and choose an installed skill."; return false
+        }
+        do { _ = try skill.load() }
+        catch { notice = error.localizedDescription; return false }
         newSessionSkillID = id
         defaults.set(id, forKey: "readback.newSessionSkillID.v1")
         refreshSkillPacks()
+        return newSessionStyleProblem == nil
     }
     private func selectedSkillSnapshot() throws -> ReadbackSkillPackSnapshot {
         if let id = newSessionSkillID {
