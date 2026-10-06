@@ -67,7 +67,8 @@ enum PhoneLinkChecks {
             "usbCount": result.signals.usb.count, "sourceCount": result.signals.sources.count, "access": access,
             "changes": changes, "writtenAt": ISO8601DateFormatter().string(from: Date())]
         if let liveResult {
-            receipt["live"] = ["firstFrameSeconds": liveResult.firstFrame ?? NSNull(), "width": Int(liveResult.size.width), "height": Int(liveResult.size.height)]
+            let firstFrame: Any = liveResult.firstFrame.map { $0 as Any } ?? NSNull()
+            receipt["live"] = ["firstFrameSeconds": firstFrame, "width": Int(liveResult.size.width), "height": Int(liveResult.size.height)] as [String: Any]
         }
         try JSONSerialization.data(withJSONObject: receipt, options: [.prettyPrinted, .sortedKeys])
             .write(to: folder.appendingPathComponent("receipt.json"), options: .atomic)
