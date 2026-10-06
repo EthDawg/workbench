@@ -54,6 +54,8 @@ struct MeetingWorkspaceView: View {
     @ObservedObject var model: MeetingModel
     var engineName: String
     var openHistory: (UUID?) -> Void
+    /// The host resolves the committed UUID in History and returns any failure.
+    var copyTranscript: (UUID) -> String? = { _ in "The transcript library is unavailable. Nothing was copied." }
     /// Where the speech engine is chosen and downloaded: Settings › Models.
     var openModels: () -> Void = {}
     /// The door to the microphone's System Settings pane, from the host.
@@ -62,6 +64,7 @@ struct MeetingWorkspaceView: View {
     @State private var showingOptions = false
     @State private var showingSources = false
     @State private var showingNewRecording = false
+    @StateObject private var copyFeedback = TranscriptReviewFeedback()
 
     private var showsCompletedResult: Bool { !model.isBusy && model.completedTranscriptID != nil && !showingNewRecording }
 
@@ -79,17 +82,28 @@ struct MeetingWorkspaceView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(showsCompletedResult ? "Transcript saved" : model.isRecording ? model.voiceSession.recordingTitle : model.isProcessing ? "Finishing transcript" : model.isStarting ? "Starting recording" : "Ready to record")
                                 .font(.title3.weight(.semibold))
-                            Text(showsCompletedResult ? "Review the conversation and prepare what comes next." : model.isRecording ? time(model.elapsed) : model.isProcessing ? "Your original audio is kept while this finishes." : "Start once. Follow the words as the conversation happens.")
+                            Text(showsCompletedResult ? "Copy the complete transcript to use it in your next task." : model.isRecording ? time(model.elapsed) : model.isProcessing ? "Your original audio is kept while this finishes." : "Start once. Follow the words as the conversation happens.")
                                 .font(.callout).foregroundStyle(.secondary).monospacedDigit()
                         }
                         Spacer()
                     }
                     if showsCompletedResult, let id = model.completedTranscriptID {
                         HStack(spacing: 12) {
-                            Button("Prepare follow-up…") { prepareFollowUp(id) }.buttonStyle(.borderedProminent)
+                            Button("Copy transcript") {
+                                if let problem = copyTranscript(id) { copyFeedback.finish(nil, problem: problem) }
+                                else { copyFeedback.finish("Copied transcript") }
+                            }.buttonStyle(.borderedProminent)
+                                .accessibilityIdentifier("meeting.copy-transcript")
                             Button("Review transcript") { openHistory(id) }
+                            Button("Prepare follow-up…") { prepareFollowUp(id) }
                             Spacer()
                             Button("New recording…") { showingNewRecording = true }
+                        }
+                        if let problem = copyFeedback.problem {
+                            Text(problem).font(.caption).foregroundStyle(.red).textSelection(.enabled)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } else {
+                            ConfirmationLabel(text: copyFeedback.confirmation?.kind, reserving: ["Copied transcript"])
                         }
                         ForEach(model.pendingTranscriptNotes, id: \.self) { note in
                             Text(note).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -197,6 +211,7 @@ struct MeetingWorkspaceView: View {
                 .frame(maxWidth: .infinity, alignment: .topLeading)
         }.onAppear { if !model.isBusy { model.refreshApps() } }
             .onChange(of: model.completedTranscriptID) { value in
+                copyFeedback.finish(nil)
                 if value != nil { showingNewRecording = false }
             }
     }

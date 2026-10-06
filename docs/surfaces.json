@@ -499,6 +499,14 @@
     "note": "Quality: was Cancel, which kept the audio. Stop processing is the page's own word for the same action (1 Oct)."
   },
   {
+    "id": "LocalVoice.MeetingWorkspaceView.MeetingWorkspaceView.Button.copy-transcript",
+    "surface": "meeting page",
+    "label": "Copy transcript",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Quality (#280): completed Meetings copies the exact committed transcript’s complete current wording through the existing History clipboard owner. No model or assistant setup, new store or automatic paste."
+  },
+  {
     "id": "LocalVoice.MeetingWorkspaceView.MeetingWorkspaceView.Button.history",
     "surface": "meeting page",
     "label": "History",

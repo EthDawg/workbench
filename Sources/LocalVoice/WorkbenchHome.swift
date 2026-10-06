@@ -196,6 +196,7 @@ struct WorkbenchHome: View {
                 })
                 case "meeting": MeetingWorkspaceView(model: model.meetings, engineName: model.modelMessage,
                     openHistory: { id in model.openHistory(id.map { HistoryDoor(transcript: $0) } ?? HistoryDoor(filter: .transcripts)) },
+                    copyTranscript: model.copyMeetingTranscript,
                     openModels: { model.page = "models" },
                     openMicrophoneSettings: model.openMicrophoneSettings,
                     prepareFollowUp: { id in handoffReview = HandoffReviewRequest(task: MeetingFollowUp.task, transcriptID: id) })
