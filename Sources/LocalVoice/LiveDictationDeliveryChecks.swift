@@ -10,14 +10,14 @@ enum LiveDictationDeliveryChecks {
         var failSelection = false, failReplacement = false, mutateThenFail = false
         var mutateBeforeReplacement = false
         var inputOnSelect = false
-        var selectCalls = 0, replaceCalls = 0, copies: [String] = [], stops = 0
+        var selectCalls = 0, replaceCalls = 0, reads = 0, copies: [String] = [], stops = 0
         var now = 0.0
         var onInput: (() -> Void)?, onCheck: (() -> Void)?
         init(_ text: String = "prefix OLD suffix", _ range: NSRange = NSRange(location: 7, length: 3)) {
             state = .init(value: text, selection: range)
         }
         var system: LiveDictationDelivery.System {
-            .init(read: { self.eligible && self.readable ? self.state : nil }, canReplaceSelection: { self.settable },
+            .init(read: { self.reads += 1; return self.eligible && self.readable ? self.state : nil }, canReplaceSelection: { self.settable },
                   select: { range in
                       self.selectCalls += 1
                       if self.failSelection { return false }
@@ -143,6 +143,11 @@ enum LiveDictationDeliveryChecks {
         try expect(joined.state.value == "Please bring the blue tomorrow", "later partials keep the prefix and lose the spurious capital")
         let fitted = joinedOwner.finish("The blue folder.", restoreClipboard: true)
         try expect(fitted.wasPasted && joined.state.value == "Please bring the blue folder tomorrow", "final cleanup fits the same span, dropping a mid-sentence full stop")
+        joined.next()
+        let settledReads = joined.reads, settledReplacements = joined.replaceCalls
+        joinedOwner.preview("The blue")
+        try expect(joined.reads == settledReads && joined.replaceCalls == settledReplacements,
+                   "a repeated partial that fits to the inserted text neither reads nor writes the field")
         let fittedCancel = Field("Please bringtomorrow", NSRange(location: 12, length: 0)); let fittedCancelOwner = fittedCancel.owner()!
         fittedCancelOwner.preview("the blue")
         try expect(fittedCancel.state.value == "Please bring the blue tomorrow" && fittedCancelOwner.cancel() == nil

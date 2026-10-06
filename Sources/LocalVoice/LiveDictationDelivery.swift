@@ -89,9 +89,11 @@ final class LiveDictationDelivery {
     }
 
     func preview(_ text: String) {
-        guard !text.isEmpty, text != insertedText, system.now() - lastUpdate >= Self.updateInterval else { return }
+        guard !text.isEmpty, system.now() - lastUpdate >= Self.updateInterval else { return }
+        let fitted = fitted(text)
+        guard fitted != insertedText else { return }
         lastUpdate = system.now()
-        _ = replace(fitted(text))
+        _ = replace(fitted)
     }
 
     /// The caller commits History first. This result replaces final paste even if the
