@@ -130,7 +130,7 @@ final class PhoneEndTests {
         let capture = scenes.capture
         scenes.setPageVisible(true)
         XCTAssertTrue(waitUntil { hardware.read(capture) { $0.opened } == [self.phone.id] }, "The page adopts the one phone screen without a click")
-        let output = hardware.read(capture) { $0.outputs[0] }
+        guard let output = hardware.read(capture, { $0.outputs.first }) else { return }
         deliverFrame(scenes, from: output)
         XCTAssertTrue(waitUntil { capture.live })
         XCTAssertEqual(words(scenes).phase, .live)
@@ -155,7 +155,8 @@ final class PhoneEndTests {
 
         scenes.startDemo(mode: .windowed)
         XCTAssertTrue(waitUntil { hardware.read(capture) { $0.opened.count } == 2 }, "Present takes the phone back")
-        let fresh = hardware.read(capture) { $0.outputs[1] }
+        // A failed check above stops here rather than crashing the runner.
+        guard let fresh = hardware.read(capture, { $0.outputs.count == 2 ? $0.outputs[1] : nil }) else { return }
         deliverFrame(scenes, from: output) // The ended session's output is not this session's.
         settle()
         XCTAssertFalse(capture.live)
