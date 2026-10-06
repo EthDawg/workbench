@@ -309,10 +309,11 @@ struct ControlCenter: View {
                 // only the one it shows (#174).
                 let transport = TimerTransportAction(app)
                 Button { transport() } label: { Label(transport.transport.title + " timer", systemImage: transport.transport.symbol) }.buttonStyle(.borderedProminent).controlSize(.large)
-                Button("Reset") { app.resetTimer() }.controlSize(.large)
+                // The Timer menu's words: Stop timer ends the countdown and closes its window.
+                Button("Stop timer") { app.resetTimer(); app.hideTimer() }.controlSize(.large).disabled(!app.timerSessionStarted)
                 Spacer(); Keycap(text: settings.value.shortcut(for: .timer).label)
             }
-            Text("Drag or resize the timer window. Closing it leaves the countdown running; show it again anytime.").font(.system(size: 11)).foregroundStyle(.secondary)
+            Text("Drag or resize the timer window. Closing it leaves the countdown running; show it again anytime.").font(.caption).foregroundStyle(.secondary)
         }
     }
     private var shortcuts: some View {
@@ -524,29 +525,41 @@ struct BreakTimerView: View {
                     .monospacedDigit().foregroundStyle(Color(nsColor: settings.value.timerColor.nsColor))
                     .accessibilityLabel("Time remaining \(app.timerText)")
                 Capsule().fill(Color(nsColor: settings.value.timerColor.nsColor).opacity(0.12)).frame(height: 3)
-                    .overlay(alignment: .leading) { GeometryReader { bar in Capsule().fill(inkAccent).frame(width: bar.size.width * app.timerProgress) } }.frame(maxWidth: 300)
-                Text(app.timerTransport == .finished ? "Ready to continue" : app.timerTransport == .paused ? "Paused" : "")
-                    .font(.system(size: 12, weight: .medium)).foregroundStyle(Color(nsColor: settings.value.timerColor.nsColor).opacity(0.65))
+                    .overlay(alignment: .leading) { GeometryReader { bar in Capsule().fill(progressColor).frame(width: bar.size.width * app.timerProgress) } }.frame(maxWidth: 300)
+                Text(app.timerTransport == .finished ? "Time is up" : app.timerTransport == .paused ? "Paused" : "")
+                    .font(.callout.weight(.medium)).foregroundStyle(Color(nsColor: settings.value.timerColor.nsColor).opacity(0.65))
                 if let notice = app.timerPlacementNotice {
-                    Text(notice).font(.system(size: 10)).foregroundStyle(.orange).multilineTextAlignment(.center)
+                    Text(notice).font(.caption2).foregroundStyle(.orange).multilineTextAlignment(.center)
                         .accessibilityLabel("Timer position: \(notice)")
                 }
                 Spacer(minLength: 8)
                 HStack(spacing: 18) {
                     let transport = TimerTransportAction(app)
-                    Button { transport() } label: { Label(transport.transport.title, systemImage: transport.transport.symbol) }
-                    Button("Reset") { app.resetTimer() }
+                    // The Timer word set on every surface: its next step, Stop timer, Position… and
+                    // Hide timer, as plain words (docs/workbench.md, One app, several ways in).
+                    Button(transport.transport.title + " timer") { transport() }
+                    Button("Stop timer") { app.resetTimer(); app.hideTimer() }
                     // Position…: one compact control with the eight docks, the floating toolbar's
                     // (#134 Fit rule 1), never a submenu of anchors.
-                    Button { app.showTimerPositionControl() } label: { Label("Position…", systemImage: "arrow.up.and.down.and.arrow.left.and.right") }
+                    Button("Position…") { app.showTimerPositionControl() }
                         .accessibilityLabel("Timer position")
                         .accessibilityHint("Opens the placement control: arrow keys move between eight docks, Return applies, Escape closes.")
-                    Button("Hide") { app.hideTimer() }
-                }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(Color(nsColor: settings.value.timerColor.nsColor).opacity(controlsVisible ? 0.8 : 0.3))
+                    Button("Hide timer") { app.hideTimer() }
+                }.buttonStyle(.plain).font(.caption).foregroundStyle(Color(nsColor: settings.value.timerColor.nsColor).opacity(controlsVisible ? 0.8 : 0.3))
             }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color(nsColor: settings.value.timerBackground.nsColor))
                 .onHover { controlsVisible = $0 }
         }
+    }
+    /// The accent as it reads on the timer's own background: the light accent is about 3:1 on
+    /// the default dark background, so a dark background takes the dark appearance's mint.
+    private var progressColor: Color {
+        let background = settings.value.timerBackground.nsColor.usingColorSpace(.sRGB) ?? .black
+        let luminance = 0.2126 * background.redComponent + 0.7152 * background.greenComponent + 0.0722 * background.blueComponent
+        let appearance = NSAppearance(named: luminance < 0.5 ? .darkAqua : .aqua) ?? NSAppearance.currentDrawing()
+        var resolved = NSColor.systemGreen
+        appearance.performAsCurrentDrawingAppearance { resolved = WorkbenchPalette.nativeAccent.usingColorSpace(.sRGB) ?? .systemGreen }
+        return Color(nsColor: resolved)
     }
 }
 
