@@ -20,7 +20,7 @@ from swift_extract import SwiftFile
 
 
 PROJECT = Path(__file__).resolve().parents[1]
-SOURCES = [PROJECT / "Sources/LocalVoice" / name for name in ("DemoLibrary.swift", "SavedBrowserSettings.swift", "DemoLibraryImages.swift", "DemoLibraryView.swift", "DemoQuickLook.swift", "DemoLibraryImport.swift", "DemoLibraryImportView.swift")]
+SOURCES = [PROJECT / "Sources/LocalVoice" / name for name in ("DemoLibrary.swift", "ReadRetirement.swift", "SavedBrowserSettings.swift", "DemoLibraryImages.swift", "DemoLibraryView.swift", "DemoQuickLook.swift", "DemoLibraryImport.swift", "DemoLibraryImportView.swift")]
 SOURCES.append(PROJECT / "Sources/PresenterKit/PresenterProtocol.swift")
 
 DEPENDENCIES = r'''
@@ -274,6 +274,7 @@ def compile_fixture(directory: Path, main: str, binary: Path) -> None:
         copied.append(path)
     dependencies = directory / "FixtureDependencies.swift"
     preference_types = [
+        SwiftFile(PROJECT / "Sources/LocalVoice/Core.swift").extract(["AtomicPrivateFile"]),
         SwiftFile(PROJECT / "Sources/LocalVoice/VoicePreferences.swift").extract([
             "CaptureMode", "DeliveryMode", "FirstDictationGuide", "VoiceShortcut", "VoicePreferences"]),
         SwiftFile(PROJECT / "Sources/LocalVoice/DictationCleanup.swift").extract(["CleanupStyle"]),
