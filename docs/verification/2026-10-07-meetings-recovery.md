@@ -56,3 +56,9 @@ For the race negative control, only the new three-line recognition-checkpoint co
 
 - [Saving text with no original audio](2026-10-07-meetings-recovery/meetings-saving-without-audio-light.png)
 - [Completed result with truthful missing-audio note](2026-10-07-meetings-recovery/meetings-saved-without-audio-dark.png)
+
+## Integrated candidate
+
+Integration `d1943eeb74cc23aa273ad040757cdcba48b3f3f2` combines the accepted source and evidence with merged #305 and the retained real-download/compatibility observations. Every app source matched reviewed `1a397419` at that boundary. The integrated release build passed in 118.97 seconds; Meetings (260 +34 removal +21 live voice +14 experience), core and the complete repository harness phase passed. The registry passed 629 entries and 58 scanner checks. The production gallery passed 16 renders, 6 entries and zero flags; the saving and missing-original completed views were visually inspected at minimum width in both relevant themes. Logs are `.build/meetings-integration-{build,checks,harnesses,gallery}.log`.
+
+A subsequent wording-only correction replaces both visible references to a “recording checkpoint” with “Finishing your transcript.” No admission, recovery, persistence or view layout behavior changes. Signed package compilation and native acceptance must identify the resulting candidate revision separately. No native result is inferred from these source checks.
