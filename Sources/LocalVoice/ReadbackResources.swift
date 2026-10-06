@@ -14,7 +14,7 @@ struct ReadbackSkillPackReference: Codable, Equatable {
     var name: String
     var origin: ReadbackSkillOrigin? = nil
 
-    static let neutral = Self(id: "workbench-neutral", version: "1.0.0", name: "Neutral")
+    static let neutral = Self(id: "workbench-neutral", version: "1.1.0", name: "Neutral")
     static let serviceNow = Self(id: "servicenow-employee-experience", version: "1.0.0", name: "ServiceNow")
 }
 

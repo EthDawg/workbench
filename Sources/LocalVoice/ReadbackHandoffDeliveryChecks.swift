@@ -30,7 +30,7 @@ enum ReadbackHandoffDeliveryChecks {
         defaults.set([first.path], forKey: "readback.recentSessionPaths.v1")
         let model = ReadbackModel(engine: RecognitionEngine(store: RecognitionConfigurationStore(defaults: defaults)), defaults: defaults,
             skillPacks: ReadbackSkillPackStore(root: root.appendingPathComponent("packs")),
-            screenAccess: .fixed(true), microphoneAccess: { .authorized })
+            screenAccess: .fixed(false), microphoneAccess: { .denied })
         defer { model.shutdown() }
         var copied: [String] = [], revealed: [URL] = [], launches: [ReadbackHandoffApplication] = [], callbacks: [(Error?) -> Void] = []
         let fallback = ReadbackHandoffApplication(url: root.appendingPathComponent("Actual fallback.app"))
@@ -43,7 +43,10 @@ enum ReadbackHandoffDeliveryChecks {
         func drain() async { for _ in 0..<10 { await Task.yield() } }
         model.handOff(to: .codex)
         model.handOff(to: .claude)
+        try check(!model.permissionsReady && !model.isRecording && !model.isCapturing, "manual handoff remains usable with both capture permissions off")
         try check(copied.count == 2 && copied.allSatisfy { $0.contains(first.path) } && revealed.map(\.path) == [first.path, first.path], "each attempt copies and reveals its own complete session")
+        try check(copied.allSatisfy { $0.contains("under this session's `outputs/`") && $0.contains("only after I choose it") },
+                  "production handoff copies the new neutral contract for the actual session")
         try check(launches.map(\.title) == [fallback.title, primary.title], "launches preserve the actual resolved app")
         callbacks[1](nil); await drain()
         try check(model.notice == primary.openedNotice, "the newer successful callback names its actual receiver")

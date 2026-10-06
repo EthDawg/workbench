@@ -95,6 +95,16 @@ struct ReadbackHandoffBrief {
         manifestName: ReadbackStore.manifestName,
         task: "build the requested slide deck",
         preservation: "Keep the original session and any `template.pptx` unchanged.")
+
+    /// Only newly frozen neutral sessions opt into this contract. Older and
+    /// installed/custom skills keep their existing instructions and receipts.
+    static func snapTalkDeck(pack: ReadbackSkillPackReference?) -> Self {
+        var brief = snapTalkDeck
+        if pack == .neutral {
+            brief.extra = "Use `template.pptx` only inside this session folder and only after I choose it. Otherwise make a plain deck. Write a uniquely named new `.pptx` under this session's `outputs/`; never replace an existing file. Follow the skill's verification and report the exact output path. If your assistant cannot access the folder or return a file, explain that limitation before starting; this prompt grants no upload permission."
+        }
+        return brief
+    }
 }
 
 struct ReadbackHandoffApplication {
@@ -311,9 +321,14 @@ enum ReadbackStore {
         }
         let provenance = ReadbackSkillPackProvenance(pack: skill.reference)
         try writePrivate(JSONEncoder().encode(provenance), to: root.appendingPathComponent(skillPackReceiptName))
-        let styleInstructions = skill.reference.id == ReadbackSkillPackReference.serviceNow.id
-            ? "The included brand/, scripts/ and requirements.txt are the complete ServiceNow skill pack. No separate template or individual skill upload is needed. Workbench does not install Python dependencies or execute these helpers."
-            : "The neutral skill supports an optional template.pptx in this folder. Keep the original template unchanged."
+        let styleInstructions: String
+        if skill.reference == .neutral {
+            styleInstructions = "The neutral skill offers an optional template.pptx only in this folder; choose whether to use it before building. Without one, make a plain deck. Keep the template unchanged. Write a uniquely named new .pptx under outputs/ in this folder, never over an existing file. The assistant reports the exact output path and verification; Workbench does not automatically import the deck."
+        } else if skill.reference.id == ReadbackSkillPackReference.serviceNow.id {
+            styleInstructions = "The included brand/, scripts/ and requirements.txt are the complete ServiceNow skill pack. No separate template or individual skill upload is needed. Workbench does not install Python dependencies or execute these helpers."
+        } else {
+            styleInstructions = "Follow this session's frozen SKILL.md for its template and output instructions. Workbench does not execute its helpers."
+        }
         let readme = """
         # \(title)
 
@@ -434,6 +449,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     @Published private(set) var pendingTranscriptionCount = 0
     @Published private(set) var screenPermissionGranted = false
     @Published private(set) var microphonePermission = AVCaptureDevice.authorizationStatus(for: .audio)
+    @Published private(set) var isRequestingCaptureAccess = false
     @Published private(set) var shortcutFailure: String?
     @Published var notice: String? {
         didSet { handoffFeedbackGeneration = UUID() }
@@ -476,6 +492,9 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     var permissionsReady: Bool { screenPermissionGranted && microphonePermission == .authorized }
     /// What stops a new capture, in plain words, and what still works (#112).
     var permissionsProblem: String? {
+        if isRequestingCaptureAccess {
+            return "Finish the capture access request in macOS. Your sessions, screenshots and notes stay available."
+        }
         if !screenPermissionGranted {
             return "Screen Recording is off for Workbench, so Snap & Talk can't capture the screen. Your sessions, screenshots and narration stay available, and you can add Snaps you already have."
         }
@@ -503,6 +522,9 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     private let captureDisplay: @MainActor () async throws -> ReadbackScreenshot
     private let captureSelection: any SnapImageSource
     private let microphoneAccess: () -> AVAuthorizationStatus
+    private let requestMicrophoneAccess: @MainActor () async -> Bool
+    private var captureAccessRequest: UUID?
+    private var captureAccessVisit = UUID()
     private var captureRequest: UUID?
     private var recorder: AVAudioRecorder?
     private var meter: Timer?
@@ -521,7 +543,8 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
          transcribeAudio: (@MainActor (URL) async throws -> String)? = nil,
          skillPacks: ReadbackSkillPackStore? = nil, screenAccess: ScreenCaptureAccess = .system,
          captureSelection: (any SnapImageSource)? = nil,
-         microphoneAccess: @escaping () -> AVAuthorizationStatus = { AVCaptureDevice.authorizationStatus(for: .audio) }) {
+         microphoneAccess: @escaping () -> AVAuthorizationStatus = { AVCaptureDevice.authorizationStatus(for: .audio) },
+         requestMicrophoneAccess: @escaping @MainActor () async -> Bool = { await AVCaptureDevice.requestAccess(for: .audio) }) {
         self.screenAccess = screenAccess
         self.transcribeAudio = transcribeAudio ?? { try await engine.transcribe($0) }
         self.defaults = defaults
@@ -529,6 +552,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         self.captureDisplay = captureDisplay
         self.captureSelection = captureSelection ?? SnapCapture()
         self.microphoneAccess = microphoneAccess
+        self.requestMicrophoneAccess = requestMicrophoneAccess
         super.init()
         microphonePermission = microphoneAccess()
         screenPermissionGranted = screenAccess.isGranted()
@@ -617,6 +641,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     /// Workbench is active again, perhaps back from System Settings. Only a
     /// return after Snap & Talk opened Screen Recording settings suggests reopening.
     func returnedToWorkbench() {
+        cancelCaptureAccess()
         microphonePermission = microphoneAccess()
         let granted = screenAccess.isGranted()
         if granted != screenPermissionGranted { screenPermissionGranted = granted }
@@ -625,6 +650,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
 
     func refreshPermissionState() {
+        cancelCaptureAccess()
         refreshSessionAvailability()
         refreshSkillPacks()
         screenPermissionGranted = screenAccess.isGranted()
@@ -773,7 +799,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
             notice = activeSections.isEmpty ? "Add a screenshot before handing off this session." : "Finish this session's capture and transcription before handing it off."
             return
         }
-        guard handoffCopy(target.prompt(for: sessionURL)) else {
+        guard handoffCopy(target.prompt(for: sessionURL, brief: .snapTalkDeck(pack: manifest?.skillPack))) else {
             notice = "The handoff prompt could not be copied. The session was not sent anywhere."
             stateChanged()
             return
@@ -800,6 +826,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
 
     func preflightPermissions() async {
+        cancelCaptureAccess()
         screenPermissionGranted = screenAccess.isGranted()
         microphonePermission = microphoneAccess()
         if permissionsReady { notice = nil }
@@ -809,17 +836,31 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
 
     /// Explicit capture setup only. Opening/reviewing a session never requests access.
     func requestCaptureAccess() async {
-        screenPermissionGranted = screenAccess.isGranted()
-        if !screenPermissionGranted { screenPermissionGranted = screenAccess.request() }
-        microphonePermission = microphoneAccess()
-        if microphonePermission == .notDetermined {
-            _ = await AVCaptureDevice.requestAccess(for: .audio)
-            microphonePermission = AVCaptureDevice.authorizationStatus(for: .audio)
+        guard captureAccessRequest == nil, !Task.isCancelled else { return }
+        let request = UUID(), visit = captureAccessVisit
+        captureAccessRequest = request; isRequestingCaptureAccess = true
+        // The OS prompt cannot be recalled. Keep its slot until it returns,
+        // even after the originating visit is cancelled, to prevent duplicates.
+        defer { captureAccessRequest = nil; isRequestingCaptureAccess = false }
+        var screenGranted = screenAccess.isGranted()
+        if !screenGranted { screenGranted = screenAccess.request() }
+        guard captureAccessVisit == visit, !Task.isCancelled else { return }
+        screenPermissionGranted = screenGranted
+        if microphoneAccess() == .notDetermined {
+            _ = await requestMicrophoneAccess()
         }
+        guard captureAccessVisit == visit, !Task.isCancelled else { return }
+        screenPermissionGranted = screenAccess.isGranted()
+        microphonePermission = microphoneAccess()
+        isRequestingCaptureAccess = false
         if permissionsReady { notice = nil }
         else { notice = permissionsProblem }
         stateChanged()
     }
+
+    /// Leaving, closing or replacing this visit invalidates only its pending
+    /// permission feedback. It neither revokes macOS access nor starts capture.
+    func cancelCaptureAccess() { captureAccessVisit = UUID() }
 
     func openScreenRecordingSettings() {
         openedScreenAccessSettings = true
@@ -1234,6 +1275,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
 
     func cancelCapture() {
+        cancelCaptureAccess()
         guard captureRequest != nil else { return }
         captureRequest = nil
         captureSelection.cancel()
@@ -1351,6 +1393,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
 
     private func setCurrent(url: URL, manifest: ReadbackManifest) {
+        cancelCaptureAccess()
         let retained = transcriptDrafts.filter { transcriptSaveFailures[$0.key] != nil }
         sessionURL = url.standardizedFileURL; self.manifest = manifest; notice = nil
         transcriptDrafts = Dictionary(uniqueKeysWithValues: manifest.sections.compactMap { section in
