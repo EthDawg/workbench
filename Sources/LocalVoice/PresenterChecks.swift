@@ -5,6 +5,7 @@ import Darwin
 
 enum PresenterChecks {
     @MainActor static func run() async throws {
+        try await PresenterPauseChecks.run()
         var passed = 0
         func check(_ condition: Bool, _ label: String) throws {
             guard condition else { throw VoiceError.message("Presenter check failed: \(label)") }
@@ -16,7 +17,7 @@ enum PresenterChecks {
         let defaults = UserDefaults(suiteName: suite)!
         let library = DemoLibraryModel(store: DemoLibraryStore(directory: root))
         let path = root.appendingPathComponent("socket").path
-        let model = PresenterModel(library: library, defaults: defaults, socketPath: path)
+        let model = PresenterModel(library: library, defaults: defaults, socketPath: path, isolatedCompatibilityCheck: true)
         model.start()
         defer { model.stop(); defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: root) }
         try check(model.enabled, "isolated native listener starts")
@@ -91,7 +92,8 @@ enum PresenterChecks {
         var outside = library.resources[0]; outside.title = "Updated elsewhere"
         try library.store.save([outside])
         let newer = try Data(contentsOf: library.store.url)
-        try check(!library.save(library.resources[0]) && library.error?.contains("changed outside") == true, "observed external edit blocks a stale in-memory save")
+        try check(!library.save(library.resources[0]) && library.storageFailure?.contains("changed outside") == true
+                  && library.savingDisabled, "observed external edit holds writes and blocks a stale in-memory save")
         try check(try Data(contentsOf: library.store.url) == newer, "conflicting save preserves the newer file exactly")
         let preserved = try Data(contentsOf: library.store.url)
         try Data("future-or-broken-library".utf8).write(to: library.store.url)
@@ -100,50 +102,5 @@ enum PresenterChecks {
         try check(try Data(contentsOf: library.store.url) == Data("future-or-broken-library".utf8), "invalid original library remains byte-for-byte intact")
         try preserved.write(to: library.store.url)
         print("PRESENTER_CHECKS_OK: \(passed) checks passed")
-    }
-}
-
-/// Native dogfood with the actual bridge and picker but disposable data. Never
-/// constructs AppModel or migrates user data. Registers only the Switch to key.
-@MainActor final class PresenterFixtureDelegate: NSObject, NSApplicationDelegate {
-    let root: URL
-    var presenter: PresenterModel!
-    var panel: PresenterPanelController!
-    var window: NSWindow!
-    let hotkeys = VoiceHotkeys()
-    init(root: URL) { self.root = root }
-    func applicationDidFinishLaunching(_ notification: Notification) {
-        let library = DemoLibraryModel(store: DemoLibraryStore(directory: root))
-        let defaults = UserDefaults(suiteName: FileManager.default.temporaryDirectory.appendingPathComponent("workbench.presenter.fixture.\(root.lastPathComponent)").path)!
-        presenter = PresenterModel(library: library, defaults: defaults)
-        presenter.start()
-        panel = PresenterPanelController(model: presenter, setup: { [weak self] in self?.window.makeKeyAndOrderFront(nil) })
-        var keys = VoicePreferences()
-        for id: UInt32 in [1, 2, 3] { var key = keys.shortcut(id); key.enabled = false; keys.setShortcut(key, for: id) }
-        hotkeys.onKey = { [weak self] id, down, _ in
-            if id == 4 && down { self?.presenter.message = "Switch to shortcut received."; self?.panel.show() }
-        }
-        hotkeys.register(keys)
-        if let failure = hotkeys.failures[4] { presenter.message = failure }
-        presenter.onSwitch = { [weak self] in self?.panel.hide(); self?.window.orderOut(nil) }
-        window = NSWindow(contentViewController: NSHostingController(rootView: PresenterFixtureView(model: presenter, show: { [weak self] in self?.panel.show() })))
-        window.title = "Workbench · Synthetic presenter fixture"; window.setContentSize(NSSize(width: 580, height: 420))
-        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]; window.isReleasedWhenClosed = false
-        window.center(); window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
-    }
-    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { panel.show(); return true }
-    func applicationWillTerminate(_ notification: Notification) { hotkeys.unregister(); presenter.stop() }
-}
-private struct PresenterFixtureView: View {
-    @ObservedObject var model: PresenterModel
-    var show: () -> Void
-    var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Text("Presenter destinations").font(.largeTitle.weight(.semibold))
-            Text("Synthetic acceptance fixture · isolated saved resources").foregroundStyle(.secondary)
-            Button("Switch to…", action: show).buttonStyle(.borderedProminent)
-            List(model.destinations, id: \.id) { item in Text(item.title + " · " + item.profileName) }
-            if let message = model.message { Text(message).font(.caption) }
-        }.padding(28).frame(minWidth: 520, minHeight: 350)
     }
 }

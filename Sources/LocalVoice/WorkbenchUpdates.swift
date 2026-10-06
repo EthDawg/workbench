@@ -22,9 +22,9 @@ struct WorkbenchBuild {
 
 /// One admission check for manual checks and the final update restart.
 struct WorkbenchUpdateActivity {
-    var voice = false, reading = false, capture = false, presentation = false
+    var voice = false, insertion = false, capture = false, presentation = false
     var drawing = false, timer = false, interaction = false
-    var busy: Bool { voice || reading || capture || presentation || drawing || timer || interaction }
+    var busy: Bool { voice || insertion || capture || presentation || drawing || timer || interaction }
 }
 
 @MainActor
@@ -101,7 +101,7 @@ final class WorkbenchUpdates: NSObject, ObservableObject {
     }
     @objc func checkForUpdates(_ sender: Any? = nil) {
         guard !activity().busy else {
-            status = "Finish recording, reading, presenting or editing before updating."
+            status = "Finish recording, inserting, presenting or editing before updating."
             actionNotice = "Finish your current activity, then update."
             return
         }

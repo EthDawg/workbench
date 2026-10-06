@@ -4,64 +4,61 @@ import StageKit
 import ToolbarCore
 import ToolbarKit
 
-/// One window and one host own the tools, dictation, narration and reading (#134 T4).
+/// One window and one host own the tools, dictation and narration (#134 T4).
 /// Starting an operation never changes the user's choice to show the toolbar.
 enum FloatingToolbarSurface: Equatable {
     /// Nothing to show, or a screen capture that must not include the controls.
     case hidden
     /// The shared host: the compact mark at rest; revealed, the launcher row, or a result's own
-    /// controls. Dictation, narration, reading and their results keep it up while Hide toolbar is on.
+    /// controls. Dictation, narration and their results keep it up while Hide toolbar is on.
     case tools
     /// The routine no-speech cue, for under two seconds, at the toolbar's place (#156).
     case cue
 
-    static func resolve(enabled: Bool, capturingScreen: Bool, dictation: Bool, narration: Bool, reading: Bool = false,
+    static func resolve(enabled: Bool, capturingScreen: Bool, dictation: Bool, narration: Bool,
                         cue: Bool = false) -> Self {
         if capturingScreen { return .hidden }
         if cue { return .cue }
-        return enabled || dictation || narration || reading ? .tools : .hidden
+        return enabled || dictation || narration ? .tools : .hidden
     }
 
     /// Hide toolbar is authoritative for the tools (#155). Drawing, a presentation and
     /// personas are deliberately not consulted: they carry on without the tools, reachable
     /// by their keys and the menu-bar panel, and Show floating toolbar brings the tools back
     /// with their live state. A prompt insertion keeps the tools until it ends, because its
-    /// Stop is there. Recording, processing, narration, reading and their results keep the
+    /// Stop is there. Recording, processing, narration and their results keep the
     /// same host up, at rest as the compact mark, until they end.
     static func resolve(shown: Bool, drawing: Bool, presenting: Bool, persona: Bool, inserting: Bool,
-                        capturingScreen: Bool, dictation: Bool, narration: Bool, reading: Bool, cue: Bool = false) -> Self {
+                        capturingScreen: Bool, dictation: Bool, narration: Bool, cue: Bool = false) -> Self {
         resolve(enabled: shown || inserting, capturingScreen: capturingScreen,
-                dictation: dictation, narration: narration, reading: reading, cue: cue)
+                dictation: dictation, narration: narration, cue: cue)
     }
 }
 
-/// A result that keeps its own controls (#134 T4): a dictation that needs attention, a reading
-/// that stopped. Delivery cues have their own brief, button-free presentation.
+/// A result that keeps its own controls (#134 T4): a dictation that needs attention. Delivery cues have their own brief, button-free presentation.
 enum FloatingResult: Equatable {
-    case dictationFailure, readingFailure
+    case dictationFailure
 
     /// The result waiting for the person stays reachable in the chooser while other work runs. A new recording or its processing sets it aside until it ends.
     @MainActor static func pending(_ model: AppModel) -> FloatingResult? {
         guard model.phase == .idle, !model.previewingPanel else { return nil }
         if model.captureFailure != nil { return .dictationFailure }
-        if model.readingFailure != nil, !model.rendering, !model.playing, !model.paused { return .readingFailure }
         return nil
     }
 
     /// Which result is pending, for the live work's hold (#222). A failure is known by its kind: the
     /// host lets a held one go when its owner sets that slot again, so a new failure in the same
     /// words is new.
-    enum Identity: Hashable { case dictationFailure, readingFailure }
+    enum Identity: Hashable { case dictationFailure }
     @MainActor func identity(in model: AppModel) -> Identity? {
         switch self {
         case .dictationFailure: return .dictationFailure
-        case .readingFailure: return .readingFailure
         }
     }
 
     /// The result the pointer's reveal shows in place of the row (#220, #222): the pending one,
     /// unless it was already pending when the input-consuming work now live began. The row of a
-    /// reading preparing, playing or paused, a narration, a recording, drawing or an insertion then
+    /// narration, recording, drawing or insertion then
     /// stays under the pointer, and the result keeps its recovery with its owner
     /// until the next reveal after that work ends. A result that arrives during the work, or over
     /// the chosen tool's own session, is revealed as any new result is.
@@ -176,7 +173,7 @@ struct FloatingToolbar: View {
     }
 
     /// The chosen tool's one accessory (#134 part B): Snap & Talk's Review once a session is open,
-    /// Draw's Tools, Present's Prompts, and Persona's picker, whose choices are the cards and the
+    /// Draw's Tools and Persona's picker, whose choices are the cards and the
     /// live camera, so the camera is one click from the revealed pill.
     func accessory(_ live: ToolbarLiveState) -> ToolbarAccessory? {
         if live.mode == .persona { return stage.personaPicker == nil ? nil : .personaPicker }
@@ -314,12 +311,10 @@ struct FloatingToolbar: View {
         }, perform: { _ in capture(mode, kind) })
     }
 
-    /// The accessory that opens a place or a panel: Review opens the session's review, and Prompts
-    /// the one Saved Prompts picker. Tools and Persona selection open their menus instead.
+    /// Review opens the session's review. Tools and Persona selection open their menus instead.
     func accessoryPanel(_ accessory: ToolbarAccessory?) -> ((NSView) -> Void)? {
         switch accessory {
         case .review?: return { _ in model.onShowEditor?("readback") }
-        case .prompts?: return { button in openPrompts(anchor: button, destination: controls.promptDestination?()) }
         case .tools?, .personaPicker?, nil: return nil
         }
     }
@@ -328,18 +323,8 @@ struct FloatingToolbar: View {
         switch accessory {
         case .tools?: return stage.makeAnnotationMenu(includeSettings: false)
         case .personaPicker?: return stage.makePersonaPickerMenu()
-        case .review?, .prompts?, nil: return NSMenu()
+        case .review?, nil: return NSMenu()
         }
-    }
-
-    /// One Saved Prompts picker for the pill and workspace (#159). It
-    /// freezes the field that was in front when it was asked for.
-    private func openPrompts(anchor: NSView? = nil, frame: NSRect? = nil, destination: TextDelivery.Target?) {
-        let context = PromptPickerController.Context(resources: model.library.resources, delivery: promptInsertion,
-            receipts: model.clipboardReceipt, destination: destination, trusted: AXIsProcessTrusted(),
-            controls: controls, openLibrary: { model.showLibrary() })
-        if let anchor { PromptPickerController.shared.show(from: anchor, context: context) }
-        else if let frame { PromptPickerController.shared.show(anchor: frame, context: context) }
     }
 
     /// Each operation goes to the owner that already does it. The toolbar never
@@ -348,7 +333,6 @@ struct FloatingToolbar: View {
         WorkbenchOperationDispatch(model: model, readback: readback, stage: stage, meetings: meetings) { mode in
             switch mode {
             case .dictate: dictate()
-            case .read: model.onShowEditor?("speak")
             case .snap: snapCapture()
             case .snapAndTalk: snap()
             case .draw: draw()
@@ -404,7 +388,7 @@ struct WorkbenchFloatingContent: View {
     let present: () -> Void
     var capture: (ToolbarMode, ToolbarCaptureKind) -> Void = { _, _ in }
 
-    /// Dictation, narration, reading and their results share the toolbar's host (#134 T4): the
+    /// Dictation, narration and their results share the toolbar's host (#134 T4): the
     /// compact mark at rest, the row or a result's controls revealed. Only the routine no-speech
     /// cue keeps its own view, briefly, at the same place.
     var body: some View {
@@ -422,7 +406,7 @@ struct WorkbenchFloatingContent: View {
 
 /// A result's own controls, revealed from the toolbar's place (#134 T4). A result's message is
 /// content, not only commands, so it keeps the view it had: a dictation that needs attention,
-/// a reading that stopped. It opens only when the
+/// a dictation that needs attention. It opens only when the
 /// person reveals the toolbar; revealing, collapsing or choosing a tool never dismisses,
 /// acknowledges or retries it.
 struct FloatingResultView: View {
@@ -432,53 +416,6 @@ struct FloatingResultView: View {
     var body: some View {
         switch result {
         case .dictationFailure: DictationResultView(model: model, controls: controls)
-        case .readingFailure: ReadingStoppedView(model: model, controls: controls)
         }
-    }
-}
-
-/// A reading that stopped because its audio could not be read keeps the reason, Retry and
-/// Dismiss until the person does one of them. Pausing, resuming and stopping a live reading
-/// are the toolbar row's next action and chooser (#134 T4); editing and voices stay in Workbench.
-/// It grows from the launcher's centre like the row, so at a right-hand dock it is mirrored:
-/// the reason sits over the mark the pointer came from, and Retry and Dismiss away from it
-/// (#211 F3).
-private struct ReadingStoppedView: View {
-    @ObservedObject var model: AppModel
-    @ObservedObject var controls: CaptureHUDControls
-    enum Action: Hashable { case retry, dismiss }
-    @FocusState private var focused: Action?
-    var body: some View {
-        if let failure = model.readingFailure { stopped(failure) }
-    }
-
-    private var firstAction: Action { model.canRetryReading ? .retry : .dismiss }
-
-    private func stopped(_ failure: AppModel.ReadingFailure) -> some View {
-        let mirrored = controls.rowAnchor.growsLeftward
-        let reason = HStack(spacing: 10) {
-            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange).accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Reading stopped").font(.system(size: 12, weight: .semibold))
-                Text("Its audio could not be read.").font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
-            }.accessibilityElement(children: .combine).accessibilityLabel(failure.message).help(failure.message)
-        }.accessibilitySortPriority(3)
-        // Mirrored or not, VoiceOver reads the reason, then Retry, then Dismiss.
-        let retry = Button("Retry") { model.retryReading() }.controlSize(.small).disabled(!model.canRetryReading)
-            .accessibilityHint("Makes new audio and reads from the start")
-            .focused($focused, equals: .retry).accessibilitySortPriority(2).resultAction("Retry", controls)
-        let dismiss = Button { model.dismissReadingFailure() } label: { Image(systemName: "xmark") }.buttonStyle(.plain)
-            .accessibilityLabel("Dismiss reading error")
-            .focused($focused, equals: .dismiss).accessibilitySortPriority(1).resultAction("Dismiss", controls)
-        return HStack(spacing: 10) {
-            if mirrored { dismiss; retry; Spacer(minLength: 4); reason }
-            else { reason; Spacer(minLength: 4); retry; dismiss }
-        }.padding(14).frame(width: CaptureHUDLayout.compact.width, height: CaptureHUDLayout.compact.height)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
-            .accessibilityElement(children: .contain).accessibilityLabel("Reading controls")
-            .defaultFocus($focused, firstAction)
-            .onAppear { ResultKeyboard.appeared(controls) { focused = firstAction } }
-            .onExitCommand(perform: controls.endKeyboardInteraction)
-            .workbenchTheme()
     }
 }

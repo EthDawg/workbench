@@ -9,12 +9,11 @@
 /// journey: starting anything from any door makes it the mode, and ending leaves
 /// the mode where it was. Timer is not a mode; it stays a panel row.
 public enum ToolbarMode: String, CaseIterable, Sendable {
-    case dictate, read, snap, snapAndTalk, draw, present, persona
+    case dictate, snap, snapAndTalk, draw, present, persona
 
     public var title: String {
         switch self {
         case .dictate: return "Dictate"
-        case .read: return "Read"
         case .snap: return "Snap"
         case .snapAndTalk: return "Snap & Talk"
         case .draw: return "Draw"
@@ -27,7 +26,6 @@ public enum ToolbarMode: String, CaseIterable, Sendable {
     public var symbol: String {
         switch self {
         case .dictate: return "mic"
-        case .read: return "speaker.wave.2"
         case .snap: return "viewfinder"
         case .snapAndTalk: return "rectangle.dashed.badge.record"
         case .draw: return "pencil.tip"
@@ -39,7 +37,6 @@ public enum ToolbarMode: String, CaseIterable, Sendable {
     public var page: String {
         switch self {
         case .dictate: return "dictate"
-        case .read: return "speak"
         case .snap: return "snap"
         case .snapAndTalk: return "readback"
         case .draw: return "annotate"
@@ -129,8 +126,6 @@ public enum ToolbarAccessory: String, CaseIterable, Sendable {
     case review
     /// Draw: the drawing choices.
     case tools
-    /// Present: Saved Prompts.
-    case prompts
     /// Persona: the frozen card or prepared-set choices currently on screen.
     case personaPicker
 
@@ -138,7 +133,6 @@ public enum ToolbarAccessory: String, CaseIterable, Sendable {
         switch self {
         case .review: return "Review"
         case .tools: return "Tools"
-        case .prompts: return "Prompts"
         case .personaPicker: return "Choose Persona"
         }
     }
@@ -146,7 +140,6 @@ public enum ToolbarAccessory: String, CaseIterable, Sendable {
         switch self {
         case .review: return "rectangle.stack"
         case .tools: return "paintpalette"
-        case .prompts: return "text.bubble"
         case .personaPicker: return "person.crop.rectangle.stack"
         }
     }
@@ -155,7 +148,6 @@ public enum ToolbarAccessory: String, CaseIterable, Sendable {
         switch self {
         case .review: return .snapAndTalk
         case .tools: return .draw
-        case .prompts: return .present
         case .personaPicker: return .persona
         }
     }
@@ -169,21 +161,20 @@ public enum ToolbarAccessory: String, CaseIterable, Sendable {
     }
 
     /// What the chosen tool offers now: Snap & Talk's Review once a session is open, Draw's Tools,
-    /// Present's Prompts, and Persona's picker. The cards and the live camera are always Persona's
+    /// and Persona's picker. The cards and the live camera are always Persona's
     /// choices, so its picker is one click away whatever is live; a prepared set offers its sets
     /// while it shows. Preparation stays reachable through the chooser's workspace door.
     public static func offered(for live: ToolbarLiveState, selectedPersonaCopy: Bool) -> ToolbarAccessory? {
         switch live.mode {
         case .snapAndTalk: return live.captureCount != nil ? .review : nil
         case .draw: return .tools
-        case .present: return .prompts
         case .persona:
             switch live.persona {
             case .session: return selectedPersonaCopy ? .personaPicker : nil
             case .sessionHidden: return nil
             case .none, .shown, .cameraStarting, .cameraShown, .cameraHidden, .cameraFailed: return .personaPicker
             }
-        case .dictate, .read, .snap: return nil
+        case .dictate, .snap, .present: return nil
         }
     }
 }

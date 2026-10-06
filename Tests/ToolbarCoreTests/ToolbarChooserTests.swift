@@ -38,7 +38,7 @@ final class ToolbarChooserTests: XCTestCase {
         chooser.type("d", at: 13.9)
         XCTAssertEqual(chooser.highlighted, .persona, "no tool starts with persd: the highlight stays until a pause starts the text again")
         chooser.type("r", at: 20); chooser.type("e", at: 20.1); chooser.type("a", at: 20.2)
-        XCTAssertEqual(chooser.highlighted, .read)
+        XCTAssertEqual(chooser.highlighted, .persona, "retired Read cannot be selected by its old name")
         chooser.type("d", at: 25)
         XCTAssertEqual(chooser.highlighted, .dictate)
         chooser.type("r", at: 25.2)

@@ -226,8 +226,6 @@ struct WorkbenchQuickPanel: View {
                 // A small control draws the 11 pt label the native Options controls use on every
                 // other row; a font on a borderless menu is ignored.
                 .controlSize(.small).foregroundStyle(Workbench.accent)
-        case .read:
-            EmptyView()
         case .snap:
             NativeControlMenu(title: "Options") {
                 let menu = NSMenu(title: "Snap"); menu.autoenablesItems = false
@@ -276,7 +274,7 @@ struct WorkbenchQuickPanel: View {
             menu.addItem(ToolbarMenuAction("Open Persona…") { open("personas") })
             return menu
         case .timer: return stage.makeTimerMenu(optionsOnly: true)
-        case .dictate, .read, .snap, .snapAndTalk: return nil
+        case .dictate, .snap, .snapAndTalk: return nil
         }
     }
 
@@ -288,7 +286,6 @@ struct WorkbenchQuickPanel: View {
         let dispatch = WorkbenchOperationDispatch(model: model, readback: readback, stage: stage, meetings: model.meetings) { mode in
             switch mode {
             case .dictate: model.onMenuRecording?()
-            case .read: open("speak")
             case .snap: snapCapture(.region)
             case .snapAndTalk: snap()
             case .draw: draw()

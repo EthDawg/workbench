@@ -227,7 +227,6 @@ struct HandoffJobCard<MadeFrom: View>: View {
     var applySuggestedMetadata: ((HandoffJob, String) -> Void)?
     var query = ""
     var copyResult: (HandoffJob, String) -> Void = { _, _ in }
-    var readAloud: (String) -> Void = { _ in }
     @ViewBuilder var madeFrom: MadeFrom
     @State private var showingOthers = false
 
@@ -267,9 +266,9 @@ struct HandoffJobCard<MadeFrom: View>: View {
                 Button("Copy instructions") { jobs.copy(job) }.accessibilityLabel("Copy instructions, " + context)
                 Button("Show selected files") { jobs.showInputs(job) }.accessibilityLabel("Show selected files, " + context)
                 if job.status == .completed {
-                    Button(expanded == job.id ? "Hide result" : "Read result") { expanded = expanded == job.id ? nil : job.id }
+                    Button(expanded == job.id ? "Hide result" : "Review result") { expanded = expanded == job.id ? nil : job.id }
                         .disabled(!resultReady && expanded != job.id)
-                        .accessibilityLabel((expanded == job.id ? "Hide result, " : "Read result, ") + context)
+                        .accessibilityLabel((expanded == job.id ? "Hide result, " : "Review result, ") + context)
                     Button("Open result") { jobs.showResult(job) }.disabled(!resultReady)
                         .accessibilityLabel("Open result, " + context)
                     if job.reviewKey != nil {
@@ -313,10 +312,10 @@ struct HandoffJobCard<MadeFrom: View>: View {
                                 Button("Show selected files") { jobs.showInputs(previous) }
                                     .accessibilityLabel("Show selected files, " + previousContext)
                                 if previous.status == .completed {
-                                    Button(expanded == previous.id ? "Hide result" : "Read result") {
+                                    Button(expanded == previous.id ? "Hide result" : "Review result") {
                                         expanded = expanded == previous.id ? nil : previous.id
                                     }.disabled(!readable && expanded != previous.id)
-                                        .accessibilityLabel((expanded == previous.id ? "Hide result, " : "Read result, ") + previousContext)
+                                        .accessibilityLabel((expanded == previous.id ? "Hide result, " : "Review result, ") + previousContext)
                                     Button("Open saved result") { jobs.showResult(previous) }.disabled(!readable)
                                         .accessibilityLabel("Open saved result, " + previousContext)
                                     Button("Use as current review") { jobs.publishReview(previous, replacingChanges: true) }
@@ -360,7 +359,7 @@ struct HandoffJobCard<MadeFrom: View>: View {
         if let files = jobs.files(task) {
             if let result = files.resultText {
                 HandoffResultPreview(text: result, context: Self.context(task),
-                    copyText: { copyResult(task, result) }, readAloud: { readAloud(result) })
+                    copyText: { copyResult(task, result) })
                 if let applySuggestedMetadata, jobs.isMetadataSuggestion(task) {
                     Button("Review suggested details…") { applySuggestedMetadata(task, result) }
                 }
@@ -386,19 +385,16 @@ struct HandoffJobCard<MadeFrom: View>: View {
     }
 }
 
-/// Reuses the exact words currently shown. Read opens its normal import review;
-/// it does not play or replace a current reading without that owner's admission.
+/// Copies the exact words currently shown by visual result review.
 struct HandoffResultPreview: View {
     let text: String
     let context: String
     var copyText: () -> Void
-    var readAloud: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Button("Copy result", action: copyText).accessibilityLabel("Copy result, " + context)
-                Button("Read aloud", action: readAloud).accessibilityLabel("Read aloud, " + context)
             }.buttonStyle(.borderless).font(.caption)
                 .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             Text(text.isEmpty ? "The saved result has no text." : text)
@@ -437,12 +433,15 @@ struct HandoffReviewView: View {
     @State private var showingConnections = false
     @State private var showingPreviousReview = false
     @State private var initialized = false
+    @State private var selectedProvider: SubscriptionProvider = .codex
+    @State private var loadedSkill: ReadbackSkillPackSnapshot?
+    @State private var skillProblem: String?
     @StateObject private var evidencePicker = TranscriptHandoffRunner()
     private var skill: TranscriptHandoffSkill { skills.first(where: { $0.id == skillID }) ?? .followUp }
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Hand off selected work").font(.title2.weight(.semibold))
-            Text("\(sources.count) items. Each task keeps this selection, even when you pick different items later.")
+            Text("\(sources.count) \(sources.count == 1 ? "item" : "items"). Each task keeps this selection, even when you pick different items later.")
                 .foregroundStyle(.secondary)
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
@@ -510,10 +509,19 @@ struct HandoffReviewView: View {
                         Text("This skill uses the manual handoff so your assistant can create its requested files. Copy instructions, then attach the selected work folder.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
-                    if sources.contains(where: { !$0.images.isEmpty }) {
-                        Text("Codex: up to 64 images, 10 MiB each and 128 MiB together. Claude Code: up to 20 images, 3.75 MiB each and 16 MiB together, with a 24 MiB encoded request limit. Edited Snaps share the visible crop and annotations; originals stay in History. Copy instructions keeps the complete selection.")
-                            .font(.caption).foregroundStyle(.secondary)
+                    Text(sources.contains(where: { !$0.images.isEmpty })
+                        ? "Copy instructions includes the complete text and names each image to attach. Edited Snaps share the visible crop and annotations; originals stay in History."
+                        : "Copy instructions includes the complete request and selected text. For a text reply, paste these instructions into your assistant; no Workbench connection is needed.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Divider()
+                    HStack {
+                        Picker("Run with", selection: $selectedProvider) {
+                            ForEach(SubscriptionProvider.allCases) { Text($0.title).tag($0) }
+                        }
+                        Button("Check again") { Task { await jobs.refresh() } }.disabled(jobs.refreshing)
                     }
+                    Text(readiness.detail).font(.caption).foregroundStyle(.secondary)
+                        .accessibilityIdentifier("handoff.runner-readiness")
                 }.frame(maxWidth: .infinity, alignment: .leading)
             }
             if let problem { Text(problem).font(.caption).foregroundStyle(.red) }
@@ -522,16 +530,12 @@ struct HandoffReviewView: View {
                 Button("Connections…") { showingConnections = true }
                 Spacer()
                 Button("Copy instructions") { submit(provider: nil) }.disabled(sources.isEmpty)
-                Menu("Start task") {
-                    ForEach(SubscriptionProvider.allCases) { provider in
-                        Button("Start with \(provider.title)") { submit(provider: provider) }
-                            .disabled(jobs.connections[provider]?.ready != true || !jobs.enabled(provider) || !supports(provider))
-                    }
-                }.disabled(sources.isEmpty || jobs.isBusy || !skill.repliesInline).menuStyle(.borderlessButton).fixedSize()
+                Button("Start task") { submit(provider: selectedProvider) }.disabled(!readiness.canStart)
             }
         }.padding(24)
             .frame(width: 680, height: min(720, max(400, (NSScreen.main?.visibleFrame.height ?? 820) - 100)))
             .onChange(of: skillID) { previous, current in
+                loadSkill()
                 // The task follows the chosen skill only while it is still the
                 // previous skill's suggestion; typed requests are never replaced.
                 let before = skills.first(where: { $0.id == previous })?.defaultTask
@@ -545,11 +549,18 @@ struct HandoffReviewView: View {
                 task = initialTask ?? TranscriptHandoffSkill.followUp.defaultTask ?? ""
                 if let preferredSkillID, skills.contains(where: { $0.id == preferredSkillID }) { skillID = preferredSkillID }
                 evidenceURL = initialEvidenceURL
+                loadSkill()
                 refreshSources()
                 Task { await jobs.refresh() }
             }
             .sheet(isPresented: $showingConnections) {
                 HandoffConnectionsSheet(jobs: jobs, backTitle: "Back to handoff") { showingConnections = false }
+            }
+            .onChange(of: showingConnections) { _, shown in
+                if !shown { Task { await jobs.refresh() } }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                Task { await jobs.refresh() }
             }
             .sheet(isPresented: $showingPreviousReview) {
                 VStack(alignment: .leading, spacing: 16) {
@@ -578,11 +589,36 @@ struct HandoffReviewView: View {
             if let error = jobs.error { problem = error }
         } catch { problem = error.localizedDescription }
     }
-    private func supports(_ provider: SubscriptionProvider) -> Bool {
-        let images = sources.flatMap(\.images)
-        return images.count <= SubscriptionCLILimits.maximumImages(for: provider)
-            && images.allSatisfy { $0.count <= SubscriptionCLILimits.maximumImageBytes(for: provider) }
-            && images.reduce(0, { $0 + $1.count }) <= SubscriptionCLILimits.maximumTotalImageBytes(for: provider)
+    private var readiness: HandoffRunReadiness {
+        var inputProblem = skillProblem
+        if sources.isEmpty { inputProblem = "Choose readable saved items before starting a task." }
+        else if sources.count > HandoffJobStore.maximumItems { inputProblem = "Select between 1 and 200 items." }
+        else if task.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || task.count > 20_000 {
+            inputProblem = "Describe what you want to prepare, in up to 20,000 characters."
+        }
+        if let loadedSkill, inputProblem == nil {
+            var items = sources
+            for index in items.indices { items[index].role = roles[items[index].reference] ?? items[index].role }
+            var review = reviewContext
+            if !includePreviousReview { review?.previousDocument = nil }
+            let id = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
+            let snapshot = HandoffSnapshotRecord(id: id, createdAt: .distantPast,
+                task: task.trimmingCharacters(in: .whitespacesAndNewlines), skill: loadedSkill.reference,
+                items: HandoffJobStore.inputRecords(items), review: review)
+            let text = String(data: loadedSkill.files["SKILL.md"] ?? Data(), encoding: .utf8) ?? ""
+            let prompt = HandoffJobStore.prompt(snapshot: snapshot, skill: text,
+                folder: jobs.directory.appendingPathComponent(id.uuidString), manual: false)
+            inputProblem = HandoffRunReadiness.inputProblem(provider: selectedProvider, prompt: prompt,
+                imageBytes: items.flatMap(\.images).map(\.count))
+        }
+        return HandoffRunReadiness.evaluate(provider: selectedProvider, enabled: jobs.enabled(selectedProvider),
+            checking: jobs.refreshing, connection: jobs.connections[selectedProvider], busy: jobs.isBusy,
+            compatible: loadedSkill.map { SkillMetadata(snapshot: $0).repliesInline && $0.files.count == 1 } ?? true,
+            inputProblem: inputProblem)
+    }
+    private func loadSkill() {
+        do { loadedSkill = try skill.load(); skillProblem = nil }
+        catch { loadedSkill = nil; skillProblem = error.localizedDescription }
     }
     private func currentSources() throws -> [HandoffSourceSnapshot] {
         var result = try resolveSources()

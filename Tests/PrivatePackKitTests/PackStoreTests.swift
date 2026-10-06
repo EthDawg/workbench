@@ -7,8 +7,9 @@ private actor FixtureSource: PackContentSource {
     let bytes: [String: Data]
     let digest: String
     let failAfter: Int?
+    let corruptDownload: Bool
     var requests = 0
-    init(owner: String = "company", version: String = "1.0.0", changed: Bool = false, minimum: String = "2.2.0", failAfter: Int? = nil) throws {
+    init(owner: String = "company", version: String = "1.0.0", changed: Bool = false, minimum: String = "2.2.0", failAfter: Int? = nil, corruptDownload: Bool = false) throws {
         source = try .github(owner: owner, repository: "pack")
         let bytes = ["skills/follow-up/SKILL.md": Data("# Prepare the requested follow-up\n".utf8),
                  "personas/example.png": Data((changed ? "changed fixture" : "original fixture").utf8)]
@@ -17,6 +18,7 @@ private actor FixtureSource: PackContentSource {
             files: bytes.keys.sorted().map { PackFile(path: $0, sha256: PackDigest.hex(bytes[$0]!), size: bytes[$0]!.count) })
         self.bytes = bytes
         digest = PackDigest.hex(try JSONEncoder().encode(manifestValue)); self.failAfter = failAfter
+        self.corruptDownload = corruptDownload
     }
     func currentRevision() async throws -> PackRevision { try PackRevision(sha: String(repeating: "a", count: 40)) }
     func catalog(at revision: PackRevision) async throws -> PackCatalog {
@@ -29,6 +31,7 @@ private actor FixtureSource: PackContentSource {
     func file(_ file: PackFile, for release: PackRelease, at revision: PackRevision) async throws -> Data {
         requests += 1
         if let failAfter, requests > failAfter { throw CancellationError() }
+        if corruptDownload { return Data(repeating: 120, count: bytes[file.path]!.count) }
         return bytes[file.path]!
     }
 }
@@ -71,6 +74,24 @@ final class PackStoreTests: XCTestCase {
             catch { XCTAssertTrue(error is PackError) }
         }
         let packs = try await store.installed(); XCTAssertEqual(packs, [first.pack])
+    }
+    func testInvalidReplacementKeepsExactActiveRecordAndPayload() async throws {
+        let root = try fixture(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = PackStore(root: root)
+        let first = try await store.install(from: FixtureSource(), appVersion: app)
+        let active = root.appendingPathComponent(first.pack.id + "/active.json")
+        let original = try Data(contentsOf: active)
+        let frozen = try await store.payload(for: first.pack).snapshot(entryID: "follow-up")
+        do {
+            _ = try await store.install(from: FixtureSource(version: "1.1.0", changed: true, corruptDownload: true), appVersion: app)
+            XCTFail("invalid replacement accepted")
+        } catch { XCTAssertTrue(error is PackError) }
+        XCTAssertEqual(try Data(contentsOf: active), original)
+        let kept = try await store.installed()
+        XCTAssertEqual(kept, [first.pack])
+        let payload = try await store.payload(for: first.pack)
+        XCTAssertEqual(try payload.data(at: "personas/example.png"), Data("original fixture".utf8))
+        XCTAssertEqual(frozen.version, PackVersion("1.0.0"))
     }
     func testRepositoryIdentityIsolatesSamePackID() async throws {
         let root = try fixture(); defer { try? FileManager.default.removeItem(at: root) }

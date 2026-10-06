@@ -19,7 +19,7 @@ enum ShortcutMigrationChecks {
             return value
         }
         func entries(_ voice: VoicePreferences, _ stage: [StageShortcutDescriptor]) -> [ShortcutEntry] {
-            VoicePreferences.shortcutIDs.map { ShortcutEntry(id: "voice.\($0)", title: $0 == 6 ? "Read" : $0 == 8 ? "Snap" : "Voice \($0)", shortcut: voice.shortcut($0)) }
+            VoicePreferences.shortcutIDs.map { ShortcutEntry(id: "voice.\($0)", title: $0 == 7 ? "Present" : $0 == 8 ? "Snap" : "Voice \($0)", shortcut: voice.shortcut($0)) }
                 + stage.map { ShortcutEntry(id: "stage.\($0.id)", title: $0.label,
                     shortcut: VoiceShortcut(keyCode: $0.keyCode, modifiers: $0.modifiers, enabled: $0.enabled)) }
         }
@@ -75,18 +75,18 @@ enum ShortcutMigrationChecks {
             let (v, s) = load(voice, stage)
             try check(v.shortcut(8) == option(kVK_ANSI_Y), "a chosen Snap key survives migration and relaunch")
             try check(v.enabledCombinations.contains(option(kVK_ANSI_Y).combination), "a chosen Snap key registers with the others")
-            var clash = v; clash.setShortcut(option(kVK_ANSI_Y), for: 6); clash.save(to: voice)
+            var clash = v; clash.setShortcut(option(kVK_ANSI_Y), for: 7); clash.save(to: voice)
             let failures = ShortcutConflict.duplicateFailures(in: entries(load(voice, stage).0, s))
-            try check(failures["voice.8"]?.contains("Read") == true && failures["voice.6"]?.contains("Snap") == true, "a duplicate of the Snap key is reported on both rows")
+            try check(failures["voice.8"]?.contains("Present") == true && failures["voice.7"]?.contains("Snap") == true, "a duplicate of the Snap key is reported on both rows")
             var reset = clash
             for id in VoicePreferences.shortcutIDs { reset.setShortcut(VoicePreferences().shortcut(id), for: id) }
             try check(!reset.shortcut(8).enabled, "Reset shortcuts turns Snap off with the rest")
         }
         try fixture { voice, stage in
-            var previous = legacyVoice(); previous.readingShortcut = option(kVK_ANSI_D); previous.save(to: voice)
+            var previous = legacyVoice(); previous.presentationShortcut = option(kVK_ANSI_D); previous.save(to: voice)
             try saveStage(["pen": VoiceShortcut(keyCode: UInt32(kVK_ANSI_D))], to: stage)
             let (v, s) = load(voice, stage)
-            try check(v.shortcut(6) == option(kVK_ANSI_D), "Voice's chosen Option-D remains enabled")
+            try check(v.shortcut(7) == option(kVK_ANSI_D), "Voice's chosen Option-D remains enabled")
             try check(stageKey("pen", in: s) == VoiceShortcut(keyCode: UInt32(kVK_ANSI_D)), "Draw falls back instead of claiming Voice's choice")
             try check(ShortcutConflict.duplicateFailures(in: entries(v, s)).isEmpty, "reverse migration preserves one owner per combination")
         }
@@ -96,12 +96,12 @@ enum ShortcutMigrationChecks {
             try check(v.shortcut(1) == VoicePreferences.legacyDefaults[1] && stageKey("timer", in: s).enabled, "fresh Voice respects an already migrated Stage catalogue")
         }
         try fixture { voice, stage in
-            var previous = legacyVoice(); previous.readingShortcut = option(kVK_ANSI_D); previous.save(to: voice)
+            var previous = legacyVoice(); previous.presentationShortcut = option(kVK_ANSI_D); previous.save(to: voice)
             voice.set(1, forKey: VoicePreferences.shortcutRevisionKey)
             // The Stage data may be absent even when its old revision marker survives.
             stage.set(4, forKey: "preferences.schema")
             let (v, s) = load(voice, stage)
-            try check(stageKey("pen", in: s) == VoiceShortcut(keyCode: UInt32(kVK_ANSI_D)) && v.shortcut(6).enabled, "fresh Stage respects an already migrated Voice catalogue")
+            try check(stageKey("pen", in: s) == VoiceShortcut(keyCode: UInt32(kVK_ANSI_D)) && v.shortcut(7).enabled, "fresh Stage respects an already migrated Voice catalogue")
         }
         try fixture { voice, stage in
             legacyVoice().save(to: voice)
@@ -112,19 +112,19 @@ enum ShortcutMigrationChecks {
             try check(ShortcutConflict.duplicateFailures(in: entries(v, s)).isEmpty, "fallback exhaustion adds no collision")
         }
         try fixture { voice, stage in
-            var previous = legacyVoice(); previous.readingShortcut = option(kVK_ANSI_D)
+            var previous = legacyVoice(); previous.presentationShortcut = option(kVK_ANSI_D)
             previous.dictationShortcut = VoiceShortcut(keyCode: UInt32(kVK_ANSI_D)); previous.save(to: voice)
             try saveStage([:], to: stage)
             let (v, s) = load(voice, stage)
             try check(!stageKey("pen", in: s).enabled, "Draw stays off when both new and fallback keys are Voice choices")
-            try check(v.shortcut(1).enabled && v.shortcut(6).enabled, "both Voice choices survive fallback exhaustion")
+            try check(v.shortcut(1).enabled && v.shortcut(7).enabled, "both Voice choices survive fallback exhaustion")
         }
         try fixture { voice, stage in
-            var previous = legacyVoice(); previous.readingShortcut = option(kVK_ANSI_D, enabled: false); previous.save(to: voice)
+            var previous = legacyVoice(); previous.presentationShortcut = option(kVK_ANSI_D, enabled: false); previous.save(to: voice)
             try saveStage(["timer": option(kVK_ANSI_V, enabled: false)], to: stage)
             let (v, s) = load(voice, stage)
             try check(v.shortcut(1) == VoicePreferences.defaultDictationShortcut && stageKey("pen", in: s) == option(kVK_ANSI_D), "disabled choices release keys in both directions")
-            try check(!v.shortcut(6).enabled && !stageKey("timer", in: s).enabled, "the disabled choices themselves stay off")
+            try check(!v.shortcut(7).enabled && !stageKey("timer", in: s).enabled, "the disabled choices themselves stay off")
         }
         try fixture { voice, stage in
             var previous = legacyVoice(); previous.readbackShortcut = VoicePreferences.legacyReadbackShortcut; previous.save(to: voice)
@@ -133,20 +133,20 @@ enum ShortcutMigrationChecks {
             try check(v.shortcut(5) == VoicePreferences.legacyDefaults[5] && stageKey("timer", in: s) == option(kVK_ANSI_C), "earliest Snap shortcut migration also respects Stage choices")
         }
         try fixture { voice, stage in
-            var previous = legacyVoice(); previous.readingShortcut = option(kVK_ANSI_Y); previous.save(to: voice)
+            var previous = legacyVoice(); previous.presentationShortcut = option(kVK_ANSI_Y); previous.save(to: voice)
             try saveStage(["timer": option(kVK_ANSI_Y)], to: stage)
             let (v, s) = load(voice, stage), catalogue = entries(v, s)
             let failures = ShortcutConflict.duplicateFailures(in: catalogue)
-            try check(failures["voice.6"]?.contains("Timer") == true && failures["stage.timer"]?.contains("Read") == true, "both duplicate rows name the other saved action")
+            try check(failures["voice.7"]?.contains("Timer") == true && failures["stage.timer"]?.contains("Present") == true, "both duplicate rows name the other saved action")
             try check(failures.values.allSatisfy { $0.contains("paused") && $0.contains("Settings › Keyboard") }, "collision errors explain the pause and repair route")
             let registration = ShortcutConflict.voiceRegistrationPreferences(v, failures: failures)
-            try check(!registration.shortcut(6).enabled && v.shortcut(6).enabled && stageKey("timer", in: s).enabled, "registration pauses Voice without changing either saved choice")
+            try check(!registration.shortcut(7).enabled && v.shortcut(7).enabled && stageKey("timer", in: s).enabled, "registration pauses Voice without changing either saved choice")
             let stageFailures = StageShortcutSettings.registrationFailures(in: s) { code, modifiers in
                 catalogue.first { $0.id.hasPrefix("voice.") && $0.shortcut.enabled && $0.shortcut.keyCode == code && $0.shortcut.modifiers == modifiers }
                     .map { "Also assigned to \($0.title). Both shortcuts are paused." }
             }
-            try check(stageFailures["timer"]?.contains("Read") == true, "Stage's production registration plan also pauses its duplicate")
-            var repaired = v; repaired.readingShortcut?.enabled = false; repaired.save(to: voice)
+            try check(stageFailures["timer"]?.contains("Present") == true, "Stage's production registration plan also pauses its duplicate")
+            var repaired = v; repaired.presentationShortcut?.enabled = false; repaired.save(to: voice)
             let (v2, s2) = load(voice, stage)
             try check(ShortcutConflict.duplicateFailures(in: entries(v2, s2)).isEmpty, "turning off either duplicate clears the collision on reload")
             try check(stageKey("timer", in: s2) == option(kVK_ANSI_Y), "repair leaves the remaining chosen key available")
@@ -155,7 +155,16 @@ enum ShortcutMigrationChecks {
             try saveStage(["timer": option(kVK_ANSI_Y, enabled: false)], to: stage, revision: 4)
             let (v3, s3) = load(voice, stage)
             let repairedFailures = ShortcutConflict.duplicateFailures(in: entries(v3, s3))
-            try check(repairedFailures.isEmpty && ShortcutConflict.voiceRegistrationPreferences(v3, failures: repairedFailures).shortcut(6).enabled, "turning off Stage's duplicate also releases Voice's chosen key")
+            try check(repairedFailures.isEmpty && ShortcutConflict.voiceRegistrationPreferences(v3, failures: repairedFailures).shortcut(7).enabled, "turning off Stage's duplicate also releases Voice's chosen key")
+        }
+        try fixture { voice, stage in
+            var previous = legacyVoice(); previous.readingShortcut = option(kVK_ANSI_D); previous.save(to: voice)
+            try saveStage(["pen": VoiceShortcut(keyCode: UInt32(kVK_ANSI_D))], to: stage)
+            let (v, s) = load(voice, stage)
+            try check(v.readingShortcut == option(kVK_ANSI_D), "retired Read preserves its stored enabled assignment")
+            try check(!VoicePreferences.shortcutIDs.contains(6) && !v.enabledCombinations.contains(option(kVK_ANSI_D).combination), "retired Read neither registers nor reserves a combination")
+            try check(stageKey("pen", in: s) == option(kVK_ANSI_D), "Draw may use the retired Read combination")
+            try check(ShortcutConflict.duplicateFailures(in: entries(v, s)).isEmpty, "retired Read cannot report a duplicate row")
         }
         try fixture { voice, stage in
             let corrupt = Data("preserve unreadable preferences".utf8)

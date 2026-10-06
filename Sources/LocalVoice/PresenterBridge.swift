@@ -10,12 +10,17 @@ final class PresenterPeer: @unchecked Sendable {
     private let writer = DispatchQueue(label: "workbench.browser.writer")
     private let lock = NSLock()
     private var stopped = false
+    private var reading = false
+    private var closed = false
     init(fd: Int32) { self.fd = fd; PresenterSocket.configure(fd) }
     func start(receive: @escaping @Sendable (PresenterMessage) -> Void, ended: @escaping @Sendable () -> Void) {
+        lock.lock()
+        guard !stopped, !reading else { lock.unlock(); return }
+        reading = true; lock.unlock()
         DispatchQueue.global(qos: .userInitiated).async { [self] in
             do { while true { receive(try PresenterSocket.readMessage(fd)) } } catch { }
             stop()
-            writer.sync { self.lock.lock(); Darwin.close(self.fd); self.lock.unlock() }
+            writer.sync { self.lock.lock(); self.closeDescriptor(); self.lock.unlock() }
             ended()
         }
     }
@@ -29,8 +34,14 @@ final class PresenterPeer: @unchecked Sendable {
     }
     func stop() {
         lock.lock(); defer { lock.unlock() }
-        guard !stopped else { return }; stopped = true; shutdown(fd, SHUT_RDWR)
+        if !stopped { stopped = true; shutdown(fd, SHUT_RDWR) }
+        // A late accept can be rejected before a reader ever owns the descriptor.
+        if !reading { closeDescriptor() }
     }
+    private func closeDescriptor() {
+        guard !closed else { return }; closed = true; Darwin.close(fd)
+    }
+    deinit { stop() }
 }
 
 final class PresenterListener {
@@ -90,6 +101,9 @@ final class PresenterModel: ObservableObject {
     let machineID: UUID
     private let defaults: UserDefaults
     private let socketPath: String?
+    private let compatibilityCheck: Bool
+    private let hostInstaller: (() throws -> Void)?
+    private var admitsCommands: Bool { BrowserIntegration.isAvailable || compatibilityCheck }
     private let listener = PresenterListener()
     private var peers: [UUID: PresenterPeer] = [:]
     private var profiles: [UUID: (id: UUID, name: String)] = [:]
@@ -99,12 +113,20 @@ final class PresenterModel: ObservableObject {
     private var timer: Task<Void, Never>?
     private var generation = UUID()
 
-    init(library: DemoLibraryModel, defaults: UserDefaults = .standard, socketPath: String? = nil) {
+    init(library: DemoLibraryModel, defaults: UserDefaults = .standard, socketPath: String? = nil,
+         isolatedCompatibilityCheck: Bool = false, hostInstaller: (() throws -> Void)? = nil) {
+        // Only the retained automated protocol check may run a transport while the product is
+        // paused. It cannot use an edition socket or install a native-host manifest.
+        if isolatedCompatibilityCheck {
+            precondition(socketPath?.hasPrefix("/tmp/wb-presenter-") == true && socketPath?.contains("..") == false)
+        }
+        compatibilityCheck = isolatedCompatibilityCheck
+        self.hostInstaller = hostInstaller
         self.library = library; self.defaults = defaults; self.socketPath = socketPath
         if let string = defaults.string(forKey: "browser.machineID"), let id = UUID(uuidString: string) { machineID = id }
         else { let id = UUID(); machineID = id; defaults.set(id.uuidString, forKey: "browser.machineID") }
         library.$resources.sink { [weak self] _ in Task { @MainActor in self?.refresh() } }.store(in: &observers)
-        if defaults.bool(forKey: "browser.enabled") { start() }
+        if admitsCommands && defaults.bool(forKey: "browser.enabled") { start() }
     }
     var connectedCount: Int { Set(profiles.values.map(\.id)).count }
     var extensionFolder: URL? { Bundle.main.resourceURL?.appendingPathComponent("BrowserExtension", isDirectory: true) }
@@ -118,33 +140,38 @@ final class PresenterModel: ObservableObject {
         }.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
     }
     func enable() {
+        guard BrowserIntegration.isAvailable else { stop(); message = BrowserIntegration.pausedMessage; return }
         do {
-            try installHost()
+            if let hostInstaller { try hostInstaller() } else { try installHost() }
             defaults.set(true, forKey: "browser.enabled"); start()
             if enabled { message = "Chrome connection enabled. Add the extension in each demo profile, then connect it." }
         } catch { message = error.localizedDescription }
     }
     func start() {
+        guard admitsCommands else { stop(); message = BrowserIntegration.pausedMessage; return }
         guard !enabled else { return }
         do {
             let generation = UUID(); self.generation = generation
             let path = try socketPath ?? PresenterSocket.path(preview: Bundle.main.bundleIdentifier?.hasSuffix(".preview") == true)
             try listener.start(path: path) { [weak self] peer in Task { @MainActor in
-                guard let self, self.generation == generation else { peer.stop(); return }; self.accept(peer)
+                guard let self, self.admitsCommands, self.enabled, self.generation == generation else { peer.stop(); return }; self.accept(peer)
             } }
             enabled = true; refresh()
         } catch { listener.stop(); message = error.localizedDescription }
     }
     func stop() {
         generation = UUID()
+        enabled = false
         timer?.cancel(); timer = nil
-        if let pending { self.pending = nil; var reply = PresenterMessage(id: pending.id, type: "result"); reply.ok = false; reply.error = "unavailable"; pending.finish(reply) }
+        let interrupted = pending; pending = nil
         for peer in peers.values { peer.stop() }
         peers.removeAll(); profiles.removeAll(); seen.removeAll(); listener.stop(); enabled = false; busy = false; refresh()
+        // Invalidate the session before invoking any completion, which may try to act again.
+        if let interrupted { interrupted.finish(PresenterMessage(id: interrupted.id, type: "result").reply(ok: false, error: "unavailable")) }
     }
     func pause() { defaults.set(false, forKey: "browser.enabled"); stop(); message = "Chrome connection paused. Saved destinations are kept." }
-    private func accept(_ peer: PresenterPeer) {
-        guard enabled, peers.count < 12 else { peer.stop(); return }
+    func accept(_ peer: PresenterPeer) {
+        guard admitsCommands, enabled, peers.count < 12 else { peer.stop(); return }
         peers[peer.id] = peer
         peer.start(receive: { [weak self, weak peer] message in
             Task { @MainActor in guard let peer else { return }; self?.receive(message, from: peer) }
@@ -162,8 +189,8 @@ final class PresenterModel: ObservableObject {
         if let pending, pending.peer == peerID { finish(id: pending.id, ok: false, error: "offline") }
         refresh()
     }
-    private func receive(_ request: PresenterMessage, from peer: PresenterPeer) {
-        guard peers[peer.id] != nil else { return }
+    func receive(_ request: PresenterMessage, from peer: PresenterPeer) {
+        guard admitsCommands, enabled, peers[peer.id] === peer else { peer.stop(); return }
         if request.type == "focused" {
             guard let pending, pending.id == request.id, pending.peer == peer.id else { return }
             guard Date() <= pending.deadline else { finish(id: request.id, ok: false, error: "timeout"); return }
@@ -219,12 +246,13 @@ final class PresenterModel: ObservableObject {
         peer.send(reply)
     }
     func activate(_ id: UUID, completion: ((PresenterMessage) -> Void)? = nil) {
-        refresh()
         let done: (PresenterMessage) -> Void = { [weak self] reply in
             self?.message = reply.ok == true ? nil : Self.explanation(reply.error)
             completion?(reply)
         }
         let request = PresenterMessage(type: "activate")
+        guard admitsCommands, enabled else { done(request.reply(ok: false, error: "unavailable")); return }
+        refresh()
         guard !busy, mayActivate?() != false else { done(request.reply(ok: false, error: "busy")); return }
         guard let destination = destinations.first(where: { $0.id == id }) else { done(request.reply(ok: false, error: "missing")); return }
         guard let connection = profiles.first(where: { $0.value.id == destination.profileID }), let peer = peers[connection.key] else {
@@ -249,6 +277,7 @@ final class PresenterModel: ObservableObject {
     }
     static func explanation(_ error: String?) -> String {
         switch error {
+        case "unavailable": BrowserIntegration.pausedMessage
         case "offline": "Open the destination’s Chrome profile and choose Retry in its Workbench extension. Then switch again."
         case "missing": "This destination was removed. Save the current tab again in the Workbench extension."
         case "wrongProfile": "Update this destination from its paired Chrome profile."

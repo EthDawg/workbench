@@ -41,7 +41,7 @@ enum WorkbenchControlChecks {
             try check(controls.preferredToolbarSize == landing, "result measurement never overwrites the toolbar column")
             controls.suspendToolbar()
         }
-        try check(WorkbenchControlTool.allCases.map(\.title) == ["Dictate", "Read", "Snap", "Snap & Talk", "Draw", "Present", "Persona", "Timer"], "panel rows follow the moments: Dictate, Read, Snap, Snap & Talk, Draw, Present, Persona, Timer")
+        try check(WorkbenchControlTool.allCases.map(\.title) == ["Dictate", "Snap", "Snap & Talk", "Draw", "Present", "Persona", "Timer"], "panel rows contain only the retained tools")
         try check(WorkbenchControlTool.allCases.contains(.snap) && WorkbenchControlTool(mode: .snap) == .snap && WorkbenchControlTool.timer.mode == nil, "Snap is a real row sharing the toolbar's Snap mode; Timer is a row without a mode")
         try check(VoicePreferences().shortcut(8).enabled == false, "the Snap shortcut (voice.8) starts off")
         do {
@@ -55,8 +55,6 @@ enum WorkbenchControlChecks {
             try check(WorkbenchControlTool.allCases.allSatisfy { live.actionTitle($0) == $0.title }, "idle rows read their capability's name")
             live.phase = .recording
             try check(live.actionTitle(.dictate) == "Finish dictation", "Dictate names the shared Finish action while recording")
-            live = WorkbenchControlState(); live.playing = true
-            try check(live.actionTitle(.read) == "Stop reading", "Read reads Stop reading while playing (pause and resume stay on the Read page)")
             live = WorkbenchControlState(); live.snapBusy = true
             try check(live.actionTitle(.snap) == "Snap" && !live.enabled(.snap), "Snap keeps its name and disables while a Snap is busy")
             live = WorkbenchControlState(); live.narrating = true
@@ -74,7 +72,6 @@ enum WorkbenchControlChecks {
             live = WorkbenchControlState(); live.drawing = true; live.presenting = true; live.overlays = true; live.timerStarted = true
             let independent: [(WorkbenchControlTool, WorkbenchRowAction, String)] = [
                 (.dictate, .operation(.start(.dictate)), "Dictate"),
-                (.read, .operation(.start(.read)), "Read"),
                 (.snap, .operation(.start(.snap)), "Snap"),
                 (.snapAndTalk, .operation(.start(.snapAndTalk)), "Snap & Talk"),
                 (.annotate, .operation(.finishDrawing), "Stop drawing"),
@@ -93,8 +90,8 @@ enum WorkbenchControlChecks {
                           "recording does not replace \(tool.title)'s action with Stop")
             }
             try check(live.rowAction(.dictate) == .operation(.stopDictation) && live.enabled(.dictate), "only Dictate stops its recording")
-            try check(!live.enabled(.snap) && !live.enabled(.snapAndTalk) && live.enabled(.read),
-                      "recording disables incompatible captures while Read can still open its page")
+            try check(!live.enabled(.snap) && !live.enabled(.snapAndTalk),
+                      "recording disables incompatible captures")
             try check([WorkbenchControlTool.annotate, .present, .persona, .timer].allSatisfy(live.enabled),
                       "live Draw, Present, Persona and Timer endings stay reachable during recording")
             try check(ToolbarNextAction.resolve(live.live(.present)).operation == .stopDictation,
@@ -102,10 +99,6 @@ enum WorkbenchControlChecks {
             live.phase = .idle
             try check(ToolbarNextAction.resolve(live.live(.present)).operation == .finishDrawing,
                       "the toolbar retains its global drawing priority")
-            live = WorkbenchControlState(); live.rendering = true
-            try check(live.actionTitle(.read) == "Cancel" && live.rowAction(.read) == .operation(.cancelReading), "Read says Cancel while preparing, because that discards")
-            live.rendering = false; live.playing = true
-            try check(live.rowAction(.read) == .operation(.stopReading), "the Read row stops rather than pauses")
             live = WorkbenchControlState()
             try check(WorkbenchControlTool.allCases.allSatisfy { tool in
                 tool.mode.map { live.rowAction(tool) == .operation(.start($0)) } ?? (live.rowAction(tool) == .startTimer)
@@ -152,7 +145,7 @@ enum WorkbenchControlChecks {
         // again on release. SwiftUI also replaces the button's identity when it changes.
         do {
             let ending: [(WorkbenchControlTool, (inout WorkbenchControlState) -> Void)] = [
-                (.dictate, { $0.phase = .recording }), (.read, { $0.playing = true }),
+                (.dictate, { $0.phase = .recording }),
                 (.snapAndTalk, { $0.narrating = true }), (.annotate, { $0.drawing = true }),
                 (.present, { $0.presenting = true }), (.persona, { $0.overlays = true }),
                 (.timer, { $0.timerStarted = true })]
@@ -194,7 +187,7 @@ enum WorkbenchControlChecks {
         legacy.removeValue(forKey: "readingShortcut"); legacy.removeValue(forKey: "presentationShortcut")
         let migrated = try JSONDecoder().decode(VoicePreferences.self, from: JSONSerialization.data(withJSONObject: legacy))
         try check(migrated.dictationShortcut == saved.dictationShortcut && migrated.shortcut(5) == saved.shortcut(5), "adding utility shortcuts preserves existing and disabled bindings")
-        try check(!migrated.shortcut(6).enabled && migrated.shortcut(7) == VoicePreferences.defaultPresentationShortcut, "Read stays opt-in and Present starts on its presenter key")
+        try check(!VoicePreferences.shortcutIDs.contains(6) && migrated.shortcut(7) == VoicePreferences.defaultPresentationShortcut, "Read is inactive and Present keeps its presenter key")
         saved.setShortcut(VoiceShortcut(keyCode: 20), for: 6); saved.setShortcut(VoiceShortcut(keyCode: 21), for: 7)
         let restored = try JSONDecoder().decode(VoicePreferences.self, from: JSONEncoder().encode(saved))
         try check(restored.shortcut(6) == saved.shortcut(6) && restored.shortcut(7) == saved.shortcut(7), "opt-in utility shortcut assignments survive reload")
@@ -209,24 +202,23 @@ enum WorkbenchControlChecks {
                   "choosing Draw during a live scene keeps Draw as the label and lights the chooser's Present row")
         try check(ToolbarModeFollower.modeToSelect(previous: [], current: [.draw, .persona, .present]) == .present, "several starts in one tick: Present before Persona before the rest")
         try check(ToolbarModeFollower.modeToSelect(previous: [.present], current: [.present, .persona, .dictate]) == .persona, "Persona outranks the rest once Present is already live")
-        try check(ToolbarModeFollower.liveModes(dictating: false, reading: false, narrating: false, drawing: false, presenting: false, persona: false, snapping: false).isEmpty, "a restored session at launch is not a start")
-        try check(FloatingToolbarSurface.resolve(enabled: false, capturingScreen: false, dictation: false, narration: false, reading: true) == .tools, "active reading keeps the shared host even with the idle toolbar disabled (#134 T4)")
-        try check(FloatingToolbarSurface.resolve(enabled: true, capturingScreen: true, dictation: false, narration: false, reading: true) == .hidden, "capture hides reading controls too")
+        try check(ToolbarModeFollower.liveModes(dictating: false, narrating: false, drawing: false, presenting: false, persona: false, snapping: false).isEmpty, "a restored session at launch is not a start")
+        try check(FloatingToolbarSurface.resolve(enabled: true, capturingScreen: true, dictation: false, narration: false) == .hidden, "capture hides controls")
         // Hide toolbar is authoritative for the tools over live Draw, Present and Persona (#155).
         func surface(shown: Bool = false, drawing: Bool = false, presenting: Bool = false, persona: Bool = false, inserting: Bool = false,
-                     dictation: Bool = false, narration: Bool = false, reading: Bool = false, cue: Bool = false,
+                     dictation: Bool = false, narration: Bool = false, cue: Bool = false,
                      capturing: Bool = false) -> FloatingToolbarSurface {
             .resolve(shown: shown, drawing: drawing, presenting: presenting, persona: persona, inserting: inserting,
-                     capturingScreen: capturing, dictation: dictation, narration: narration, reading: reading, cue: cue)
+                     capturingScreen: capturing, dictation: dictation, narration: narration, cue: cue)
         }
         try check(surface() == .hidden && surface(drawing: true) == .hidden && surface(presenting: true) == .hidden && surface(persona: true) == .hidden
                   && surface(drawing: true, presenting: true, persona: true) == .hidden, "Hide toolbar hides the tools while drawing, presenting or showing a persona")
         try check(surface(shown: true) == .tools && surface(shown: true, drawing: true, presenting: true, persona: true) == .tools,
                   "Show floating toolbar brings the tools back over live work")
-        // Recording, narration, reading and their results share the tools' host (#134 T4): it stays
+        // Recording, narration and their results share the tools' host (#134 T4): it stays
         // up while they run even with the tools hidden, and only the no-speech cue has its own view.
         try check(surface(drawing: true, dictation: true) == .tools && surface(presenting: true, narration: true) == .tools
-                  && surface(persona: true, reading: true) == .tools, "a live recording, narration or reading keeps the shared host while the tools are hidden")
+                  , "a live recording or narration keeps the shared host while the tools are hidden")
         try check(surface(dictation: true, cue: true) == .cue && surface(shown: true, cue: true) == .cue
                   && surface(dictation: true, cue: true, capturing: true) == .hidden, "the no-speech cue has its own view, and screen capture hides it too")
         try check(surface(inserting: true) == .tools, "a prompt insertion keeps its Stop on the tools until it ends")
@@ -265,17 +257,6 @@ enum WorkbenchControlChecks {
                           == [.stopDrawing, .persona("Show personas"), .stopTranscribing]
                       && items(.draw) { $0.presenting = true } == [.endPresentation] && items(.dictate) { $0.meetingRecording = true; $0.meetingRecovery = true }.isEmpty,
                       "the other tools' finishes are unchanged, and a recording meeting is not offered for recovery")
-        }
-        // Reading keeps its own commands in More while another job holds the primary (#211 F6).
-        do {
-            func reading(_ primary: ToolbarOperation, _ state: ToolbarLiveState.Reading) -> [ToolbarOperation] {
-                ToolbarReadingCommands.operations(primary: primary, reading: state)
-            }
-            try check(reading(.finishDrawing, .playing) == [.pauseReading, .stopReading] && reading(.stopInserting, .paused) == [.resumeReading, .stopReading],
-                      "while drawing or an insertion holds the primary, More offers Pause reading or Resume reading, and Stop reading")
-            try check(reading(.finishDrawing, .preparing) == [.cancelReading], "and Cancel while the reading is still preparing")
-            try check(reading(.pauseReading, .playing) == [.stopReading] && reading(.cancelReading, .preparing).isEmpty && reading(.finishDrawing, .idle).isEmpty,
-                      "the row's own reading action is not repeated there, and no reading offers nothing")
         }
         // Words waiting for drawing to end lead the toolbar with Stop drawing, which delivers them;
         // Copy now is in More (#211 F5). The menu's rows stay with their own capability (#214):
@@ -447,15 +428,15 @@ enum WorkbenchControlChecks {
         state.presenting = true; state.drawing = true; state.phase = .recording
         try check(state.enabled(.dictate) && state.enabled(.annotate) && state.enabled(.present),
                   "all three running activities retain their own finish controls")
-        state.ready = false; state.rendering = true; state.narrating = true
+        state.ready = false; state.narrating = true
         state.mayDraw = false; state.mayPresent = false
         try check(state.enabled(.dictate) && state.enabled(.annotate) && state.enabled(.present) && state.enabled(.snapAndTalk),
                   "finish actions remain available when new work is disallowed")
         state.phase = .requesting
         try check(state.enabled(.dictate) && state.actionTitle(.dictate) == "Cancel request", "microphone permission requests remain cancellable")
         state.phase = .idle; state.drawing = false; state.presenting = false; state.narrating = false
-        try check(!state.enabled(.dictate) && !state.enabled(.annotate) && !state.enabled(.present) && !state.enabled(.snapAndTalk),
-                  "idle starts respect availability")
+        try check(!state.enabled(.dictate) && !state.enabled(.annotate) && !state.enabled(.present) && state.enabled(.snapAndTalk),
+                  "idle speech and stage starts respect availability while manual screen capture stays usable")
         state = WorkbenchControlState(); state.pendingNarration = true
         try check(!state.enabled(.dictate) && state.enabled(.snapAndTalk), "ordinary dictation waits for the narration queue while another capture can queue")
         state.capturing = true

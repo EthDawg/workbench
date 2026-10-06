@@ -353,7 +353,9 @@ public final class StageKitController: ObservableObject {
         return { _ = library.replaceVoiceAccess(previous) }
     }
     public var scenesView: AnyView { AnyView(DemoScenesView(model: coordinator.demoScenes)) }
-    public var personasView: AnyView { AnyView(PersonaLibraryView(library: coordinator.demoScenes.personas, mode: .workspace)) }
+    public func personasView(editProfile: @escaping () -> Void) -> AnyView {
+        AnyView(PersonaLibraryView(library: coordinator.demoScenes.personas, mode: .workspace, editProfile: editProfile))
+    }
     /// The local profile is a reference to an ordinary saved persona. It has no account,
     /// separate image store or automatic presentation lifecycle.
     public var localProfileImage: NSImage? {

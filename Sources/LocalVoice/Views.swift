@@ -14,26 +14,24 @@ struct ContentView: View {
     @State private var showOriginal = false
     @State private var showCorrection = false
     @State private var showDictateSettings = false
-    @State private var showReadingSettings = false
+
     @State private var showRecovery = false
     @State private var selectedCorrection = ""
     @State private var correctionSeed = ""
     @State private var correctionDraft = ""
     @State private var confirmingRecoveryDiscard = false
     @State private var dictateResult: String?
-    @State private var readingResult: String?
+
     @State private var dictateActionID = UUID()
-    @State private var readingActionID = UUID()
+
     @Environment(\.pageSectionFrames) private var sectionFrames
 
     /// A problem stays on the workspace that owns it. Read's typed playback failure already
     /// has its own Retry beside the transport, so it is never repeated in the page banner.
     private var bannerError: String? {
         guard let attention = model.attention else { return nil }
-        let belongsHere = model.page == "speak" ? attention.page == .read
-            : ["dictate", "dictionary"].contains(model.page) && attention.page == .dictate
+        let belongsHere = ["dictate", "dictionary"].contains(model.page) && attention.page == .dictate
         guard belongsHere else { return nil }
-        if model.page == "speak", attention.message == model.readingFailure?.message { return nil }
         return attention.message
     }
 
@@ -46,7 +44,7 @@ struct ContentView: View {
                     Spacer()
                     // The fix is in System Settings, so the page opens it beside the microphone refusal
                     // itself. The Mac's microphone setting says nothing about which problem this is.
-                    if model.page != "speak", error.hasPrefix("Microphone access is off") {
+                    if model.canOpenMicrophoneSettings {
                         Button("Microphone Settings…") { model.openMicrophoneSettings() }.controlSize(.small)
                             .help("Open Privacy & Security › Microphone in System Settings")
                     }
@@ -56,8 +54,7 @@ struct ContentView: View {
             }
             Group {
                 switch model.page {
-                case "speak": speak
-                case "library": DemoLibraryView(library: model.library, model: model,
+                case _ where WorkbenchHome.destination(model.page).section == "library": DemoLibraryView(library: model.library, model: model,
                     onUseImageInPresent: onUseImageInPresent, onUseImageInPersona: onUseImageInPersona)
                 case "dictionary": DictionaryView(model: model)
                 default: dictate
@@ -88,9 +85,6 @@ struct ContentView: View {
                 model.page = "models"
             }, done: { showDictateSettings = false })
         }
-        .sheet(isPresented: $showReadingSettings) {
-            ReadingSettingsView(model: model, done: { showReadingSettings = false })
-        }
         .sheet(isPresented: $showCorrection) {
             RememberCorrectionView(model: model, heard: correctionSeed, draft: correctionDraft)
         }
@@ -102,7 +96,7 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in model.refreshPermissions() }
         .onChange(of: model.page) { _, _ in
-            dictateResult = nil; readingResult = nil; dictateActionID = UUID(); readingActionID = UUID()
+            dictateResult = nil; dictateActionID = UUID()
         }
         .onChange(of: model.phase) { _, phase in
             if phase != .idle { dictateResult = nil }
@@ -190,12 +184,6 @@ struct ContentView: View {
         }
     }
 
-    private var readingHeader: some View {
-        WorkbenchPageHeader("speak") {
-            Button("Import text…") { model.importReadingFile() }.disabled(model.savingAudio)
-            Button("Voice & pace…") { showReadingSettings = true }
-        }
-    }
 
     private var captureControls: some View {
         HStack(spacing: 14) {
@@ -205,7 +193,7 @@ struct ContentView: View {
                     .foregroundStyle(ink).background(model.phase == .recording ? Color.red.opacity(0.9) : mint, in: Circle())
             }
             .buttonStyle(.plain)
-            .disabled(!model.ready || ![.idle, .requesting, .recording].contains(model.phase) || model.rendering)
+            .disabled(!model.canToggleRecording)
             .accessibilityLabel(model.phase == .requesting ? "Cancel microphone request" : model.phase == .recording ? "Finish dictation" : "Start recording")
             VStack(alignment: .leading, spacing: 5) {
                 Text(captureTitle).font(Workbench.sectionTitle)
@@ -228,6 +216,7 @@ struct ContentView: View {
                         ProgressView().controlSize(.small)
                         Text(model.preparing ? "Preparing your speech engine" : model.phase == .cancelling ? "Waiting for the speech engine to stop" : model.phase == .delivering ? "Checking the destination" : model.captureProcessingLabel)
                         if model.canCancelCurrentCapture { Button("Cancel") { model.cancelCurrentCapture() } }
+                        if model.preparing { Button("Cancel setup") { model.cancelSpeechPreparation() }.disabled(model.recognition.phase == .cancelling) }
                     }.font(.caption).foregroundStyle(.secondary)
                 } else {
                     Text(model.ready ? recordingHint : model.modelMessage)
@@ -262,13 +251,15 @@ struct ContentView: View {
                     Text(line).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }
+        } else if model.phase == .idle {
+            Button("Models…") { model.page = "models" }.buttonStyle(.link).font(.caption)
         }
     }
 
     private var captureTitle: String {
-        if model.preparing { return "Preparing dictation…" }
+        if model.preparing && model.phase == .idle { return "Preparing dictation…" }
         switch model.phase {
-        case .idle: return model.ready ? "Ready to dictate" : "Dictation unavailable"
+        case .idle: return model.idleMicrophoneTitle ?? (model.ready ? "Ready to dictate" : "Dictation unavailable")
         case .requesting: return "Waiting for microphone access"
         case .recording: return model.voiceSession.recordingTitle
         case .transcribing: return "Transcribing…"
@@ -373,132 +364,15 @@ struct ContentView: View {
         }
     }
 
-    private var speak: some View {
-        GeometryReader { proxy in
-            ScrollView {
-                VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
-                    readingHeader
-                    if let selection = model.pendingReadingSelection {
-                        ReadingSelectionReviewCard(selection: selection, limitMessage: model.readingLimitMessage(for: selection.text),
-                                                   replacingDisabled: !model.canReplaceReading,
-                                                   waitReason: model.canReplaceReading ? nil : AppModel.replaceWaitsForSave,
-                                                   keep: { performReadingAction(model.keepCurrentReading) },
-                                                   replace: { performReadingAction(model.replaceReadingWithSelection) })
-                    }
-                    VStack(alignment: .leading, spacing: 16) {
-                        readingDestination
-                        if let reading = model.followAlongText {
-                            ReadingFollowAlongView(text: reading, highlight: model.readingHighlight)
-                                .background(RoundedRectangle(cornerRadius: 12).fill(panelColor.opacity(0.6)))
-                                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.07)))
-                                .frame(minHeight: 200, maxHeight: .infinity)
-                        } else {
-                            editor(text: $model.speechText, placeholder: "Paste text to hear it read aloud.", label: "Text to read").disabled(model.rendering)
-                        }
-                        Text("\(model.speechText.count.formatted()) / \(model.readingLimit.formatted()) characters")
-                            .font(.caption).foregroundStyle(model.speechText.count > model.readingLimit ? Color.orange : Color.secondary)
-                        if let limit = model.readingLimitMessage(for: model.speechText) {
-                            Label(limit, systemImage: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(.orange)
-                                .accessibilityLabel("Reading limit: \(limit)")
-                        }
-                        readingPlayback
-                        readingActions
-                        if let readingResult { workspaceResult(readingResult) { self.readingResult = nil } }
-                    }
-                    .padding(20)
-                    .frame(maxWidth: .infinity, minHeight: max(390, proxy.size.height - (model.pendingReadingSelection == nil ? 48 : 250)), alignment: .topLeading)
-                    .background(panelColor, in: RoundedRectangle(cornerRadius: 16))
-                }.frame(maxWidth: .infinity, alignment: .topLeading)
-            }
-        }
-    }
 
-    private var readingDestination: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if model.readingProvider == .mac {
-                // The voice's quality and the free better-voices hint stay on the page (workbench.md, Models).
-                Label(model.voiceChoice?.voice.map { "\($0.name), \($0.quality.label) · \(Int(model.rate)) words/min · On this Mac" } ?? "On this Mac",
-                      systemImage: "desktopcomputer").font(.callout).foregroundStyle(.secondary)
-                if model.voiceChoice?.voice != nil, let hint = model.voiceHint {
-                    MacVoiceHintRow(hint: hint, open: model.openVoiceSettings)
-                }
-                if model.voiceChoice?.voice == nil {
-                    HStack {
-                        Label(model.missingVoiceMessage, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                        Button("Choose voice…") { showReadingSettings = true }
-                    }.font(.caption)
-                }
-            } else if model.readingProvider == .neural {
-                Label("\(NeuralVoiceCatalog.title(model.neuralVoice)) · Neural voice · On this Mac", systemImage: "desktopcomputer")
-                    .font(.callout).foregroundStyle(.secondary)
-                if !model.neuralVoicesDownloaded {
-                    HStack {
-                        Text(model.neuralVoiceProgress ?? "Neural voices need one download before they can read.")
-                        Button("Set up…") { showReadingSettings = true }.accessibilityLabel("Set up neural voices")
-                    }.font(.caption)
-                }
-            } else {
-                Label("\(model.selectedSpekoVoice?.name ?? "Automatic voice") · Online with Speko", systemImage: "cloud")
-                    .font(.callout).foregroundStyle(.secondary)
-                Text("Listen and Save audio send this text to Speko. Usage may be charged.").font(.caption).foregroundStyle(.secondary)
-                if !SpekoKeychain.hasKey {
-                    HStack {
-                        Text("Add your Speko key to read online.")
-                        Button("Set up…") { showReadingSettings = true }.accessibilityLabel("Set up Speko reading")
-                    }.font(.caption)
-                }
-            }
-        }
-    }
 
-    @ViewBuilder private var readingPlayback: some View {
-        if model.playing || model.paused {
-            ReadingPlaybackStrip(elapsed: model.playbackTime, duration: model.audioDuration, renderingAhead: model.renderingAhead,
-                                 seek: model.seekReading, skip: model.skipReading)
-                .disabled(!model.canSeekReading)
-        } else if let failure = model.readingFailure {
-            HStack(spacing: 10) {
-                Label(failure.message, systemImage: "exclamationmark.triangle.fill").font(.system(size: 12)).foregroundStyle(.orange)
-                Spacer()
-                Button("Retry") { readingResult = nil; model.retryReading() }.disabled(!model.canRetryReading)
-                    .accessibilityHint("Makes new audio and reads from the start")
-                Button { model.dismissReadingFailure() } label: { Image(systemName: "xmark") }.buttonStyle(.plain)
-                    .accessibilityLabel("Dismiss reading error")
-            }
-        }
-    }
 
-    private var readingActions: some View {
-        HStack(spacing: 12) {
-            Button { readingResult = nil; model.listen() } label: {
-                Label(model.rendering ? "Making audio…" : model.playing ? "Pause" : model.paused ? "Resume" : "Listen", systemImage: model.playing ? "pause.fill" : "play.fill")
-            }.buttonStyle(PrimaryButton())
-                .disabled(model.speechText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.rendering || model.phase != .idle || model.speechText.count > model.readingLimit)
-            // One Cancel ends making audio or Save audio's export: the word every other Read door uses.
-            if model.canCancelReading { Button("Cancel") { performReadingAction(model.cancelReading) }.help(model.savingAudio ? "Stop saving this audio" : "Stop making this audio") }
-            if model.playing || model.paused { Button("Stop") { performReadingAction(model.stopPlayback) } }
-            Spacer()
-            Button {
-                readingResult = nil
-                let invocation = UUID(); readingActionID = invocation
-                model.saveAudio { result in
-                    guard readingActionID == invocation, model.page == "speak" else { return }
-                    readingResult = result
-                }
-            } label: { Label("Save audio…", systemImage: "square.and.arrow.down") }
-                .disabled(model.speechText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.rendering || model.renderingAhead || model.speechText.count > model.readingLimit)
-                .help("Save an M4A file for QuickTime, Music or sharing.")
-        }.controlSize(.large)
-    }
 
-    /// These synchronous transport/import actions complete in this call. File exports and
-    /// cleanup report their own outcomes instead of sampling a shared status after a wait.
-    private func performReadingAction(_ action: () -> Void) {
-        readingResult = nil
-        let previous = model.status
-        action()
-        if model.status != previous, model.attention?.page != .read { readingResult = model.status }
-    }
+
+
+
+
+
 
     private func workspaceResult(_ message: String, dismiss: @escaping () -> Void) -> some View {
         HStack(alignment: .top, spacing: 8) {
@@ -604,106 +478,11 @@ struct DictateSettingsView: View {
     }
 }
 
-struct ReadingSettingsView: View {
-    @ObservedObject var model: AppModel
-    let done: () -> Void
 
-    var body: some View {
-        VoiceWorkspaceSettingsSheet(title: "Voice & pace", identifier: "read.settings", done: done) {
-            VStack(alignment: .leading, spacing: 20) {
-                ReadingProviderView(model: model)
-                if model.readingProvider == .mac {
-                    MacVoicePanel(voices: model.macVoices, choice: model.voiceChoice, hint: model.voiceHint, rate: $model.rate,
-                                  previewing: model.previewingVoice, choose: model.chooseVoice, preview: model.toggleVoicePreview,
-                                  openSettings: model.openVoiceSettings)
-                        .disabled(model.rendering)
-                }
-                if model.readingProvider == .neural, model.neuralVoicesDownloaded {
-                    NeuralVoicePanel(model: model).disabled(model.rendering)
-                }
-            }
-        }
-    }
-}
 
-/// Voice and pace for Mac voices. Voices show their accent and quality, a
-/// sample can be heard before choosing, and a hint appears while every voice
-/// for the person's language is compact.
-struct MacVoicePanel: View {
-    let voices: [MacVoice]
-    let choice: MacVoiceChoice?
-    let hint: MacVoiceHint?
-    @Binding var rate: Double
-    var previewing = false
-    var choose: (String) -> Void
-    var preview: () -> Void
-    var openSettings: () -> Void
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 24) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Voice").font(Workbench.sectionTitle)
-                    HStack(spacing: 6) {
-                        Picker("Voice", selection: Binding(get: { choice?.voice?.id ?? "" }, set: choose)) {
-                            if case .missing(let name) = choice { Text("\(name) (not installed)").tag("") }
-                            ForEach(voices) { Text($0.label).tag($0.id) }
-                        }.labelsHidden().frame(width: 270, alignment: .leading)
-                        Button(action: preview) { Image(systemName: previewing ? "stop.fill" : "speaker.wave.2") }
-                            .buttonStyle(.borderless)
-                            .disabled(choice?.voice == nil || choice?.voice?.sayOnly == true)
-                            .help(previewing ? "Stop the sample" : "Hear a short sample of this voice")
-                            .accessibilityLabel(previewing ? "Stop voice sample" : "Hear voice sample")
-                    }
-                }
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(alignment: .firstTextBaseline) {
-                        Text("Pace").font(Workbench.sectionTitle)
-                        Spacer()
-                        Text("\(Int(rate)) words/min").monospacedDigit().font(.caption).foregroundStyle(.secondary)
-                    }
-                    Slider(value: $rate, in: 100...300, step: 10).accessibilityLabel("Reading pace")
-                }
-            }
-            if case .missing(let name) = choice {
-                Label("\(name) is not installed on this Mac. Choose another voice.", systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption).foregroundStyle(.orange)
-            }
-            if let hint { MacVoiceHintRow(hint: hint, open: openSettings) }
-        }.padding(20).background(panelColor, in: RoundedRectangle(cornerRadius: 14))
-    }
-}
 
-/// Position, scrubber and 15-second skips for the loaded reading. While a Mac
-/// voice is still rendering, the range covers only what exists.
-struct ReadingPlaybackStrip: View {
-    let elapsed: Double
-    let duration: Double
-    var renderingAhead = false
-    var seek: (TimeInterval) -> Void
-    var skip: (TimeInterval) -> Void
 
-    var body: some View {
-        HStack(spacing: 12) {
-            Button { skip(-15) } label: { Image(systemName: "gobackward.15") }
-                .help("Back 15 seconds").accessibilityLabel("Back 15 seconds")
-            Text(time(elapsed)).monospacedDigit().frame(minWidth: 34, alignment: .trailing)
-                .accessibilityLabel("Elapsed time").accessibilityValue(time(elapsed))
-            Slider(value: Binding(get: { elapsed }, set: { seek($0) }), in: 0...max(duration, 0.001))
-                .accessibilityLabel("Reading position")
-                .accessibilityValue("\(time(elapsed)) of \(time(duration))\(renderingAhead ? ", more is being prepared" : "")")
-            HStack(spacing: 4) {
-                Text(time(duration)).monospacedDigit()
-                if renderingAhead { ProgressView().controlSize(.mini).help("Preparing the rest of the reading") }
-            }.frame(minWidth: 34, alignment: .leading)
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Reading duration").accessibilityValue(time(duration) + (renderingAhead ? ", still preparing" : ""))
-            Button { skip(15) } label: { Image(systemName: "goforward.15") }
-                .help("Forward 15 seconds").accessibilityLabel("Forward 15 seconds")
-        }
-        .font(.system(size: 11))
-    }
-}
 
 struct DictionaryView: View {
     @ObservedObject var model: AppModel
@@ -803,44 +582,7 @@ struct DictionaryView: View {
     }
 }
 
-struct ReadingSelectionReviewCard: View {
-    let selection: ReadingSelectionImport
-    let limitMessage: String?
-    var replacingDisabled = false
-    /// Why Replace reading is unavailable for now, shown under the choice.
-    var waitReason: String? = nil
-    let keep: () -> Void
-    let replace: () -> Void
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("\(selection.origin.name) is ready to review", systemImage: "text.quote")
-                .font(.headline).foregroundStyle(mint)
-            ScrollView {
-                Text(selection.text).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
-                    .accessibilityLabel("Text to review")
-                    .accessibilityValue(selection.text)
-            }.frame(minHeight: 56, maxHeight: 120).padding(12).background(.black.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-            Text("Your current reading stays unchanged until you choose Replace reading. " + selection.origin.keepNote)
-                .font(.caption).foregroundStyle(.secondary)
-            if let limitMessage {
-                Label(limitMessage, systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption).foregroundStyle(.orange)
-            }
-            HStack {
-                Button("Keep current", action: keep)
-                Button("Replace reading", action: replace)
-                    .buttonStyle(PrimaryButton()).disabled(replacingDisabled)
-                    .accessibilityHint("Replaces the reading draft and stops any reading in progress. It does not start audio or send text online.")
-            }
-            if let waitReason {
-                Label(waitReason, systemImage: "hourglass").font(.caption).foregroundStyle(.secondary)
-            }
-        }.padding(16).background(mint.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel("Review imported selected text")
-    }
-}
 
 struct PrimaryButton: ButtonStyle {
     @Environment(\.isEnabled) private var enabled

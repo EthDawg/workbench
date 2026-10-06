@@ -1,4 +1,5 @@
 import AVFoundation
+import CoreAudio
 import Foundation
 
 /// Synthetic audio and injected owners only. This never enumerates real audio
@@ -351,11 +352,13 @@ enum MeetingChecks {
         try expect(restored.tracks.first?.seconds == recorded.seconds, "writer timing/audio survives close and recovery")
 
         try await recordingReviewChecks(root: root, expect: expect)
+        try await phaseRecoveryChecks(root: root.appendingPathComponent("phase-recovery"), expect: expect)
         try await lifecycleChecks(root: root, expect: expect)
         try await keptRecordingChecks(root: root, expect: expect)
         try await offerLifecycleChecks(root: root, expect: expect)
         try await liveLifecycleChecks(root: root, expect: expect)
         checks += try MeetingRemovalChecks.run(root: root.appendingPathComponent("removal-checks"))
+        checks += try MeetingCompletionChecks.run()
         print("Meeting checks passed (\(checks)): synthetic detection, source timing, >30-minute segmentation, recovery, cancellation and stable history commits. No live devices were used.")
     }
 
@@ -701,7 +704,7 @@ enum MeetingChecks {
         let lateModel = MeetingModel(directory: root.appendingPathComponent("late-permission"), defaults: defaults,
                                      processSource: ProcessFixture(), transcribe: { _ in "unused" },
                                      microphonePermission: { await permissionGate.wait() },
-                                     captureFactory: { lateFactories += 1; return CaptureFixture() })
+                                     captureFactory: { lateFactories += 1; return CaptureFixture() }, microphoneStatus: { .notDetermined })
         let lateStart = Task { await lateModel.start() }
         await waitUntil { permissionGate.isWaiting }
         await lateModel.cancel()
@@ -819,7 +822,7 @@ enum MeetingChecks {
 
         // Microphone Settings… is offered beside the microphone refusal only, never beside another problem.
         let refused = MeetingModel(directory: root.appendingPathComponent("refused"), defaults: defaults, processSource: ProcessFixture(),
-                                   transcribe: { _ in "unused" }, microphonePermission: { false }, captureFactory: { CaptureFixture() })
+                                   transcribe: { _ in "unused" }, microphonePermission: { false }, captureFactory: { CaptureFixture() }, microphoneStatus: { .denied })
         refused.includeMicrophone = true
         await refused.start()
         try expect(refused.error == MeetingModel.microphoneRefused && !refused.isBusy, "a refused microphone names the one refusal its settings fix")
@@ -827,6 +830,311 @@ enum MeetingChecks {
         await refused.start()
         try expect(refused.error != nil && refused.error != MeetingModel.microphoneRefused, "another refusal is not the microphone's")
         await refused.prepareForShutdown()
+    }
+
+    private static func phaseRecoveryChecks(root: URL, expect: (Bool, String) throws -> Void) async throws {
+        try MeetingStore.createPrivateDirectory(root)
+        func timed(_ total: Double) -> MeetingManifest {
+            var value = manifest(state: .recognized)
+            value.seconds = total
+            value.tracks = [.init(source: .remote, file: "tracks/remote.caf", startSeconds: 10,
+                                  seconds: total - 10, sampleRate: 16_000, peak: 0.2, droppedSeconds: 0)]
+            value.segments = MeetingSegmentPlan.plan(totalSeconds: total).map {
+                .init(index: $0.index, file: MeetingSegmentPlan.filename(index: $0.index), startSeconds: $0.start,
+                      seconds: $0.seconds, bytes: $0.bytes, text: $0.index == 0 ? "Complete mixed wording" : "")
+            }
+            return value
+        }
+        let borrowed = timed(600.1)
+        try expect(borrowed.isFullyRecognized && abs(borrowed.segments[0].seconds - 599.6) < 0.001
+                   && borrowed.segments[1].seconds == 0.5, "full staggered timeline accepts borrowed tail and recognized final silence")
+        var prefix = borrowed; prefix.segments.removeLast()
+        try expect(!prefix.isFullyRecognized, "a recognized prefix is not a complete transcript")
+        prefix.segments[0].text = ""
+        try expect(!prefix.isSettledWithoutSpeech && prefix.needsRecovery, "an empty recognized prefix remains in recovery")
+        var mismatch = borrowed; mismatch.seconds -= 0.1
+        try expect(!mismatch.isFullyRecognized, "declared duration must match maximum source start plus duration")
+        var over = timed(7_200.1)
+        try expect(!over.isFullyRecognized, "a plan capped at two hours cannot claim an over-cap source is complete")
+        over.seconds = 7_200
+        try expect(!over.isFullyRecognized, "shortening only declared duration cannot hide an over-cap source")
+        let prefixSession = try MeetingStore.create(root: root, manifest: prefix)
+        var calls = 0, saves = 0
+        let refuseASR: (URL) async throws -> String = { _ in calls += 1; throw MeetingError.message("Recognition must not run") }
+        let short = manifest(), shortSession = try MeetingStore.create(root: root, manifest: short)
+        let shortTrack = try audio(source: .remote, seconds: 0.2, rate: 16_000, value: 0.2, offset: 0, session: shortSession)
+        var shortStopped = short; shortStopped.tracks = [shortTrack]; shortStopped.seconds = 0.2
+        try MeetingStore.save(shortStopped, at: shortSession, replacing: short)
+        let shortOriginal = try Data(contentsOf: shortSession.appendingPathComponent(shortTrack.file))
+        let shortResult = try await MeetingProcessor(session: shortSession, transcribe: refuseASR, commit: { _, _, _ in saves += 1 }).run()
+        let shortSaved = try MeetingStore.load(from: shortSession)
+        try expect(!shortResult.committed && shortSaved.state == .stopped && shortSaved.formatVersion == 1
+                   && shortSaved.segments.isEmpty && shortSaved.liveText == nil && shortSaved.isSettledWithoutSpeech && !shortSaved.needsRecovery,
+                   "subminimum audio settles as an ordinary stopped record without invented recognized segments")
+        try expect(shortSaved.id == short.id && shortSaved.tracks == shortStopped.tracks && shortSaved.seconds == shortStopped.seconds
+                   && calls == 0 && saves == 0 && (try Data(contentsOf: shortSession.appendingPathComponent(shortTrack.file))) == shortOriginal,
+                   "too-short settlement preserves originals and identity without recognition or History commit")
+        do {
+            _ = try await MeetingProcessor(session: prefixSession, transcribe: refuseASR, commit: { _, _, _ in saves += 1 }).run()
+            throw MeetingError.message("A prefix was accepted")
+        } catch let issue as MeetingProblem {
+            try expect(calls == 0 && saves == 0 && issue.message.contains("complete recording"), "ordinary processor refuses a prefix before ASR or History commit")
+        }
+
+        // Complete mixed text with intact voiced originals must bypass speaker
+        // preparation too: a missing-file fixture alone would mask that old call.
+        var voiced = manifest(state: .stopped)
+        let voicedSession = try MeetingStore.create(root: root, manifest: voiced)
+        let local = try audio(source: .local, seconds: 1, rate: 16_000, value: 0.2, offset: 0, session: voicedSession)
+        let remote = try audio(source: .remote, seconds: 1, rate: 16_000, value: 0.3, offset: 0, session: voicedSession)
+        let initial = voiced
+        voiced.tracks = [local, remote]; voiced.seconds = 1; voiced.state = .recognized
+        voiced.segments = [.init(index: 0, file: MeetingSegmentPlan.filename(index: 0), startSeconds: 0, seconds: 1, bytes: 32_000, text: "Complete mixed wording")]
+        try MeetingStore.save(voiced, at: voicedSession, replacing: initial)
+        let originals = try voiced.tracks.map { try Data(contentsOf: voicedSession.appendingPathComponent($0.file)) }
+        let reviewed = try MeetingRecovery.inspect(session: voicedSession).checkpoint!
+        var saved: [Transcript] = []
+        let complete = MeetingProcessor(session: voicedSession, transcribe: refuseASR, commit: { item, _, _ in saved.append(item) })
+        _ = try await complete.run(intent: .commitOnly(reviewed))
+        try expect(calls == 0 && saved.count == 1 && saved[0].rawText == voiced.recognizedText && saved[0].cleanupMethod == nil,
+                   "commit-only with two intact voiced tracks never mixes or runs speaker ASR")
+        try expect(try voiced.tracks.map { try Data(contentsOf: voicedSession.appendingPathComponent($0.file)) } == originals,
+                   "complete-text save preserves both original track byte sequences")
+
+        // History committed successfully but the final meeting journal did not.
+        // A later edit must win over the older complete checkpoint on retry.
+        var durableManifest = voiced; durableManifest.id = UUID(); durableManifest.state = .stopped; durableManifest.segments = []
+        let durableSession = try MeetingStore.create(root: root, manifest: durableManifest)
+        for (index, track) in durableManifest.tracks.enumerated() {
+            try MeetingStore.writePrivate(originals[index], to: durableSession.appendingPathComponent(track.file))
+        }
+        let historyStore = StateStore(directory: root.appendingPathComponent("History"))
+        let details = WorkbenchHistoryModel(directory: root.appendingPathComponent("History"))
+        var initialRecognition = 0
+        var first = MeetingProcessor(session: durableSession, transcribe: { file in
+            initialRecognition += 1
+            if file.lastPathComponent.hasPrefix("you-") { return "Initial local contribution" }
+            if file.lastPathComponent.hasPrefix("others-") { return "Initial remote response" }
+            return "Initial complete mixed wording"
+        }, commit: { item, _, notes in
+            try historyStore.save(SavedState(history: [item]))
+            details.setMetadata(.init(purpose: .meeting, captureNotes: notes), for: item.id)
+        }, writeManifest: { next, previous in
+            if next.state == .committed { throw MeetingError.message("Synthetic final journal failure") }
+            try MeetingStore.save(next, at: durableSession, replacing: previous)
+        })
+        do { _ = try await first.run(); throw MeetingError.message("Final journal unexpectedly succeeded") }
+        catch { try expect(error.localizedDescription.contains("Synthetic final journal failure"), "History success followed by journal failure remains retryable") }
+        first.writeManifest = nil
+        var edited = try historyStore.load()
+        try expect(initialRecognition == 3 && edited.history[0].cleanupMethod == MeetingProcessor.speakersMethod
+                   && edited.history[0].text.contains("You:") && edited.history[0].text.contains("Others:"),
+                   "two intact voiced tracks produce a labelled result before final journal failure")
+        edited.history[0].text = "You: A later corrected conversation.\nOthers: Keep this edit."
+        edited.history[0].rawText = "Exact original mixed wording"
+        edited.history[0].cleanupMethod = "Speakers"
+        try historyStore.save(edited)
+        details.setMetadata(.init(purpose: .call, person: "Synthetic person", captureNotes: ["Later reviewed note"]), for: durableManifest.id)
+        let durableBytes = try Data(contentsOf: historyStore.url)
+        let detailBytes = try Data(contentsOf: details.store.url)
+        let durableDefaults = UserDefaults(suiteName: root.appendingPathComponent("DurablePreferences").path)!
+        let durableModel = MeetingModel(directory: root, defaults: durableDefaults, processSource: ProcessFixture(), transcribe: refuseASR,
+            microphonePermission: { false }, captureFactory: { CaptureFixture() }, microphoneStatus: { .denied })
+        durableModel.updateHostAdmission(.init())
+        var duplicateWrites = 0
+        durableModel.saveTranscript = { _, _ in duplicateWrites += 1 }
+        durableModel.loadSavedTranscript = { id in
+            guard let item = try historyStore.load().history.first(where: { $0.id == id }) else { return nil }
+            let notes = try details.store.load().transcripts.first(where: { $0.id == id })?.metadata.captureNotes ?? []
+            return (item, notes)
+        }
+        await durableModel.retry(try MeetingRecovery.inspect(session: durableSession))
+        try expect(durableModel.completedTranscriptID == durableManifest.id && durableModel.completedTranscriptText == edited.history[0].text
+                   && durableModel.pendingTranscriptNotes == ["Later reviewed note"] && duplicateWrites == 0 && calls == 0 && initialRecognition == 3,
+                   "same-UUID retry resolves durable later conversation and notes without recognition or another History write")
+        try expect(try Data(contentsOf: historyStore.url) == durableBytes && Data(contentsOf: details.store.url) == detailBytes
+                   && MeetingStore.load(from: durableSession).state == .committed,
+                   "retry finishes only the meeting journal while preserving exact durable History and metadata bytes")
+        await durableModel.prepareForShutdown()
+
+        let missing = timed(600.1), missingSession = try MeetingStore.create(root: root, manifest: missing)
+        let chosen = try MeetingRecovery.inspect(session: missingSession)
+        let defaults = UserDefaults(suiteName: root.appendingPathComponent("Preferences").path)!
+        let source = ProcessFixture()
+        var permissionCalls = 0, captureCalls = 0
+        let model = MeetingModel(directory: root, defaults: defaults, processSource: source, transcribe: refuseASR,
+            microphonePermission: { permissionCalls += 1; return false }, captureFactory: { captureCalls += 1; return CaptureFixture() },
+            microphoneStatus: { .denied })
+        model.selectedAppID = 123
+        model.updateHostAdmission(.init(recognition: .init(), captureProblem: .busy("Synthetic capture busy")))
+        model.saveTranscript = { item, _ in saved.append(item) }
+        await model.retry(chosen)
+        try expect(model.completedTranscriptID == missing.id && saved.last?.id == missing.id && saved.last?.seconds == 600.1
+                   && calls == 0 && permissionCalls == 0 && captureCalls == 0,
+                   "complete text saves with missing originals, missing model, denied microphone and absent app")
+        try expect(model.pendingTranscriptNotes.contains { $0.contains("Original audio is missing") }, "missing original playback is stated rather than claimed preserved")
+
+        var changed = timed(600.1)
+        let changedSession = try MeetingStore.create(root: root, manifest: changed)
+        let old = try MeetingRecovery.inspect(session: changedSession)
+        let beforeChange = changed; changed.segments[0].text = "Changed after review"
+        try MeetingStore.save(changed, at: changedSession, replacing: beforeChange)
+        let savedCount = saved.count
+        await model.retry(old)
+        try expect(saved.count == savedCount && calls == 0 && model.problem != nil && model.completedTranscriptID == nil,
+                   "selected checkpoint bytes changed after review cannot fall back to recognition or commit")
+        do {
+            _ = try await MeetingProcessor(session: changedSession, transcribe: refuseASR, commit: { _, _, _ in saves += 1 })
+                .run(intent: .commitOnly(old.checkpoint!))
+            throw MeetingError.message("Changed commit-only snapshot was accepted")
+        } catch let issue as MeetingProblem {
+            try expect(calls == 0 && saves == 0 && issue.message.contains("changed"), "processor independently revalidates exact commit-only checkpoint")
+        }
+        let current = try MeetingRecovery.inspect(session: changedSession)
+        let changedBytes = try Data(contentsOf: changedSession.appendingPathComponent(MeetingStore.manifestName))
+        var failSaves = 0
+        model.saveTranscript = { _, _ in failSaves += 1; throw MeetingError.message("Synthetic save failure") }
+        await model.retry(current); await model.retry(current)
+        try expect(failSaves == 2 && model.completedTranscriptID == nil && calls == 0
+                   && (try Data(contentsOf: changedSession.appendingPathComponent(MeetingStore.manifestName))) == changedBytes,
+                   "repeated save failure retains the same complete UUID and checkpoint without ASR")
+        var nowIncomplete = current.manifest!; nowIncomplete.segments.removeLast()
+        try MeetingStore.save(nowIncomplete, at: changedSession, replacing: current.manifest!)
+        await model.retry(current)
+        try expect(failSaves == 2 && calls == 0 && model.completedTranscriptID == nil,
+                   "a complete selection that becomes incomplete is held without recognition fallback")
+
+        // A real saved-audio retry ignores current capture permissions and sources.
+        let pending = manifest(), pendingSession = try MeetingStore.create(root: root, manifest: pending)
+        let track = try audio(source: .remote, seconds: 1, rate: 16_000, value: 0.2, offset: 0, session: pendingSession)
+        var stopped = pending; stopped.tracks = [track]; stopped.seconds = 1
+        try MeetingStore.save(stopped, at: pendingSession, replacing: pending)
+        var recognized = 0
+        let audioModel = MeetingModel(directory: root, defaults: defaults, processSource: source,
+            transcribe: { _ in recognized += 1; return "Saved audio words" }, microphonePermission: { permissionCalls += 1; return false },
+            captureFactory: { captureCalls += 1; return CaptureFixture() }, microphoneStatus: { .denied })
+        audioModel.selectedAppID = 999; audioModel.saveTranscript = { item, _ in saved.append(item) }
+        await audioModel.retry(try MeetingRecovery.inspect(session: pendingSession))
+        try expect(audioModel.completedTranscriptID == pending.id && recognized == 1 && permissionCalls == 0 && captureCalls == 0,
+                   "saved audio recognition needs no current app or microphone permission")
+
+        // Hold the real readiness boundary after MeetingModel reviewed the
+        // selected bytes but before MeetingProcessor takes ownership of them.
+        var raced: [String] = []
+        for completeAfterReview in [false, true] {
+            var before = manifest()
+            let session = try MeetingStore.create(root: root, manifest: before)
+            let track = try audio(source: .remote, seconds: 1, rate: 16_000, value: 0.2, offset: 0, session: session)
+            let empty = before
+            before.tracks = [track]; before.seconds = 1
+            try MeetingStore.save(before, at: session, replacing: empty)
+            let selected = try MeetingRecovery.inspect(session: session)
+            let gate = Gate<RecognitionSnapshot>()
+            var asr = 0, commits = 0
+            let held = MeetingModel(directory: root, defaults: defaults, processSource: ProcessFixture(),
+                transcribe: { _ in asr += 1; return "Synthetic race result" },
+                microphonePermission: { permissionCalls += 1; return false }, captureFactory: { captureCalls += 1; return CaptureFixture() },
+                readSpeechSnapshot: { await gate.wait() })
+            held.saveTranscript = { _, _ in commits += 1 }
+            let retry = Task { await held.retry(selected) }
+            await waitUntil { gate.isWaiting }
+            try expect(gate.isWaiting && asr == 0 && commits == 0, "saved-audio retry reaches the held readiness boundary before ASR or commit")
+            var replacement = try MeetingStore.load(from: session)
+            let previous = replacement
+            replacement.gaps.append("Changed after selection")
+            if completeAfterReview {
+                replacement.state = .recognized
+                replacement.segments = [.init(index: 0, file: MeetingSegmentPlan.filename(index: 0), startSeconds: 0,
+                    seconds: 1, bytes: 32_000, text: "A complete replacement was not selected")]
+            }
+            try MeetingStore.save(replacement, at: session, replacing: previous)
+            let bytes = try Data(contentsOf: session.appendingPathComponent(MeetingStore.manifestName))
+            gate.resume(.init(admission: .localReady)); await retry.value
+            let afterBytes = try Data(contentsOf: session.appendingPathComponent(MeetingStore.manifestName))
+            if asr != 0 || commits != 0 || held.completedTranscriptID != nil || held.problem == nil
+                || afterBytes != bytes {
+                raced.append("\(completeAfterReview ? "incomplete-to-complete" : "changed-incomplete"): ASR=\(asr), commits=\(commits)")
+            }
+            await held.prepareForShutdown()
+        }
+        try expect(raced.isEmpty, "held selected-checkpoint boundary rejects both replacements without ASR/commit: " + raced.joined(separator: "; "))
+
+        // Match production wiring: main supplies hostAdmission, not mayStart.
+        let pollingSource = ProcessFixture()
+        pollingSource.values = [.init(pid: 843, bundleID: "us.zoom.xos", isRunningInput: true, isRunningOutput: true)]
+        var host = MeetingHostAdmission()
+        let polling = MeetingModel(directory: root.appendingPathComponent("polling"), defaults: defaults, processSource: pollingSource,
+            transcribe: refuseASR, microphonePermission: { permissionCalls += 1; return false }, captureFactory: { captureCalls += 1; return CaptureFixture() })
+        polling.hostAdmission = { host }; polling.detectionEnabled = true
+        for _ in 0..<4 { polling.refreshDetection() }
+        try expect(pollingSource.calls == 0 && polling.offer == nil, "production host admission suppresses metadata polls while speech is unavailable")
+        host.recognition = .init(admission: .localReady)
+        for busy in ["Dictate is active", "Snap & Talk is active"] {
+            host.captureProblem = .busy(busy)
+            for _ in 0..<4 { polling.refreshDetection() }
+            try expect(pollingSource.calls == 0 && polling.offer == nil, "production host admission suppresses polls during " + busy)
+        }
+        host.captureProblem = nil
+        for _ in 0..<3 { polling.refreshDetection() }
+        try expect(polling.offer?.id == 843 && pollingSource.calls == 3, "ready idle host resumes only the passive confirmed offer")
+        host.closing = true; polling.refreshDetection()
+        try expect(pollingSource.calls == 3 && polling.offer == nil && permissionCalls == 0 && captureCalls == 0,
+                   "host closure clears an existing offer without another poll or capture")
+        polling.detectionEnabled = false; await polling.prepareForShutdown()
+
+        var microphone = AVAuthorizationStatus.notDetermined
+        let permission = Gate<Bool>()
+        let admissionRoot = root.appendingPathComponent("admission")
+        let admissionModel = MeetingModel(directory: admissionRoot, defaults: defaults, processSource: source, transcribe: refuseASR,
+            microphonePermission: { permissionCalls += 1; let result = await permission.wait(); microphone = result ? .authorized : .denied; return result },
+            captureFactory: { captureCalls += 1; return CaptureFixture() }, microphoneStatus: { microphone })
+        admissionModel.updateHostAdmission(.init())
+        admissionModel.refreshAdmission(); admissionModel.refreshAdmission()
+        try expect(!admissionModel.admission.canStart && permissionCalls == 0, "passive unavailable model and undetermined microphone request no permission")
+        source.values = [.init(pid: 432, bundleID: "us.zoom.xos", isRunningInput: true, isRunningOutput: true)]
+        admissionModel.refreshApps(); admissionModel.selectAudioSource(432)
+        admissionModel.updateHostAdmission(.init(recognition: .init(admission: .localReady)))
+        try expect(admissionModel.admission.canStart && admissionModel.selectedAppID == 432 && admissionModel.includeMicrophone && captureCalls == 0,
+                   "Models readiness return retains source and microphone choices without starting")
+        source.failure = true; admissionModel.refreshApps()
+        if case .sourceProbe = admissionModel.admission.captureProblem {} else { throw MeetingError.message("Failed enumeration became disappearance") }
+        try expect(admissionModel.apps.contains { $0.id == 432 }, "failed enumeration retains the selected source while showing typed uncertainty")
+        source.failure = false; source.values = []; admissionModel.refreshApps()
+        try expect(admissionModel.admission.captureProblem == .sourceDisappeared, "successful empty enumeration establishes source disappearance")
+        source.isAvailable = false; admissionModel.refreshApps(); admissionModel.useMicrophoneOnly()
+        try expect(admissionModel.admission.canStart && admissionModel.selectedAppID == nil && captureCalls == 0,
+                   "explicit microphone-only preparation works when app capture is unsupported")
+        let start = Task { await admissionModel.start() }
+        await waitUntil { permission.isWaiting }
+        admissionModel.updateHostAdmission(.init())
+        permission.resume(true); await start.value
+        try expect(captureCalls == 0 && MeetingStore.sessions(in: admissionRoot).isEmpty && !admissionModel.isBusy,
+                   "readiness lost during permission await cannot create a capture or session directory")
+        microphone = .notDetermined
+        admissionModel.updateHostAdmission(.init(recognition: .init(admission: .localReady)))
+        let cancelled = Task { await admissionModel.start() }
+        await waitUntil { permission.isWaiting }
+        await admissionModel.cancel(); permission.resume(true); await cancelled.value
+        try expect(captureCalls == 0 && MeetingStore.sessions(in: admissionRoot).isEmpty, "cancelled permission grant cannot create resources")
+        microphone = .restricted; admissionModel.refreshAdmission()
+        try expect(admissionModel.admission.captureProblem == .microphoneRestricted, "restricted microphone is typed without claiming organizational policy")
+        microphone = .denied; admissionModel.refreshAdmission(); await admissionModel.start()
+        admissionModel.openPrivacyPane = { _ in false }; admissionModel.openMicrophoneSettings()
+        try expect(admissionModel.error?.contains("could not be opened") == true && !admissionModel.isBusy, "failed Settings opening stays factual on Meetings")
+        microphone = .authorized; admissionModel.refreshAdmission()
+        try expect(admissionModel.admission.canStart && captureCalls == 0, "authorized Settings return changes readiness without automatic recording")
+        source.isAvailable = true; source.values = [.init(pid: 432, bundleID: "us.zoom.xos", isRunningInput: true, isRunningOutput: true)]
+        admissionModel.refreshApps(); admissionModel.selectAudioSource(432); microphone = .denied; admissionModel.refreshAdmission()
+        admissionModel.useAppAudioOnly()
+        try expect(admissionModel.admission.canStart && !admissionModel.includeMicrophone && captureCalls == 0,
+                   "explicit app-only alternative changes preparation without requesting microphone")
+        if #available(macOS 14.2, *) {
+        try expect(MeetingProcessTap.startProblem(status: kAudioDevicePermissionsError).opensAudioSettings
+                   && !MeetingProcessTap.startProblem(status: kAudioHardwareIllegalOperationError).opensAudioSettings
+                   && MeetingProcessTap.startProblem(status: -12345) == .appAudioUnknown(-12345),
+                   "only the documented Core Audio permission constant offers permission settings; arbitrary codes stay unknown")
+        }
+        await model.prepareForShutdown(); await audioModel.prepareForShutdown(); await admissionModel.prepareForShutdown()
     }
 
     private static func waitUntil(_ condition: () -> Bool) async {

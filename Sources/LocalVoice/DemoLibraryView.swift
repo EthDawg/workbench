@@ -14,6 +14,7 @@ enum DemoLibraryReturnPolicy {
 struct DemoLibraryView: View {
     @ObservedObject var library: DemoLibraryModel
     @ObservedObject var model: AppModel
+    var browserDefaults: UserDefaults = .standard
     var onUseImageInPresent: ((DemoLibraryImageSnapshot) -> Void)? = nil
     var onUseImageInPersona: ((DemoLibraryImageSnapshot) -> Void)? = nil
     @FocusState private var searching: Bool
@@ -23,13 +24,32 @@ struct DemoLibraryView: View {
     /// From iPhone beside it.
     var body: some View { resources }
 
+    private var savedBrowserSettings: SavedBrowserSettings {
+        SavedBrowserSettings(resources: library.resources, defaults: browserDefaults)
+    }
+
+    @ViewBuilder private var readPreservationRecovery: some View {
+        if let problem = library.readPreservationFailure {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Workbench couldn’t finish preserving your old Read text. The original is still saved.")
+                DisclosureGroup("Details") { Text(problem).textSelection(.enabled) }
+                HStack {
+                    Button("Retry saving Read text") { library.retryReadPreservation() }
+                    Button("Show original saved state") {
+                        NSWorkspace.shared.activateFileViewerSelecting([library.readPreservationSource])
+                    }
+                }
+            }.font(.caption).foregroundStyle(.orange)
+        }
+    }
+
     private var resources: some View {
         VStack(alignment: .leading, spacing: 16) {
-            ChromeConnectionView(presenter: model.presenter)
             HStack(alignment: .firstTextBaseline) {
                 // Library's title and switcher name this section, so it opens on its summary (#134).
-                Text("Find a prompt, video, deck, or demo link by product or persona.").foregroundStyle(.secondary)
+                Text("Keep useful prompts, links and files together.").foregroundStyle(.secondary)
                 Spacer()
+                LibraryPromptButton(model: model).fixedSize().frame(height: 26)
                 Menu {
                     Button("New prompt") { library.newPrompt() }
                     Button("New link") { library.draft = DemoResource(kind: .link) }
@@ -38,27 +58,37 @@ struct DemoLibraryView: View {
                     // Opens the prompt editor with the clipboard's text, so it asks for more (…).
                     // The shortcut shows here and works while this menu is open.
                     Button("Save clipboard as prompt…") { saveClipboard() }.keyboardShortcut("s", modifiers: [.command, .shift])
-                    Button("Save current transcript") { library.newPrompt(model.transcript) }.disabled(model.transcript.isEmpty)
+                    Button("Save Dictate transcript as prompt…") { library.newPrompt(model.transcript) }.disabled(model.transcript.isEmpty)
                 } label: { Label("Add", systemImage: "plus") }
                     .disabled(library.savingDisabled || library.importReview != nil).fixedSize()
             }
             HStack(spacing: 10) {
-                TextField("Search resources, products, personas…", text: $library.query)
-                    .textFieldStyle(.roundedBorder).focused($searching).accessibilityLabel("Search demo library")
+                TextField("Search resources…", text: $library.query)
+                    .textFieldStyle(.roundedBorder).focused($searching).accessibilityLabel("Search resources")
                     // Native submission lets Return confirm an IME candidate first.
                     .onSubmit { _ = performReturnAction(fromSearch: true) }
                 Toggle(isOn: $library.favoritesOnly) { Image(systemName: library.favoritesOnly ? "star.fill" : "star") }
                     .toggleStyle(.button).help("Show favorites only").accessibilityLabel("Favorites only")
             }
+            readPreservationRecovery
+            if let problem = library.storageFailure {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Saved resources are preserved. Editing is paused.")
+                    DisclosureGroup("Library details") { Text(problem).textSelection(.enabled) }
+                    Button("Show saved library") { NSWorkspace.shared.activateFileViewerSelecting([library.store.url]) }
+                }.font(.caption).foregroundStyle(.orange)
+            }
             if let error = library.error {
                 HStack(alignment: .top) {
                     Text(error).textSelection(.enabled)
                     Spacer()
-                    if library.savingDisabled { Button("Show saved library") { NSWorkspace.shared.activateFileViewerSelecting([library.store.url]) } }
-                    else { Button { library.error = nil } label: { Image(systemName: "xmark") }.accessibilityLabel("Dismiss library error") }
+                    Button { library.error = nil } label: { Image(systemName: "xmark") }.accessibilityLabel("Dismiss library error")
                 }.font(.caption).foregroundStyle(.orange)
             }
-            if library.resources.isEmpty {
+            if library.resources.isEmpty && library.savingDisabled {
+                Text("Your saved Library could not be displayed. Its file has not been replaced.")
+                    .foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if library.resources.isEmpty {
                 emptyLibrary
             } else if library.matches.isEmpty {
                 VStack(spacing: 12) {
@@ -81,6 +111,10 @@ struct DemoLibraryView: View {
                     }.listStyle(.sidebar).frame(minWidth: 190, idealWidth: 220, maxWidth: 300)
                         .onKeyPress(.return, phases: .down) { _ in performReturnAction(fromSearch: false) }
                     if let item = library.selected { detail(item).frame(minWidth: 230, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading) }
+                    else {
+                        Text("Choose a resource to review or reuse.").foregroundStyle(.secondary)
+                            .frame(minWidth: 230, maxWidth: .infinity, maxHeight: .infinity)
+                    }
                 }.background(Workbench.surface, in: RoundedRectangle(cornerRadius: 12))
             }
             HStack {
@@ -90,6 +124,12 @@ struct DemoLibraryView: View {
                 Menu {
                     Button("Import library…") { library.importLibrary() }.disabled(library.savingDisabled || library.draft != nil || library.importReview != nil)
                     Button("Export library…") { library.exportLibrary() }.disabled(library.resources.isEmpty)
+                    if savedBrowserSettings.hasSavedSettings {
+                        Divider()
+                        Text("Browser switching is paused")
+                        if let summary = savedBrowserSettings.shortcutSummary { Text(summary) }
+                        Button("Export saved browser settings…") { library.exportSavedBrowserSettings(savedBrowserSettings) }
+                    }
                 } label: { Label("More", systemImage: "ellipsis.circle") }.fixedSize().font(.caption)
                     .accessibilityLabel("More library actions")
             }
@@ -111,22 +151,24 @@ struct DemoLibraryView: View {
         .confirmationDialog("Remove this resource from the library?", isPresented: Binding(get: { removal != nil }, set: { if !$0 { removal = nil } }), titleVisibility: .visible) {
             Button("Remove resource", role: .destructive) { if let item = removal { library.remove(item) }; removal = nil }
             Button("Cancel", role: .cancel) { removal = nil }
-        } message: { Text("The original file will stay where it is.") }
+        } message: { Text("“\(removal?.title ?? "This resource")” will be removed from Library. The original file will stay where it is.") }
         .background {
             Group {
-                Button("Find resource") { searching = true }.keyboardShortcut("f")
-                Button("New prompt") { library.newPrompt() }.keyboardShortcut("n").disabled(library.savingDisabled)
+                Button("Find resource") { focusSearchWhenReady() }.keyboardShortcut("f")
+                    .disabled(library.draft != nil || library.importReview != nil || removal != nil)
+                Button("New prompt") { library.newPrompt() }.keyboardShortcut("n")
+                    .disabled(library.savingDisabled || library.importReview != nil || removal != nil)
                 // Save clipboard as prompt lives with the prompts it makes, and keeps ⇧⌘S while
                 // they show; it left the Window menu (#134). A closed menu's items never receive
                 // a key, so this carries ⇧⌘S until Add is opened. Both call saveClipboard(), and
                 // one press reaches only one of them.
                 Button("Save clipboard as prompt…") { saveClipboard() }.keyboardShortcut("s", modifiers: [.command, .shift])
-                    .disabled(library.savingDisabled || library.importReview != nil)
+                    .disabled(library.savingDisabled || library.importReview != nil || removal != nil)
             }.hidden()
         }
     }
     private func performReturnAction(fromSearch: Bool) -> KeyPress.Result {
-        guard model.page == "library", library.draft == nil, removal == nil,
+        guard WorkbenchHome.destination(model.page).section == "library", library.draft == nil, removal == nil,
               let window = NSApp.keyWindow, window === NSApp.mainWindow, window.attachedSheet == nil else { return .ignored }
         let editor = window.firstResponder as? NSTextView
         let event = NSApp.currentEvent
@@ -136,27 +178,29 @@ struct DemoLibraryView: View {
         return library.performPrimaryAction() ? .handled : .ignored
     }
     private func focusSearchWhenReady() {
-        guard model.page == "library", library.draft == nil, library.importReview == nil, let window = NSApp.keyWindow, window === NSApp.mainWindow else { return }
+        guard WorkbenchHome.destination(model.page).section == "library", library.draft == nil, library.importReview == nil, removal == nil,
+              let window = NSApp.keyWindow, window === NSApp.mainWindow, window.attachedSheet == nil else { return }
         // Recall can reveal a hidden editor before SwiftUI has mounted the search
         // field. Re-arm focus on the next main-loop turn, after the window is key.
         searching = false
         DispatchQueue.main.async {
-            guard model.page == "library", library.draft == nil, library.importReview == nil, window.isVisible, window === NSApp.keyWindow else { return }
+            guard WorkbenchHome.destination(model.page).section == "library", library.draft == nil, library.importReview == nil, removal == nil,
+                  window.attachedSheet == nil, window.isVisible, window === NSApp.keyWindow else { return }
             searching = true
         }
     }
     private var emptyLibrary: some View {
         VStack(spacing: 18) {
             Image(systemName: "square.stack.3d.up").font(.system(size: 42, weight: .light)).foregroundStyle(Workbench.accent)
-            Text("Your next demo, within reach.").font(.title2.weight(.medium))
-            Text("Keep useful prompts, launch links, and local files together.\nSearch a product or persona when you need it.")
+            Text("Keep something useful.").font(.title2.weight(.medium))
+            Text("Save a prompt, link or file reference to find it here later.")
                 .font(.system(size: 13)).foregroundStyle(.secondary).multilineTextAlignment(.center)
             HStack(spacing: 12) {
                 Button("Add a prompt") { library.newPrompt() }.buttonStyle(.borderedProminent)
                 Button("Add a file…") { library.chooseFile() }
                 Button("Add a link") { library.draft = DemoResource(kind: .link) }
             }.disabled(library.savingDisabled)
-            Text("Files open in their usual app. Download cloud media before an offline demo.")
+            Text("Files stay in their original folders. Download cloud files before using them offline.")
                 .font(.caption).foregroundStyle(.secondary)
         }.frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -175,8 +219,9 @@ struct DemoLibraryView: View {
             if item.kind == .file {
                 Label(item.fileAvailable ? "File found" : "File needs attention", systemImage: item.fileAvailable ? "checkmark.circle" : "exclamationmark.circle")
                     .font(.caption).foregroundStyle(item.fileAvailable ? Workbench.accent : .orange)
-                Text(item.fileURL?.path ?? item.content).font(.caption).foregroundStyle(.secondary).textSelection(.enabled).lineLimit(5)
-                Text(item.fileAvailable ? "Opens in its usual app. Keep cloud files downloaded for an offline demo." : "Connect its drive or locate the file again.")
+                Text(item.fileName).font(.callout).textSelection(.enabled)
+                Text("In \(item.fileLocation)").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Text(item.fileAvailable ? "The original stays in its folder. Keep cloud files downloaded for offline use." : "Connect its drive or locate the file again.")
                     .font(.caption).foregroundStyle(.secondary)
                 HStack {
                     primaryActionButton(item)
@@ -195,23 +240,34 @@ struct DemoLibraryView: View {
                     Text("Prepare an independent scene or persona. Choose Present or Show when you are ready.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-                Button("Locate file…") { library.chooseFile(for: item) }.disabled(library.savingDisabled)
+                DisclosureGroup("File details") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(item.fileURL?.path ?? item.content).font(.caption).textSelection(.enabled)
+                        HStack {
+                            Button("Copy path") { library.copy(item) }
+                            if item.fileAvailable {
+                                Button("Change file…") { library.chooseFile(for: item) }.disabled(library.savingDisabled)
+                            }
+                        }
+                    }
+                }.font(.caption)
             } else {
                 if let target = item.browserTarget {
                     Label("Chrome · \(target.profileName)", systemImage: "arrow.up.forward.app").font(.caption).foregroundStyle(.secondary)
-                    Button("Use default browser instead") { var copy = item; copy.browserTarget = nil; _ = library.save(copy) }
-                        .font(.caption).disabled(library.savingDisabled)
+                    Text("Browser switching is paused. The saved profile is kept; opening this link uses your default browser and may use a different profile.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    if let summary = savedBrowserSettings.shortcutSummary {
+                        Text(summary).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                    }
                 }
                 ScrollView { Text(item.content).font(.system(size: 13)).lineSpacing(4).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
                     .frame(maxHeight: .infinity)
                 HStack {
                     primaryActionButton(item)
                     if item.kind == .link { Button("Copy link") { library.copy(item) } }
-                    else { Button("Read aloud") { model.importReading(item.content, from: .savedText) } }
                 }
-                // How the toolbar's Prompts delivers, kept here with the prompts rather than in the picker (#159).
                 if item.kind == .prompt {
-                    Text("While presenting, the toolbar's Prompts types this into the field you clicked, or pastes it once where typing isn't supported. It never submits. Without Accessibility approval, it copies the prompt for ⌘V.")
+                    Text("Copy the complete prompt, then paste it into your chosen app with ⌘V. Nothing is submitted automatically.")
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -222,7 +278,6 @@ struct DemoLibraryView: View {
             Spacer(minLength: 0)
             HStack {
                 Button("Edit") { library.draft = item }.disabled(library.savingDisabled)
-                if item.kind == .file { Button("Copy path") { library.copy(item) } }
                 Spacer()
                 Button { removal = item } label: { Image(systemName: "trash") }.accessibilityLabel("Remove resource").disabled(library.savingDisabled)
             }.font(.caption).buttonStyle(.borderless)
@@ -241,13 +296,14 @@ struct DemoLibraryView: View {
         }
     }
     private func primaryActionButton(_ item: DemoResource) -> some View {
-        Button { library.performPrimaryAction() } label: {
+        Button { library.performPrimaryAction(expectedID: item.id) } label: {
             HStack(spacing: 8) {
                 Text(item.primaryActionTitle)
                 Image(systemName: "return").font(.caption).accessibilityHidden(true)
             }
         }
-        .buttonStyle(.borderedProminent).disabled(!item.primaryActionAvailable || library.draft != nil)
+        .buttonStyle(.borderedProminent).disabled(!item.primaryActionAvailable || library.draft != nil || library.importReview != nil
+            || (item.kind == .file && !item.fileAvailable && library.savingDisabled))
         .accessibilityLabel(item.primaryActionTitle)
         .accessibilityHint("Press Return from search or the results list.")
         .help("\(item.primaryActionTitle) · Return from search or the results list")
@@ -268,26 +324,30 @@ private struct DemoResourceEditor: View {
             Text("\(library.resources.contains { $0.id == item.id } ? "Edit" : "Save") \(item.kind.rawValue.lowercased())").font(.title2.weight(.semibold))
             TextField("Name", text: $item.title).textFieldStyle(.roundedBorder).focused($titleFocused).accessibilityLabel("Resource name")
             HStack {
-                VStack(alignment: .leading, spacing: 5) { Text("Product or demo").font(.caption).foregroundStyle(.secondary); TextField("Optional", text: $item.product).accessibilityLabel("Product or demo") }
-                VStack(alignment: .leading, spacing: 5) { Text("Persona").font(.caption).foregroundStyle(.secondary); TextField("Optional", text: $item.persona).accessibilityLabel("Persona") }
+                VStack(alignment: .leading, spacing: 5) { Text("Product (optional)").font(.caption).foregroundStyle(.secondary); TextField("Optional", text: $item.product).accessibilityLabel("Product, optional") }
+                VStack(alignment: .leading, spacing: 5) { Text("Persona (optional)").font(.caption).foregroundStyle(.secondary); TextField("Optional", text: $item.persona).accessibilityLabel("Persona, optional") }
             }.textFieldStyle(.roundedBorder)
             if item.kind == .prompt {
                 Text("Prompt").font(.caption).foregroundStyle(.secondary)
                 TextEditor(text: $item.content).font(.system(size: 13)).frame(minHeight: 180).accessibilityLabel("Prompt text")
                     .overlay(RoundedRectangle(cornerRadius: 6).stroke(Workbench.border))
             } else if item.kind == .link {
-                TextField("https://…", text: $item.content).textFieldStyle(.roundedBorder).accessibilityLabel("Demo URL")
+                TextField("https://…", text: $item.content).textFieldStyle(.roundedBorder).accessibilityLabel("Link URL")
                 Text("Opens in your default browser when you choose Open link.").font(.caption).foregroundStyle(.secondary)
             } else {
                 Label(item.content, systemImage: "doc").font(.caption).foregroundStyle(.secondary).lineLimit(3).textSelection(.enabled)
                 Text("The original file stays in its folder.").font(.caption).foregroundStyle(.secondary)
             }
-            Text("Preparation notes").font(.caption).foregroundStyle(.secondary)
-            TextField("Starting step, fallback, or context (optional)", text: $item.notes, axis: .vertical).lineLimit(2...4).textFieldStyle(.roundedBorder).accessibilityLabel("Preparation notes")
+            Text("Notes (optional)").font(.caption).foregroundStyle(.secondary)
+            TextField("Useful context or reminders", text: $item.notes, axis: .vertical).lineLimit(2...4).textFieldStyle(.roundedBorder).accessibilityLabel("Notes, optional")
             Toggle("Favorite", isOn: $item.favorite)
             if let problem = item.validationMessage { Text(problem).font(.caption).foregroundStyle(.secondary) }
             if let notice = library.draftNotice { Text(notice).font(.caption).foregroundStyle(.secondary) }
             if let error = library.error { Text(error).font(.caption).foregroundStyle(.orange).lineLimit(3) }
+            if let problem = library.storageFailure {
+                Text("Saving is paused to preserve the saved Library. Cancel to return to its recovery details.").font(.caption).foregroundStyle(.orange)
+                DisclosureGroup("Library details") { Text(problem).font(.caption).textSelection(.enabled) }
+            }
             HStack {
                 Button("Cancel") { library.draft = nil }.keyboardShortcut(.cancelAction)
                 Spacer()

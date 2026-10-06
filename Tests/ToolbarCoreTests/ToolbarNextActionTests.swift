@@ -9,10 +9,6 @@ final class ToolbarNextActionTests: XCTestCase {
         let recording = ToolbarNextAction.resolve(ToolbarLiveState(mode: .present, dictation: .recording))
         XCTAssertEqual(recording.title, "Finish dictation")
         XCTAssertEqual(recording.symbol, "stop.fill")
-        let playing = ToolbarNextAction.resolve(ToolbarLiveState(mode: .dictate, reading: .playing))
-        XCTAssertEqual(playing.symbol, "pause.fill")
-        let paused = ToolbarNextAction.resolve(ToolbarLiveState(mode: .read, reading: .paused))
-        XCTAssertEqual(paused.symbol, "play.fill")
         let waiting = ToolbarNextAction.resolve(ToolbarLiveState(mode: .dictate, dictation: .processing))
         XCTAssertEqual(waiting.symbol, "hourglass")
         XCTAssertFalse(waiting.isEnabled)
@@ -22,14 +18,6 @@ final class ToolbarNextActionTests: XCTestCase {
     /// dictation still processing leads only in its own tool, so Snap keeps its sources and
     /// Present and Draw stay one click away. Their commands stay in the chooser.
     func testIdleWaitsLeadOnlyInTheirOwnTool() {
-        for mode in ToolbarMode.allCases where mode != .read {
-            let paused = ToolbarNextAction.resolve(ToolbarLiveState(mode: mode, reading: .paused, mayStart: true))
-            XCTAssertNotEqual(paused.operation, .resumeReading, "\(mode)")
-        }
-        XCTAssertEqual(ToolbarNextAction.resolve(ToolbarLiveState(mode: .snap, reading: .paused, mayStart: true)).operation, .start(.snap))
-        XCTAssertEqual(ToolbarNextAction.resolve(ToolbarLiveState(mode: .read, reading: .paused)).operation, .resumeReading)
-        XCTAssertEqual(ToolbarNextAction.resolve(ToolbarLiveState(mode: .present, reading: .playing)).operation, .pauseReading,
-                       "playback is still heard, so Pause leads everywhere")
         for state in [ToolbarLiveState.Dictation.processing, .cancelling, .waitingForDrawing] {
             for mode in ToolbarMode.allCases where mode != .dictate {
                 let action = ToolbarNextAction.resolve(ToolbarLiveState(mode: mode, dictation: state, mayStart: true))
@@ -46,7 +34,6 @@ final class ToolbarNextActionTests: XCTestCase {
         for mode in ToolbarMode.allCases {
         for dictation in ToolbarLiveState.Dictation.allCases {
         for canRecordAgain in [false, true] {
-        for reading in ToolbarLiveState.Reading.allCases {
         for narrating in [false, true] {
         for capturingScreen in [false, true] {
         for pendingNarration in [false, true] {
@@ -58,18 +45,17 @@ final class ToolbarNextActionTests: XCTestCase {
         for insertingPrompt in [false, true] {
         for meetingRecording in [false, true] {
         for mayStart in [false, true] {
-            body(ToolbarLiveState(mode: mode, dictation: dictation, canRecordAgain: canRecordAgain, reading: reading,
+            body(ToolbarLiveState(mode: mode, dictation: dictation, canRecordAgain: canRecordAgain,
                                   narrating: narrating, capturingScreen: capturingScreen, pendingNarration: pendingNarration,
                                   captureCount: captureCount, drawing: drawing, presenting: presenting, persona: persona,
                                   timer: timer, insertingPrompt: insertingPrompt, meetingRecording: meetingRecording,
                                   mayStart: mayStart))
-        }}}}}}}}}}}}}}}
+        }}}}}}}}}}}}}}
     }
 
     /// Input-consuming work claims the label whatever the mode.
     private static func inputLive(_ live: ToolbarLiveState) -> Bool {
         live.insertingPrompt || live.dictation != .idle || live.capturingScreen || live.narrating || live.drawing
-            || live.reading == .preparing || live.reading == .playing || live.reading == .paused && live.mode == .read
     }
 
     /// Input work that claims the label: as `inputLive`, except that a paused reading leads only
@@ -77,8 +63,7 @@ final class ToolbarNextActionTests: XCTestCase {
     private static func leadsLive(_ live: ToolbarLiveState) -> Bool {
         let dictation = live.dictation == .requesting || live.dictation == .recording
             || live.dictation == .waitingForDrawing && live.drawing || live.dictation != .idle && live.mode == .dictate
-        let reading = live.reading == .preparing || live.reading == .playing || live.reading == .paused && live.mode == .read
-        return live.insertingPrompt || dictation || live.capturingScreen || live.narrating || live.drawing || reading
+        return live.insertingPrompt || dictation || live.capturingScreen || live.narrating || live.drawing
     }
 
     /// The selected mode's own step or ending, which claims the label only there.
@@ -88,7 +73,7 @@ final class ToolbarNextActionTests: XCTestCase {
         case .snapAndTalk: return live.captureCount != nil
         case .dictate: return live.meetingRecording
         case .present: return live.presenting
-        case .read, .snap, .draw: return false
+        case .snap, .draw: return false
         }
     }
 
@@ -103,10 +88,6 @@ final class ToolbarNextActionTests: XCTestCase {
             case .stopDictation: ok = live.dictation == .recording
             case .finishNarration: ok = live.narrating
             case .finishDrawing: ok = live.drawing
-            case .cancelReading: ok = live.reading == .preparing
-            case .pauseReading: ok = live.reading == .playing
-            case .resumeReading: ok = live.reading == .paused && live.mode == .read
-            case .stopReading: ok = false
             case .pauseOverlays: ok = live.persona == .session && live.mode == .persona
             case .resumeOverlays: ok = live.persona == .sessionHidden && live.mode == .persona
             case .hidePersona: ok = live.persona == .shown && live.mode == .persona
@@ -157,7 +138,7 @@ final class ToolbarNextActionTests: XCTestCase {
         }
         XCTAssertEqual(failures, 0)
         XCTAssertEqual(ToolbarNextAction.resolve(ToolbarLiveState(mode: .draw, presenting: true)).title, "Draw")
-        XCTAssertEqual(ToolbarNextAction.resolve(ToolbarLiveState(mode: .read, meetingRecording: true)).title, "Read")
+        XCTAssertEqual(ToolbarNextAction.resolve(ToolbarLiveState(mode: .snap, meetingRecording: true)).title, "Snap")
         XCTAssertEqual(ToolbarNextAction.resolve(ToolbarLiveState(mode: .snap, persona: .session)).title, "Snap")
     }
 
@@ -247,7 +228,7 @@ final class ToolbarNextActionTests: XCTestCase {
 
     func testTheFixedPriorityReadsTheSameOnTwoIdenticalScreens() {
         // Input first, then the cheapest to undo, then the mode's own step or ending.
-        let everything = ToolbarLiveState(mode: .dictate, dictation: .recording, reading: .playing, narrating: true,
+        let everything = ToolbarLiveState(mode: .dictate, dictation: .recording, narrating: true,
                                           captureCount: 3, drawing: true, presenting: true, persona: .session,
                                           insertingPrompt: true, meetingRecording: true)
         XCTAssertEqual(ToolbarNextAction.resolve(everything).title, "Stop inserting")
@@ -258,8 +239,6 @@ final class ToolbarNextActionTests: XCTestCase {
         next.narrating = false
         XCTAssertEqual(ToolbarNextAction.resolve(next).title, "Stop drawing")
         next.drawing = false
-        XCTAssertEqual(ToolbarNextAction.resolve(next).title, "Pause reading")
-        next.reading = .idle
         XCTAssertEqual(ToolbarNextAction.resolve(next).title, "Finish meeting", "Dictate owns the meeting")
         next.meetingRecording = false
         XCTAssertEqual(ToolbarNextAction.resolve(next).title, "Dictate", "presenting and personas belong to other modes")
@@ -281,7 +260,7 @@ final class ToolbarNextActionTests: XCTestCase {
         let between = ToolbarNextAction.resolve(ToolbarLiveState(mode: .snapAndTalk, pendingNarration: true, captureCount: 3))
         XCTAssertEqual(between.hint(key: "⌥C"), "saving · ⌥C")
         XCTAssertEqual(ToolbarNextAction.resolve(ToolbarLiveState(mode: .dictate)).hint(key: "⌥V"), "⌥V")
-        XCTAssertNil(ToolbarNextAction.resolve(ToolbarLiveState(mode: .read)).hint(key: nil))
+        XCTAssertNil(ToolbarNextAction.resolve(ToolbarLiveState(mode: .snap)).hint(key: nil))
         XCTAssertNil(ToolbarShortcut.off.hintKey)
         XCTAssertNil(ToolbarShortcut.unavailable.hintKey)
         XCTAssertEqual(ToolbarShortcut.assigned("⌥V").hintKey, "⌥V")
@@ -294,9 +273,6 @@ final class ToolbarNextActionTests: XCTestCase {
         XCTAssertNil(ToolbarOperation.pauseOverlays.keyMode, "the persona key refuses to pause a prepared set")
         XCTAssertNil(ToolbarOperation.resumeOverlays.keyMode)
         XCTAssertNil(ToolbarOperation.wait.keyMode)
-        XCTAssertNil(ToolbarOperation.stopReading.keyMode, "the Read key pauses; it does not stop")
-        XCTAssertEqual(ToolbarOperation.stopReading.mode, .read)
-        XCTAssertEqual(ToolbarNextAction.title(.stopReading, live: ToolbarLiveState(mode: .read)), "Stop reading")
         XCTAssertEqual(ToolbarOperation.stopDictation.keyMode, .dictate)
         XCTAssertEqual(ToolbarOperation.hidePersona.keyMode, .persona)
         XCTAssertEqual(ToolbarOperation.captureNext.keyMode, .snapAndTalk)

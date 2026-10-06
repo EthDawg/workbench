@@ -127,7 +127,6 @@ struct TranscriptHistoryRow: View {
                     Button("Original") { review = TranscriptReview(transcript: item, version: .original) }.accessibilityLabel(CaptureHistoryAccessibility.label("Show original", context: context))
                     Menu("More…") {
                         Button("Open in Dictate") { model.openTranscript(item) }
-                        Button("Read aloud") { model.importReading(item.text, from: .transcript) }
                         Button("Save prompt") { model.savePrompt(item.text) }
                         Button("Export cleaned text…") { model.exportCapture(item, version: .cleaned) }
                         Button("Export original wording…") { model.exportCapture(item, version: .original) }

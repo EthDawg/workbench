@@ -1,5 +1,7 @@
 # Chrome destinations privacy — publication draft
 
+> **Historical publication draft — 6 October 2026.** Chrome distribution and the Mac browser connection are paused. The following wording records the retained adapter's behavior, not an active publication task. Current Workbench preserves saved links but refuses browser commands.
+
 Publish this section in the public Workbench privacy policy before Chrome Web Store submission. Keep it consistent with the packaged `BrowserExtension/privacy.html`. This draft is not itself proof of public publication.
 
 Workbench Preview for Chrome requires the matching Workbench Preview companion for macOS. It saves named web destinations and returns to their explicitly paired Chrome profiles.

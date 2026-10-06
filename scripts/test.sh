@@ -44,6 +44,8 @@ suite_plists > "$SUITES_BEFORE"
 harnesses() {
   python3 scripts/check-surfaces.py
   PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-check-surfaces.py
+  python3 scripts/check-accessibility-bridge.py
+  PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-accessibility-bridge.py
   PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-swift-extract.py
   PYTHONDONTWRITEBYTECODE=1 python3 scripts/release/test_release.py
   PYTHONDONTWRITEBYTECODE=1 python3 scripts/release/test_preview.py
@@ -56,10 +58,9 @@ harnesses() {
   PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-live-dictation.py
   PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-voice-preferences.py
   PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-remember-correction.py
-  PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-reading-playback.py
-  PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-read-selection-service.py
+  PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-read-retirement.py
   PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-readback-resources.py
-  PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-speko-catalog.py
+  PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-verify-preview.py
   PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-library-recall.py
   PYTHONDONTWRITEBYTECODE=1 python3 BrowserExtension/tests/package_test.py
   PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-library-recall.py --import-review
@@ -75,8 +76,8 @@ checks() {
   swift build -c release --disable-sandbox
   BIN_DIR="$(swift build -c release --disable-sandbox --show-bin-path)"
   "$BIN_DIR/LocalVoice" --check-core
-  "$BIN_DIR/LocalVoice" --check-reading-render
-  "$BIN_DIR/LocalVoice" --check-neural-voice
+  "$BIN_DIR/LocalVoice" --check-read-retirement
+  PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-read-retirement.py --binary "$BIN_DIR/LocalVoice"
   "$BIN_DIR/LocalVoice" --check-shortcut-migration
   "$BIN_DIR/LocalVoice" --check-readback
   "$BIN_DIR/LocalVoice" --check-snap-capture

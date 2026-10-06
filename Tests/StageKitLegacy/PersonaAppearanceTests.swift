@@ -375,18 +375,29 @@ final class PersonaAppearanceTests {
         // An explicit copy is changed exactly, whichever copy is selected; a copy
         // from a set that is no longer current is left alone.
         guard let selected = library.selectedLiveCopy else { XCTAssertTrue(false, "The selected copy is named"); return }
-        XCTAssertEqual(selected, .overlay(second.id, group: group))
-        library.setLiveShape(.original, for: .overlay(first.id, group: group))
+        XCTAssertEqual(selected, .overlay(second.id, group: group, generation: library.liveControlsGeneration))
+        library.setLiveShape(.original, for: .overlay(first.id, group: group, generation: library.liveControlsGeneration))
         XCTAssertEqual(library.sessionState.instances.map(\.shape), [.original, .circle])
-        XCTAssertEqual(library.liveShape(of: .overlay(first.id, group: group)), .original)
-        library.setLiveShape(.circle, for: .overlay(first.id, group: UUID()))
+        XCTAssertEqual(library.liveShape(of: .overlay(first.id, group: group, generation: library.liveControlsGeneration)), .original)
+        library.setLiveShape(.circle, for: .overlay(first.id, group: UUID(), generation: library.liveControlsGeneration))
         XCTAssertEqual(library.sessionState.instances.map(\.shape), [.original, .circle], "A stale target changes nothing")
-        library.setLiveShape(.card, for: .overlay(first.id, group: group))
+        library.setLiveShape(.card, for: .overlay(first.id, group: group, generation: library.liveControlsGeneration))
         library.performOverlayAction(.saveLayout)
         XCTAssertEqual(library.groups[0].overlays?.map(\.shape), [nil, .circle])
+        let savedLayout = try Data(contentsOf: archive)
         library.endOverlaySession()
         try library.startOverlaySession(groupIDs: [group], initialGroupID: group)
         XCTAssertEqual(library.sessionState.instances.map(\.shape), [.card, .circle], "The saved look is drawn again at Start")
+        library.setLiveShape(.original, for: selected)
+        XCTAssertEqual(library.sessionState.instances.map(\.shape), [.card, .circle], "An old captured action cannot mutate reused copy IDs after End and Start")
+        XCTAssertTrue(library.liveShape(of: selected) == nil); XCTAssertTrue(library.liveCopyHidden(selected) == nil)
+        library.performOverlayAction(.selectInstance(second.id))
+        guard let current = library.selectedLiveCopy else { XCTAssertTrue(false, "Restart must select a current live copy"); return }
+        library.pauseOverlaySession()
+        library.setLiveShape(.original, for: current)
+        try library.resumeOverlaySession()
+        XCTAssertEqual(library.sessionState.instances.map(\.shape), [.card, .original], "A current action survives Hide and Show and changes only its own copy")
+        XCTAssertEqual(try Data(contentsOf: archive), savedLayout, "Neither stale nor current live actions rewrite saved preparation")
     }
 
     // MARK: 4. Keyboard and announced state
@@ -565,7 +576,7 @@ final class PersonaAppearanceTests {
         library.pauseOverlaySession()
         let menu = library.makeControlsMenu()
         XCTAssertTrue(menu.items.contains { $0.title == "Appearance" }, "Appearance stays available while paused")
-        library.setLiveShape(.circle, for: .overlay(item.id, group: group))
+        library.setLiveShape(.circle, for: .overlay(item.id, group: group, generation: library.liveControlsGeneration))
         try library.resumeOverlaySession()
         guard let after = panel.visibleFrame else { return }
         XCTAssertEqual(Double(after.width / after.height), 1, accuracy: 0.01)

@@ -2,6 +2,7 @@ import AppKit
 import AVFoundation
 import ObjectiveC
 import PhotoHandoffKit
+import PrivatePackKit
 import SceneSyncKit
 import SwiftUI
 import StageKit
@@ -31,7 +32,7 @@ import ToolbarKit
 /// file store resolves there (`CFFIXED_USER_HOME`). cfprefsd ignores that variable, so the child
 /// also keeps every preference in plist files beside that home; see `isolatePreferences`.
 enum SurfaceGallery {
-    /// Speko.swift and PackCredentials.swift check this same argument and never query Keychain in a pass.
+    /// PackCredentials.swift checks this argument and never queries Keychain in a pass.
     static let passFlag = "--render-surfaces-pass"
     static let workPrefix = ".surface-pass-"
     /// A bounded desktop pass uses the same child-process and store isolation as the full gallery.
@@ -289,8 +290,8 @@ enum SurfaceGallery {
     }
 }
 
-/// A deliberately bounded native host. History and the reading-replacement
-/// card are the production views; the draft inspector is test instrumentation.
+/// A deliberately bounded native host. History is the production view;
+/// the draft inspector is test instrumentation.
 private struct HistoryNativeAcceptanceView: View {
     @ObservedObject var model: AppModel
     @ObservedObject var snap: SnapModel
@@ -310,16 +311,8 @@ private struct HistoryNativeAcceptanceView: View {
                     Text(model.transcript).textSelection(.enabled)
                     Text("Read draft").font(.caption)
                     Text(model.speechText).textSelection(.enabled)
-                    Text("Playback: \(model.playing ? "playing" : "stopped") · Selection: \(model.historyLibrary.selected.count)").font(.caption)
+                    Text("Selection: \(model.historyLibrary.selected.count)").font(.caption)
                 }.frame(maxWidth: .infinity, alignment: .leading).padding(12)
-            }
-            if let selection = model.pendingReadingSelection {
-                ReadingSelectionReviewCard(selection: selection,
-                    limitMessage: model.readingLimitMessage(for: selection.text),
-                    replacingDisabled: !model.canReplaceReading,
-                    waitReason: model.canReplaceReading ? nil : AppModel.replaceWaitsForSave,
-                    keep: model.keepCurrentReading, replace: model.replaceReadingWithSelection)
-                    .padding(12)
             }
             Divider()
             HistoryView(model: model, snap: snap, applySuggestedMetadata: { _, _ in })
@@ -364,7 +357,8 @@ private struct HistoryNativeAcceptanceView: View {
         let preferences = VoicePreferences.load(reserving: StageShortcutSettings.migrationReservations(defaults: stageDefaults))
         // The bounded Home pass keeps real synthetic recovery pending throughout the visit.
         // This must not become a Home task or be cleared merely by navigating.
-        if SurfaceGallery.desktopOnly || ProcessInfo.processInfo.environment["WORKBENCH_HOME_GALLERY_ONLY"] == "1" {
+        if SurfaceGallery.desktopOnly || ProcessInfo.processInfo.environment["WORKBENCH_HOME_GALLERY_ONLY"] == "1"
+            || ProcessInfo.processInfo.environment["WORKBENCH_FOUNDATION_OWNERSHIP_GALLERY_ONLY"] == "1" {
             let directory = Workbench.supportDirectory(component: "LocalVoice")
                 .appendingPathComponent("CaptureRecovery", isDirectory: true)
             // verifiedHome already checks the store root before any model is created. Keep
@@ -383,7 +377,10 @@ private struct HistoryNativeAcceptanceView: View {
             for index in 0..<160 { buffer.floatChannelData![0][index] = 0 }
             try file.write(from: buffer)
         }
-        model = AppModel(preferences: preferences)
+        if ProcessInfo.processInfo.environment["WORKBENCH_READ_RETIREMENT_GALLERY_ONLY"] == "1" {
+            try StateStore().save(SavedState(speechText: "Synthetic old Read text.\r\nKeep this exact wording and spacing.  \n"))
+        }
+        model = AppModel(preferences: preferences, startSpeechLifecycle: false)
         toolbarSettingsControls = CaptureHUDControls(defaults: try SurfaceGallery.isolatedDefaults("ToolbarSettings", home: home))
         model.toolbarControls = toolbarSettingsControls
         // Before anything reads the app's lazy meeting owner, which would list live audio processes.
@@ -391,8 +388,8 @@ private struct HistoryNativeAcceptanceView: View {
         meetings = SurfacePass.syntheticMeetings(support)
         recordingMeetings = SurfacePass.syntheticMeetings(support.deletingLastPathComponent().appendingPathComponent("Meetings (panel state)"))
         model.meetings = meetings
-        // Set before the initialiser's prepare() task runs, so no speech model is loaded or downloaded.
-        // A ready model says what it is, as it does once the app has prepared it.
+        // The isolated view fixtures supply readiness; no preparation or observer
+        // can overwrite them, load local models, or acquire assets.
         model.ready = true; model.modelMessage = RecognitionConfiguration().summary
         model.accessibilityGranted = false
         model.history = SurfacePass.history
@@ -418,13 +415,12 @@ private struct HistoryNativeAcceptanceView: View {
         stage = StageKitController(reserving: preferences.enabledCombinations, defaults: stageDefaults)
         stage.useSharedActivityControls()
         let model = model
-        stage.mayBeginInteraction = { model.phase == .idle && !model.rendering }
+        stage.mayBeginInteraction = { model.phase == .idle }
         stage.mayBeginDrawing = { WorkbenchDrawingAdmission.allows(phase: model.phase, suspended: false, capturingScreen: false, terminating: false) }
         shell.model = model; shell.stage = stage
         keyboard = KeyboardCoachModel(entries: shell.shortcutEntries(), update: { _, _ in "The surface gallery does not save shortcuts." },
                                       suspend: { _ in }, probe: { _ in nil })
         panelEditor = PanelShortcutEditor(keyboard: keyboard)
-        model.onShowPresenter = { [weak self] in self?.actions.append("Opens the Switch to panel") }
         // StageKit's page callbacks, wired to the routes AppDelegate gives them.
         stage.onOpenControls = { [weak self] in self?.opened.append("annotate") }
         stage.onOpenScenes = { [weak self] in self?.opened.append("present") }
@@ -472,7 +468,6 @@ private struct HistoryNativeAcceptanceView: View {
         model.history = [transcript] + Self.history
         model.transcript = "Unfinished Dictate draft. Preserve this exact wording."
         model.rawTranscript = model.transcript
-        model.importReading("Unfinished Read draft. Keep this until I choose Replace.", from: .savedText)
         model.historyLibrary.setMetadata(TranscriptMetadata(purpose: .meeting, person: "Avery Example", company: "Synthetic Orchard"), for: transcript.id)
         model.historyLibrary.setSelected([.init(kind: .transcript, id: Self.history[0].id)])
         let jobs = model.handoffJobs
@@ -525,6 +520,18 @@ private struct HistoryNativeAcceptanceView: View {
     }
 
     func render(to output: URL) throws -> SurfaceGallery.Pass {
+        if ProcessInfo.processInfo.environment["WORKBENCH_SNAPTALK_GALLERY_ONLY"] == "1" {
+            return SurfaceGallery.Pass(theme: theme, panels: [], toolbar: [], host: [], pickers: [], pickerHost: [],
+                pages: [.init(route: "readback", title: "Snap & Talk", fallsThrough: false,
+                    shots: try renderSnapTalkStates(to: output, states: ["review", "access-off", "access-pending", "settings"]))],
+                entries: [], menus: [], placement: [])
+        }
+        if ProcessInfo.processInfo.environment["WORKBENCH_MEETINGS_GALLERY_ONLY"] == "1" { return try renderMeetingsRecovery(to: output) }
+        if ProcessInfo.processInfo.environment["WORKBENCH_SPEECH_GALLERY_ONLY"] == "1" { return try renderFirstSpeech(to: output) }
+        if ProcessInfo.processInfo.environment["WORKBENCH_PACKS_GALLERY_ONLY"] == "1" { return try renderPacks(to: output) }
+        if ProcessInfo.processInfo.environment["WORKBENCH_RESOURCES_GALLERY_ONLY"] == "1" { return try renderResources(to: output) }
+        if ProcessInfo.processInfo.environment["WORKBENCH_FOUNDATION_OWNERSHIP_GALLERY_ONLY"] == "1" { return try renderFoundationOwnership(to: output) }
+        if ProcessInfo.processInfo.environment["WORKBENCH_READ_RETIREMENT_GALLERY_ONLY"] == "1" { return try renderReadRetirement(to: output) }
         if SurfaceGallery.desktopOnly { return try renderDesktopOnly(to: output) }
         if ProcessInfo.processInfo.environment["WORKBENCH_HOME_GALLERY_ONLY"] == "1" { return try renderHomeOnly(to: output) }
         if ProcessInfo.processInfo.environment["WORKBENCH_TOOLBAR_GALLERY_ONLY"] == "1" {
@@ -564,7 +571,6 @@ private struct HistoryNativeAcceptanceView: View {
         for (route, shots) in try renderFoldedStates(to: output) {
             if let index = pages.firstIndex(where: { $0.route == route }) { pages[index].shots += shots }
         }
-        if let read = pages.firstIndex(where: { $0.route == "speak" }) { pages[read].shots += try renderReadStates(to: output) }
         let dictateStates = try renderDictateStates(to: output)
         if let dictate = pages.firstIndex(where: { $0.route == "dictate" }) { pages[dictate].shots += dictateStates.shots }
         // Home's first-dictation states come before History's, which add Hand off tasks to recent work.
@@ -600,7 +606,7 @@ private struct HistoryNativeAcceptanceView: View {
 
     // MARK: Saved Prompts picker
 
-    /// Present's Saved Prompts picker, from synthetic prompts, at its 420-point width and at
+    /// Library's Saved Prompts picker, from synthetic prompts, at its 420-point width and at
     /// standard and larger text. The panel's placement and focus are covered by --check-core and
     /// need a pointer on the installed app; nothing here opens a window on screen.
     func renderPickerStates(to output: URL) throws -> [SurfaceGallery.Shot] {
@@ -674,7 +680,7 @@ private struct HistoryNativeAcceptanceView: View {
 
     /// The production picker, `PromptPickerController`, opened as the toolbar host check drives
     /// the toolbar: its panel is invisible, ignores the pointer, takes no keyboard focus and
-    /// watches no clicks. It opens over a bottom-docked Prompts button with synthetic prompts,
+    /// watches no clicks. It opens over a synthetic bottom-edge anchor with synthetic prompts,
     /// narrows to one row, gains a status line, shows that line's Details, then lists every prompt
     /// again. Each time its panel must be the size its content wants, within the display, as
     /// measured by a twin view that sizes its own window. The picker's renders above size their
@@ -787,7 +793,7 @@ private struct HistoryNativeAcceptanceView: View {
 
     /// The floating surface's own moments, which no page shows: the routine cue at the toolbar's
     /// place after a dictation that heard no speech, and the results the toolbar reveals in place
-    /// of its row (#134 T4): a reading that stopped because its audio could not be read, and the
+    /// of its row (#134 T4): a dictation failure and the
     /// clipboard receipt with its ring. Each at the size it uses.
     func renderFloatingStates(to output: URL) throws -> [SurfaceGallery.Shot] {
         let controls = CaptureHUDControls(defaults: .standard)
@@ -812,10 +818,6 @@ private struct HistoryNativeAcceptanceView: View {
         try shot("floating-no-speech", "Floating: no speech heard",
                  "At the toolbar's place for under two seconds, then the compact mark again. Hover holds it.")
         model.dismissCaptureCue()
-        model.reportReadingFailure(.audioUnreadable)
-        try shot("floating-reading-stopped", "Floating: reading stopped",
-                 "Revealed from the compact mark's warning: a reading whose audio could not be read keeps Retry and dismiss.",
-                 result: .readingFailure)
         /// A result as it shows at a right-hand dock: mirrored, its words over the mark the pointer
         /// came from and its commands at the far end (#211 F3).
         func mirrored(_ id: String, _ title: String, _ result: FloatingResult, size: NSSize) throws {
@@ -831,8 +833,6 @@ private struct HistoryNativeAcceptanceView: View {
                                   detail: "At a right-hand dock it grows leftward from the mark, so it is mirrored: the words sit over the mark the pointer came from, the commands at the far end.",
                                   file: "panel-\(id)-\(theme).png", to: output))
         }
-        try mirrored("floating-reading-stopped-right", "Floating: reading stopped, right-hand dock", .readingFailure, size: CaptureHUDLayout.compact)
-        model.dismissReadingFailure()
         model.captureFailure = "The speech engine stopped before it finished."
         try mirrored("floating-dictation-failure-right", "Floating: dictation failure, right-hand dock", .dictationFailure, size: CaptureHUDLayout.message)
         model.dismissCaptureFailure()
@@ -923,7 +923,10 @@ private struct HistoryNativeAcceptanceView: View {
         let window = homeWindow(size: size)
         defer { window.contentViewController = nil; window.close(); model.phase = .idle; model.elapsed = 0 }
         var added: [DemoResource] = []
-        defer { for item in added { library.remove(item) }; library.notice = nil }
+        defer {
+            for item in added { if let current = library.resources.first(where: { $0.id == item.id }) { library.remove(current) } }
+            library.notice = nil
+        }
         for title in ["Quarterly pricing walkthrough for the regional partner review, with the revised numbers",
                       "Onboarding checklist for presenters joining the Thursday demo rotation",
                       "Follow-up prompt: summarise the objections from the procurement call and propose next steps"] {
@@ -983,75 +986,7 @@ private struct HistoryNativeAcceptanceView: View {
 
     // MARK: Read states
 
-    /// Read after a reading stopped because its audio could not be read (one error with Retry,
-    /// and the text back in the editor), and with a History transcript waiting for Replace
-    /// reading or Keep current over a different draft.
-    func renderReadStates(to output: URL) throws -> [SurfaceGallery.Shot] {
-        let size = SurfaceGallery.sizes[0].size
-        let window = homeWindow(size: size)
-        defer { window.contentViewController = nil; window.close(); model.dismissReadingFailure() }
-        model.importReading("The workshop starts at nine with a short review of last week's notes. Maya walks through the revised budget.", from: .savedText)
-        model.reportReadingFailure(.audioUnreadable)
-        var (rep, drawn) = try renderPage("speak", in: window)
-        var shots = [try save(rep, id: "state-audio-unreadable", title: "Read, audio could not be read, \(Int(drawn.width)) × \(Int(drawn.height)) pt",
-                              detail: "The reading stopped; the text is editable again and Retry makes new audio.",
-                              file: "page-speak-state-audio-unreadable-\(theme).png", to: output)]
-        model.dismissReadingFailure()
-        // The existing import owner rejects 50,001 synthetic characters before any audio or
-        // provider request. This is an admission check, not a Home clipboard action.
-        let announce = model.announceForAccessibility
-        model.announceForAccessibility = { _ in }
-        model.listen(to: String(repeating: "x", count: 50_001))
-        model.announceForAccessibility = announce
-        (rep, drawn) = try renderPage("speak", in: window)
-        shots.append(try save(rep, id: "state-copied-text-refused", title: "Read, oversized text refused, \(Int(drawn.width)) × \(Int(drawn.height)) pt",
-                              detail: "50,001 supplied synthetic characters exceed Mac reading's limit: the draft stays unchanged, no audio starts, and the owned banner says why.",
-                              file: "page-speak-state-copied-text-refused-\(theme).png", to: output))
-        model.dismissError()
-        model.importReading(SurfacePass.history[0].text, from: .transcript)
-        defer { model.keepCurrentReading() }
-        for (name, size) in SurfaceGallery.sizes {
-            let sized = name == "default" ? window : homeWindow(size: size)
-            defer { if sized !== window { sized.contentViewController = nil; sized.close() } }
-            (rep, drawn) = try renderPage("speak", in: sized)
-            shots.append(try save(rep, id: "state-import-review-\(name)", title: "Read, a transcript to review, \(Int(drawn.width)) × \(Int(drawn.height)) pt",
-                                  detail: "Read aloud on a History transcript while a different draft is in Read: nothing changes until Replace reading or Keep current.",
-                                  file: "page-speak-state-import-review-\(name)-\(theme).png", to: output))
-        }
-        shots.append(try renderReadingSettings(to: output))
-        shots.append(try renderReadingSettings(to: output, with: .neural))
-        return shots
-    }
 
-    /// The production settings sheet, rendered directly without playing audio, saving a key or
-    /// requesting a voice catalogue. Its scroll viewport and complete host must both lay out.
-    /// With Neural voices chosen, the temporary home holds no download, so the sheet shows the
-    /// one download they need. Nothing is fetched.
-    func renderReadingSettings(to output: URL, with source: ReadingProvider = .mac) throws -> SurfaceGallery.Shot {
-        final class Frames { var byID: [String: CGRect] = [:] }
-        let frames = Frames(), size = NSSize(width: 570, height: 510)
-        let provider = model.readingProvider
-        model.readingProvider = source
-        let host = NSHostingView(rootView: ReadingSettingsView(model: model, done: {})
-            .environment(\.pageSectionFrames, { id, frame in frames.byID[id] = frame }))
-        let window = offscreenWindow(size: size, styleMask: [.borderless])
-        window.contentView = host
-        defer { window.contentView = nil; window.close(); model.readingProvider = provider }
-        settle(host)
-        guard let root = frames.byID["read.settings"], let viewport = frames.byID["read.settings.visible"],
-              abs(root.width - 570) < 1, abs(root.height - 510) < 1, !viewport.isEmpty else {
-            throw VoiceError.message("Read's Voice & pace settings did not lay out at 570 × 510 with a visible scroll viewport.")
-        }
-        if source == .neural {
-            guard !model.neuralVoicesDownloaded else { throw VoiceError.message("The temporary home already held neural voices; the gallery downloads none.") }
-            return try save(try snapshot(host), id: "voice-settings-neural", title: "Voice & pace settings, Neural voices before their download, 570 × 510 pt",
-                            detail: "Neural voices chosen with nothing downloaded: what they are, their size and the one Download button. Nothing is fetched.",
-                            file: "page-speak-voice-settings-neural-\(theme).png", to: output)
-        }
-        return try save(try snapshot(host), id: "voice-settings", title: "Voice & pace settings, 570 × 510 pt",
-                        detail: "The production Read settings sheet with Mac voices and pace. The reading draft stays on the page; no audio is played.",
-                        file: "page-speak-voice-settings-\(theme).png", to: output)
-    }
 
     // MARK: Home checks
 
@@ -1404,7 +1339,7 @@ private struct HistoryNativeAcceptanceView: View {
                 "The panel's switch, Settings › General's switch and the Window menu each turned the floating toolbar off or on, and every other door then showed the same: the switches' states and Show or Hide floating toolbar.",
                 "In the panel header, a click on the words Floating toolbar, the gap beside the switch, the row above and below the words, the row above the switch and the switch itself each toggled it once; a click 3 points above the 32 point row missed it.",
                 "The header switch is the one accessibility element, named Floating toolbar with its On or Off value; VoiceOver's press and Space on the focused switch each toggled it once.",
-                "The toolbar's context-menu Hide toolbar, as that menu builds it, turned it off, and every other door then showed the same; the panel's switch turned it back on. Which surface shows during drawing, presenting, personas, recording, reading and insertion is checked by CaptureHUDChecks (#155)."]
+                "The toolbar's context-menu Hide toolbar, as that menu builds it, turned it off, and every other door then showed the same; the panel's switch turned it back on. Which surface shows during drawing, presenting, personas, recording and insertion is checked by CaptureHUDChecks (#155)."]
     }
 
     /// The panel header's switch rows under `view`.
@@ -1571,7 +1506,6 @@ private struct HistoryNativeAcceptanceView: View {
         for (route, shots) in try renderFoldedStates(to: output) {
             if let index = pass.pages.firstIndex(where: { $0.route == route }) { pass.pages[index].shots += shots }
         }
-        if let index = pass.pages.firstIndex(where: { $0.route == "speak" }) { pass.pages[index].shots += try renderReadStates(to: output) }
         if let index = pass.pages.firstIndex(where: { $0.route == "dictate" }) { pass.pages[index].shots += dictate.shots }
         if let index = pass.pages.firstIndex(where: { $0.route == "meeting" }) { pass.pages[index].shots += [completed.meeting, try renderMeetingKept(to: output)] }
         if let index = pass.pages.firstIndex(where: { $0.route == "history" }) {
@@ -1625,6 +1559,7 @@ private struct HistoryNativeAcceptanceView: View {
             microphonePermission: { false }, captureFactory: { SilentMeetingCapture() })
         model.meetings = completed
         completed.saveTranscript = { [weak model] transcript, purpose in try model?.retainMeetingTranscript(transcript, purpose: purpose) }
+        completed.loadSavedTranscript = { [weak model] id in try model?.savedMeetingTranscript(id) }
         Task { await completed.retry() }
         try wait("a completed synthetic meeting") { (completed.completedTranscriptID != nil || completed.error != nil) && !completed.isBusy }
         guard completed.completedTranscriptID == manifest.id, !completed.isBusy,
@@ -1632,6 +1567,17 @@ private struct HistoryNativeAcceptanceView: View {
             throw VoiceError.message("The synthetic meeting did not commit its exact transcript: \(completed.error ?? completed.notice).")
         }
         let original = try Data(contentsOf: audio)
+        let durable = try model.store.load()
+        let durableData = try Data(contentsOf: model.store.url)
+        let metadataData = try Data(contentsOf: model.historyLibrary.store.url)
+        var stale = durable.history.first { $0.id == manifest.id }!
+        stale.text = "A stale retry must never replace the durable record."
+        try model.retainMeetingTranscript(stale, purpose: "call")
+        guard try Data(contentsOf: model.store.url) == durableData,
+              try Data(contentsOf: model.historyLibrary.store.url) == metadataData,
+              try model.savedMeetingTranscript(manifest.id)?.transcript.text == completed.completedTranscriptText else {
+            throw VoiceError.message("The production History commit replaced a durable same-UUID transcript or its metadata.")
+        }
         let journal = session.appendingPathComponent(MeetingStore.manifestName)
         let committed = try Data(contentsOf: journal)
         let window = homeWindow(size: SurfaceGallery.sizes[1].size)
@@ -1710,8 +1656,381 @@ private struct HistoryNativeAcceptanceView: View {
             file: "page-meeting-state-kept-\(theme).png", to: output)
     }
 
+    /// Real Meetings views and owners, with no device or speech-engine access.
+    func renderMeetingsRecovery(to output: URL) throws -> SurfaceGallery.Pass {
+        let kept = model.meetings
+        let preferences = try SurfaceGallery.isolatedDefaults("Meetings", home: home)
+        let root = home.appendingPathComponent("Synthetic Meetings")
+        let source = SyntheticAudioApps()
+        var microphone = AVAuthorizationStatus.denied
+        var requests = 0, captures = 0, recognitions = 0
+        let meetings = MeetingModel(directory: root, defaults: preferences, processSource: source,
+            transcribe: { _ in recognitions += 1; throw VoiceError.message("The gallery never recognizes audio.") },
+            microphonePermission: { requests += 1; return false },
+            captureFactory: { captures += 1; return SilentMeetingCapture() }, microphoneStatus: { microphone })
+        model.meetings = meetings
+        let window = homeWindow(size: SurfaceGallery.sizes[1].size)
+        defer { model.meetings = kept; window.contentViewController = nil; window.close() }
+        var shots: [SurfaceGallery.Shot] = []
+        func shot(_ id: String, _ title: String) throws {
+            let (image, _) = try renderPage("meeting", in: window)
+            shots.append(try save(image, id: id, title: title,
+                detail: "Production Meetings at minimum width; injected readiness, permissions and sources with synthetic journals only.",
+                file: "meetings-\(id)-\(theme).png", to: output))
+        }
+        meetings.refreshApps(); meetings.selectAudioSource(41_001)
+        meetings.updateHostAdmission(.init())
+        try shot("setup", "Speech setup needed; source choice retained")
+        meetings.updateHostAdmission(.init(recognition: .init(admission: .localReady)))
+        try shot("microphone", "Denied microphone with explicit app-only alternative")
+        source.failure = true; meetings.refreshApps()
+        try shot("source-failure", "Failed source check retains chosen app")
+        source.failure = false; meetings.refreshApps(); meetings.useAppAudioOnly()
+        guard meetings.admission.canStart, !meetings.includeMicrophone, requests == 0, captures == 0 else {
+            throw VoiceError.message("Choosing an alternative started capture or lost its valid admission.")
+        }
+        try shot("app-only", "App audio only is ready after an explicit choice")
+        microphone = .authorized; meetings.includeMicrophone = true
+        meetings.updateHostAdmission(.init())
+        let date = Date(timeIntervalSince1970: 1_789_400_000)
+        let transcript = MeetingManifest(id: UUID(), createdAt: date, updatedAt: date, purpose: "meeting", appName: "Synthetic meeting",
+            includesMicrophone: false, includesRemote: true, state: .recognized, seconds: 1,
+            tracks: [.init(source: .remote, file: "tracks/remote.caf", startSeconds: 0, seconds: 1, sampleRate: 16_000, peak: 0.2, droppedSeconds: 0)],
+            segments: [.init(index: 0, file: MeetingSegmentPlan.filename(index: 0), startSeconds: 0, seconds: 1, bytes: 32_000, text: "A complete saved transcript remains usable without setup.")])
+        _ = try MeetingStore.create(root: root, manifest: transcript)
+        let recovery = MeetingModel(directory: root, defaults: preferences, processSource: source,
+            transcribe: { _ in recognitions += 1; throw VoiceError.message("The gallery never recognizes audio.") },
+            microphonePermission: { requests += 1; return false },
+            captureFactory: { captures += 1; return SilentMeetingCapture() }, microphoneStatus: { microphone })
+        recovery.updateHostAdmission(.init()); model.meetings = recovery
+        try wait("complete-text recovery") { !recovery.recoveries.isEmpty }
+        guard recovery.recoveries.first?.canSaveTranscript == true, !recovery.admission.canStart,
+              requests == 0, captures == 0, recognitions == 0 else { throw VoiceError.message("Saved text inherited capture setup requirements.") }
+        try shot("complete-text", "Complete text can be saved despite missing originals and model")
+        var savingRendered = false, saveFinished = false
+        recovery.saveTranscript = { [weak model] item, purpose in
+            guard let model else { throw CancellationError() }
+            guard recovery.isProcessing, requests == 0, captures == 0, recognitions == 0 else {
+                throw VoiceError.message("Complete-text save crossed a capture or recognition boundary.")
+            }
+            try shot("saving-without-audio", "Saving complete text without original audio")
+            savingRendered = true
+            try model.retainMeetingTranscript(item, purpose: purpose)
+        }
+        recovery.loadSavedTranscript = { [weak model] id in try model?.savedMeetingTranscript(id) }
+        let selected = recovery.recoveries[0]
+        Task { await recovery.retry(selected); saveFinished = true }
+        try wait("saving complete text without originals") { saveFinished }
+        guard savingRendered, recovery.completedTranscriptID == transcript.id, !recovery.isBusy,
+              recovery.pendingTranscriptNotes.contains(where: { $0.contains("Original audio is missing") }),
+              requests == 0, captures == 0, recognitions == 0 else {
+            throw VoiceError.message("Missing-original completion lost its truthful note or required capture setup.")
+        }
+        try shot("saved-without-audio", "Saved text with playback and retranscription unavailable")
+        let completed = try renderMeetingReview(to: output)
+        shots.append(completed.meeting)
+        print("MEETINGS_PRODUCTION_OWNER_CHECKS_OK: passive admission; explicit alternative; complete-text save; same-UUID durable History preservation")
+        return SurfaceGallery.Pass(theme: theme, panels: [], toolbar: [], host: [], pickers: [], pickerHost: [],
+            pages: [.init(route: "meeting", title: "Meetings admission and recovery", fallsThrough: false, shots: shots)],
+            entries: entries().filter { $0.route == "meeting" }, menus: [], placement: [])
+    }
+
+    /// The retired route's replacement, through the production startup and Library owners.
+    func renderReadRetirement(to output: URL) throws -> SurfaceGallery.Pass {
+        let original = model.speechText
+        guard let item = model.library.resources.first(where: { $0.id == ReadRetirement.resourceID }),
+              item.kind == .file, model.library.readPreservationFailure == nil,
+              try Data(contentsOf: URL(fileURLWithPath: item.content)) == Data(original.utf8) else {
+            throw VoiceError.message("Startup did not preserve the synthetic Read draft exactly.")
+        }
+        var pages: [SurfaceGallery.Page] = []
+        let window = homeWindow(size: SurfaceGallery.sizes[0].size)
+        defer { window.contentViewController = nil; window.close() }
+        for route in ["home", "models", "library", "shortcuts"] {
+            let (rep, _) = try renderPage(route, in: window)
+            let shot = try save(rep, id: "retired", title: WorkbenchHome.name(of: route), detail: "Retired Read has no launch or setup controls; Library holds the exact preserved file.",
+                                file: "read-retirement-\(route)-\(theme).png", to: output)
+            pages.append(.init(route: route, title: WorkbenchHome.name(of: route), fallsThrough: false, shots: [shot]))
+        }
+        model.library.preserveRetiredReading("A conflicting synthetic source")
+        guard model.library.readPreservationFailure != nil else { throw VoiceError.message("The recovery fixture did not reach its refusal.") }
+        let (rep, _) = try renderPage("library", in: window)
+        pages[2].shots.append(try save(rep, id: "recovery", title: "Library preservation recovery", detail: "A conflict retains original data and offers contextual retry and the original saved state.",
+                                      file: "read-retirement-library-recovery-\(theme).png", to: output))
+        model.library.preserveRetiredReading(original)
+        return SurfaceGallery.Pass(theme: theme, panels: [], toolbar: [], host: [], pickers: [], pickerHost: [], pages: pages,
+                                   entries: entries().filter { $0.route.map(["home", "models", "library", "shortcuts"].contains) == true }, menus: [], placement: [])
+    }
+
     /// A bounded pass for desktop Home changes. It uses the same isolated fixtures and actual
     /// SwiftUI views as the full gallery, including History's draft/selection preservation check.
+    func renderFirstSpeech(to output: URL) throws -> SurfaceGallery.Pass {
+        let window = homeWindow(size: SurfaceGallery.sizes[1].size)
+        defer { model.phase = .idle; window.contentViewController = nil; window.close() }
+        var shots: [SurfaceGallery.Shot] = []
+        var sequence: UInt64 = 10_000
+        func state(_ phase: RecognitionSnapshot.Phase = .idle, admission: RecognitionSnapshot.Admission = .unavailable,
+                   detail: String? = nil, failure: RecognitionFailure? = nil) {
+            sequence += 1
+            model.acceptRecognition(.init(sequence: sequence, operationID: phase == .idle ? nil : UUID(), phase: phase,
+                                           admission: admission, failure: failure, detail: detail))
+        }
+        func shot(_ page: String, _ id: String, _ title: String) throws {
+            let (image, _) = try renderPage(page, in: window)
+            shots.append(try save(image, id: id, title: title,
+                detail: "Production first-speech controls at minimum window size; synthetic engine phases, no models, downloads or permissions.",
+                file: "speech-\(id)-\(theme).png", to: output))
+        }
+        model.preferences.firstDictationGuide = .offered
+        model.history = []; model.transcript = ""; model.rawTranscript = ""
+        state()
+        model.acceptRecognition(.init(sequence: sequence - 1, admission: .localReady))
+        guard !model.ready else { throw VoiceError.message("A stale main-actor snapshot restored readiness.") }
+        try shot("home", "offer", "Download or defer speech setup")
+        state(.downloading, detail: "Downloading Parakeet · 42%")
+        try shot("models", "download", "Measured download with reachable Cancel")
+        state(.cancelling, detail: "Setup cancelled. Any model load already in progress is finishing safely; recording will not start.")
+        try shot("models", "cancelled-load", "Cancelled noninterruptible load")
+        state(failure: .init(kind: .invalidCache, message: "The saved model could not be prepared. Retry the saved files or explicitly download a replacement.", details: "Synthetic invalid vocabulary."))
+        try shot("models", "cache-failure", "Saved-cache failure and deliberate recovery")
+        state(admission: .serverUnverified, detail: "Local server configured, not yet verified")
+        try shot("dictate", "server", "Unverified server admits a deliberate first attempt")
+        state(); try shot("readback", "deferred-narration", "Deferred speech with usable saved Snap & Talk work")
+        model.applyGalleryVoiceSnapshot(.init(sessionID: UUID(), phase: .listening,
+                                   sources: [.init(source: .microphone, name: "Microphone")]))
+        model.phase = .recording
+        guard model.canToggleRecording else { throw VoiceError.message("Readiness loss hid Stop.") }
+        try shot("dictate", "stop-without-readiness", "Stop remains reachable after readiness loss")
+        model.phase = .idle; model.applyGalleryVoiceSnapshot(.init())
+
+        // Real owner admission/cancellation with injected OS responses. None of these
+        // cases reaches audio capture, and all stores are in the verified child home.
+        model.preferences.delivery = .clipboard
+        let original = "Synthetic saved words stay available."
+        model.transcript = original
+        var authorization = AVAuthorizationStatus.notDetermined
+        var reply: CheckedContinuation<Bool, Never>?
+        var requests = 0, returned = false
+        model.readMicrophoneAuthorization = { authorization }
+        model.requestMicrophoneAuthorization = {
+            requests += 1
+            let granted = await withCheckedContinuation { reply = $0 }
+            returned = true; return granted
+        }
+        state(admission: .localReady); model.toggleRecording()
+        try wait("synthetic microphone request") { reply != nil }
+        model.ready = false
+        guard model.canToggleRecording else { throw VoiceError.message("Readiness loss hid permission Cancel.") }
+        model.toggleRecording()
+        authorization = .authorized; reply?.resume(returning: true); reply = nil
+        try wait("cancelled permission callback") { returned }
+        guard model.phase == .idle, model.voiceSession.sessionID == nil, model.transcript == original,
+              !model.hasCaptureRecovery else { throw VoiceError.message("Late permission completion started capture or changed saved work.") }
+        state(admission: .localReady); authorization = .denied; model.toggleRecording()
+        try wait("denied microphone") { model.microphoneFailure == .denied }
+        guard model.canOpenMicrophoneSettings else { throw VoiceError.message("Denied access lacks its Settings recovery.") }
+        model.openMicrophonePrivacy = { false }; model.openMicrophoneSettings()
+        guard model.captureFailure?.contains("could not be opened") == true else { throw VoiceError.message("Failed Settings opening was reported as success.") }
+        state(admission: .localReady); authorization = .restricted; model.toggleRecording()
+        try wait("restricted microphone") { model.microphoneFailure == .restricted }
+        guard !model.canOpenMicrophoneSettings, requests == 1, model.transcript == original else {
+            throw VoiceError.message("Restricted access repeated a request or lost saved work.")
+        }
+        try shot("dictate", "microphone-restricted", "Actual restricted microphone status with saved work")
+        authorization = .authorized; model.refreshMicrophoneAuthorization()
+        guard model.phase == .idle, model.microphoneFailure == nil, model.idleMicrophoneTitle == nil, requests == 1 else { throw VoiceError.message("Returning from Settings started or requested capture.") }
+        // Keep the real engine unavailable, so even a regression cannot reach
+        // hardware after the injected old true reply. Its beginLiveSession gate
+        // runs before MeetingSystemCapture.start. Only synthetic stores can change.
+        var checkedEngine = false, actualAdmission = true
+        Task { actualAdmission = await model.engine.isReady; checkedEngine = true }
+        try wait("real engine remains unavailable in fixture") { checkedEngine }
+        guard !actualAdmission else { throw VoiceError.message("A held-admission fixture cannot use a live engine.") }
+        var createdSessions = 0
+        let sessionObservation = model.$voiceSession.sink { if $0.sessionID != nil { createdSessions += 1 } }
+        defer { sessionObservation.cancel() }
+        var admissions: [CheckedContinuation<Bool, Never>] = [], admissionReturns = 0
+        model.readSpeechAdmission = { _ in
+            let value = await withCheckedContinuation { admissions.append($0) }
+            admissionReturns += 1; return value
+        }
+        state(admission: .localReady)
+        model.toggleRecording()
+        try wait("held speech admission") { admissions.count == 1 }
+        model.cancelRecording(); admissions[0].resume(returning: true)
+        try wait("cancelled true admission reply") { admissionReturns == 1 }
+        settle(window.contentView!)
+        guard model.phase == .idle, !model.hasCaptureRecovery, model.voiceSession.sessionID == nil,
+              model.captureFailure == nil, createdSessions == 0 else { throw VoiceError.message("An old true readiness reply started or failed cancelled capture.") }
+        model.toggleRecording()
+        try wait("second held speech admission") { admissions.count == 2 }
+        model.cancelRecording(); model.toggleRecording()
+        try wait("new attempt held speech admission") { admissions.count == 3 }
+        admissions[1].resume(returning: false)
+        try wait("old false admission reply") { admissionReturns == 2 }
+        settle(window.contentView!)
+        guard model.phase == .requesting, model.captureFailure == nil, !model.hasCaptureRecovery else {
+            throw VoiceError.message("An old false readiness reply failed the newer recording attempt.")
+        }
+        model.cancelRecording(); admissions[2].resume(returning: true)
+        try wait("new attempt cancelled reply") { admissionReturns == 3 }
+        settle(window.contentView!)
+        guard model.phase == .idle, !model.hasCaptureRecovery, model.voiceSession.sessionID == nil,
+              model.transcript == original, createdSessions == 0 else { throw VoiceError.message("Cancelled readiness replies changed saved work.") }
+        model.readSpeechAdmission = { await $0.isReady }
+        print("FIRST_SPEECH_READINESS_RACE_CHECKS_OK: held true reply after Cancel; held false reply after Cancel and new Start; no capture files or stale failure")
+        print("FIRST_SPEECH_OWNER_CHECKS_OK: pending Cancel, late grant, readiness loss, denied, restricted, Settings-open failure, exact saved words")
+        return SurfaceGallery.Pass(theme: theme, panels: [], toolbar: [], host: [], pickers: [], pickerHost: [],
+            pages: [.init(route: "models", title: "First speech lifecycle", fallsThrough: false, shots: shots)],
+            entries: entries().filter { $0.route == "models" }, menus: [], placement: [])
+    }
+
+    func renderPacks(to output: URL) throws -> SurfaceGallery.Pass {
+        let preferences = try SurfaceGallery.isolatedDefaults("Packs", home: home)
+        let root = home.appendingPathComponent("Synthetic Packs")
+        let authorization = PackAuthorizationFixture(pending: true)
+        var services = PackLibraryServices()
+        services.readCredential = { nil }
+        services.saveCredential = { _ in throw VoiceError.message("The gallery never saves credentials.") }
+        services.removeCredential = {}
+        services.openURL = { _ in true }
+        services.copyCode = { _ in true }
+        services.authorization = { try GitHubPackAuthorization(clientID: "Iv1.fixture", client: authorization) }
+        services.contentSource = { _, _ in throw VoiceError.message("The gallery never contacts a repository.") }
+        let packs = PackLibraryModel(defaults: preferences, root: root, services: services)
+        let window = homeWindow(size: SurfaceGallery.sizes[1].size, packs: packs)
+        defer { packs.cancel(); window.contentViewController = nil; window.close() }
+        var shots: [SurfaceGallery.Shot] = []
+        func shot(_ id: String, _ title: String) throws {
+            let (image, _) = try renderPage("packs", in: window)
+            shots.append(try save(image, id: id, title: title,
+                detail: "Production Packs at minimum width; isolated repository, account and file fixtures, no network or browser.",
+                file: "packs-\(id)-\(theme).png", to: output))
+        }
+        try shot("empty", "Fresh Packs without account setup")
+        guard packs.acceptLink(URL(string: "workbench://packs/add?source=example%2Fworkbench-fixture")!) else {
+            throw VoiceError.message("The synthetic Add link was refused.")
+        }
+        try shot("add", "Explicit Add prefill")
+        packs.connect()
+        try wait("Packs device code") { packs.deviceCode != nil }
+        try shot("device-code", "Contextual cancellable device code")
+        packs.cancel()
+        // Recreate only the view to close its local Add disclosure; the same owner persists.
+        window.contentViewController = NSHostingController(rootView: WorkbenchHome(model: model, stage: stage,
+            keyboard: keyboard, readback: readback, snap: snap, packs: packs))
+        var loaded = false, failure: Error?
+        Task {
+            do { _ = try await PackStore(root: root).install(from: PackLibraryFixtureSource(), appVersion: PackVersion("2.2.0")!) }
+            catch { failure = error }
+            loaded = true
+        }
+        try wait("verified installed pack") { loaded }
+        if let failure { throw failure }
+        packs.refreshInstalled(); try wait("offline pack content") { !packs.packs.isEmpty }
+        packs.notice = nil
+        try shot("offline", "Installed content before account")
+        packs.update(packs.packs[0].id)
+        try wait("failed offline update") { !packs.isBusy }
+        guard packs.hasError, packs.packs[0].entries.count == 4 else { throw VoiceError.message("The update fixture did not retain its content.") }
+        try shot("update-refused", "Failed update retains usable installed content")
+        let library = model.library
+        _ = try library.store.save(library.resources + [DemoResource(title: "A newer saved record", content: "Keep the newer Library.")])
+        let file = home.appendingPathComponent("Workshop reference.txt")
+        guard !packs.saveResource(Data("Synthetic saved reference\n".utf8), title: "Workshop reference",
+            filename: file.lastPathComponent, library: library, chooseDestination: { _ in file }), packs.savedResource != nil else {
+            throw VoiceError.message("The reference recovery fixture did not reach its refusal.")
+        }
+        try shot("reference-retry", "Saved file retained while its Library reference needs recovery")
+        return SurfaceGallery.Pass(theme: theme, panels: [], toolbar: [], host: [], pickers: [], pickerHost: [],
+            pages: [.init(route: "packs", title: "Packs", fallsThrough: false, shots: shots)],
+            entries: entries().filter { $0.route == "packs" }, menus: [], placement: [])
+    }
+
+    func renderResources(to output: URL) throws -> SurfaceGallery.Pass {
+        let library = model.library
+        guard library.resources.isEmpty else { throw VoiceError.message("The Resources pass requires a fresh synthetic Library.") }
+        let window = homeWindow(size: SurfaceGallery.sizes[1].size)
+        defer { window.contentViewController = nil; window.close() }
+        var shots: [SurfaceGallery.Shot] = []
+        func shot(_ id: String, _ title: String, route: String = "library") throws {
+            let (image, _) = try renderPage(route, in: window)
+            shots.append(try save(image, id: id, title: title,
+                detail: "Production Resources at the minimum window size; synthetic local records only.",
+                file: "resources-\(id)-\(theme).png", to: output))
+        }
+        try shot("empty", "Fresh Library")
+        let examples = home.appendingPathComponent("Examples", isDirectory: true)
+        try FileManager.default.createDirectory(at: examples, withIntermediateDirectories: true)
+        let file = examples.appendingPathComponent("Workshop notes.txt")
+        try Data("Synthetic workshop notes. The original stays in its chosen folder.\n".utf8).write(to: file)
+        let prompt = DemoResource(title: "Prepare the next discussion", product: "Planning", persona: "Facilitator",
+            content: "Summarise the decisions, open questions and next steps.\nKeep owners and dates exactly as supplied.\nDo not invent missing information.", favorite: true)
+        let link = DemoResource(kind: .link, title: "Project reference", content: "https://example.com/reference")
+        let document = DemoResource(kind: .file, title: "Workshop notes", content: file.path)
+        let missing = DemoResource(kind: .file, title: "Notes on another drive", content: examples.appendingPathComponent("Moved notes.txt").path)
+        for item in [prompt, link, document, missing] {
+            guard library.save(item) else { throw VoiceError.message("Could not save the Resources fixture.") }
+        }
+        library.notice = nil
+        for (item, id) in [(prompt, "prompt"), (link, "link"), (document, "file"), (missing, "missing")] {
+            library.selection = item.id; try shot(id, "Selected \(id)")
+        }
+        library.selection = nil; try shot("no-selection", "No selection")
+        library.favoritesOnly = true; try shot("favourites", "Favourite resources")
+        library.query = "no matching synthetic resource"; try shot("no-match", "No matching resources")
+        library.query = ""; library.favoritesOnly = false; library.selection = document.id
+
+        // Resolve the actual old route with a real synthetic capture owner state.
+        // Navigation cannot change its draft, phase or available Finish action.
+        let kept = (phase: model.phase, ready: model.ready, text: model.transcript, page: model.page)
+        model.phase = .recording; model.ready = false
+        let control = WorkbenchControlContext(model: model, readback: readback, stage: stage, snap: snap)
+        let resourcesPixels = SurfacePass.contentPixels(try renderPage("library", in: window).0)
+        let retiredPixels = SurfacePass.contentPixels(try renderPage("speak", in: window).0)
+        guard resourcesPixels == retiredPixels else {
+            throw VoiceError.message("The retired Read route must render Resources, not only highlight Library.")
+        }
+        try shot("retired-route", "Old Read route reaches Resources while work continues", route: "speak")
+        guard WorkbenchHome.destination(model.page).section == "library", model.phase == .recording,
+              model.transcript == kept.text, control.state.enabled(.dictate), control.state.actionTitle(.dictate) == "Finish dictation" else {
+            throw VoiceError.message("The retired Read route changed capture work or hid its Finish action.")
+        }
+        model.phase = kept.phase; model.ready = kept.ready; model.page = kept.page
+        let sourceBytes = try Data(contentsOf: file)
+        let updated = try library.store.save(library.resources + [DemoResource(title: "Changed elsewhere", content: "Preserve the newer version.")])
+        guard !library.save(DemoResource(title: "Uncommitted edit", content: "Must not replace newer records.")),
+              library.storageFailure != nil, library.savingDisabled,
+              try Data(contentsOf: library.store.url) == updated, try Data(contentsOf: file) == sourceBytes else {
+            throw VoiceError.message("The Resources store-conflict fixture did not preserve its files.")
+        }
+        try shot("storage-held", "Saved Library changed outside this window")
+        let pages = [SurfaceGallery.Page(route: "library", title: "Library · Resources", fallsThrough: false, shots: shots)]
+        return SurfaceGallery.Pass(theme: theme, panels: [], toolbar: [], host: [], pickers: [], pickerHost: [], pages: pages,
+            entries: entries().filter { $0.route == "library" || $0.surface == "Library" }, menus: [],
+            checks: ["Old speak resolves to Resources without changing the synthetic recording or draft; Finish remains enabled while readiness is false.",
+                     "External replacement leaves the newer Library and original file byte-identical, pauses writes and retains readable resources."], scope: "resources")
+    }
+
+    func renderFoundationOwnership(to output: URL) throws -> SurfaceGallery.Pass {
+        var pass = try renderHomeOnly(to: output)
+        pass.scope = "foundation-ownership"
+        for (name, size) in SurfaceGallery.sizes {
+            let window = homeWindow(size: size)
+            defer { window.contentViewController = nil; window.close() }
+            for route in ["library", "personas", "present"] {
+                guard let index = pass.pages.firstIndex(where: { $0.route == route }) else { continue }
+                let (rep, drawn) = try renderPage(route, in: window)
+                pass.pages[index].shots.append(try save(rep, id: name,
+                    title: "\(name) window, \(Int(drawn.width)) × \(Int(drawn.height)) pt",
+                    detail: "Production page: Library owns Saved Prompts, Persona owns Me, and Present keeps scene preparation.",
+                    file: "page-\(route)-\(name)-\(theme).png", to: output))
+            }
+        }
+        pass.pickers = try renderPickerStates(to: output)
+        return pass
+    }
+
     func renderHomeOnly(to output: URL) throws -> SurfaceGallery.Pass {
         try HomeJourneyChecks.run()
         try WorkbenchPageChecks.run()
@@ -1843,7 +2162,7 @@ private struct HistoryNativeAcceptanceView: View {
         defer { window.contentView = nil; window.close() }
         host.setFrameSize(host.fittingSize); window.setContentSize(host.fittingSize); settle(host)
         shots.append(try save(try snapshot(host), id: "profile", title: "Local profile", detail: "Photo choice is explicit; opening this sheet requests no access.",
-                             file: "home-profile-\(theme).png", to: output))
+                             file: "persona-profile-\(theme).png", to: output))
         return shots
     }
 
@@ -1881,14 +2200,14 @@ private struct HistoryNativeAcceptanceView: View {
         try shot("first-result", "First result", "Right after the first dictation: the words, their delivery controls and where they were saved.") { [self] in
             model.rawTranscript = first.text; model.transcript = first.text; model.history = [first]
         }
-        // Current work, above everything: a dictation recording, then a paused reading (#134 H1).
+        // Current work, above everything: a dictation recording (#134 H1).
         model.history = kept.history; model.transcript = kept.draft; model.rawTranscript = kept.raw
         model.preferences.firstDictationGuide = .completed
         let phase = model.phase
-        try shot("current-work", "Current work", "A dictation recording and a paused reading keep their own controls above the four workspace cards.") { [self] in
-            model.phase = .recording; model.elapsed = 12; model.paused = true
+        try shot("current-work", "Current work", "A dictation recording keeps its controls above the four workspace cards.") { [self] in
+            model.phase = .recording; model.elapsed = 12
         }
-        model.phase = phase; model.elapsed = 0; model.paused = false
+        model.phase = phase; model.elapsed = 0
         return shots
     }
 
@@ -1988,14 +2307,14 @@ private struct HistoryNativeAcceptanceView: View {
     func renderResultReuse(to output: URL) throws -> SurfaceGallery.Shot {
         let preview = NSHostingView(rootView: HandoffResultPreview(
             text: "Follow-up for Sam\n\nWe agreed to review the pilot on Friday.\nSam will share the revised notes before the review.",
-            context: "Synthetic follow-up", copyText: {}, readAloud: {}).padding(16).workbenchTheme())
+            context: "Synthetic follow-up", copyText: {}).padding(16).workbenchTheme())
         let window = offscreenWindow(size: NSSize(width: 620, height: 230), styleMask: [.borderless])
         defer { window.contentView = nil; window.close() }
         window.contentView = preview
         window.appearance = NSAppearance(named: theme == "dark" ? .darkAqua : .aqua)
         settle(preview)
         return try save(snapshot(preview), id: "state-result-reuse", title: "History, saved result reuse",
-            detail: "The reviewed assistant result has Copy result and Read aloud. Both use these exact words; reading starts only from Read.",
+            detail: "The reviewed assistant result has Copy result, using these exact words.",
             file: "page-history-state-result-reuse-\(theme).png", to: output)
     }
 
@@ -2070,9 +2389,9 @@ private struct HistoryNativeAcceptanceView: View {
 
     /// Valid portable media and a long session exercise the real review layout. No device,
     /// live data or provider runs. Recording is a presentation-only override in the same view.
-    func renderSnapTalkStates(to output: URL) throws -> [SurfaceGallery.Shot] {
+    func renderSnapTalkStates(to output: URL, states: [String] = ["review", "processing", "recovery", "unavailable", "unsaved", "recording", "settings", "sessions", "deleted", "narration", "narration-not-ready", "access-off", "access-pending"]) throws -> [SurfaceGallery.Shot] {
         var shots: [SurfaceGallery.Shot] = []
-        for state in ["review", "processing", "recovery", "unavailable", "unsaved", "recording", "settings", "sessions", "deleted", "narration", "narration-not-ready"] {
+        for state in states {
             let base = home.appendingPathComponent("SnapTalk gallery \(theme) \(state)")
             let root = try Self.makeSession(in: base, count: 39)
             var manifest = try ReadbackStore.load(from: root)
@@ -2094,11 +2413,20 @@ private struct HistoryNativeAcceptanceView: View {
             try ReadbackStore.save(manifest, at: root)
             let defaults = try SurfaceGallery.isolatedDefaults("SnapTalk \(state)", home: home)
             defaults.set([root.path], forKey: "readback.recentSessionPaths.v1")
+            let lacksAccess = state.hasPrefix("access-")
+            var permissionReply: CheckedContinuation<Bool, Never>?
             let session = ReadbackModel(engine: model.engine, defaults: defaults,
                 captureDisplay: { throw ReadbackError.message("The gallery never captures the screen.") },
                 transcribeAudio: { _ in try await Task.sleep(nanoseconds: 3_600_000_000_000); throw CancellationError() },
-                screenAccess: .fixed(true), microphoneAccess: { .authorized })
-            defer { session.shutdown() }
+                screenAccess: .fixed(!lacksAccess), microphoneAccess: { lacksAccess ? .notDetermined : .authorized },
+                requestMicrophoneAccess: { await withCheckedContinuation { permissionReply = $0 } })
+            defer { session.shutdown(); permissionReply?.resume(returning: false) }
+            if state == "access-pending" {
+                Task { await session.requestCaptureAccess() }
+                let deadline = Date().addingTimeInterval(2)
+                while permissionReply == nil && Date() < deadline { RunLoop.current.run(until: Date().addingTimeInterval(0.01)) }
+                guard session.isRequestingCaptureAccess else { throw VoiceError.message("Synthetic permission request did not become pending.") }
+            }
             if state == "deleted", let id = session.activeSections.last?.id { session.deleteSection(id) }
             let id = session.activeSections[state == "review" ? 24 : 0].id
             session.reviewSection(id)
@@ -2329,8 +2657,6 @@ private struct HistoryNativeAcceptanceView: View {
                        readback: readback, controlState: hidden,
                        apply: { model.phase = .recording; model.elapsed = 14 }, reset: { model.phase = .idle; model.elapsed = 0 }),
             PanelState(id: "snap-session", title: "Snap & Talk session", detail: "A session with three captures.", readback: sessionReadback),
-            PanelState(id: "reading", title: "Reading", detail: "Read aloud playing.", readback: readback,
-                       apply: { model.playing = true }, reset: { model.playing = false }),
             PanelState(id: "clipboard", title: "Clipboard receipt", detail: "A 42-word transcript copied and still on the clipboard.", readback: readback,
                        apply: { model.clipboardReceipt.record(outcome: .init(message: "Copied to the clipboard.", clipboardChangeCount: NSPasteboard.general.changeCount,
                                                                              wasPasted: false, destinationName: nil), wordCount: 42) },
@@ -2338,8 +2664,6 @@ private struct HistoryNativeAcceptanceView: View {
             PanelState(id: "microphone-denied", title: "Microphone denied", detail: "The error a denied microphone leaves in the panel.", readback: readback,
                        apply: { model.report("Microphone access is off. Open System Settings › Privacy & Security › Microphone and allow Workbench.", on: .dictate) },
                        reset: { model.dismissError() }),
-            PanelState(id: "reading-audio-unreadable", title: "Reading audio unreadable", detail: "The error a reading leaves when its audio cannot be read.", readback: readback,
-                       apply: { model.reportReadingFailure(.audioUnreadable) }, reset: { model.dismissReadingFailure() }),
             PanelState(id: "meeting-recording", title: "Meeting recording", detail: "A meeting recording app audio, which shows the meeting status row.", readback: readback,
                        apply: { [self] in model.meetings = recordingMeetings; try drive(recordingMeetings, start: true) },
                        reset: { [self] in try drive(recordingMeetings, start: false); model.meetings = meetings }),
@@ -2452,9 +2776,9 @@ private struct HistoryNativeAcceptanceView: View {
             }
         }
         // A mode switch while the row is open changes its width with no reveal or collapse, so
-        // the host hears of it only through the row's own report: Present's Prompts widen the row.
+        // the host hears of it only through the row's own report: Draw's Tools widen the row.
         controls.toolbar.send(.holdBegan(.keyboard)); twinControls.toolbar.send(.holdBegan(.keyboard))
-        for (from, to) in [(ToolbarMode.dictate, ToolbarMode.present), (.present, .dictate)] {
+        for (from, to) in [(ToolbarMode.dictate, ToolbarMode.draw), (.draw, .dictate)] {
             model.toolbarMode = from
             waitForToolbar(host, controls, tier: .revealed, content: content)
             model.toolbarMode = to
@@ -2697,18 +3021,19 @@ private struct HistoryNativeAcceptanceView: View {
             controls.toolbar.send(.holdEnded(.keyboard)); settle(.resting)
             expect("Free on the \(side), collapsed again", [at(centre, "collapsed again"), compact("collapsed again")])
         }
-        // A row that widens, here by Present's accessory, must neither move its launcher nor turn
-        // round: released just left of the middle, and on the right half, then Present is chosen.
+        // A row that widens, here by Draw's retained Tools accessory, must neither move its launcher nor turn
+        // round: released just left of the middle, and on the right half, then Draw is chosen.
         for (place, x) in [("just left of the middle", screen.midX - 5), ("on the right half", screen.minX + screen.width * 0.7)] {
             let centre = CGPoint(x: x.rounded(), y: (screen.minY + screen.height * 0.45).rounded())
             model.toolbarMode = .dictate
             host.releaseTools(atLauncher: centre); controls.toolbar.send(.holdBegan(.keyboard)); settle(.revealed)
             let leftward = controls.rowAnchor.growsLeftward, width = host.window?.frame.width ?? 0
-            for mode in [ToolbarMode.present, .dictate] {
+            for mode in [ToolbarMode.draw, .dictate] {
                 model.toolbarMode = mode; settle(.revealed)
                 let grown = (host.window?.frame.width ?? 0) - width
                 expect("Released \(place), revealed, then \(mode.title) is chosen", [
-                    mode == .present && abs(grown) < 0.5 ? "the row stayed \(Int(width)) pt wide, so this step shows nothing" : nil,
+                    mode == .draw && grown < 0.5 ? "the row did not grow from \(Int(width)) pt for Draw's Tools, so this step shows nothing" : nil,
+                    mode == .dictate && abs(grown) > 0.5 ? "the row did not shrink back to Dictate's \(Int(width)) pt" : nil,
                     controls.rowAnchor.growsLeftward != leftward ? "the row turned round, from growing \(leftward ? "leftward" : "rightward")" : nil,
                     at(centre, "after the width changed")])
             }
@@ -3079,8 +3404,7 @@ private struct HistoryNativeAcceptanceView: View {
         let mark = host.window?.frame ?? .zero
         let failure = "The speech engine stopped before it finished."
         let results: [(String, () -> Void, () -> Void)] = [
-            ("A dictation failure", { self.model.captureFailure = failure }, { self.model.dismissCaptureFailure() }),
-            ("A stopped reading", { self.model.reportReadingFailure(.audioUnreadable) }, { self.model.dismissReadingFailure() })]
+            ("A dictation failure", { self.model.captureFailure = failure }, { self.model.dismissCaptureFailure() })]
         for (name, show, clear) in results {
             show(); settle(.resting)
             let pending = FloatingResult.pending(model)
@@ -3100,130 +3424,19 @@ private struct HistoryNativeAcceptanceView: View {
         controls.choosePosition?(.bottom); settle(.resting)
     }
 
-    /// Results waiting with their own controls, and the input-consuming work that holds them back
-    /// (#220, #222), through the real host and its owners' publishers, docked at bottom centre. The
-    /// result pending when a reading begins, an older dictation failure, a receipt or an
-    /// undelivered one, keeps out of the pointer's reveal while the reading prepares, plays or is
-    /// paused: the reveal shows the reading's own row, the reading goes on, the mark keeps the
-    /// warning and More the result's section, and once the reading ends the next reveal shows the
-    /// result again. A result that arrives during the reading is revealed, a failure set again in
-    /// the same words among them, while a held receipt stays held when the dictation failure's slot
-    /// is cleared. A narration and a newer recording keep their rows too; the chosen tool's own
-    /// sessions hold nothing back, at the selection seam. And a result revealed under the pointer
-    /// keeps its place as a reading starts, until the pointer or a hold lets go.
+    /// Retained input work holds older results; new results and saved sessions stay reachable.
     func checkResultsYieldToLiveWork(host: CapturePanelController, controls: CaptureHUDControls,
                                      expect: (String, [String?]) -> Void, settle: (ToolbarTier) -> Void) {
-        func buttons(_ view: NSView) -> [NSButton] { (view as? NSButton).map { [$0] } ?? view.subviews.flatMap(buttons) }
-        func primary() -> String? { host.window?.contentView.map(buttons)?.first { $0.accessibilityIdentifier() == "toolbar.primary" }?.accessibilityLabel() }
-        /// The pointer's reveal, held by a menu's hold, as the real pointer is elsewhere.
-        func reveal() { controls.toolbar.send(.pointerEntered); controls.toolbar.send(.holdBegan(.menu)); settle(.revealed) }
-        func collapse() { controls.toolbar.send(.holdEnded(.menu)); controls.toolbar.send(.pointerLeft); settle(.resting) }
-        func receipt(_ outcome: @escaping () -> TextDelivery.Outcome) -> () -> Void {
-            { self.model.clipboardReceipt.record(outcome: outcome(), wordCount: 12); self.model.clipboardReceipt.holdHUD(true) }
+        func revealsNow() -> Bool {
+            controls.toolbar.send(.pointerEntered); controls.toolbar.send(.holdBegan(.menu)); settle(.revealed)
+            let result = controls.revealsResult
+            controls.toolbar.send(.holdEnded(.menu)); controls.toolbar.send(.pointerLeft); settle(.resting)
+            return result
         }
-        /// A receipt goes the moment the clipboard changes, so a copy made on this Mac while a local
-        /// run is under way would end a receipt case early. A case runs again, twice at most, when
-        /// the clipboard's change count moved while it ran; nothing here writes the clipboard.
-        func steady(_ run: () -> [String?]) -> [String?] {
-            var problems: [String?] = []
-            for _ in 0..<3 {
-                let before = NSPasteboard.general.changeCount
-                problems = run()
-                if NSPasteboard.general.changeCount == before { break }
-            }
-            return problems
-        }
-        func endReading() { model.rendering = false; model.playing = false; model.paused = false }
-        func described(_ title: String?) -> String { title.map { "\"\($0)\"" } ?? "nothing" }
-        let toolbar = FloatingToolbar(model: model, readback: readback, stage: stage, controls: controls, promptInsertion: model.promptInsertion,
-                                      meetings: model.meetings, snapModel: snap, receipts: model.clipboardReceipt,
-                                      dictate: {}, snap: {}, snapCapture: {}, draw: {}, present: {})
-        let copied = { TextDelivery.Outcome(message: TextDelivery.copiedMessage, clipboardChangeCount: NSPasteboard.general.changeCount,
-                                            wasPasted: false, destinationName: nil) }
+        func pendingIdentity() -> FloatingResult.Identity? { FloatingResult.pending(model)?.identity(in: model) }
         let words = "A recording was recovered. Use Retry transcription."
         let results: [(name: String, kind: FloatingResult, show: () -> Void, clear: () -> Void)] = [
             ("A dictation failure", .dictationFailure, { self.model.captureFailure = words }, { self.model.dismissCaptureFailure() })]
-        // A paused reading belongs to Read. In Dictate it neither leads the row nor holds Dictate's own
-        // failure back, and Resume reading stays in the chooser's Read row.
-        let readings: [(state: String, start: () -> Void, action: String, holdsBack: Bool)] = [
-            ("preparing", { self.model.rendering = true }, "Cancel", true),
-            ("playing", { self.model.playing = true }, "Pause reading", true),
-            ("paused", { self.model.paused = true }, "Dictate", false)]
-        func pendingIdentity() -> FloatingResult.Identity? { FloatingResult.pending(model)?.identity(in: model) }
-        model.toolbarMode = .dictate
-        for result in results {
-            for reading in readings {
-                // Waiting before the reading begins: held back while it lasts.
-                expect("\(result.name) waiting as a reading starts \(reading.state)", steady {
-                    result.show(); settle(.resting)
-                    reading.start(); settle(.resting)
-                    let warning = controls.status.description
-                    reveal()
-                    let row = !controls.revealsResult, reads = primary(), goesOn = model.rendering || model.playing || model.paused
-                    let commands = toolbar.chooserCommands.map { $0.value.title }
-                    let recovery = toolbar.chooserChoices.contains { $0.detail?.contains("attention") == true || $0.detail?.contains("stopped") == true }
-                    collapse()
-                    endReading(); settle(.resting)
-                    reveal()
-                    let back = controls.revealsResult
-                    collapse()
-                    result.clear(); endReading(); settle(.resting)
-                    return [
-                        row == reading.holdsBack ? nil : reading.holdsBack ? "the pointer's reveal showed the older result over the reading"
-                            : "the pointer's reveal held Dictate's failure back behind a paused reading",
-                        !reading.holdsBack || reads == reading.action ? nil : "the revealed row reads \(described(reads)), not \"\(reading.action)\"",
-                        goesOn ? nil : "revealing ended the reading",
-                        warning.contains("Needs attention") ? "saved recovery leaked into live activity" : nil,
-                        recovery ? nil : "The chooser lost the result's recovery route",
-                        reading.state == "preparing" || commands.contains("Stop reading") ? nil : "The Read row has no Stop reading",
-                        reading.state != "paused" || commands.contains("Resume reading") ? nil : "The Read row has no Resume reading",
-                        back ? nil : "once the reading ended the pointer's reveal did not show the result"]
-                })
-                // Arriving during the reading: revealed as any new result, with the reading still reachable.
-                expect("\(result.name) arriving during a reading \(reading.state)", steady {
-                    reading.start(); settle(.resting)
-                    result.show(); settle(.resting)
-                    reveal()
-                    let shown = controls.revealsResult, over = primary()
-                    collapse()
-                    let entry = ToolbarNextAction.resolve(toolbar.live).title, commands = toolbar.chooserCommands.map { $0.value.title }
-                    result.clear(); endReading(); settle(.resting)
-                    return [
-                        shown ? nil : "the pointer's reveal held a new result back",
-                        over == nil ? nil : "the reveal showed the row, reading \(described(over)), over the new result",
-                        entry == reading.action ? nil : "keyboard entry's row would read \"\(entry)\", not \"\(reading.action)\"",
-                        reading.state == "preparing" || commands.contains("Stop reading") ? nil : "The Read row has no Stop reading",
-                        reading.state != "paused" || commands.contains("Resume reading") ? nil : "The Read row has no Resume reading"]
-                })
-            }
-        }
-        // A failure set again in the same words during the reading is a new failure, cleared first
-        // or not; clearing the dictation failure's slot leaves a held receipt held.
-        func revealsNow() -> Bool { reveal(); defer { collapse() }; return controls.revealsResult }
-        model.captureFailure = words; settle(.resting)
-        model.playing = true; settle(.resting)
-        let heldFirst = !revealsNow()
-        model.captureFailure = nil; settle(.resting)
-        model.captureFailure = words; settle(.resting)
-        let clearedAndSet = revealsNow()
-        endReading(); model.dismissCaptureFailure(); settle(.resting)
-        model.captureFailure = words; settle(.resting)
-        model.playing = true; settle(.resting)
-        model.captureFailure = words; settle(.resting)
-        let setAgain = revealsNow()
-        endReading(); model.dismissCaptureFailure(); settle(.resting)
-        let receiptHeld = steady {
-            receipt(copied)(); settle(.resting)
-            model.playing = true; settle(.resting)
-            model.captureFailure = nil; settle(.resting)
-            let held = !revealsNow() && model.clipboardReceipt.receipt != nil
-            endReading(); model.clipboardReceipt.clear(); settle(.resting)
-            return [held ? nil : "clearing the dictation failure's slot let a held receipt over the reading"]
-        }
-        expect("A failure in the same words, and a held receipt, during a reading", [
-            heldFirst ? nil : "the failure waiting as the reading began was not held back",
-            clearedAndSet ? nil : "a failure cleared and set again in the same words stayed held back",
-            setAgain ? nil : "a failure set again in the same words stayed held back"] + receiptHeld)
         // At the selection seam, with the real results: global input work holds back the result
         // pending as it began, and the chosen tool's own sessions hold nothing back. Each row says
         // which it expects on its own, never from the rule under test. A result that arrives during
@@ -3263,44 +3476,10 @@ private struct HistoryNativeAcceptanceView: View {
         expect("Older results under global input work and the tools' own sessions", [olderWrong.isEmpty ? nil : olderWrong.joined(separator: "; ")])
         expect("Newer results under the same work", [newerWrong.isEmpty ? nil : "held back: " + newerWrong.joined(separator: "; ")])
         expect("Results under a newer recording and its processing", [recordingWrong.isEmpty ? nil : "took the reveal: " + recordingWrong.joined(separator: "; ")])
-        // A result revealed under the pointer keeps its place as a reading starts; once the pointer
-        // lets go the row is the reading's, and after it the result's again. A kept-open row does
-        // the same once its hold lets go.
-        results[0].show(); settle(.resting)
-        reveal()
-        let first = controls.revealsResult
-        model.playing = true; settle(.revealed)
-        let stays = controls.revealsResult && primary() == nil
-        collapse()
-        reveal()
-        let rowNow = !controls.revealsResult, readsNow = primary()
-        collapse()
-        endReading(); settle(.resting)
-        let backAfter = revealsNow()
-        controls.toolbar.send(.keepOpenChanged(true)); settle(.revealed)
-        let kept = controls.revealsResult
-        controls.toolbar.send(.holdBegan(.menu))
-        model.playing = true; settle(.revealed)
-        let keptStays = controls.revealsResult
-        controls.toolbar.send(.holdEnded(.menu)); settle(.revealed)
-        let keptRow = !controls.revealsResult, keptReads = primary()
-        endReading(); settle(.revealed)
-        let keptBack = controls.revealsResult
-        controls.toolbar.send(.keepOpenChanged(false)); settle(.resting)
-        results[0].clear(); settle(.resting)
-        expect("A revealed result as a reading starts under the pointer", [
-            first ? nil : "the pointer's reveal did not show the result",
-            stays ? nil : "the reading took the row from under the pointer",
-            rowNow && readsNow == "Pause reading" ? nil : "once the pointer let go the next reveal read \(described(readsNow)), not \"Pause reading\"",
-            backAfter ? nil : "once the reading ended the next reveal did not show the result",
-            kept ? nil : "the kept-open row did not show the result",
-            keptStays ? nil : "the reading took the kept-open row while a hold was on it",
-            keptRow && keptReads == "Pause reading" ? nil : "once the hold let go the kept-open row read \(described(keptReads)), not \"Pause reading\"",
-            keptBack ? nil : "once the reading ended the kept-open row did not show the result again"])
     }
 
     /// Each tool's one accessory (#134 part B) in the real host, docked at bottom centre. Revealed
-    /// with nothing live, Draw shows Tools and Present Prompts, each with its chevron, and no other
+    /// with nothing live, Draw shows Tools with its chevron, and no other
     /// tool shows one: Dictate, Read and Snap never do, Snap & Talk only with a session open, and
     /// Persona only with a live copy, which the gallery never shows over the Mac. Tools holds Draw's
     /// drawing choices; Persona's More opens Persona's page instead; and with a session open,
@@ -3330,7 +3509,6 @@ private struct HistoryNativeAcceptanceView: View {
         }
         defer { controls.endKeyboardInteraction(); controls.choosePosition?(.bottom); model.toolbarMode = .dictate; settle(.resting) }
         let rows: [(ToolbarMode, FloatingControlAnchor, [String])] = [(.draw, .bottom, ["primary", "accessory", "launcher"]),
-                                                              (.read, .bottom, ["primary", "launcher"]),
                                                               (.draw, .right, ["primary", "accessory", "launcher"])]
         for (mode, anchor, cycle) in rows {
             model.toolbarMode = mode
@@ -3407,13 +3585,13 @@ private struct HistoryNativeAcceptanceView: View {
     /// (Home asks macOS for the login item status each time it is created, which can be slow).
     /// The Workbench window at `size`. `sectionFrames`, when given, hears where this window's pages
     /// lay out their named sections (`pageSectionFrames`), and no other window's.
-    func homeWindow(size: NSSize, hostsSheets: Bool = false, sectionFrames: ((String, CGRect) -> Void)? = nil, stage: StageKitController? = nil) -> NSWindow {
+    func homeWindow(size: NSSize, hostsSheets: Bool = false, packs: PackLibraryModel? = nil, sectionFrames: ((String, CGRect) -> Void)? = nil, stage: StageKitController? = nil) -> NSWindow {
         // A preceding toolbar-host fixture closes its controller. Restore this pass's
         // retained settings owner before rendering desktop pages, as the live app has one.
         if model.toolbarControls == nil { model.toolbarControls = toolbarSettingsControls }
         let window = offscreenWindow(size: size, styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], hostsSheets: hostsSheets)
         window.titlebarAppearsTransparent = true; window.titleVisibility = .hidden
-        window.contentViewController = NSHostingController(rootView: WorkbenchHome(model: model, stage: stage ?? self.stage, keyboard: keyboard, readback: readback, snap: snap)
+        window.contentViewController = NSHostingController(rootView: WorkbenchHome(model: model, stage: stage ?? self.stage, keyboard: keyboard, readback: readback, snap: snap, packs: packs)
             .environment(\.pageSectionFrames, sectionFrames))
         window.setContentSize(size)
         if hostsSheets {
@@ -3554,7 +3732,8 @@ private struct HistoryNativeAcceptanceView: View {
                  action("Settings · General", "Keep open / Position…", "Uses the toolbar's existing preference and placement owner"),
                  action("Persona workspace", "Live copy controls", "Appearance, size, lock, position, replace, update, visibility and explicit layout saving"),
                  action("Present workspace", "Live presentation", "Controls the running snapshot while saved scene preparation stays separate"),
-                 action("Present workspace", "Saved Prompts…", "The same picker and delivery owner as the pill's Prompts")]
+                 action("Library", "Saved Prompts…", "Copies complete prompts through Library's copy owner, with no external insertion target"),
+                 action("Persona workspace", "Me…", "Opens the existing local profile editor without starting a camera")]
         for tool in WorkbenchControlTool.allCases {
             let options = "\(tool.title) · Options"
             switch tool {
@@ -3564,8 +3743,6 @@ private struct HistoryNativeAcceptanceView: View {
                          page(panel, "Dictate · Options · Open Dictate…", "dictate"),
                          action(panel, "Dictate · Options · Delivery and Text style", "Changes the saved dictation settings"),
                          action(panel, "Dictate · Options · Set up automatic paste…", "Asks macOS for Accessibility approval; shown while Paste automatically waits for it")]
-            case .read:
-                list += [page(panel, "Read, when nothing is playing", "speak"), action(panel, "Read, while reading", "Pauses, resumes or cancels the reading from the row itself")]
             case .snap:
                 list += [action(panel, "Snap", "Captures a region, saved in History"),
                          action(panel, "Snap · Options · Region, Window or Screen", "Captures that area, saved in History"),
@@ -3589,7 +3766,7 @@ private struct HistoryNativeAcceptanceView: View {
                  page(panel, "Open Workbench", "home"), page(panel, "Settings", "settings"), page(panel, "Shortcuts", "shortcuts"),
                  action(panel, WorkbenchUpdates.shared.panelTitle, "Checks for updates"), action(panel, "Quit", "Quits Workbench"),
                  page(panel, "Clipboard receipt · Review text", "history"), action(panel, "Clipboard receipt · Show cue", "Shows the clipboard cue"),
-                 page(panel, "Recovery · Open Dictate…, for a dictation error", "dictate"), page(panel, "Recovery · Open Read…, for a reading error", "speak"),
+                 page(panel, "Recovery · Open Dictate…, for a dictation error", "dictate"),
                  page(panel, "Recovery · Open History…, for a transcript removal or export", "history"),
                  page(panel, "Recovery · Open Home…, when the speech model could not be prepared", "home"),
                  page(panel, "Recovery · Open Models…, while speech is still preparing", "models"), page(panel, "Recovery · Open Snap & Talk…, for its notice", "readback"),
@@ -3606,8 +3783,7 @@ private struct HistoryNativeAcceptanceView: View {
         list += [page("Home sidebar", "Update button, when an update is waiting", "settings")]
         // Home opens four workspaces. Capturing begins only from the chosen workspace.
         list += [page(home, "Start here · Dictate", "dictate"), page(home, "Start here · Meetings", "meeting"),
-                 page(home, "Start here · Snap", "snap"), page(home, "Start here · Snap & Talk", "readback"),
-                 action(home, "Me · Your profile", "Opens local photo and Persona preparation"),
+                 page(home, "Start here · Snap & Talk", "readback"), page(home, "Start here · Present", "present"),
                  action("Home sidebar", "Expand or collapse sidebar · Control-Command-S", "Keeps the chosen sidebar width"),
                  E(surface: home, label: "Recent work · a transcript's title", leads: "Page: history, showing that transcript", route: "history"),
                  E(surface: home, label: "Recent work · a result's title", leads: "Page: history, revealing that task", route: "history"),
@@ -3629,26 +3805,23 @@ private struct HistoryNativeAcceptanceView: View {
                  action("Snap page", "Add image · Paste image or Import image…", "Opens a Snap draft from the clipboard or a chosen file"),
                  action("Snap page", "Add image · Import Desktop screenshots…", "Lists screenshots on the Desktop, then asks before importing them and moving the originals to the Trash"),
                  action("Transcript details", "Suggest details · Ask an assistant…", "Opens the handoff review to suggest names and tags"),
-                 action("Read page", "Voice & pace…", "Opens Read settings"),
-                 action("Read settings", "Open Read & Speak", "Opens System Settings to add a Mac voice"),
                  page("Meetings page", "History", "history"),
                  E(surface: "Meetings page", label: "Review transcript", leads: "Page: history, showing the exact completed transcript", route: "history"),
                  E(surface: "Handoff review", label: "Copy instructions or Start task", leads: "Page: history, revealing the task it prepared", route: "history"),
                  page("Remember correction", "Open Dictionary", "dictionary"),
-                 page("History page", "Transcript · More… · Open in Dictate", "dictate"), page("History page", "Transcript · More… · Read aloud", "speak"),
-                 page("History page", "Result · Read aloud", "speak"),
+                 page("History page", "Transcript · More… · Open in Dictate", "dictate"),
                  action("History page", "Connections…", "Shows provider connections over History"),
                  action("History page", "Hand off…", "Opens the handoff review for the selected items"),
                  action("History page", "Result · Review suggested details…", "Reviews an assistant's suggested details for the task's transcript"),
                  action("History page", "Stop task", "Stops the running task, whatever the filter shows")]
         list += appMenuEntries(surface: menu)
         list += [action("Library page", "Resources · Add · Save clipboard as prompt…, or ⇧⌘S while Resources shows", "Opens a new prompt with the clipboard's text")]
-        list += [page(other, "Library shortcut", "library"), page(other, "Read shortcut, when nothing is playing", "speak"),
+        list += [page(other, "Library shortcut", "library"),
                  page(other, "Snap & Talk shortcut, without a session or access", "readback"), page(other, "Present shortcut, without a scene", "present"),
-                 action(other, "Quick controls shortcut", "Opens this panel"), action(other, "Switch to shortcut", "Opens the Switch to panel"),
-                 page(other, "Read Selection service (selected text)", "speak"), page(other, "Private pack link", "packs"),
+                 action(other, "Quick controls shortcut", "Opens this panel"),
+                 page(other, "Private pack link", "packs"),
                  page(other, "Meeting offer panel", "meeting"), page(other, "Pack persona import", "personas"),
-                 page(other, "Switch to panel · Set up", "library"), page(other, "StageKit controls and drawing settings", "annotate"),
+                 page(other, "StageKit controls and drawing settings", "annotate"),
                  page(other, "StageKit shortcut editing", "shortcuts"), page(other, "StageKit persona preparation", "personas")]
         return list
     }
@@ -3737,7 +3910,7 @@ extension SurfacePass {
                        "Copy build details": "Copies build details", "Hide Workbench": "Hides Workbench", "Quit Workbench": "Quits Workbench",
                        "Close Window": "Closes the front window", "Open Workbench": "Opens Home on its current page",
                        "Show floating toolbar": "Shows the toolbar between actions", "Hide floating toolbar": "Hides the toolbar between actions", "Focus floating toolbar": "Moves keyboard focus to the toolbar",
-                       "Restore menu-bar icon": "Shows the icon and the toolbar", "Switch to…": "Opens the Switch to panel", "Workbench Guide": "Opens the web guide"]
+                       "Restore menu-bar icon": "Shows the icon and the toolbar", "Workbench Guide": "Opens the web guide"]
         return shell.makeMainMenu().main.items.compactMap(\.submenu).filter { ["Workbench", "Window", "Help"].contains($0.title) }.flatMap { menu in
             menu.items.filter { !$0.isSeparatorItem && $0.submenu == nil }.map { item in
                 let label = "\(menu.title) › \(item.title)"
@@ -3812,7 +3985,7 @@ private struct SurfaceIndex {
             "<li>\($0): needs a live StageKit session (overlay windows or device capture). The options menus below show these rows' idle menus.</li>" }.joined() + "</ul>"
         html += "<h2>Home and the floating toolbar's switch</h2><p>Checked with the pass's own models; the pass fails if any of these does not hold (#134).</p><ul>"
             + light.checks.map { "<li class=\"ok\">\(esc($0))</li>" }.joined() + "</ul>"
-        html += "<h2>Floating toolbar host</h2><p>The production host (<code>CapturePanelController</code>) driven offscreen for every mode, at rest and revealed, then switched between Dictate and Present while revealed, with its panel invisible. Each window is compared with what its row wants; a smaller window clips the row and its corners.</p>"
+        html += "<h2>Floating toolbar host</h2><p>The production host (<code>CapturePanelController</code>) driven offscreen for every mode, at rest and revealed, then switched between Dictate and Draw while revealed, with its panel invisible. Each window is compared with what its row wants; a smaller window clips the row and its corners.</p>"
         if light.host.isEmpty { html += light.scope == "desktop" ? "<p>Omitted by the bounded desktop pass.</p>" : "<p>Not run: this Mac reported no display.</p>" }
         html += "<table><tr><th>State</th><th>Window</th><th>Row wants</th><th>Host heard the row</th><th>Twin heard its row</th><th>Check</th></tr>"
         for check in light.host {
@@ -3834,7 +4007,7 @@ private struct SurfaceIndex {
             html += "<h3>\(esc(shot.title))</h3><p>\(esc(shot.detail))</p><div class=\"row toolbar\">" + figure(shot, "Light")
                 + (index < dark.toolbar.count ? figure(dark.toolbar[index], "Dark") : "") + "</div>"
         }
-        html += "<h2>Saved Prompts picker</h2><p>Present's Prompts accessory and the glyph menu's Saved Prompts… open this picker. Its states are drawn at its 420-point width on the window background from synthetic prompts; its keyboard and choices are covered by --check-core. The production panel (<code>PromptPickerController</code>) is then opened invisibly over a bottom-docked Prompts button, narrowed to one row, given a status line and its Details, and widened to every prompt again. Each time its panel is compared with what its content wants.</p>"
+        html += "<h2>Saved Prompts picker</h2><p>Library's Saved Prompts… opens this picker. Its states are drawn at its 420-point width on the window background from synthetic prompts; its keyboard, complete Copy and failure feedback are covered by --check-core. In the full pass, the production panel (<code>PromptPickerController</code>) is also opened invisibly over a synthetic bottom-edge anchor and compared with its content's requested size. Native focus return and dismissal remain separate acceptance.</p>"
         if light.pickerHost.isEmpty { html += light.scope == "desktop" ? "<p>Omitted by the bounded desktop pass.</p>" : "<p>The production panel was not opened: this Mac reported no display.</p>" }
         else {
             html += "<table><tr><th>State</th><th>Panel</th><th>Content wants</th><th>Panel heard its content</th><th>Check</th></tr>"
@@ -3877,7 +4050,7 @@ private struct SurfaceIndex {
             "History shows the synthetic transcripts and Snaps, then its states: empty; All with Hand off tasks and two items selected; Results with running, completed, failed and Ready tasks; and Transcripts. Tasks run through a synthetic provider with a fixed clock; no process starts. The running strip draws a still symbol in place of its live indicator. Snap shows three synthetic Snaps with fixed dates.",
             "The meeting page lists two synthetic audio apps instead of this Mac's; the meeting status row comes from a synthetic capture that records nothing.",
             "Present's phone states pin synthetic signals on one scene: the bundled Office & professional starter in a packaged app, otherwise a synthetic backdrop imported as a scene file. Its page is never on screen, so the capture never starts and no phone picture is drawn; the stage frame's live states need a phone on the installed app. The scene list's selected row draws black: its source-list selection is a material, which these renders do not draw.",
-            "The speech engine is never loaded, so Models shows a fresh install. Mac voices, Apple Intelligence availability and keyboard labels come from the rendering Mac.",
+            "The speech engine is never loaded, so Models shows a fresh install. Apple Intelligence availability and keyboard labels come from the rendering Mac.",
             "Pixel sizes follow the rendering display's scale."].map { "<li>\(esc($0))</li>" }.joined() + "</ul></body></html>\n"
         try Data(html.utf8).write(to: output.appendingPathComponent("index.html"), options: .atomic)
         let shots = passes.flatMap { pass in pass.panels + pass.toolbar + pass.pickers + pass.pages.flatMap(\.shots) }.map { ["file": $0.file, "width": $0.width, "height": $0.height] as [String: Any] }
@@ -3920,10 +4093,12 @@ extension SurfaceGallery.HostCheck {
 
 /// Two known meeting apps with audio, so the meeting page lists choices without reading CoreAudio.
 private final class SyntheticAudioApps: MeetingProcessSource {
+    var failure = false
     var isAvailable: Bool { true }
     var unavailableReason: String { "" }
     func snapshot() throws -> [MeetingProcessSnapshot] {
-        [.init(pid: 41_001, bundleID: "us.zoom.xos", isRunningInput: true, isRunningOutput: true, name: "Zoom"),
+        if failure { throw VoiceError.message("The synthetic source check could not finish.") }
+        return [.init(pid: 41_001, bundleID: "us.zoom.xos", isRunningInput: true, isRunningOutput: true, name: "Zoom"),
          .init(pid: 41_002, bundleID: "com.microsoft.teams2", isRunningInput: false, isRunningOutput: true, name: "Microsoft Teams")]
     }
 }

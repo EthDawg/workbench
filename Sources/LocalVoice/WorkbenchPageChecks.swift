@@ -13,7 +13,7 @@ enum WorkbenchPageChecks {
             passed += 1
         }
         let pages = WorkbenchHome.navItems.map(\.id)
-        try check(WorkbenchHome.navItems.map(\.title) == ["Home", "Dictate", "Meetings", "Read", "Snap", "Snap & Talk", "Draw", "Present", "Persona", "History", "Library", "Settings"],
+        try check(WorkbenchHome.navItems.map(\.title) == ["Home", "Dictate", "Meetings", "Snap", "Snap & Talk", "Draw", "Present", "Persona", "History", "Library", "Settings"],
                   "the sidebar includes Meetings beside Dictate under the shared page names")
         try check(Set(pages).count == pages.count, "each sidebar page has its own route")
         for page in pages { try check(WorkbenchHome.destination(page).page == page, "\(page) highlights its own item") }
@@ -35,7 +35,7 @@ enum WorkbenchPageChecks {
             let landing = WorkbenchHome.destination(route)
             try check(landing.page == page && landing.section == route, "the \(route) route opens \(page) on that section")
         }
-        for route in ["speak", "annotate", "present", "library"] {
+        for route in ["annotate", "present", "library"] {
             try check(WorkbenchHome.destination(route).page == route, "\(route) still opens its renamed page")
         }
         for route in ["dictionary"] {
@@ -44,6 +44,8 @@ enum WorkbenchPageChecks {
         }
         try check(WorkbenchHome.destination("surface-gallery-unknown-route").page == "dictate",
                   "an unknown route shows Dictate with Dictate highlighted, as the page switch does")
+        try check(WorkbenchHome.destination("speak").page == "library" && WorkbenchHome.destination("speak").section == "library",
+                  "the retired Read route opens Resources for preserved text, without a new tool route")
         for route in pages + WorkbenchHome.sections.map(\.id) + WorkbenchHome.subpages.map(\.id) {
             try check(pages.contains(WorkbenchHome.destination(route).page), "\(route) lands on a sidebar page")
         }
@@ -80,7 +82,7 @@ enum WorkbenchPageChecks {
                   "a subpage or section shows its page's symbol")
         // The panel's door opens the page recorded with the problem where it was raised, never one
         // read from its words (#134 review): each page lands where that problem is shown and fixed.
-        for (page, route, section) in [(Attention.Page.dictate, "dictate", nil), (.read, "speak", nil), (.home, "home", nil), (.history, "history", nil)] as [(Attention.Page, String, String?)] {
+        for (page, route, section) in [(Attention.Page.dictate, "dictate", nil), (.home, "home", nil), (.history, "history", nil)] as [(Attention.Page, String, String?)] {
             let landing = WorkbenchHome.destination(page.route)
             try check(page.route == route && landing.page == route && landing.section == section, "a Voice problem owned by \(page) opens \(route)")
         }
@@ -98,7 +100,7 @@ enum WorkbenchPageChecks {
         try check(WorkbenchHome.sidebarGroups.map(\.title) == ["Voice", "Screen", "Saved"], "the desktop groups explain voice, screen and saved work")
         let grouped = WorkbenchHome.sidebarGroups.flatMap(\.routes)
         try check(grouped == listed && Set(grouped).count == grouped.count, "groups cover each workspace once in navigation order")
-        try check(WorkbenchHome.sidebarGroups.first?.routes == ["dictate", "meeting", "speak"], "Meetings is visible next to Dictate and Read")
+        try check(WorkbenchHome.sidebarGroups.first?.routes == ["dictate", "meeting"], "Meetings is visible next to Dictate")
         // The floating toolbar's one switch reads the same everywhere (#134 H3).
         try check(WorkbenchHome.floatingToolbarHelp == "Show between actions. Recording and recovery controls still appear when needed.",
                   "the switch explains itself in the contract's words")

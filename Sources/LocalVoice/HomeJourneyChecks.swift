@@ -69,13 +69,6 @@ enum HomeJourneyChecks {
             try check(positions == positions.sorted(), "Home keeps its fixed order: \(journey.sections)")
         }
 
-        let frames = HomeGreetingSequence.frames
-        try check(frames.contains { $0.text == HomeGreetingSequence.welcome && $0.milliseconds >= 600 },
-                  "the greeting types Welcome back and holds it briefly")
-        try check(frames.contains { $0.text.isEmpty } && frames.last?.text == HomeGreetingSequence.settled,
-                  "the greeting erases before settling on one action-oriented line")
-        try check(frames.reduce(0) { $0 + $1.milliseconds } < 3_000, "the one-time greeting finishes within three seconds")
-
         // Persisted with the Dictate preferences: survives relaunch, keeps older files and reads a newer value safely.
         var preferences = VoicePreferences()
         preferences.firstDictationGuide = .skipped; preferences.cleanup = .natural

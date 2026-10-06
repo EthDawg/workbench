@@ -47,15 +47,30 @@ class PreviewTests(unittest.TestCase):
                 # only the incoming replacement must be persistently signed.
                 preview.validate_bundle(app, config, allow_ad_hoc=True)
 
-    def test_preview_service_uses_distinct_title_and_port(self):
-        config = preview.configuration()
+    def test_both_editions_remove_only_the_retired_service(self):
         source = {"NSServices": [{"NSMessage": "readSelection", "NSPortName": "Workbench",
                                   "NSMenuItem": {"default": "Read Selection in Workbench"}}]}
-        info = preview.update_bundle_info(source, config, "123")
-        service = info["NSServices"][0]
-        self.assertEqual(service["NSPortName"], "Workbench Preview")
-        self.assertEqual(service["NSMenuItem"]["default"], "Read Selection in Workbench Preview")
-        self.assertEqual(info["CFBundleExecutable"], "WorkbenchPreview")
+        for production in [False, True]:
+            config = preview.configuration(production=production)
+            info = preview.update_bundle_info(dict(source), config, "123")
+            self.assertNotIn("NSServices", info)
+            unrelated = {"NSMessage": "unrelated", "NSPortName": "Other"}
+            info = preview.update_bundle_info({"NSServices": source["NSServices"] + [unrelated]}, config, "123")
+            self.assertEqual(info["NSServices"], [unrelated])
+
+    def test_incoming_read_service_rejected_but_old_install_can_be_replaced(self):
+        config = preview.configuration()
+        signature = "Authority=Developer ID Application: Example\nTeamIdentifier=ABCDEFGHIJ\n"
+        with tempfile.TemporaryDirectory() as temporary:
+            app = Path(temporary) / config["bundle"]
+            (app / "Contents").mkdir(parents=True)
+            info = preview.update_bundle_info({}, config, "1")
+            info["NSServices"] = [{"NSMessage": "readSelection"}]
+            (app / "Contents/Info.plist").write_bytes(plistlib.dumps(info))
+            with patch.object(preview, "run", return_value=SimpleNamespace(stderr=signature)):
+                with self.assertRaisesRegex(RuntimeError, "retired Read Service"):
+                    preview.validate_bundle(app, config)
+                preview.validate_bundle(app, config, require_services=False)
 
     def run_update(self, fail=False, legacy=False):
         config = preview.configuration()
@@ -75,10 +90,14 @@ class PreviewTests(unittest.TestCase):
             incoming = archive / config["bundle"]
             incoming.mkdir(parents=True)
             (incoming / "version").write_text("new")
-            for app, has_services in [(installed, not legacy), (incoming, True)]:
+            for app, has_services in [(installed, not legacy), (incoming, False)]:
                 (app / "Contents").mkdir()
                 source = {"NSServices": [{"NSMessage": "readSelection"}]} if has_services else {}
-                info = preview.update_bundle_info(source, config, "1")
+                info = preview.update_bundle_info(dict(source), config, "1")
+                # The actual old installed bundle still advertises its old
+                # Service; only the replacement is rebuilt without it.
+                if has_services:
+                    info["NSServices"] = source["NSServices"]
                 (app / "Contents/Info.plist").write_bytes(plistlib.dumps(info))
             actual_validate = preview.validate_bundle
             backup = home / config["preview_archive"]
@@ -126,8 +145,7 @@ class PreviewTests(unittest.TestCase):
             plist = app / "Contents/Info.plist"
             plist.write_bytes(plistlib.dumps(info))
             with patch.object(preview, "run", return_value=SimpleNamespace(stderr=signature)) as run:
-                with self.assertRaisesRegex(RuntimeError, "Services identity"):
-                    preview.validate_bundle(app, config)
+                preview.validate_bundle(app, config)
                 preview.validate_bundle(app, config, require_services=False)
                 self.assertTrue(any(call.args[:2] == ("codesign", "--verify") for call in run.call_args_list))
                 info["CFBundleIdentifier"] = "invalid.previous.identity"

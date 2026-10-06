@@ -4,10 +4,12 @@ Workbench has one transcription engine used by the window, global shortcuts and 
 
 | Choice | Model and execution | Setup | Readiness means |
 | --- | --- | --- | --- |
-| Parakeet | Parakeet TDT v2, English, FluidAudio 0.15.6, on-device Core ML | Download on first preparation; reuse FluidAudio's local model cache | Model loaded and ready for local inference |
+| Parakeet | Parakeet TDT v2, English, FluidAudio 0.15.6, on-device Core ML | Explicit Download; cached-only preparation reuses validated local files without network or repair | Model loaded and ready for local inference |
 | Local model server | Model requested from a transcription server on this Mac; routing depends on that server | Run and configure the server yourself; enter its full endpoint and model ID | Configuration valid; connection and response are checked on the first real transcription, not the server's actual model identity |
 
 The default is Parakeet. There is no automatic fallback to another provider or cloud. Workbench does not accept arbitrary downloaded model files: format, tokenizer, runtime and model architecture must be supported by an explicit provider. Models supported by a separately managed server can change without changing Workbench's UI or recording implementation.
+
+Cached preparation reads only local files; it never calls FluidAudio’s downloader or repair loaders. Explicit Download writes an isolated candidate and validates it before adopting it, retaining the previous cache directory. Cancellation retains a non-interruptible load slot until it finishes and prevents stale adoption. The source checks establish those boundaries with synthetic stores. Successful native inference after candidate adoption, including replacement of an existing cache, remains a separate acceptance requirement: CoreML’s lazy file access after a pathname exchange is not established by the pinned Swift wrapper or by successful model construction alone.
 
 ## Local-server contract
 
@@ -51,27 +53,15 @@ FluidAudio 0.15.6 also ships Parakeet Unified, Cohere Transcribe and Parakeet TD
 
 These are read-speech recordings, not microphone dictation, and one Mac. A model that later beats the default on the same recordings can be added as an explicit provider.
 
-## Reading voices
+## Retired reading voices
 
-**Retired target, 6 October 2026:** the [foundation decision](mac-foundation.md#read-retirement-is-a-narrow-removal-not-an-audio-rewrite) removes Workbench TTS and its setup. The following is retained source/history for safe removal, not a recommendation to download or improve voices. Preserve recognition providers and their shared FluidAudio dependency.
+Read text-to-speech, its voice downloads, provider selection and developer commands are removed. Old Read text is preserved exactly as an ordinary Library file; the dormant source, voice and rate fields remain intact. Old exported audio, provider credentials and downloaded voice/model caches are not deleted or queried. FluidAudio remains the shared recognition dependency. See the [retirement contract](mac-foundation.md#read-retirement-is-a-narrow-removal-not-an-audio-rewrite).
 
-| Choice | Model and execution | Setup | Follow-along |
-| --- | --- | --- | --- |
-| Mac voices (default) | Installed macOS voices through `AVSpeechSynthesizer` | None. Free Enhanced and Premium voices are added in System Settings | Word by word |
-| Neural voices | Pocket TTS by Kyutai (CC BY 4.0), FluidInference's Core ML conversion through FluidAudio 0.15.6, on this Mac | One explicit download of about 530 MB from Read › Voice & pace or Settings › Models | Sentence by sentence |
-| Speko · online | The Speko service, with the person's own key | Key saved in Keychain | None |
-
-Neural voices are an option Ethan asked for on 1 October 2026; Mac voices stay the default. Nothing downloads in passing: Listen with Neural voices chosen and no download reports where to get it, and no other voice reads in its place. The download lives in `~/Library/Application Support/FluidAudio/Models/pocket-tts`, beside the speech model, and Remove download… deletes only that folder. The model loads on the first reading and is released when Read moves to another source. Each reading is made a sentence at a time and plays while the rest renders; Cancel stops the model. The pack's 21 English voices are listed by name, with a sample beside the picker. They read at their own pace, so Pace applies to Mac voices only.
-
-Measured on the same Mac with the vendor's release build: first audio 0.04 to 0.09 seconds once loaded, about 3 to 4.5 times faster than real time, about 0.7 GB of memory while reading, and a one-time first load of several seconds, which the download step does so the first Listen need not. Read back by Parakeet, a 144-word paragraph came out with 0 to 2 wrong words across two readings; the Mac voices had none. Naturalness was not judged by ear: compare the voices with the sample button. This Mac has only compact Mac voices installed, so the free Premium voice the Read page points to remains worth adding either way.
-
-Two other voices in the same library were measured and not offered. Kokoro reads one English voice, refuses text over about 470 characters per call, and crashed on this macOS (26.5.1) in the way its vendor warns of for 26.4 to 26.5. Supertonic-3 does not stop when cancelled and misread numbers ("2,450" as "two, four-fifty").
-
-`--check-neural-voice` drives the renderer with synthetic frames and needs no download: sentence marks, the running filter against the vendor's whole-reading filter, cancellation, failure and the refusal without a download. `--check-neural-voice-render [FOLDER]` reads with the real model when the voices are present, plays the reading through Read's player with no audio device, and is skipped otherwise. `--check-neural-voice-download NEW_FOLDER` runs the real download into a new folder and then removes it; on 1 October 2026 it fetched 529 MB in 57 seconds with one progress line per percent, found all 21 voices, loaded in 3.4 seconds and left the folder empty of voices.
+The 1 October 2026 comparisons of Mac, Pocket TTS and Speko voices describe the earlier implementation and do not establish an active product requirement. Historical research and release records remain available in the repository history.
 
 ## Adding another provider
 
-Add an explicit `RecognitionProvider` choice and one dispatch branch in `RecognitionEngine`, including its readiness, availability, cancellation and input contract. Keep microphone capture, text cleanup, history, hotkeys and presentation outside provider implementations. Changes should not alter the public `prepare`, `isReady` or `transcribe` call pattern.
+Add an explicit `RecognitionProvider` choice and one dispatch branch in `RecognitionEngine`, including its readiness, availability, cancellation and input contract. Keep microphone capture, text cleanup, history, hotkeys and presentation outside provider implementations. Preserve the separate cached preparation, deliberate acquisition, observable readiness/admission and transcription boundaries; neither transcription entrypoint may acquire assets.
 
 Apple Speech is not offered in this preview. A future on-device provider must check authorization, locale and on-device availability, require on-device recognition for every request, and report unavailable rather than silently using Apple's network recognizer.
 
@@ -79,7 +69,7 @@ The FluidAudio integration is pinned to [0.15.6](https://github.com/FluidInferen
 
 ## Verification
 
-`--check-providers` runs the deterministic checks and real HTTP transport against synthetic loopback fixtures: success, redirect refusal, HTTP failure, declared and streamed response limits, cancellation, and in-flight model selection. These checks use synthetic bytes and isolated temporary defaults. They establish protocol behaviour, not recognition accuracy.
+`--check-providers` runs the deterministic checks and real HTTP transport against synthetic loopback fixtures: success, redirect refusal, HTTP failure, declared and streamed response limits, cancellation, and in-flight model selection. These checks use synthetic bytes and isolated temporary defaults. The same command exercises the recognition lifecycle with injected held loads, cancellation, configuration reversal, candidate validation/adoption, cache preservation and configured-server first-use failure. They establish protocol and ownership behaviour, not actual model loading, recognition accuracy or native permission acceptance.
 
 ### Real server checked on 12 September 2026
 

@@ -127,7 +127,7 @@ Production promotion requires the applicable native checks below to pass on the 
 
 - Download the final channel ZIP through a browser on another Mac or clean account. Verify its SHA-256, expected app identity, normal Gatekeeper opening and first-run permissions. Shell extraction alone is not this test.
 - Verify one app and one menu-bar icon; home-window reopen/close behavior; onboarding; shortcut recording, conflicts and practice; and safe switching between speech, drawing and presenting.
-- Voice: first model download, microphone start/stop/cancel, transcription, clipboard-only delivery, optional Accessibility paste into a harmless TextEdit document, focus protection, reading/export, and restart/history.
+- Voice: first model download, microphone start/stop/cancel, transcription, clipboard-only delivery, optional Accessibility paste into a harmless TextEdit document, focus protection, original recording review, exact legacy Read text preservation, and restart/history.
 - Annotation: draw/erase/undo, pointer effects, saved boards, timer, display changes and real screen sharing.
 - Present: scene and logo persistence, USB device selection/reconnection and actual video, full-screen start/end, and the separate QuickTime/iPhone Mirroring launch paths where supported.
 - Confirm Preview preserves existing production/legacy apps and saved data. Never imply unperformed hardware or fresh-Mac tests passed.
@@ -170,7 +170,7 @@ Use an HTML fragment for concise user-facing release notes. Sparkle generates th
 
 ### Write notes people want to read
 
-Lead with what the person can do more easily in this release. Use a short, warm opening and three to five concrete outcomes, with the most useful first. Name the familiar tool and a real moment: “Pick up your last capture from Home” or “Keep your reading draft when copied text can’t be read.” Include an outcome only after it passes the release’s acceptance checks. Avoid component names, test counts, vague “improvements” and promises of perfect reliability in the updater’s small reading area.
+Lead with what the person can do more easily in this release. Use a short, warm opening and three to five concrete outcomes, with the most useful first. Name the familiar tool and a real moment: “Pick up your last capture from Home” or “Copy the complete transcript when a meeting finishes.” Include an outcome only after it passes the release’s acceptance checks. Avoid component names, test counts, vague “improvements” and promises of perfect reliability in the updater’s small reading area.
 
 Draft the customer-facing copy once, then use the same opening and outcomes in the GitHub Markdown and Sparkle HTML. A useful shape is:
 
@@ -209,7 +209,7 @@ For the first updater release, install an older updater-enabled test artifact an
 
 ## Keep release execution bounded
 
-Use one release owner and the existing helpers. Capture the source SHA, CI run IDs,
+Use one release owner and the existing helpers. Capture the source SHA, CI run IDs (for a main commit, its merge-group run),
 immutable package path and completed stage before waiting. Let a command such as
 `gh run watch RUN_ID --exit-status --interval 300` wait for the pinned run; do not
 start a second polling loop or repeatedly reread the repository while it waits.
@@ -228,12 +228,92 @@ scheduled model wakeups for routine release waiting. A background script may pol
 at five-minute intervals without model involvement; stop on failure or changed
 source and retain a concise result for the next check-in.
 
-CI can omit native jobs for known documentation/site-only changes on pull
-requests, complete merge groups and pushes to main. Site always validates the
-surface registry, contracts and release records and builds the website. The
-required Build and test gate also requires Site and every selected native job
-to pass. Source, resources, scripts, workflows, unknown paths, missing history
-and manual runs retain full native CI. See the exact
+The five native CI jobs run in the merge queue and on manual runs; a pull
+request push runs only the classifier and Site unless it carries the `ci:native`
+label, and a push to main made by the merge queue's bot skips the native jobs its
+group already ran. In a merge group, known documentation/site-only changes skip
+native; source, resources, scripts, workflows, unknown paths and missing history
+run it. Site always validates the surface registry, contracts and release records
+and builds the website. The required Build and test gate also requires Site and
+every selected native job to pass. For a commit on main, the native evidence is
+its merge-group run. See the exact
 [selection and merge queue policy](../../docs/updating.md#ci-and-the-merge-queue).
 This avoids rebuilding the app for metadata promotion after packaging; it does
 not waive signing, notarization, archive readback or installed acceptance.
+
+
+### Artifact-bound candidate acceptance
+
+Before the existing `prepare_update.py` command creates its output, put
+`journey-acceptance.json` beside the final notarized ZIP and `release.json`. The
+same validation runs in `publish_update.py` before release creation or upload.
+There is no new command or workflow. Local Preview observation receipts marked
+`publicationReady: false`, source checks and gallery renders cannot substitute
+for this candidate attestation. Real native use with synthetic content is valid.
+This check cannot determine whether an observer told the truth; independent
+review and the actual native observations remain required.
+
+The `acceptance` object in version-controlled `config.json` owns the release
+claim, slice impact, every required journey/route, and the persisted formats to
+assess. Its current scope is the foundation candidate, including L1–L4 and Read retirement X3, manual
+and connected Claude/Codex handoff, and separately observed USB Teams/Zoom routes.
+These are acceptance targets, not claims that the held work already passes.
+An independently accepted bounded slice may instead use an explained, reviewed
+`bounded-slice` policy with core smoke and its affected journeys, narrower claims
+and outstanding limits in #7. The candidate receipt cannot change that policy,
+select its scope or omit one of its variants. Do not add an applicability engine.
+
+Schema 1 has these fields (the synthetic fixture in `test_updates.py` is the
+executable format example; it is **not** real acceptance evidence):
+
+- `schemaVersion: 1`, `stage: "candidate"`, `publicationReady: true`, and
+  `resetComplete: false`. `policySHA256` is SHA-256 of the canonical UTF-8 JSON
+  acceptance policy: sorted keys, separators `(',', ':')`, no NaN/Infinity.
+- `artifact` contains exactly `source`, `channel`, `version`, `build`, `sha256`
+  from the release receipt and `bundle` from the verified app's bundle identifier.
+  Validation uses the extracted, signed, notarized final package. Renaming a ZIP
+  for GitHub changes neither its bytes nor this identity.
+- `observer`, different independent `reviewer`, ISO-8601 `observedAt` with an explicit UTC offset, and `environment`
+  (`macOS`, `hardware`) identify the native review. Use public-safe attribution,
+  not account names, machine serials or unrelated personal information.
+- `candidateSmoke` records native `method`, passing `status`, exact-edition
+  `opening`, `permissions` and `savedWork` passes, plus its `evidence` paths.
+- `journeys` has exactly one record per configured `(id, variant)`. Candidate
+  journeys require native `method`, passing `status` and evidence. Only the
+  configured later-delivery records remain `not-tested` at this stage.
+- `evidence` lists explicitly sanitized files by `path`, `sha256` and
+  `sanitized: true`. Use `acceptance-evidence/<unique-simple-filename>`;
+  filenames contain letters, numbers, dots, hyphens or underscores. Each file
+  is a regular file of at most 8 MiB, at most 64 in total. Absolute/traversing,
+  noncanonical, reserved, duplicate and symlink paths are refused. Do not include
+  transcripts, private settings, credentials, fingerprints or adjacent private
+  evidence. Preparation copies only validated referenced bytes, never a folder.
+- `compatibility` names the exact previous published edition's `source`,
+  `version`, `build` and `sha256` in `previousRelease`, plus `reviewer`, a concrete
+  `assessment`, `upgradeEvidence` paths, and one `formats` record per configured
+  format (`name`, `upgrade`, `downgrade`, `recovery`). `downgrade` is `supported`
+  or `unsupported`; document the actual recovery limit. Snap & Talk/Meetings
+  format-2 data is not proven safe in older binaries by a backup filename or a
+  generic compatible flag. Preserve original material for a compatible build.
+
+Historical native observations may include a `reuse` object per journey. It
+names the original `artifact` (same identity fields), its `environment`, the
+reviewed `sourceImpact`, `configurationImpact`, `environmentImpact`, `reviewer`
+and evidence paths. This never removes the fresh exact-candidate smoke.
+Preview evidence alone cannot establish production opening, permissions or
+public delivery; those require the actual production edition and package.
+
+The public-first-install I1 and public-feed U2 observations happen **after**
+publication/feed deployment and cannot be pre-attested here. The candidate
+receipt deliberately leaves them `not-tested` and makes no reset-complete claim.
+Record those later exact-artifact delivery observations in the existing release
+and #7 evidence before describing the foundation as complete. A passing
+preflight, ZIP download or feed staging is not that browser/install/update test.
+No public publication or installation authority is granted by this format.
+
+Publication revalidates the prepared receipt and evidence, snapshots those validated
+bytes in a private temporary directory before network checks, uploads the sidecar
+and only its listed sanitized files as release assets (evidence basenames), then
+reads them back from the draft and public release byte for byte. A draft mismatch
+leaves the release draft; a public mismatch does not stage the feed or website.
+Keep the source/tag/signature/notarization checks and final delivery verification.

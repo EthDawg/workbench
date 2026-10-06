@@ -8,14 +8,6 @@
     "note": "Quality (#137): the existing draft-replacement door is explicitly named and lives in More. Review transcript opens the full saved result inside History without replacing a draft."
   },
   {
-    "id": "LocalVoice.CaptureHistoryView.TranscriptHistoryRow.Button.read-aloud",
-    "surface": "history page",
-    "label": "Read aloud",
-    "kind": "action",
-    "belongsTo": "read",
-    "note": "Existing door, moved with the transcript row into History: opens the transcript on the Read page (Option of read; #134, #137). Quality (#173): it goes through Read's import decision, so a different draft waits behind Replace reading / Keep current."
-  },
-  {
     "id": "LocalVoice.CapturePanel.CapturePositionMenu.Button.reset-position",
     "surface": "floating toolbar live controls",
     "label": "Reset position",
@@ -190,16 +182,8 @@
     "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
   },
   {
-    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.read-aloud",
-    "surface": "library page",
-    "label": "Read aloud",
-    "kind": "action",
-    "belongsTo": "read",
-    "note": "Existing door: opens the saved text on the Read page (Option of read; #134). Quality (#173): it goes through Read's import decision, so a different draft waits behind Replace reading / Keep current."
-  },
-  {
     "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.use-in-persona",
-    "surface": "library page",
+    "surface": "Library Resources",
     "label": "Use in Persona…",
     "kind": "option",
     "belongsTo": "persona",
@@ -207,7 +191,7 @@
   },
   {
     "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.use-in-present",
-    "surface": "library page",
+    "surface": "Library Resources",
     "label": "Use in Present…",
     "kind": "option",
     "belongsTo": "present",
@@ -248,23 +232,6 @@
     "belongsTo": "app",
     "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
     "aliasOf": "app"
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.ReadingStoppedView.Button.retry",
-    "surface": "floating toolbar live controls",
-    "label": "Retry",
-    "kind": "action",
-    "belongsTo": "read",
-    "note": "Quality (#134 T4): the same control in the same result view, which the toolbar now reveals from its compact rest in place of its row instead of showing it by itself. Quality (#156, #161): a reading that stopped because its audio could not be read keeps its compact controls, where Retry makes new audio. No new entry point; the Read page has the same Retry."
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.ReadingStoppedView.Button.runtime-772d4201867d",
-    "surface": "floating toolbar live controls",
-    "label": null,
-    "expression": "Image ( systemName : \"xmark\" )",
-    "note": "Quality (#134 T4): the same control in the same result view, which the toolbar now reveals from its compact rest in place of its row instead of showing it by itself. Quality (#156, #161): dismisses a stopped reading's reason; its text and voice stay. Runtime label from Image ( systemName : \"xmark\" ); no rendered text assumed.",
-    "kind": "action",
-    "belongsTo": "read"
   },
   {
     "id": "LocalVoice.FounderIntroduction.FounderIntroductionCard.Button.copy-addresses",
@@ -320,15 +287,6 @@
     "kind": "action",
     "belongsTo": "history",
     "note": "Quality (#137): copies the exact reviewed result with the shared clipboard receipt, whose Review returns to this task. No paste or original edit."
-  },
-  {
-    "id": "LocalVoice.HistorySelectionControls.HandoffResultPreview.Button.read-aloud",
-    "surface": "history page",
-    "label": "Read aloud",
-    "kind": "option",
-    "belongsTo": "read",
-    "aliasOf": "LocalVoice.CaptureHistoryView.TranscriptHistoryRow.Button.read-aloud",
-    "note": "Option of Read (#137): opens the exact reviewed assistant result through the existing reading import decision, preserving a different draft until Replace reading or Keep current. Playback never starts automatically."
   },
   {
     "id": "LocalVoice.HistorySelectionControls.HistorySelectionControls.Button.hand-off",
@@ -499,6 +457,22 @@
     "note": "Quality: was Cancel, which kept the audio. Stop processing is the page's own word for the same action (1 Oct)."
   },
   {
+    "id": "LocalVoice.MeetingWorkspaceView.MeetingWorkspaceView.Button.audio-recording-settings",
+    "surface": "meeting page",
+    "label": "Audio Recording Settings…",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Contextual recovery only for the documented Core Audio permission refusal. The existing Meetings owner checks the Settings-open result; arbitrary OSStatus errors do not infer permission denial."
+  },
+  {
+    "id": "LocalVoice.MeetingWorkspaceView.MeetingWorkspaceView.Button.copy-transcript",
+    "surface": "meeting page",
+    "label": "Copy transcript",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Quality (#280): completed Meetings copies the exact committed transcript’s complete current wording through the existing History clipboard owner. No model or assistant setup, new store or automatic paste."
+  },
+  {
     "id": "LocalVoice.MeetingWorkspaceView.MeetingWorkspaceView.Button.history",
     "surface": "meeting page",
     "label": "History",
@@ -552,7 +526,7 @@
     "surface": "settings page",
     "label": null,
     "expression": "actionTitle",
-    "note": "Quality (1 October: local model download visibility). The same Models button now says what it does: Download Parakeet before its first setup, Try download again after a failure (with the reason beside it), Use Parakeet or Use local server to switch, In use once ready; its status line shows the setup's live progress from any door.",
+    "note": "Quality (#15 / foundation J): Download Parakeet is deliberate; Use Parakeet selects and checks cached files only. In use reflects actual admission. Cancel setup remains reachable during preparation.",
     "kind": "setting",
     "belongsTo": "settings"
   },
@@ -581,63 +555,6 @@
     "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
   },
   {
-    "id": "LocalVoice.NeuralVoiceViews.NeuralVoicePanel.Button.runtime-ae6c35c0e8ac",
-    "surface": "read settings",
-    "label": null,
-    "expression": "Image ( systemName : model . previewingVoice ? \"stop.fill\" : \"speaker.wave.2\" )",
-    "note": "Hears a short sample of the chosen neural voice, as the Mac voice picker's sample does. Option of Read (1 October, Ethan's request for local model support in Read): neural voices are downloaded once, on request, and then read on this Mac. Off until chosen; Mac voices stay the default.",
-    "kind": "option",
-    "belongsTo": "read"
-  },
-  {
-    "id": "LocalVoice.NeuralVoiceViews.NeuralVoicePanel.Picker.neural-voice",
-    "surface": "read settings",
-    "label": "Neural voice",
-    "kind": "option",
-    "belongsTo": "read",
-    "note": "Which of the downloaded neural voices reads. Option of Read (1 October, Ethan's request for local model support in Read): neural voices are downloaded once, on request, and then read on this Mac. Off until chosen; Mac voices stay the default."
-  },
-  {
-    "id": "LocalVoice.NeuralVoiceViews.NeuralVoiceSetupView.Button.download-neural-voices",
-    "surface": "settings page",
-    "label": "Download neural voices",
-    "kind": "action",
-    "belongsTo": "read",
-    "note": "The one download neural voices need, about 530 MB, started only here. Option of Read (1 October, Ethan's request for local model support in Read): neural voices are downloaded once, on request, and then read on this Mac. Off until chosen; Mac voices stay the default."
-  },
-  {
-    "id": "LocalVoice.NeuralVoiceViews.NeuralVoiceSetupView.Button.keep",
-    "surface": "settings page",
-    "label": "Keep",
-    "kind": "action",
-    "belongsTo": "read",
-    "note": "Closes the removal question and keeps the download. Option of Read (1 October, Ethan's request for local model support in Read): neural voices are downloaded once, on request, and then read on this Mac. Off until chosen; Mac voices stay the default."
-  },
-  {
-    "id": "LocalVoice.NeuralVoiceViews.NeuralVoiceSetupView.Button.remove-download",
-    "surface": "settings page",
-    "label": "Remove download…",
-    "kind": "action",
-    "belongsTo": "read",
-    "note": "Asks before removing the neural voices download to free its space. Option of Read (1 October, Ethan's request for local model support in Read): neural voices are downloaded once, on request, and then read on this Mac. Off until chosen; Mac voices stay the default."
-  },
-  {
-    "id": "LocalVoice.NeuralVoiceViews.NeuralVoiceSetupView.Button.remove-download.0a692f73",
-    "surface": "settings page",
-    "label": "Remove download",
-    "kind": "action",
-    "belongsTo": "read",
-    "note": "Confirms the removal in its question; the voices can be downloaded again. Option of Read (1 October, Ethan's request for local model support in Read): neural voices are downloaded once, on request, and then read on this Mac. Off until chosen; Mac voices stay the default."
-  },
-  {
-    "id": "LocalVoice.NeuralVoiceViews.NeuralVoiceSetupView.Button.stop-download",
-    "surface": "settings page",
-    "label": "Stop download",
-    "kind": "action",
-    "belongsTo": "read",
-    "note": "Stops the neural voices download it sits beside; what arrived is kept. Option of Read (1 October, Ethan's request for local model support in Read): neural voices are downloaded once, on request, and then read on this Mac. Off until chosen; Mac voices stay the default."
-  },
-  {
     "id": "LocalVoice.PhotoHandoffView.PhotoHandoffArrivalCue.Button.from-iphone",
     "surface": "proactive offer PhotoHandoffArrivalCue",
     "label": "From iPhone",
@@ -661,13 +578,12 @@
     "note": "Existing contextual \"Turn off\" label inside library; shared wording, not a separate capability."
   },
   {
-    "id": "LocalVoice.PresentWorkspaceView.PresentPromptButton.button-title.view",
-    "surface": "Present workspace",
+    "id": "LocalVoice.LibraryPromptButton.LibraryPromptButton.button-title.view",
+    "surface": "Library",
     "label": "Saved Prompts…",
     "kind": "action",
-    "belongsTo": "present",
-    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
-    "aliasOf": "present"
+    "belongsTo": "library",
+    "note": "Quality (#279): existing prompt picker moved from Present to Library, its existing resource owner. Complete Copy with no inferred external insertion target."
   },
   {
     "id": "LocalVoice.PromptPicker.PromptPickerView.Button.open-library",
@@ -683,8 +599,8 @@
     "label": null,
     "expression": "model . mode . actionTitle",
     "kind": "action",
-    "belongsTo": "present",
-    "note": "Quality: the picker's action for the highlighted prompt, Insert into the frozen field's app, or Copy prompt without Accessibility approval or a readable field (#159, #165). Runtime label from model . mode . actionTitle; no rendered text assumed."
+    "belongsTo": "library",
+    "note": "Foundation A1/L4: the production Library opener uses a Copy-only context, with the complete saved prompt and no inferred external insertion target. Runtime label from model.mode.actionTitle; shared delivery state remains owned by the picker."
   },
   {
     "id": "LocalVoice.PromptPicker.PromptPickerView.Button.runtime-54146627b2ad",
@@ -692,7 +608,7 @@
     "label": null,
     "expression": "prompt . pickerTitle",
     "kind": "action",
-    "belongsTo": "present",
+    "belongsTo": "library",
     "note": "Quality: one row per saved prompt, favourites first, replacing the menu's repeated prompt items (#159). Runtime label from prompt . pickerTitle; no rendered text assumed."
   },
   {
@@ -701,7 +617,7 @@
     "label": null,
     "expression": "model . showsDetails ? \"Hide details\" : \"Details\"",
     "kind": "action",
-    "belongsTo": "present",
+    "belongsTo": "library",
     "note": "Quality: shows the last delivery's full reason behind its one-line status (#159). Runtime label; no rendered text assumed."
   },
   {
@@ -709,7 +625,7 @@
     "surface": "Saved Prompts picker",
     "label": "Show all prompts",
     "kind": "action",
-    "belongsTo": "present",
+    "belongsTo": "library",
     "note": "Quality: clears the picker's own search and category after no match (#159)."
   },
   {
@@ -717,15 +633,16 @@
     "surface": "Saved Prompts picker",
     "label": "Stop inserting",
     "kind": "action",
-    "belongsTo": "present",
-    "note": "Quality: the menu's Stop Inserting, in the picker while a prompt is being inserted, worded as the toolbar's label (#159)."
+    "belongsTo": "library",
+    "note": "Foundation A1/L4: retain cancellation for an already-active prompt insertion. The Library opener uses a Copy-only context. This control and the floating toolbar end action cancel the same existing prompt-insertion owner.",
+    "aliasOf": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.stopInserting"
   },
   {
     "id": "LocalVoice.PromptPicker.PromptPickerView.Picker.category",
     "surface": "Saved Prompts picker",
     "label": "Category",
     "kind": "option",
-    "belongsTo": "present",
+    "belongsTo": "library",
     "note": "Quality: one optional Product or Persona filter that narrows the same list, replacing the By Product and By Persona submenus (#159)."
   },
   {
@@ -733,7 +650,7 @@
     "surface": "Saved Prompts picker",
     "label": "All prompts",
     "kind": "option",
-    "belongsTo": "present",
+    "belongsTo": "library",
     "note": "Quality: the category filter's default, every saved prompt (#159)."
   },
   {
@@ -794,8 +711,8 @@
     "label": "Retry model",
     "kind": "action",
     "belongsTo": "settings",
-    "aliasOf": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.retry-model",
-    "note": "Quality: Home's Retry model repeated beside Record narration when the speech model could not be prepared, so narration never waits in a silent queue (Fit rule 2; #134 follow-up, 6 Oct)."
+    "aliasOf": "LocalVoice.ModelSettingsView.ModelSettingsView.Button.retry-saved-files",
+    "note": "Quality (#15): retry the selected local cache without download or repair; Models remains the deliberate acquisition door."
   },
   {
     "id": "LocalVoice.ReadbackView.ReadbackView.Button.review-selected-evidence",
@@ -812,79 +729,6 @@
     "kind": "option",
     "belongsTo": "library",
     "note": "Accepted image reuse option in #134: export the explicitly chosen rendered image to a user-chosen file, then commit its Library reference. Cancel preserves all records; a different unfinished Snap is never an input."
-  },
-  {
-    "id": "LocalVoice.ReadingFollowAlong.MacVoiceHintRow.Button.runtime-2e29afee6d79",
-    "surface": "read settings",
-    "label": null,
-    "expression": "hint . buttonTitle",
-    "note": "Runtime label from hint . buttonTitle; no rendered text assumed.",
-    "kind": "option",
-    "belongsTo": "read"
-  },
-  {
-    "id": "LocalVoice.ReadingProviderView.ReadingProviderView.Button.refresh-voices",
-    "surface": "settings page",
-    "label": "Refresh voices",
-    "kind": "option",
-    "belongsTo": "read",
-    "note": "Quality (1 October): unchanged in Read › Voice & pace, and now also under Reading voice in Settings › Models, because Read's voice source is an engine and engines are set in Models (Grammar rule 9). The same control in both places; no new option."
-  },
-  {
-    "id": "LocalVoice.ReadingProviderView.ReadingProviderView.Button.remove-key",
-    "surface": "settings page",
-    "label": "Remove key",
-    "kind": "option",
-    "belongsTo": "read",
-    "note": "Quality (1 October): unchanged in Read › Voice & pace, and now also under Reading voice in Settings › Models, because Read's voice source is an engine and engines are set in Models (Grammar rule 9). The same control in both places; no new option."
-  },
-  {
-    "id": "LocalVoice.ReadingProviderView.ReadingProviderView.Button.save-key",
-    "surface": "settings page",
-    "label": "Save key",
-    "kind": "option",
-    "belongsTo": "read",
-    "note": "Quality (1 October): unchanged in Read › Voice & pace, and now also under Reading voice in Settings › Models, because Read's voice source is an engine and engines are set in Models (Grammar rule 9). The same control in both places; no new option."
-  },
-  {
-    "id": "LocalVoice.ReadingProviderView.ReadingProviderView.Link.speko-account",
-    "surface": "settings page",
-    "label": "Speko account ↗",
-    "kind": "option",
-    "belongsTo": "read",
-    "note": "Quality (1 October): unchanged in Read › Voice & pace, and now also under Reading voice in Settings › Models, because Read's voice source is an engine and engines are set in Models (Grammar rule 9). The same control in both places; no new option."
-  },
-  {
-    "id": "LocalVoice.ReadingProviderView.ReadingProviderView.Picker.read-with",
-    "surface": "settings page",
-    "label": "Read with",
-    "kind": "option",
-    "belongsTo": "read",
-    "note": "Quality (1 October): unchanged in Read › Voice & pace, and now also under Reading voice in Settings › Models, because Read's voice source is an engine and engines are set in Models (Grammar rule 9). The same control in both places; no new option."
-  },
-  {
-    "id": "LocalVoice.ReadingProviderView.ReadingProviderView.Picker.speko-voice",
-    "surface": "settings page",
-    "label": "Speko voice",
-    "kind": "option",
-    "belongsTo": "read",
-    "note": "Quality (1 October): unchanged in Read › Voice & pace, and now also under Reading voice in Settings › Models, because Read's voice source is an engine and engines are set in Models (Grammar rule 9). The same control in both places; no new option."
-  },
-  {
-    "id": "LocalVoice.ReadingProviderView.ReadingProviderView.SecureField.personal-speko-api-key",
-    "surface": "settings page",
-    "label": "Personal Speko API key",
-    "kind": "option",
-    "belongsTo": "read",
-    "note": "Quality (1 October): unchanged in Read › Voice & pace, and now also under Reading voice in Settings › Models, because Read's voice source is an engine and engines are set in Models (Grammar rule 9). The same control in both places; no new option."
-  },
-  {
-    "id": "LocalVoice.ReadingProviderView.ReadingProviderView.choice.automatic-balanced-route",
-    "surface": "settings page",
-    "label": "Automatic · balanced route",
-    "kind": "option",
-    "belongsTo": "read",
-    "note": "Quality (1 October): unchanged in Read › Voice & pace, and now also under Reading voice in Settings › Models, because Read's voice source is an engine and engines are set in Models (Grammar rule 9). The same control in both places; no new option."
   },
   {
     "id": "LocalVoice.SnapWorkspaceView.SnapWorkspaceView.Button.add-to-snap-talk",
@@ -911,15 +755,6 @@
     "belongsTo": "snapAndTalk",
     "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
     "aliasOf": "snapAndTalk"
-  },
-  {
-    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.cancel.2",
-    "surface": "floating toolbar activity chooser",
-    "label": "Cancel",
-    "kind": "action",
-    "belongsTo": "read",
-    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
-    "aliasOf": "read"
   },
   {
     "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.copy-again",
@@ -956,15 +791,6 @@
     "belongsTo": "dictate",
     "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
     "aliasOf": "dictate"
-  },
-  {
-    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.dismiss-message.2",
-    "surface": "floating toolbar activity chooser",
-    "label": "Dismiss message",
-    "kind": "action",
-    "belongsTo": "read",
-    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
-    "aliasOf": "read"
   },
   {
     "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.end-presentation",
@@ -1025,15 +851,6 @@
     "note": "Quality: shared voice session transport. Finish saves and completes; Pause and Resume keep the same recording. Commands revalidate the displayed session and state."
   },
   {
-    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.pause-reading",
-    "surface": "floating toolbar activity chooser",
-    "label": "Pause reading",
-    "kind": "action",
-    "belongsTo": "read",
-    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
-    "aliasOf": "read"
-  },
-  {
     "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.record-again",
     "surface": "floating toolbar activity chooser",
     "label": "Record again",
@@ -1057,24 +874,6 @@
     "kind": "action",
     "belongsTo": "dictate",
     "note": "Quality: shared voice session transport. Finish saves and completes; Pause and Resume keep the same recording. Commands revalidate the displayed session and state."
-  },
-  {
-    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.resume-reading",
-    "surface": "floating toolbar activity chooser",
-    "label": "Resume reading",
-    "kind": "action",
-    "belongsTo": "read",
-    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
-    "aliasOf": "read"
-  },
-  {
-    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.retry",
-    "surface": "floating toolbar activity chooser",
-    "label": "Retry",
-    "kind": "action",
-    "belongsTo": "read",
-    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
-    "aliasOf": "read"
   },
   {
     "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.review",
@@ -1186,24 +985,6 @@
     "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work. Quality: renamed from Finish narration so every door says Stop narration."
   },
   {
-    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.stop-reading",
-    "surface": "floating toolbar activity chooser",
-    "label": "Stop reading",
-    "kind": "action",
-    "belongsTo": "read",
-    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
-    "aliasOf": "read"
-  },
-  {
-    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.stop-reading.2",
-    "surface": "floating toolbar activity chooser",
-    "label": "Stop reading",
-    "kind": "action",
-    "belongsTo": "read",
-    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
-    "aliasOf": "read"
-  },
-  {
     "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.stop-timer",
     "surface": "floating toolbar activity chooser",
     "label": "Stop timer",
@@ -1238,14 +1019,6 @@
     "belongsTo": "dictate"
   },
   {
-    "id": "LocalVoice.Views.ContentView.Button.import-text",
-    "surface": "read page",
-    "label": "Import text…",
-    "kind": "action",
-    "belongsTo": "read",
-    "note": "Quality: imports one bounded local plain-text file through Read’s existing Keep current / Replace reading owner; no playback or new destination."
-  },
-  {
     "id": "LocalVoice.Views.ContentView.Button.review-text",
     "surface": "dictate page",
     "label": "Review text",
@@ -1261,14 +1034,6 @@
     "belongsTo": "dictate",
     "aliasOf": "settings",
     "note": "Contextual Dictate settings sheet; the pinned Settings page owns app-wide configuration."
-  },
-  {
-    "id": "LocalVoice.Views.ContentView.Button.voice-pace",
-    "surface": "read page",
-    "label": "Voice & pace…",
-    "kind": "option",
-    "belongsTo": "read",
-    "note": "Opens the existing provider, voice and pace controls in one workspace settings sheet."
   },
   {
     "id": "LocalVoice.Views.DictateSettingsView.Button.models",
@@ -1299,31 +1064,6 @@
     "kind": "action",
     "belongsTo": "dictate",
     "note": "Returns to the current Dictate draft without replacing it."
-  },
-  {
-    "id": "LocalVoice.Views.MacVoicePanel.Button.runtime-e4c15dda5475",
-    "surface": "read settings",
-    "label": null,
-    "expression": "Image ( systemName : previewing ? \"stop.fill\" : \"speaker.wave.2\" )",
-    "note": "Runtime label from Image ( systemName : previewing ? \"stop.fill\" : \"speaker.wave.2\" ); no rendered text assumed.",
-    "kind": "option",
-    "belongsTo": "read"
-  },
-  {
-    "id": "LocalVoice.Views.MacVoicePanel.Picker.voice",
-    "surface": "read settings",
-    "label": "Voice",
-    "kind": "option",
-    "belongsTo": "read"
-  },
-  {
-    "id": "LocalVoice.Views.MacVoicePanel.choice.runtime-976b51a7b9d6",
-    "surface": "read settings",
-    "label": null,
-    "expression": "\"\\(name) (not installed)\"",
-    "note": "Runtime label from \"\\(name) (not installed)\"; no rendered text assumed.",
-    "kind": "option",
-    "belongsTo": "read"
   },
   {
     "id": "LocalVoice.Workbench.WorkbenchAppearancePicker.Picker.suite-appearance",
@@ -1507,7 +1247,7 @@
     "page": "library",
     "kind": "option",
     "belongsTo": "library",
-    "note": "Quality: Library opens on Resources, the saved prompts, links and files it showed before its fold, now named by its switcher (#134)."
+    "note": "Quality: Library opens on Resources, the saved prompts, links and files it showed before its fold, now named by its switcher (#134). Browser switching is paused (#283); the within-page More menu conditionally exports saved browser settings and labels the saved shortcut inactive. It cannot import, enable or start browser integration."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.section.models",
@@ -1648,24 +1388,6 @@
     "belongsTo": "snap"
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.sidebar.speak",
-    "surface": "window sidebar",
-    "label": "Read",
-    "page": "speak",
-    "kind": "capability",
-    "belongsTo": "read",
-    "note": "Quality: Read aloud takes its Grammar name, Read, in the same place. The alias it needed is gone (#134)."
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.cancel",
-    "surface": "window home",
-    "label": "Cancel",
-    "kind": "action",
-    "belongsTo": "read",
-    "aliasOf": "read",
-    "note": "Existing contextual \"Cancel\" label inside read; shared wording, not a separate capability. Current work's action while Read makes audio: it cancels the generation, as Read's Cancel generation does (#134 H1)."
-  },
-  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.copy",
     "surface": "window home",
     "label": "Copy",
@@ -1715,12 +1437,12 @@
     "note": "Option: live strip action, the one way to end what is running from Home (#134 W9)."
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.me",
-    "surface": "window home",
-    "label": "Me",
+    "id": "StageKit.PersonaLibraryView.PersonaLibraryView.Button.me",
+    "surface": "Persona workspace",
+    "label": "Me…",
     "kind": "action",
     "belongsTo": "persona",
-    "note": "Home entry to the requested local Me profile, backed by an ordinary saved Persona; no account or duplicate library."
+    "note": "Quality (#279): same local Me profile editor moved from Home to Persona; existing ID/artwork retained and opening starts no camera."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.models",
@@ -1745,23 +1467,6 @@
     "kind": "action",
     "belongsTo": "history",
     "note": "Option: a door on Home to History, shown once right after the first dictation so its result can be found again; it opens History on Transcripts, where that dictation is newest (#15). Same words as the recent transcript's Open in Dictate."
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.retry",
-    "surface": "window home",
-    "label": "Retry",
-    "kind": "action",
-    "belongsTo": "read",
-    "aliasOf": "read",
-    "note": "Existing contextual \"Retry\" label inside read; shared wording, not a separate capability. Current work's recovery for a reading that stopped, the same Retry Read shows beside Listen (#134 H1)."
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.retry-model",
-    "surface": "window home",
-    "label": "Retry model",
-    "kind": "action",
-    "belongsTo": "settings",
-    "note": "Quality: the existing engine banner gains Retry when preparation fails (#134 W9)."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.runtime-690989861a19",
@@ -1839,14 +1544,6 @@
     "note": "Quality: was Stop. Home's live row ends narration with the words the page, panel and toolbar use (1 Oct). Stops narration from Home."
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.stop-reading",
-    "surface": "window home",
-    "label": "Stop reading",
-    "kind": "action",
-    "belongsTo": "read",
-    "note": "Option: live strip action, the one way to end what is running from Home (#134 W9)."
-  },
-  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.stop-task",
     "surface": "window home",
     "label": "Stop task",
@@ -1889,13 +1586,14 @@
     "note": "Opens the prepared workspace only; never starts capture, playback, processing or a new session. Desktop cohesion requested 30 September 2026."
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.workspaceCard.snap",
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.workspaceCard.present",
     "surface": "window home",
-    "label": "Snap",
-    "page": "snap",
-    "kind": "capability",
-    "belongsTo": "snap",
-    "note": "Opens the prepared workspace only; never starts capture, playback, processing or a new session. Desktop cohesion requested 30 September 2026."
+    "label": "Present",
+    "page": "present",
+    "kind": "action",
+    "belongsTo": "present",
+    "aliasOf": "present",
+    "note": "Foundation A (#279): compact Home route to existing Present preparation. Navigation starts nothing; Snap remains in the sidebar and toolbar."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.workspaceCard.snap-talk",
@@ -2284,13 +1982,6 @@
     "belongsTo": "app"
   },
   {
-    "id": "LocalVoice.main.AppDelegate.addItem.switch-to",
-    "surface": "app menu bar",
-    "label": "Switch to…",
-    "kind": "action",
-    "belongsTo": "present"
-  },
-  {
     "id": "LocalVoice.main.AppDelegate.addItem.undo",
     "surface": "app menu bar",
     "label": "Undo",
@@ -2390,7 +2081,7 @@
     "page": "present",
     "kind": "action",
     "belongsTo": "present",
-    "note": "Quality: Window lists every sidebar page in the sidebar's order, named by the page record (#134; 1 Oct). Switch to… stays the presenter's own door."
+    "note": "Quality: Window lists every sidebar page in the sidebar's order, named by the page record (#134; 1 Oct). Browser switching is paused under #283."
   },
   {
     "id": "LocalVoice.main.AppDelegate.page-item.readback",
@@ -2426,15 +2117,6 @@
     "page": "snap",
     "kind": "action",
     "belongsTo": "snap",
-    "note": "Quality: Window lists every sidebar page in the sidebar's order, named by the page record (#134; 1 Oct)."
-  },
-  {
-    "id": "LocalVoice.main.AppDelegate.page-item.speak",
-    "surface": "app menu bar",
-    "label": "Read",
-    "page": "speak",
-    "kind": "action",
-    "belongsTo": "read",
     "note": "Quality: Window lists every sidebar page in the sidebar's order, named by the page record (#134; 1 Oct)."
   },
   {
@@ -3634,15 +3316,6 @@
     "note": "Quality: the shared Persona action names the current camera operation, respects admission and rejects stale camera visits."
   },
   {
-    "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.cancelReading",
-    "surface": "floating toolbar next action",
-    "label": "Cancel",
-    "kind": "action",
-    "belongsTo": "read",
-    "aliasOf": "read",
-    "note": "Existing contextual \"Cancel\" label inside read; shared wording, not a separate capability."
-  },
-  {
     "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.captureNext",
     "surface": "floating toolbar next action",
     "label": null,
@@ -3712,13 +3385,6 @@
     "belongsTo": "persona"
   },
   {
-    "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.pauseReading",
-    "surface": "floating toolbar next action",
-    "label": "Pause reading",
-    "kind": "action",
-    "belongsTo": "read"
-  },
-  {
     "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.persona",
     "surface": "floating toolbar next action",
     "label": "Show persona",
@@ -3733,25 +3399,11 @@
     "belongsTo": "present"
   },
   {
-    "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.read",
-    "surface": "floating toolbar next action",
-    "label": "Read",
-    "kind": "capability",
-    "belongsTo": "read"
-  },
-  {
     "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.resumeOverlays",
     "surface": "floating toolbar next action",
     "label": "Show personas",
     "kind": "action",
     "belongsTo": "persona"
-  },
-  {
-    "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.resumeReading",
-    "surface": "floating toolbar next action",
-    "label": "Resume reading",
-    "kind": "action",
-    "belongsTo": "read"
   },
   {
     "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.retryPersonaCamera",
@@ -3810,13 +3462,6 @@
     "note": "Quality: shared voice session transport. Finish saves and completes; Pause and Resume keep the same recording. Commands revalidate the displayed session and state."
   },
   {
-    "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.stopReading",
-    "surface": "floating toolbar next action",
-    "label": "Stop reading",
-    "kind": "action",
-    "belongsTo": "read"
-  },
-  {
     "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.wait",
     "surface": "floating toolbar next action",
     "label": null,
@@ -3834,15 +3479,6 @@
     "belongsTo": "persona",
     "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
     "aliasOf": "persona"
-  },
-  {
-    "id": "ToolbarCore.ToolbarViewState.ToolbarAccessory.title.prompts",
-    "surface": "floating toolbar accessory",
-    "label": "Prompts",
-    "case": "prompts",
-    "kind": "option",
-    "belongsTo": "present",
-    "note": "Present's one accessory (#134, #159): the one Saved Prompts picker, which More's Saved Prompts… also opens."
   },
   {
     "id": "ToolbarCore.ToolbarViewState.ToolbarAccessory.title.review",
@@ -3894,14 +3530,6 @@
     "case": "present",
     "kind": "capability",
     "belongsTo": "present"
-  },
-  {
-    "id": "ToolbarCore.ToolbarViewState.ToolbarMode.title.read",
-    "surface": "floating toolbar modes",
-    "label": "Read",
-    "case": "read",
-    "kind": "capability",
-    "belongsTo": "read"
   },
   {
     "id": "ToolbarCore.ToolbarViewState.ToolbarMode.title.snap",
@@ -4180,31 +3808,6 @@
     "note": "One of Persona's three appearances (#169), chosen in the Persona workspace or the shown copy's Appearance. Shows the image unchanged, the same sense of the word as Dictate's Original text style: the source kept as it is."
   },
   {
-    "id": "choices.ReadingProvider.mac",
-    "surface": "choices ReadingProvider",
-    "label": "Mac voices",
-    "case": "mac",
-    "kind": "option",
-    "belongsTo": "read"
-  },
-  {
-    "id": "choices.ReadingProvider.neural",
-    "surface": "choices ReadingProvider",
-    "label": "Neural voices",
-    "case": "neural",
-    "kind": "option",
-    "belongsTo": "read",
-    "note": "Option of Read (1 October, Ethan's request for local model support in Read): neural voices are downloaded once, on request, and then read on this Mac. Off until chosen; Mac voices stay the default."
-  },
-  {
-    "id": "choices.ReadingProvider.speko",
-    "surface": "choices ReadingProvider",
-    "label": "Speko · online",
-    "case": "speko",
-    "kind": "option",
-    "belongsTo": "read"
-  },
-  {
     "id": "choices.RecognitionProvider.localServer",
     "surface": "choices RecognitionProvider",
     "label": "Local model server",
@@ -4307,14 +3910,6 @@
     "case": "present",
     "kind": "capability",
     "belongsTo": "present"
-  },
-  {
-    "id": "quick-panel.row.read",
-    "surface": "quick panel rows",
-    "label": "Read",
-    "case": "read",
-    "kind": "capability",
-    "belongsTo": "read"
   },
   {
     "id": "quick-panel.row.snap",
@@ -4613,5 +4208,1011 @@
     "case": "whiteboard",
     "kind": "action",
     "belongsTo": "draw"
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.retry-saving-read-text",
+    "surface": "Library Resources",
+    "label": "Retry saving Read text",
+    "kind": "action",
+    "belongsTo": "library",
+    "note": "Conditional recovery for the retired Read draft: inspect the precise problem, retry preservation, or reveal the unchanged saved source."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.show-original-saved-state",
+    "surface": "Library Resources",
+    "label": "Show original saved state",
+    "kind": "action",
+    "belongsTo": "library",
+    "note": "Conditional recovery for the retired Read draft: inspect the precise problem, retry preservation, or reveal the unchanged saved source."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.DisclosureGroup.details",
+    "surface": "Library Resources",
+    "label": "Details",
+    "kind": "action",
+    "belongsTo": "library",
+    "note": "Conditional recovery for the retired Read draft: inspect the precise problem, retry preservation, or reveal the unchanged saved source."
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.HandoffConnectionsSheet.Button.runtime-934be1867f49",
+    "surface": "handoff review",
+    "label": null,
+    "expression": "backTitle",
+    "note": "Foundation C (#281): handoff review retains the full request and selection while choosing manual copy or an explicitly started checked runner.",
+    "kind": "action",
+    "belongsTo": "history"
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.HandoffReviewView.Button.back-to-handoff",
+    "surface": "handoff review",
+    "label": "Back to handoff",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Foundation C (#281): handoff review retains the full request and selection while choosing manual copy or an explicitly started checked runner."
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.HandoffReviewView.Button.cancel",
+    "surface": "handoff review",
+    "label": "Cancel",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Foundation C (#281): handoff review retains the full request and selection while choosing manual copy or an explicitly started checked runner. Same familiar control label within the handoff review.",
+    "aliasOf": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Button.cancel"
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.HandoffReviewView.Button.check-again",
+    "surface": "handoff review",
+    "label": "Check again",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Foundation C (#281): handoff review retains the full request and selection while choosing manual copy or an explicitly started checked runner."
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.HandoffReviewView.Button.choose-a-session",
+    "surface": "handoff review",
+    "label": "Choose a session…",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Foundation C (#281): handoff review retains the full request and selection while choosing manual copy or an explicitly started checked runner."
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.HandoffReviewView.Button.connections",
+    "surface": "handoff review",
+    "label": "Connections…",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Foundation C (#281): handoff review retains the full request and selection while choosing manual copy or an explicitly started checked runner. Same familiar control label within the handoff review.",
+    "aliasOf": "LocalVoice.HistoryView.HistoryView.Button.connections"
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.HandoffReviewView.Button.copy-instructions",
+    "surface": "handoff review",
+    "label": "Copy instructions",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Foundation C (#281): handoff review retains the full request and selection while choosing manual copy or an explicitly started checked runner."
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.HandoffReviewView.Button.read",
+    "surface": "handoff review",
+    "label": "Read…",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Foundation C (#281): handoff review retains the full request and selection while choosing manual copy or an explicitly started checked runner."
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.HandoffReviewView.Button.remove-evidence",
+    "surface": "handoff review",
+    "label": "Remove evidence",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Foundation C (#281): handoff review retains the full request and selection while choosing manual copy or an explicitly started checked runner."
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.HandoffReviewView.Button.start-task",
+    "surface": "handoff review",
+    "label": "Start task",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Foundation C (#281): handoff review retains the full request and selection while choosing manual copy or an explicitly started checked runner."
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.HandoffReviewView.Button.use-the-open-session",
+    "surface": "handoff review",
+    "label": "Use the open session",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Foundation C (#281): handoff review retains the full request and selection while choosing manual copy or an explicitly started checked runner."
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.HandoffReviewView.Menu.add-snap-talk-evidence",
+    "surface": "handoff review",
+    "label": "Add Snap & Talk evidence…",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Foundation C (#281): handoff review retains the full request and selection while choosing manual copy or an explicitly started checked runner."
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.HandoffReviewView.Picker.run-with",
+    "surface": "handoff review",
+    "label": "Run with",
+    "kind": "setting",
+    "belongsTo": "history",
+    "note": "Foundation C (#281): handoff review retains the full request and selection while choosing manual copy or an explicitly started checked runner."
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.HandoffReviewView.Picker.skill",
+    "surface": "handoff review",
+    "label": "Skill",
+    "kind": "setting",
+    "belongsTo": "history",
+    "note": "Foundation C (#281): handoff review retains the full request and selection while choosing manual copy or an explicitly started checked runner."
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.HandoffReviewView.Picker.use-as",
+    "surface": "handoff review",
+    "label": "Use as",
+    "kind": "setting",
+    "belongsTo": "history",
+    "note": "Foundation C (#281): handoff review retains the full request and selection while choosing manual copy or an explicitly started checked runner."
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.HandoffReviewView.TextField.what-should-the-assistant-prepare",
+    "surface": "handoff review",
+    "label": "What should the assistant prepare?",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Foundation C (#281): handoff review retains the full request and selection while choosing manual copy or an explicitly started checked runner."
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.HandoffReviewView.Toggle.include-the-previous-review-as-reference",
+    "surface": "handoff review",
+    "label": "Include the previous review as reference",
+    "kind": "setting",
+    "belongsTo": "history",
+    "note": "Foundation C (#281): handoff review retains the full request and selection while choosing manual copy or an explicitly started checked runner."
+  },
+  {
+    "id": "choices.HandoffInputRole.instructions",
+    "surface": "choices HandoffInputRole",
+    "label": "My instructions",
+    "case": "instructions",
+    "kind": "setting",
+    "belongsTo": "history",
+    "note": "Foundation C (#281): handoff review retains the full request and selection while choosing manual copy or an explicitly started checked runner."
+  },
+  {
+    "id": "choices.HandoffInputRole.reference",
+    "surface": "choices HandoffInputRole",
+    "label": "Reference material",
+    "case": "reference",
+    "kind": "setting",
+    "belongsTo": "history",
+    "note": "Foundation C (#281): handoff review retains the full request and selection while choosing manual copy or an explicitly started checked runner."
+  },
+  {
+    "id": "choices.SubscriptionProvider.claude",
+    "surface": "choices SubscriptionProvider",
+    "label": "Claude Code",
+    "case": "claude",
+    "kind": "setting",
+    "belongsTo": "history",
+    "note": "Foundation C (#281): handoff review retains the full request and selection while choosing manual copy or an explicitly started checked runner."
+  },
+  {
+    "id": "choices.SubscriptionProvider.codex",
+    "surface": "choices SubscriptionProvider",
+    "label": "Codex",
+    "case": "codex",
+    "kind": "setting",
+    "belongsTo": "history",
+    "note": "Foundation C (#281): handoff review retains the full request and selection while choosing manual copy or an explicitly started checked runner."
+  },
+  {
+    "id": "StageKit.PersonaLibraryView.PersonaLibraryView.Button.use-in-scene",
+    "surface": "Persona workspace",
+    "label": "Use in scene",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Existing scene chooser callback, now included by the Persona route scanner while registering Me. Uses the selected saved Persona in the preparing scene and starts nothing."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.add-a-file",
+    "surface": "Library Resources",
+    "label": "Add a file…",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.add-a-link",
+    "surface": "Library Resources",
+    "label": "Add a link",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.add-a-prompt",
+    "surface": "Library Resources",
+    "label": "Add a prompt",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.add-local-file",
+    "surface": "Library Resources",
+    "label": "Add local file…",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.cancel",
+    "surface": "Library Resources",
+    "label": "Cancel",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.change-file",
+    "surface": "Library Resources",
+    "label": "Change file…",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Option of Library: explicit replacement draft for a readable file; only Save changes the saved reference. Cancel/error preserve the original."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.clear-filters",
+    "surface": "Library Resources",
+    "label": "Clear filters",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.copy-link",
+    "surface": "Library Resources",
+    "label": "Copy link",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.copy-path",
+    "surface": "Library Resources",
+    "label": "Copy path",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.edit",
+    "surface": "Library Resources",
+    "label": "Edit",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.export-library",
+    "surface": "Library Resources",
+    "label": "Export library…",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.export-saved-browser-settings",
+    "surface": "Library Resources",
+    "label": "Export saved browser settings…",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.find-resource",
+    "surface": "Library Resources",
+    "label": "Find resource",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.import-library",
+    "surface": "Library Resources",
+    "label": "Import library…",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.new-link",
+    "surface": "Library Resources",
+    "label": "New link",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.new-prompt",
+    "surface": "Library Resources",
+    "label": "New prompt",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.new-prompt.2",
+    "surface": "Library Resources",
+    "label": "New prompt",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.quick-look",
+    "surface": "Library Resources",
+    "label": "Quick Look",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.remove-resource",
+    "surface": "Library Resources",
+    "label": "Remove resource",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.runtime-0bef1078ce15",
+    "surface": "Library Resources",
+    "label": null,
+    "expression": "Image ( systemName : item . favorite ? \"star.fill\" : \"star\" )",
+    "note": "Runtime label from Image ( systemName : item . favorite ? \"star.fill\" : \"star\" ); no rendered text assumed. Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text.",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library"
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.runtime-13423a56c41a",
+    "surface": "Library Resources",
+    "label": null,
+    "expression": "item . primaryActionTitle",
+    "note": "Runtime label from item . primaryActionTitle; no rendered text assumed. Foundation A2/L1: current resource primary action is Copy prompt, Open link, Open in default browser, Open file or Locate file. Rechecks the rendered resource ID before dispatch.",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library"
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.runtime-772d4201867d",
+    "surface": "Library Resources",
+    "label": null,
+    "expression": "Image ( systemName : \"xmark\" )",
+    "note": "Runtime label from Image ( systemName : \"xmark\" ); no rendered text assumed. Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text.",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library"
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.runtime-ea8caf8f7971",
+    "surface": "Library Resources",
+    "label": null,
+    "expression": "Image ( systemName : \"trash\" )",
+    "note": "Runtime label from Image ( systemName : \"trash\" ); no rendered text assumed. Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text.",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library"
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.save-clipboard-as-prompt",
+    "surface": "Library Resources",
+    "label": "Save clipboard as prompt…",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.save-clipboard-as-prompt.2",
+    "surface": "Library Resources",
+    "label": "Save clipboard as prompt…",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.save-dictate-transcript-as-prompt",
+    "surface": "Library Resources",
+    "label": "Save Dictate transcript as prompt…",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Quality: names the existing draft source explicitly; opens the same prompt editor with full Dictate text and refuses oversize without truncation."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.show-in-finder",
+    "surface": "Library Resources",
+    "label": "Show in Finder",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.show-saved-library",
+    "surface": "Library Resources",
+    "label": "Show saved library",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.DisclosureGroup.file-details",
+    "surface": "Library Resources",
+    "label": "File details",
+    "kind": "option",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Quality: keeps the full path and Copy path in secondary details; filename and short location stay primary."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.DisclosureGroup.library-details",
+    "surface": "Library Resources",
+    "label": "Library details",
+    "kind": "option",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Option of Library recovery: reveals the retained storage diagnostic while saved data and original files remain untouched."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Label.runtime-138bf0706676",
+    "surface": "Library Resources",
+    "label": null,
+    "expression": "item . fileAvailable ? \"File found\" : \"File needs attention\"",
+    "note": "Runtime label from item . fileAvailable ? \"File found\" : \"File needs attention\"; no rendered text assumed. Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text.",
+    "kind": "status",
+    "belongsTo": "library",
+    "aliasOf": "library"
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Label.runtime-610dbe83b810",
+    "surface": "Library Resources",
+    "label": null,
+    "expression": "\"Chrome · \\(target.profileName)\"",
+    "note": "Runtime label from \"Chrome · \\(target.profileName)\"; no rendered text assumed. Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text.",
+    "kind": "status",
+    "belongsTo": "library",
+    "aliasOf": "library"
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Menu.add",
+    "surface": "Library Resources",
+    "label": "Add",
+    "kind": "option",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Menu.more",
+    "surface": "Library Resources",
+    "label": "More",
+    "kind": "option",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.TextField.search-resources",
+    "surface": "Library Resources",
+    "label": "Search resources…",
+    "kind": "option",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Toggle.runtime-643d86f3d5a5",
+    "surface": "Library Resources",
+    "label": null,
+    "expression": "Image ( systemName : library . favoritesOnly ? \"star.fill\" : \"star\" )",
+    "note": "Runtime label from Image ( systemName : library . favoritesOnly ? \"star.fill\" : \"star\" ); no rendered text assumed. Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text.",
+    "kind": "option",
+    "belongsTo": "library",
+    "aliasOf": "library"
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoResourceEditor.Button.cancel",
+    "surface": "Library resource editor",
+    "label": "Cancel",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoResourceEditor.Button.save",
+    "surface": "Library resource editor",
+    "label": "Save",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoResourceEditor.DisclosureGroup.library-details",
+    "surface": "Library resource editor",
+    "label": "Library details",
+    "kind": "option",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Option of Library recovery: reveals the retained storage diagnostic while saved data and original files remain untouched."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoResourceEditor.Label.runtime-7d72649f462b",
+    "surface": "Library resource editor",
+    "label": null,
+    "expression": "item . content",
+    "note": "Runtime label from item . content; no rendered text assumed. Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text.",
+    "kind": "status",
+    "belongsTo": "library",
+    "aliasOf": "library"
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoResourceEditor.TextField.https",
+    "surface": "Library resource editor",
+    "label": "https://…",
+    "kind": "option",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoResourceEditor.TextField.name",
+    "surface": "Library resource editor",
+    "label": "Name",
+    "kind": "option",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoResourceEditor.TextField.optional",
+    "surface": "Library resource editor",
+    "label": "Optional",
+    "kind": "option",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoResourceEditor.TextField.optional.2",
+    "surface": "Library resource editor",
+    "label": "Optional",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoResourceEditor.TextField.useful-context-or-reminders",
+    "surface": "Library resource editor",
+    "label": "Useful context or reminders",
+    "kind": "option",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoResourceEditor.Toggle.favorite",
+    "surface": "Library resource editor",
+    "label": "Favorite",
+    "kind": "option",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.add-a-pack",
+    "surface": "Library Packs",
+    "label": "Add a pack…",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.add-a-pack.2",
+    "surface": "Library Packs",
+    "label": "Add a pack…",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.add-pack",
+    "surface": "Library Packs",
+    "label": "Add pack",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.add-saved-file-to-library",
+    "surface": "Library Packs",
+    "label": "Add saved file to Library",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.cancel",
+    "surface": "Library Packs",
+    "label": "Cancel",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.cancel.2",
+    "surface": "Library Packs",
+    "label": "Cancel",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.cancel.3",
+    "surface": "Library Packs",
+    "label": "Cancel",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.cancel.4",
+    "surface": "Library Packs",
+    "label": "Cancel",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.check-for-updates",
+    "surface": "Library Packs",
+    "label": "Check for updates",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.connect-github",
+    "surface": "Library Packs",
+    "label": "Connect GitHub",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.copy-code-and-open-github",
+    "surface": "Library Packs",
+    "label": "Copy code and open GitHub",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.disconnect",
+    "surface": "Library Packs",
+    "label": "Disconnect",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.done",
+    "surface": "Library Packs",
+    "label": "Done",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.keep-file-only",
+    "surface": "Library Packs",
+    "label": "Keep file only",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.open-source-and-contribute",
+    "surface": "Library Packs",
+    "label": "Open source and contribute",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.reconnect",
+    "surface": "Library Packs",
+    "label": "Reconnect",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.remove-pack",
+    "surface": "Library Packs",
+    "label": "Remove pack",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.remove-pack.b5933e20",
+    "surface": "Library Packs",
+    "label": "Remove pack…",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.reset",
+    "surface": "Library Packs",
+    "label": "Reset",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.runtime-387430b4d4ca",
+    "surface": "Library Packs",
+    "label": null,
+    "expression": "entry . actionTitle",
+    "note": "Use skill, Add scene, Add persona or Save resource for this verified pack entry. Dual-input skills require an explicit destination; personal copies select their owner without Show/Present; saved files return to Resources after verified reference creation.",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library"
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.show-saved-file",
+    "surface": "Library Packs",
+    "label": "Show saved file",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.use-with-snap-talk",
+    "surface": "Library Packs",
+    "label": "Use with Snap & Talk",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.use-with-transcripts",
+    "surface": "Library Packs",
+    "label": "Use with transcripts",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.use-workspace-appearance",
+    "surface": "Library Packs",
+    "label": "Use workspace appearance",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.DisclosureGroup.pack-settings",
+    "surface": "Library Packs",
+    "label": "Pack settings",
+    "kind": "option",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.DisclosureGroup.saved-file-details",
+    "surface": "Library Packs",
+    "label": "Saved file details",
+    "kind": "option",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.DisclosureGroup.workspace-appearance",
+    "surface": "Library Packs",
+    "label": "Workspace appearance",
+    "kind": "option",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Label.runtime-ab530a13e459",
+    "surface": "Library Packs",
+    "label": null,
+    "expression": "message",
+    "note": "Runtime label from message; no rendered text assumed. Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission.",
+    "kind": "status",
+    "belongsTo": "library",
+    "aliasOf": "library"
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Label.workspace-appearance",
+    "surface": "Library Packs",
+    "label": "Workspace appearance",
+    "kind": "status",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Link.pack-owner-setup",
+    "surface": "Library Packs",
+    "label": "Pack owner setup",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Link.runtime-89df3f808764",
+    "surface": "Library Packs",
+    "label": null,
+    "expression": "pack . repository",
+    "note": "Runtime label from pack . repository; no rendered text assumed. Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission.",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library"
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Menu.runtime-e183908a005b",
+    "surface": "Library Packs",
+    "label": null,
+    "expression": "Image ( systemName : \"ellipsis.circle\" )",
+    "note": "Runtime label from Image ( systemName : \"ellipsis.circle\" ); no rendered text assumed. Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission.",
+    "kind": "option",
+    "belongsTo": "library",
+    "aliasOf": "library"
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.TextField.https-github-com-team-pack",
+    "surface": "Library Packs",
+    "label": "https://github.com/team/pack",
+    "kind": "option",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Toggle.keep-packs-up-to-date-automatically",
+    "surface": "Library Packs",
+    "label": "Keep packs up to date automatically",
+    "kind": "option",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.ModelSettingsView.ModelSettingsView.Button.cancel-setup",
+    "surface": "settings page",
+    "label": "Cancel setup",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Quality (#15 / foundation J): deliberate speech setup, cached-only retry, deferral or cancellation through the existing recognition owner; no capture starts on completion."
+  },
+  {
+    "id": "LocalVoice.ModelSettingsView.ModelSettingsView.Button.not-now",
+    "surface": "settings page",
+    "label": "Not now",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Quality (#15): contextual deferral of speech setup, using the existing Not now grammar; keeps saved work and unrelated tools usable and starts no capture.",
+    "aliasOf": "LocalVoice.FounderIntroduction.FounderIntroductionCard.Button.not-now"
+  },
+  {
+    "id": "LocalVoice.ModelSettingsView.ModelSettingsView.Button.retry-saved-files",
+    "surface": "settings page",
+    "label": "Retry saved files",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Quality (#15 / foundation J): deliberate speech setup, cached-only retry, deferral or cancellation through the existing recognition owner; no capture starts on completion."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.cancel",
+    "surface": "window home",
+    "label": "Cancel",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Quality (#15 / foundation J): deliberate speech setup, cached-only retry, deferral or cancellation through the existing recognition owner; no capture starts on completion."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.cancel-setup",
+    "surface": "window home",
+    "label": "Cancel setup",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Quality (#15 / foundation J): deliberate speech setup, cached-only retry, deferral or cancellation through the existing recognition owner; no capture starts on completion."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.download-parakeet",
+    "surface": "window home",
+    "label": "Download Parakeet",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Quality (#15 / foundation J): deliberate speech setup, cached-only retry, deferral or cancellation through the existing recognition owner; no capture starts on completion."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.not-now",
+    "surface": "window home",
+    "label": "Not now",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Quality (#15): contextual deferral of speech setup, using the existing Not now grammar; keeps saved work and unrelated tools usable and starts no capture.",
+    "aliasOf": "LocalVoice.FounderIntroduction.FounderIntroductionCard.Button.not-now"
+  },
+  {
+    "id": "LocalVoice.ModelSettingsView.ModelSettingsView.DisclosureGroup.details",
+    "surface": "settings page",
+    "label": "Details",
+    "kind": "option",
+    "belongsTo": "settings",
+    "aliasOf": "LocalVoice.DemoLibraryView.DemoLibraryView.DisclosureGroup.details",
+    "note": "Quality (#15): contextual speech-model failure detail under the useful recovery message; no separate settings place or setup gate."
   }
 ]

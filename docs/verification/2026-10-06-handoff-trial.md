@@ -36,8 +36,32 @@ The shared integration owner installed signed **Preview 2.4.1, build 20261006051
 
 After unlock, the integration owner should verify the running build, copy instructions from the synthetic session, resolve its relative source links and nested-path example against frozen files, restore original work and retain only the synthetic evidence. Do not start a provider merely to verify copied instructions. Broader [issue #63](https://github.com/Ship-Work/workbench/issues/63) remains open for template/output/host acceptance.
 
+## Repaired-build native acceptance · 6 October 2026
+
+[A coordinated native check subsequently completed](https://github.com/Ship-Work/workbench/issues/63#issuecomment-6013078666) the pending **#272-only** acceptance after unlock. Copy build details reported signed **Preview 2.4.1, build 20261006051135**, clean source `c7947a51080ee36255efadbf8dca152c41ded638`, on macOS **26.5.1**. A three-section synthetic session passed Review selected evidence → Copy instructions and produced a Ready receipt with **zero attempts**. All three copied `../inputs/` links and the `../../inputs/` nested example resolved against the retained frozen job; the image bytes matched. The UI and copied prompt explicitly required attaching the images and said nothing was uploaded. Original work was restored, the synthetic job was retained outside live History after a native quit, and the same installed app reopened on Home. No provider task, live capture or permission change occurred. This supersedes the pending native statement above for #272; it does not establish an assistant-host roundtrip or acceptance of later Foundation C changes.
+
+## Foundation C source verification · 6 October 2026
+
+The manual-first implementation passed a release compile, **204** handoff checks, **129** legacy transcript-handoff checks and **11** runner checks. Readback's seven check groups passed **100 / 21 / 41 / 19 / 18 / 32 / 44**, including reversed launch callbacks, close/replacement invalidation and failed copying. CLI checks passed **252 / 25 / 18 / 17** across policy, discovery/admission, process and OS-boundary groups. A current-source mutation that turned a failed version probe back into “missing” was rejected. Synthetic production-view renders showed manual copying available with the runner off and explicit Start available only when ready; factual per-source UTC capture times and known/unknown durations are preserved in inline copying. The shared surface patch is integrated: the scanner now includes the existing handoff review, and its registry passes **587** entries. These are local source and rendering checks: this change still needs signed Preview keyboard/paste, VoiceOver, setup-return and actual host/runner roundtrip acceptance for each promoted route. No provider inference, installed-app change or live saved-data edit occurred in these checks.
+
+Independent adversarial review of `c059d4d6d6e61a5f4b1576210563cbdfa396b614` found and resolved the missing inline source-time context, then found no remaining material source blocker. Parent integration at `9724b60` was verified byte-identical for app source and package manifests to that release-built commit; the later integration change registers controls and preserves these synthetic renders. Required CI and signed-native acceptance remain separate.
+
+[Manual route, runner off](2026-10-06-handoff/handoff-manual.png) · [Connected runner ready](2026-10-06-handoff/handoff-ready.png). These are production-view fixture renders, not installed-app screenshots.
+
 ## What would improve the evidence
 
 Start with a real person's unprepared material and a creation request. Compare the ordinary assistant route with capture-and-explain, including gathering, attachment, review and one correction. Observe preparation effort, repeated explanation, source confusion and voluntary reuse. Do not prepare both routes' source maps in advance. Actual vocal-delivery feedback additionally requires audio/video and clear separation of observed, heard and inferred evidence.
 
 This trial did not test human preparation time, voluntary reuse, Claude/ChatGPT UI interaction, physical capture, provider execution, arbitrary inputs, rich artifact return or a signed old-to-new app update.
+
+## Foundation C manual native acceptance, 7 October
+
+Signed Preview **2.4.1 (20261006123415)** at clean combined source `dec1f343413b9c3ce68583e81863e6c9278ec0df` was verified through actual Copy build details on macOS 26.5.1 (25F80). The unchanged C implementation from merged #291 was exercised through the installed app with a synthetic stopped meeting, complete journal and one second of silent audio. This avoided provider inference and live microphone capture.
+
+**Kept for later → Transcribe → Prepare follow-up…** recovered the complete synthetic words and opened the handoff review. With Codex off, Copy was available and Start disabled; switching to Claude Code off retained that behavior. Opening Connections and returning with both providers still off preserved the request, source, reference role and chosen provider. No setup, sign-in, permission prompt or inference began automatically.
+
+**Copy instructions → actual paste into TextEdit** produced 4,186 UTF-8 bytes. The complete 555-byte synthetic transcript appeared once, including its Unicode end marker; the instructions retained the request, recipe, reference-only boundary, UTC source time, duration and silent-recording limitation. The reference contained quoted instruction-like text to check its labeling, not an instruction to execute. The saved handoff remained **Ready**, with zero attempts and truthful “Nothing has been sent” feedback. The synthetic paste SHA256 is `2e28ea4e5c6d769c10a2ddb79b581bc3a46545c3d3cb5ceab56bd601ae398508`.
+
+Evidence remains locally under `.build/native-foundation-dec1f34`. After normal Quit, only the new synthetic meeting and unsent handoff were archived outside live stores. The original state/history files were restored byte for byte after verifying every other field and record was unchanged. Two normal relaunches retained the user's original Home state and preserved Read resource.
+
+This establishes the manual text-only route, complete native paste and setup-return behavior with both providers off. It does not establish actual assistant submission/output, image attachment handoff, VoiceOver, live recognition or the broader five-section Snap & Talk value trial. Those remain explicit gates; no public release follows from this check.

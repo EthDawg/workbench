@@ -10,7 +10,7 @@ import ToolbarCore
 /// catches the doors they do not cover without editing each one.
 @MainActor final class ToolbarModeFollower {
     /// When several start in one tick, the one you are most likely looking at wins.
-    static let priority: [ToolbarMode] = [.present, .persona, .dictate, .read, .snapAndTalk, .draw, .snap]
+    static let priority: [ToolbarMode] = [.present, .persona, .dictate, .snapAndTalk, .draw, .snap]
 
     private var observations = Set<AnyCancellable>()
     private var live: Set<ToolbarMode>
@@ -24,7 +24,6 @@ import ToolbarCore
             guard let model, let readback, let stage, let meetings, let snap else { return [] }
             return Self.liveModes(
                 dictating: model.phase != .idle || meetings.isRecording,
-                reading: model.rendering || model.playing || model.paused,
                 narrating: readback.isRecording || readback.isCapturing,
                 drawing: stage.isDrawing, presenting: stage.isPresenting,
                 persona: stage.hasActivePersona, snapping: snap.isCapturing)
@@ -51,11 +50,10 @@ import ToolbarCore
         if let mode = Self.modeToSelect(previous: live, current: current) { select(mode) }
     }
 
-    static func liveModes(dictating: Bool, reading: Bool, narrating: Bool, drawing: Bool,
+    static func liveModes(dictating: Bool, narrating: Bool, drawing: Bool,
                           presenting: Bool, persona: Bool, snapping: Bool) -> Set<ToolbarMode> {
         var modes = Set<ToolbarMode>()
         if dictating { modes.insert(.dictate) }
-        if reading { modes.insert(.read) }
         if narrating { modes.insert(.snapAndTalk) }
         if drawing { modes.insert(.draw) }
         if presenting { modes.insert(.present) }

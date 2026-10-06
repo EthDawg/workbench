@@ -26,6 +26,21 @@ enum ReadbackPackChecks {
         try check(neutralManifest.skillPack == .neutral && neutralSkill.contains("template.pptx"), "neutral sessions snapshot their identity and keep the template route")
         try check(!fm.fileExists(atPath: neutral.appendingPathComponent("brand").path), "neutral sessions have no optional branding or helpers")
 
+        // A new bundled version is not a migration of an exported session.
+        let oldNeutral = fixture.appendingPathComponent("Frozen neutral 1.0")
+        let oldSnapshot = ReadbackSkillPackSnapshot(reference: .init(id: "workbench-neutral", version: "1.0.0", name: "Neutral"),
+            files: ["SKILL.md": Data("Frozen/custom 1.0 instructions: use a parent template and write beside the session.\r\n".utf8)])
+        _ = try ReadbackStore.create(at: oldNeutral, title: "Old neutral", skillPack: oldSnapshot)
+        try ReadbackStore.writePrivate(Data("Original old README\r\n".utf8), to: oldNeutral.appendingPathComponent("README.md"))
+        try ReadbackStore.writePrivate(Data("Synthetic template bytes".utf8), to: oldNeutral.appendingPathComponent("template.pptx"))
+        let frozenNames = ["SKILL.md", "README.md", "skill-pack.json", "session.json", "template.pptx"]
+        let frozenBytes = try frozenNames.map { try Data(contentsOf: oldNeutral.appendingPathComponent($0)) }
+        let oldReopened = try ReadbackStore.load(from: oldNeutral)
+        let newNeutral = try ReadbackStore.create(at: fixture.appendingPathComponent("New neutral 1.1"), title: "New neutral")
+        let retainedBytes = try frozenNames.map { try Data(contentsOf: oldNeutral.appendingPathComponent($0)) }
+        try check(oldReopened.skillPack == oldSnapshot.reference && newNeutral.skillPack?.version == "1.1.0" && frozenBytes == retainedBytes,
+                  "opening old neutral and creating new neutral preserves exact old/custom skill, README, receipt, manifest and template bytes")
+
         // Preserve the legacy receipt contract using synthetic content. Company
         // artwork and helpers no longer ship inside the public app bundle.
         let expected = ReadbackSkillPackSnapshot(reference: .serviceNow,

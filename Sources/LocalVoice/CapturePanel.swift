@@ -41,7 +41,6 @@ final class CaptureHUDControls: ObservableObject {
     private var rowMeasured = false
     private var observation: AnyCancellable?
     var releaseKeyboardFocus: (() -> Void)?
-    var promptDestination: (() -> TextDelivery.Target?)?
     var cancelDrag: (() -> Void)?
     var focusFirstControl: (() -> Void)?
     var dragActions = ToolbarDragActions()
@@ -287,10 +286,6 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         controls.releaseKeyboardFocus = { [weak self] in self?.releaseKeyboardFocus() }
         panel.escape = { [weak controls] in controls?.endKeyboardInteraction() }
         controls.resultPending = { [weak self] in self?.revealableResult() != nil }
-        controls.promptDestination = { [weak self] in
-            guard let self else { return nil }
-            return self.window?.isKeyWindow == true ? self.keyboardTarget : TextDelivery.capture()
-        }
         controls.dragActions = ToolbarDragActions(begin: { [weak self] in self?.beginDragging() },
             move: { [weak self] in self?.previewDragging() }, end: { [weak self] in self?.finishDragging() },
             cancel: { [weak self] in self?.cancelDragging() }, isCancelled: { [weak self] in self?.dragging != true },
@@ -349,16 +344,12 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         stage.objectWillChange.receive(on: RunLoop.main)
             .sink { [weak self, weak model] _ in if let model { self?.update(model: model) } }
             .store(in: &observations)
-        model.$rendering.combineLatest(model.$playing, model.$paused)
-            .receive(on: RunLoop.main)
-            .sink { [weak self, weak model] _ in if let model { self?.update(model: model) } }
-            .store(in: &observations)
         model.$phase.combineLatest(model.$captureFailure, model.$previewingPanel)
             .receive(on: RunLoop.main)
             .sink { [weak self, weak model] _ in if let model { self?.update(model: model) } }
             .store(in: &observations)
-        // A routine cue and a stopped reading keep their surfaces until they go.
-        model.$captureCue.combineLatest(model.$readingFailure)
+        // A routine cue keeps its surface until it goes.
+        model.$captureCue
             .receive(on: RunLoop.main)
             .sink { [weak self, weak model] _ in if let model { self?.update(model: model) } }
             .store(in: &observations)
@@ -385,9 +376,6 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         // which fires as it is about to be set, so the hold hears it on the next pass (#222).
         model.$captureFailure.receive(on: RunLoop.main)
             .sink { [weak self, weak model] _ in self?.heldSlotChanged(.dictationFailure, model: model) }
-            .store(in: &observations)
-        model.$readingFailure.receive(on: RunLoop.main)
-            .sink { [weak self, weak model] _ in self?.heldSlotChanged(.readingFailure, model: model) }
             .store(in: &observations)
         // The coaching card (#134 T5): this host says when one may show, shows a pending one above
         // its place and reports it presented, and takes it down when it goes. A narration
@@ -425,7 +413,6 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
             presenting: stage?.isPresenting == true, persona: stage?.hasActivePersona == true, inserting: model.promptInsertion.running,
             capturingScreen: capturingScreen,
             dictation: Self.showsDictation(model), narration: narrating,
-            reading: model.rendering || model.playing || model.paused || model.readingFailure != nil,
             cue: (Self.showsCue(model) || Self.showsDeliveryCue(model)) && !narrating)
         if surface != self.surface {
             self.surface = surface
@@ -514,7 +501,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
     /// Delivery feedback never replaces the revealed row or adds recovery badges.
     static func showsDeliveryCue(_ model: AppModel) -> Bool {
         model.phase == .idle && model.captureCue == nil && model.captureFailure == nil
-            && !model.promptInsertion.running && !model.meetings.isBusy && !model.rendering && !model.playing && !model.paused
+            && !model.promptInsertion.running && !model.meetings.isBusy
             && model.clipboardReceipt.isHUDVisible && model.clipboardReceipt.receipt != nil
     }
 
@@ -1122,9 +1109,9 @@ struct DictationResultView: View {
                 Button("Record again") { model.recordAgain() }
                     .buttonStyle(.bordered).help("Keep this audio in Saved recordings and start a new capture")
                     .focused($focused, equals: .recordAgain).resultAction("Record again", controls)
-            } else if !model.canRetry && failure.hasPrefix("Microphone access is off") {
+            } else if !model.canRetry && model.canOpenMicrophoneSettings {
                 // The fix is in System Settings, so the failure opens it where the person acted.
-                Button { model.openMicrophoneSettings(); model.dismissCaptureFailure() } label: {
+                Button { model.openMicrophoneSettings() } label: {
                     Text("Microphone Settings…").font(.system(size: 12)).frame(minHeight: 28)
                 }.buttonStyle(.bordered).help("Open Privacy & Security › Microphone in System Settings")
                     .focused($focused, equals: .openWorkbench).resultAction("Microphone Settings…", controls)

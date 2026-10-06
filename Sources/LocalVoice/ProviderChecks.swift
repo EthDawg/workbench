@@ -203,7 +203,7 @@ enum ProviderChecks {
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let engine = RecognitionEngine(store: RecognitionConfigurationStore(defaults: defaults))
         let configuration = RecognitionConfiguration(provider: .localServer, endpoint: "http://127.0.0.1:\(hanging.port)/transcribe", model: "fixture")
-        try await engine.configure(configuration); try await engine.prepare()
+        try await engine.configure(configuration); try await engine.prepareCached()
         try assert(await engine.isReady, "local-server readiness is configuration readiness")
         let file = FileManager.default.temporaryDirectory.appendingPathComponent("ProviderEngine-" + UUID().uuidString + ".wav")
         try Data("synthetic".utf8).write(to: file)

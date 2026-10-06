@@ -13,16 +13,21 @@ import plistlib
 import subprocess
 import tempfile
 import time
+import sys
+
+sys.dont_write_bytecode = True
+from swift_extract import SwiftFile
 
 
 PROJECT = Path(__file__).resolve().parents[1]
-SOURCES = [PROJECT / "Sources/LocalVoice" / name for name in ("DemoLibrary.swift", "DemoLibraryImages.swift", "DemoLibraryView.swift", "DemoQuickLook.swift", "DemoLibraryImport.swift", "DemoLibraryImportView.swift")]
+SOURCES = [PROJECT / "Sources/LocalVoice" / name for name in ("DemoLibrary.swift", "ReadRetirement.swift", "SavedBrowserSettings.swift", "DemoLibraryImages.swift", "DemoLibraryView.swift", "DemoQuickLook.swift", "DemoLibraryImport.swift", "DemoLibraryImportView.swift")]
 SOURCES.append(PROJECT / "Sources/PresenterKit/PresenterProtocol.swift")
 
 DEPENDENCIES = r'''
 import AppKit
 import Combine
 import SwiftUI
+import Carbon
 
 enum VoiceError: LocalizedError {
     case message(String)
@@ -37,22 +42,21 @@ struct StateStore {
 }
 struct FixtureShortcut { var label = "⌃⌥J" }
 struct FixturePreferences { func shortcut(_ id: UInt32) -> FixtureShortcut { FixtureShortcut() } }
-/// Read aloud goes to Read's one import owner (#173); this fixture only records it.
-struct ReadingSelectionImport { enum Origin: Equatable { case selection, transcript, savedText } }
 @MainActor final class AppModel: ObservableObject {
     @Published var transcript = "A synthetic transcript for this disposable app."
-    @Published var speechText = ""
-    private(set) var readAloud: [(text: String, origin: ReadingSelectionImport.Origin)] = []
-    var onImportReading: ((String) -> Void)?
-    func importReading(_ text: String, from origin: ReadingSelectionImport.Origin) {
-        readAloud.append((text, origin)); onImportReading?(text)
-    }
     @Published var page = "library"
     @Published var libraryFocusToken = UUID()
     @Published var preferences = FixturePreferences()
     let photoHandoff = FixturePhotoHandoff()
     let presenter = FixturePresenter()
     var onUsePhotoAsBackdrop: ((URL, String) -> Void)?
+}
+// The separate Saved Prompts panel is covered by production --check-core and
+// the integrated gallery/native pass. This isolated resource-row harness does
+// not model that panel or claim its keyboard/focus acceptance.
+struct LibraryPromptButton: View {
+    let model: AppModel
+    var body: some View { EmptyView() }
 }
 // Photo arrival is covered by its own shared-module and UI checks. This recall
 // fixture deliberately keeps cloud and handoff dependencies out of its scope.
@@ -106,10 +110,10 @@ import Foundation
         try store.save(items)
         let savedBefore = try Data(contentsOf: store.url)
         var copied: [String] = [], opened: [URL] = []
-        var copySucceeds = true, openSucceeds = true
+        var copySucceeds = true, openSucceeds = true, locateRequests = 0
         let model = DemoLibraryModel(store: store, copyText: { text in
             copied.append(text); return copySucceeds ? 42 : nil
-        }, openURL: { url in opened.append(url); return openSucceeds })
+        }, openURL: { url in opened.append(url); return openSucceeds }, chooseFileURL: { locateRequests += 1; return nil })
         var count = 0
         func check(_ condition: @autoclosure () throws -> Bool, _ name: String) throws {
             guard try condition() else { throw VoiceError.message("LIBRARY_RECALL_CHECK_FAILED: " + name) }
@@ -155,7 +159,8 @@ import Foundation
                   "File recall opens the bookmarked original document")
         let openedBefore = opened.count
         model.query = "Missing document"
-        try check(!model.performPrimaryAction() && opened.count == openedBefore, "Missing files never reach the opener")
+        try check(model.performPrimaryAction() && opened.count == openedBefore && locateRequests == 1,
+                  "Missing files offer explicit Locate, and cancellation never reaches the opener")
         model.query = "Executable document"
         try check(!model.performPrimaryAction() && opened.count == openedBefore, "Return cannot launch executable files")
         try check(try Data(contentsOf: store.url) == savedBefore && Data(contentsOf: originalURL) == originalData,
@@ -223,9 +228,6 @@ import SwiftUI
             ])
         } catch { fatalError("Synthetic fixture preparation failed: \(error)") }
         let events = self.events
-        model.onImportReading = { text in
-            events.count += 1; events.latest = "\(events.count). READ ALOUD (simulated, Read's import review): \(text)"
-        }
         library = DemoLibraryModel(store: store, copyText: { text in
             events.count += 1
             events.latest = "\(events.count). \(events.failCopy ? "COPY FAILED" : "COPY"): \(text)"
@@ -268,7 +270,16 @@ def compile_fixture(directory: Path, main: str, binary: Path) -> None:
         path.write_text(source.read_text().replace("import PresenterKit\n", ""))
         copied.append(path)
     dependencies = directory / "FixtureDependencies.swift"
-    dependencies.write_text(DEPENDENCIES)
+    preference_types = [
+        "enum WorkbenchHome {\n" + SwiftFile(PROJECT / "Sources/LocalVoice/WorkbenchHome.swift").type("WorkbenchHome").extract([
+            "navItems", "sections", "subpages", "destination"]) + "\n}",
+        SwiftFile(PROJECT / "Sources/LocalVoice/Core.swift").extract(["AtomicPrivateFile"]),
+        SwiftFile(PROJECT / "Sources/LocalVoice/VoicePreferences.swift").extract([
+            "CaptureMode", "DeliveryMode", "FirstDictationGuide", "VoiceShortcut", "VoicePreferences"]),
+        SwiftFile(PROJECT / "Sources/LocalVoice/DictationCleanup.swift").extract(["CleanupStyle"]),
+        SwiftFile(PROJECT / "Sources/StageKit/Hotkeys.swift").extract(["GlobalShortcutCombination", "GlobalShortcutRule"]),
+    ]
+    dependencies.write_text(DEPENDENCIES + "\n" + "\n".join(preference_types))
     checks = directory / "FixtureMain.swift"
     checks.write_text(main)
     binary.parent.mkdir(parents=True, exist_ok=True)
@@ -284,6 +295,7 @@ parser.add_argument("--image-reuse", action="store_true", help="Check image reus
 parser.add_argument("--render-image-reuse", type=Path, help="Render Library image actions using synthetic data offscreen")
 parser.add_argument("--import-review", action="store_true", help="Check the import transaction with the actual model and store")
 parser.add_argument("--render-import-review", type=Path, help="Render the actual import review with synthetic records")
+parser.add_argument("--render-browser-pause", type=Path, help="Render a retained browser link and ordinary-open failure offscreen")
 args = parser.parse_args()
 started = time.monotonic()
 if args.native_fixture:
@@ -302,11 +314,13 @@ else:
     with tempfile.TemporaryDirectory(prefix="workbench-library-recall-", dir="/private/tmp") as temporary:
         directory = Path(temporary)
         binary = directory / "Checks"
-        if args.image_reuse or args.render_image_reuse:
+        if args.render_browser_pause:
+            main = (PROJECT / "scripts/fixtures/LibraryBrowserPauseRender.swift").read_text()
+        elif args.image_reuse or args.render_image_reuse:
             main = (PROJECT / "scripts/fixtures/LibraryImageReuseChecks.swift").read_text()
         else:
             main = (PROJECT / "scripts/fixtures/LibraryImportChecks.swift").read_text() if args.import_review or args.render_import_review else CHECKS
         compile_fixture(directory, main, binary)
-        render = args.render_image_reuse or args.render_import_review
+        render = args.render_image_reuse or args.render_import_review or args.render_browser_pause
         subprocess.run([str(binary), *([str(render.resolve())] if render else [])], check=True, timeout=30)
 print(f"Compilation and checks: {time.monotonic() - started:.3f}s")

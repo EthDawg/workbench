@@ -56,10 +56,17 @@ struct PersonaAppearance: Codable, Equatable {
 
 /// One live copy, named exactly, so a live change never falls through to another:
 /// the one floating card by its copy identity, or one copy of a prepared set by
-/// its instance in that set.
+/// its instance in that set. The generation distinguishes visits that reuse a
+/// prepared set's saved copy IDs.
 enum PersonaLiveCopy: Equatable {
-    case card(UUID)
-    case overlay(UUID, group: UUID)
+    case card(UUID, generation: UUID)
+    case overlay(UUID, group: UUID, generation: UUID)
+
+    var generation: UUID {
+        switch self {
+        case .card(_, let generation), .overlay(_, _, let generation): return generation
+        }
+    }
 }
 
 /// Where Circle crops the portrait: the circle's centre across and up the

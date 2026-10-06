@@ -15,7 +15,7 @@ enum WorkbenchUpdateChecks {
         try require(!WorkbenchBuild(info: [:]).preview, "stable has no Preview badge")
         try require(release.details.contains("20260924120000") && release.details.contains("Source:"), "feedback has exact build and source")
         try require(!WorkbenchUpdateActivity().busy, "idle can update")
-        let busyActivities = [WorkbenchUpdateActivity(voice: true), WorkbenchUpdateActivity(reading: true), WorkbenchUpdateActivity(capture: true), WorkbenchUpdateActivity(presentation: true), WorkbenchUpdateActivity(drawing: true), WorkbenchUpdateActivity(timer: true), WorkbenchUpdateActivity(interaction: true)]
+        let busyActivities = [WorkbenchUpdateActivity(voice: true), WorkbenchUpdateActivity(insertion: true), WorkbenchUpdateActivity(capture: true), WorkbenchUpdateActivity(presentation: true), WorkbenchUpdateActivity(drawing: true), WorkbenchUpdateActivity(timer: true), WorkbenchUpdateActivity(interaction: true)]
         for state in busyActivities {
             try require(state.busy, "independent live activities defer restart")
         }
@@ -116,7 +116,7 @@ enum WorkbenchUpdateChecks {
             policy.status = ""
             try require(!delegate.responds(to: admission), "busy background checks and probes have no activity veto")
             policy.checkForUpdates()
-            try require(!policy.checking && policy.status == "Finish recording, reading, presenting or editing before updating.",
+            try require(!policy.checking && policy.status == "Finish recording, inserting, presenting or editing before updating.",
                         "the manual update action still refuses every busy activity")
         }
         try driverChecks()

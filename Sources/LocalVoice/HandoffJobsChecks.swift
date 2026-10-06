@@ -111,7 +111,7 @@ enum HandoffJobsChecks {
     }
 
     @MainActor static func run() async throws -> [String] {
-        var passed = 0
+        var passed = try await HandoffManualChecks.run()
         func check(_ value: @autoclosure () throws -> Bool, _ message: String) throws {
             guard try value() else { throw VoiceError.message("HANDOFF_JOBS_CHECK_FAILED: " + message) }
             passed += 1
@@ -536,7 +536,7 @@ enum HandoffJobsChecks {
                   && !FileManager.default.fileExists(atPath: live.folder(fails).appendingPathComponent("result.md").path),
                   "a failed run keeps the session the provider announced, says why, and writes no result")
         live.start(failed, provider: .claude)
-        try check(!live.isBusy && live.notice == "Review this handoff before retrying.", "a failed task needs an explicit retry")
+        try check(!live.isBusy && live.error?.contains("before choosing Retry") == true, "a failed task needs an explicit retry")
         live.notice = nil
         live.runner = scripted { SubscriptionCLIResult(providerSessionID: nil, text: "Second attempt.") }
         now = now.addingTimeInterval(60)
@@ -562,7 +562,7 @@ enum HandoffJobsChecks {
         try await settle("the long run's session") { (try? job(stopped.id))?.providerSessionID != nil }
         let waiting = try live.prepare(sources: sources, task: "A request made while one runs.", skill: skill)
         live.start(waiting, provider: .claude)
-        try check(live.notice == "A handoff is already running." && live.activeID == stopped.id, "one live task runs at a time")
+        try check(live.error?.hasPrefix("A handoff is already running.") == true && live.activeID == stopped.id, "one live task runs at a time")
         live.notice = nil
         live.cancel()
         try await settle("the stopped run") { !live.isBusy }
@@ -577,7 +577,7 @@ enum HandoffJobsChecks {
         try check(live.connections[.claude] == nil && !live.enabled(.claude), "switching a provider off forgets its connection")
         let unconnected = try live.prepare(sources: sources, task: "A request with no connection.", skill: skill)
         live.start(unconnected, provider: .claude)
-        try check(!live.isBusy && live.error?.hasPrefix("Connect the installed " + SubscriptionProvider.claude.title) == true,
+        try check(!live.isBusy && live.error?.hasPrefix(SubscriptionProvider.claude.title + " is off.") == true,
                   "a task cannot start without a connection")
         live.error = nil
         let reopenedConnected = HandoffJobsModel(directory: live.directory, switches: ({ _ in false }, { _, _ in }), pasteboard: pasteboard)

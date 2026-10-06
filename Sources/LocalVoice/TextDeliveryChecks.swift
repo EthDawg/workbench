@@ -6,7 +6,7 @@ import AppKit
 @MainActor
 enum TextDeliveryChecks {
     private final class AXFixture {
-        let app = AXUIElementCreateApplication(NSRunningApplication.current.processIdentifier)
+        let app = AccessibilityBridge.application(NSRunningApplication.current.processIdentifier)
         var focused: AXUIElement?
         var focusedWindow: AXUIElement?
         var trusted = true, frontmost: pid_t? = NSRunningApplication.current.processIdentifier
@@ -17,7 +17,7 @@ enum TextDeliveryChecks {
         var rangeText: CFTypeRef?
 
         func node(_ attributes: [String: CFTypeRef]) -> AXUIElement {
-            let node = AXUIElementCreateApplication(pid_t(100_000 + nodes.count))
+            let node = AccessibilityBridge.application(pid_t(100_000 + nodes.count))
             nodes.append((node, attributes)); return node
         }
         var adapter: TextDelivery.Accessibility {
@@ -40,7 +40,7 @@ enum TextDeliveryChecks {
 
     private final class DeliveryFixture {
         let board: NSPasteboard
-        let target = TextDelivery.Target(app: .current, element: AXUIElementCreateApplication(getpid()), value: "before ")
+        let target = TextDelivery.Target(app: .current, element: AccessibilityBridge.application(getpid()), value: "before ")
         var state = TextDelivery.FieldState(value: "before ", selection: NSRange(location: 7, length: 0))
         var eligible = true, posted = 0, pauses = 0, reads = 0
         var beforePosting: (() -> Void)?
@@ -116,7 +116,7 @@ enum TextDeliveryChecks {
         try check(unreadable.failure == .fieldUnreadable && prepared == 0 && posted == 0
                   && receipts.receipt?.detail.contains("could not be read") == true && receipts.receipt?.title == "Copied",
                   "an unreadable field is its own reason, distinct from missing approval")
-        let element = TextDelivery.Target(app: .current, element: AXUIElementCreateApplication(getpid()), value: "")
+        let element = TextDelivery.Target(app: .current, element: AccessibilityBridge.application(getpid()), value: "")
         eligible = false; reset()
         let changed = await TextDelivery.deliver("synthetic dictation", target: element, mode: .paste, restoreClipboard: true, system: system)
         receipts.record(outcome: changed, wordCount: 2)
@@ -434,6 +434,17 @@ enum TextDeliveryChecks {
                                                         validateTarget: { validations += 1; return validations < 2 }, fit: .init(), system: cancelledFit.system)
         try check(cancelledPaste.failure == .cancelled && cancelledFit.posted == 0 && cancelledFit.reads == 1 && board.string(forType: .string) == "The blue folder",
                   "cancellation after the fit leaves the transcript copied")
+        // Cancellation during the confirmation poll is a post-paste exit like the others:
+        // the fitted words were pasted once and the transcript is what stays copied.
+        let cancelledPoll = DeliveryFixture(board)
+        cancelledPoll.state = caretState
+        var cancelledPollSystem = cancelledPoll.system
+        cancelledPollSystem.pause = { _ in throw CancellationError() }
+        let cancelledPollPaste = await TextDelivery.deliver("The blue folder", target: cancelledPoll.target, mode: .paste, restoreClipboard: false,
+                                                            validateTarget: { true }, fit: .init(), system: cancelledPollSystem)
+        try check(cancelledPollPaste.failure == .cancelled && cancelledPollPaste.pasteWasAttempted && cancelledPoll.posted == 1
+                  && board.string(forType: .string) == "The blue folder" && cancelledPollPaste.clipboardChangeCount == board.changeCount,
+                  "cancellation during the confirmation poll leaves the transcript copied and owned, not the fitted words")
         let unreadableFit = DeliveryFixture(board)
         unreadableFit.state = .init(value: nil, selection: nil)
         let unreadablePaste = await unreadableFit.deliver("The blue folder", fit: .init())

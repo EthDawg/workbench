@@ -80,10 +80,10 @@ enum PromptPickerChecks {
         // What a choice does. Insert types into the frozen field; Copy prompt copies once.
         try check(PromptPickerMode.resolve(trusted: false, destination: nil) == .copy(noField: false)
                   && PromptPickerMode.resolve(trusted: true, destination: nil) == .copy(noField: true)
-                  && PromptPickerMode.resolve(trusted: false, destination: .init(app: .current, element: AXUIElementCreateApplication(getpid()),
+                  && PromptPickerMode.resolve(trusted: false, destination: .init(app: .current, element: AccessibilityBridge.application(getpid()),
                                                                                   value: "", selection: NSRange(location: 0, length: 0))) == .copy(noField: false),
                   "without approval the action is Copy prompt, even over a readable field")
-        let readable = TextDelivery.Target(app: .current, element: AXUIElementCreateApplication(getpid()), value: "before", selection: NSRange(location: 6, length: 0))
+        let readable = TextDelivery.Target(app: .current, element: AccessibilityBridge.application(getpid()), value: "before", selection: NSRange(location: 6, length: 0))
         let insertMode = PromptPickerMode.resolve(trusted: true, destination: readable)
         try check(insertMode.inserts && insertMode.actionTitle.hasPrefix("Insert into ") && insertMode.note == nil,
                   "with approval and a readable field, the action inserts into that field")
@@ -103,7 +103,7 @@ enum PromptPickerChecks {
         let receipts = ClipboardReceiptModel(clipboardChangeCount: { board.changeCount }, automaticallySchedules: false)
         func model(_ mode: PromptPickerMode, dismissed: @escaping () -> Void = {}) -> PromptPickerModel {
             let action = PromptPickerAction(mode: mode, insert: { text, _ in inserted.append(text) },
-                                            copy: { text, title in delivery.copy(text, title: title, receipts: receipts, system: system) })
+                                            copy: { delivery.copy($0.content, title: $0.pickerTitle, receipts: receipts, system: system) })
             return PromptPickerModel(list: PromptPickerList(resources: library), mode: mode, width: 420, available: 600,
                                      perform: { action.perform($0) }, dismiss: dismissed)
         }
@@ -167,6 +167,38 @@ enum PromptPickerChecks {
                   && PromptInsertion.describe(.init(message: "", clipboardChangeCount: 3, wasPasted: false, destinationName: "Notes", failure: .accessibilityUnavailable)) == TextDelivery.copiedMessage
                   && !PromptInsertion.describe(.init(message: "", clipboardChangeCount: 3, wasPasted: false, destinationName: "Notes", failure: .cancelled)).contains("transcript"),
                   "a paste fallback's result is worded for a prompt, and a copy reads as copied")
+        // The Library entry uses the actual Context action with its existing
+        // Library copy owner; no captured target or inferred insertion path.
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("Workbench-LibraryPrompt-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var copiedTexts: [String] = [], copyAllowed = true
+        let store = DemoLibraryStore(directory: directory)
+        let resources = DemoLibraryModel(store: store, copyText: { text in
+            guard copyAllowed else { return nil }
+            copiedTexts.append(text); return copiedTexts.count
+        })
+        let complete = "  e\u{301}\r\n" + String(repeating: "Exact multiline prompt.\n", count: 1_000) + "\tEnd.  "
+        let retained = prompt("Complete briefing", favourite: true, product: "Synthetic", content: complete)
+        try check(resources.save(retained) && resources.save(prompt("Other task")), "synthetic Library prompts are committed")
+        let savedResources = try Data(contentsOf: store.url)
+        let context = PromptPickerController.Context.library(resources, delivery: delivery, receipts: receipts, openLibrary: {})
+        try check(context.destination == nil && !context.trusted && context.action.mode == .copy(noField: false),
+                  "opening Library's picker has no external target and always offers Copy")
+        var cancelled = 0
+        let libraryPicker = PromptPickerModel(list: PromptPickerList(resources: context.resources), mode: context.action.mode,
+            width: 420, available: 600, perform: context.action.perform, dismiss: { cancelled += 1 })
+        libraryPicker.list.filter = .product("Synthetic"); libraryPicker.list.query = "briefing"
+        try check(libraryPicker.list.favourites.map(\.id) == [retained.id] && libraryPicker.list.others.isEmpty,
+                  "Library picker retains its favourite and category/search filtering")
+        libraryPicker.cancel()
+        try check(cancelled == 1 && copiedTexts.isEmpty, "Cancel leaves the clipboard unchanged")
+        libraryPicker.chooseHighlighted()
+        try check(copiedTexts.count == 1 && Data(copiedTexts[0].utf8) == Data(complete.utf8)
+                  && resources.notice == "Prompt copied. Paste when you are ready.", "Copy uses complete exact UTF-8 and Library's success feedback")
+        copyAllowed = false; libraryPicker.chooseHighlighted()
+        try check(copiedTexts.count == 1 && resources.notice == nil && resources.error == "The clipboard could not be updated. Try copying again.",
+                  "a refused clipboard write reports failure and cannot retain success")
+        try check(try Data(contentsOf: store.url) == savedResources, "Copy, cancellation and failure never rewrite prompt originals")
         print("PROMPT_PICKER_CHECKS_OK: \(passed) checks; synthetic prompts, isolated pasteboard and injected trust only")
     }
 }

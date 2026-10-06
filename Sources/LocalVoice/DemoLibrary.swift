@@ -11,6 +11,7 @@ enum DemoResourceKind: String, Codable, CaseIterable {
 }
 
 struct DemoResource: Codable, Identifiable, Equatable {
+    static let promptCharacterLimit = 50_000
     var id = UUID()
     var kind: DemoResourceKind = .prompt
     var title = ""
@@ -24,12 +25,12 @@ struct DemoResource: Codable, Identifiable, Equatable {
     var browserTarget: BrowserTarget?
 
     var group: String { [product, persona].filter { !$0.isEmpty }.joined(separator: " · ") }
-    var primaryActionTitle: String { switch kind { case .prompt: "Copy prompt"; case .link: browserTarget == nil ? "Open link" : "Switch to tab"; case .file: "Open file" } }
+    var primaryActionTitle: String { switch kind { case .prompt: "Copy prompt"; case .link: browserTarget == nil ? "Open link" : "Open in default browser"; case .file: fileAvailable ? "Open file" : "Locate file…" } }
     var primaryActionAvailable: Bool {
         switch kind {
         case .prompt: return !content.isEmpty
         case .link: return webURL != nil
-        case .file: return fileAvailable && canOpenFile
+        case .file: return !fileAvailable || canOpenFile
         }
     }
     var webURL: URL? {
@@ -39,6 +40,11 @@ struct DemoResource: Codable, Identifiable, Equatable {
         return url
     }
     var fileURL: URL? { resolvedFile?.url }
+    var fileName: String { fileURL?.lastPathComponent ?? URL(fileURLWithPath: content).lastPathComponent }
+    var fileLocation: String {
+        let folder = (fileURL ?? URL(fileURLWithPath: content)).deletingLastPathComponent().lastPathComponent
+        return folder.isEmpty ? "Root folder" : folder
+    }
     var resolvedFile: (url: URL, stale: Bool)? {
         guard kind == .file else { return nil }
         if let bookmark {
@@ -83,7 +89,7 @@ struct DemoResource: Codable, Identifiable, Equatable {
         if title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "Give this resource a name." }
         if title.count > 200 || product.count > 200 || persona.count > 200 { return "Keep names under 200 characters." }
         if content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return kind == .file ? "Choose a local file." : (kind == .prompt ? "Add some text." : "Add a web address.") }
-        if content.count > 50_000 || notes.count > 10_000 { return "Keep prompts under 50,000 characters and notes under 10,000." }
+        if content.count > Self.promptCharacterLimit || notes.count > 10_000 { return "Keep prompts under 50,000 characters and notes under 10,000. Save longer text as a file and add it to Library." }
         if kind == .link && webURL == nil { return "Use a complete http or https link without an embedded username or password." }
         if kind == .file && !content.hasPrefix("/") { return "Choose an absolute local file path." }
         return nil
@@ -246,6 +252,7 @@ final class DemoLibraryModel: ObservableObject {
     @Published var favoritesOnly = false { didSet { reconcileSelection() } }
     @Published var notice: String?
     @Published var error: String?
+    @Published private(set) var storageFailure: String?
     @Published private(set) var savingDisabled = false
     @Published private(set) var previewingResourceID: UUID?
     @Published private(set) var importReview: DemoLibraryImport?
@@ -254,6 +261,7 @@ final class DemoLibraryModel: ObservableObject {
     let store: DemoLibraryStore
     private let copyText: (String) -> Int?
     private let openURL: (URL) -> Bool
+    private let chooseFileURL: (() -> URL?)?
     private var savedData: Data?
     var switchBrowser: ((UUID) -> Void)?
     private let previewer: DemoResourcePreviewing
@@ -262,17 +270,34 @@ final class DemoLibraryModel: ObservableObject {
     init(store: DemoLibraryStore = DemoLibraryStore(),
          copyText: ((String) -> Int?)? = nil,
          openURL: ((URL) -> Bool)? = nil,
+         chooseFileURL: (() -> URL?)? = nil,
          previewer: DemoResourcePreviewing? = nil,
          makePreviewAccess: ((URL) -> DemoResourcePreviewAccess)? = nil) {
         self.store = store
         self.copyText = copyText ?? { TextDelivery.copy($0) }
         self.openURL = openURL ?? { NSWorkspace.shared.open($0) }
+        self.chooseFileURL = chooseFileURL
         self.previewer = previewer ?? DemoQuickLookPresenter()
         self.makePreviewAccess = makePreviewAccess ?? { DemoResourcePreviewAccess(url: $0) }
         self.previewer.onClose = { [weak self] in self?.finishPreview() }
         do { savedData = try store.currentData(); resources = try savedData.map(DemoLibraryStore.decode) ?? []; reconcileSelection() }
-        catch { self.error = "The library could not be read. Saving is paused to preserve it. \(error.localizedDescription)"; savingDisabled = true }
+        catch { holdWrites("The saved Library could not be read. Its file is preserved and editing is paused. \(error.localizedDescription)") }
     }
+    @Published private(set) var readPreservationFailure: String?
+    private var retiredReadingText = ""
+    func preserveRetiredReading(_ text: String) {
+        retiredReadingText = text
+        retryReadPreservation()
+    }
+    func retryReadPreservation() {
+        do {
+            try ReadRetirement.preserve(retiredReadingText, in: self)
+            readPreservationFailure = nil
+        } catch {
+            readPreservationFailure = error.localizedDescription
+        }
+    }
+    var readPreservationSource: URL { store.url.deletingLastPathComponent().appendingPathComponent("state.json") }
     var matches: [DemoResource] { DemoResource.matching(resources, query: query, favoritesOnly: favoritesOnly) }
     var selected: DemoResource? { matches.first { $0.id == selection } }
     private func reconcileSelection() {
@@ -280,8 +305,13 @@ final class DemoLibraryModel: ObservableObject {
         if !visible.contains(where: { $0.id == selection }) { selection = visible.first?.id }
     }
     func newPrompt(_ text: String = "") {
-        guard importReview == nil else { return }
+        guard !savingDisabled, importReview == nil else { return }
         guard draft == nil else { draftNotice = "Save or cancel this resource before starting another prompt."; return }
+        guard text.count <= DemoResource.promptCharacterLimit else {
+            notice = nil
+            error = "This text exceeds the 50,000-character prompt limit. Save the complete text as a file and add it to Library; nothing was truncated or saved."
+            return
+        }
         draft = DemoResource(title: String(text.split(separator: "\n").first?.prefix(80) ?? ""), content: text)
     }
     func save(_ proposed: DemoResource) -> Bool {
@@ -295,28 +325,47 @@ final class DemoLibraryModel: ObservableObject {
         var next = resources
         if let index = next.firstIndex(where: { $0.id == item.id }) { next[index] = item } else { next.append(item) }
         guard commit(next) else { return false }
-        query = ""; favoritesOnly = false; selection = item.id; notice = "Saved \(item.title)."; return true
+        query = ""; favoritesOnly = false; selection = item.id; notice = "Saved."; return true
+    }
+    private func holdWrites(_ message: String) {
+        savingDisabled = true; storageFailure = message; error = nil; notice = nil
     }
     @discardableResult private func commit(_ next: [DemoResource]) -> Bool {
         guard !savingDisabled else { return false }
+        let current: Data?
+        do { current = try store.currentData() }
+        catch {
+            holdWrites("The saved Library could not be verified. Its file is preserved and editing is paused. \(error.localizedDescription)")
+            return false
+        }
+        guard current == savedData else {
+            holdWrites("The Library changed outside this window. The newer file is preserved and editing is paused. Reopen Workbench to review it.")
+            return false
+        }
         do {
-            guard try store.currentData() == savedData else { throw VoiceError.message("The library changed outside this window. Reopen Workbench before saving; the newer file is preserved.") }
             savedData = try store.save(next); resources = next; error = nil; return true
         }
         catch { self.error = error.localizedDescription; return false }
     }
     func favorite(_ item: DemoResource) {
+        guard resources.contains(item) else { return }
         var item = item; item.favorite.toggle()
         if let index = resources.firstIndex(where: { $0.id == item.id }) { var next = resources; next[index] = item; commit(next) }
     }
     func remove(_ item: DemoResource) {
+        guard resources.contains(item) else { return }
         if previewingResourceID == item.id { closePreview() }
         if commit(resources.filter { $0.id != item.id }) { notice = "Removed from the library. The original file is unchanged." }
     }
     /// Both the visible button and keyboard recall act on the current filtered selection.
     /// Returning true means an action was attempted; copy/open report their own failures.
-    @discardableResult func performPrimaryAction() -> Bool {
+    @discardableResult func performPrimaryAction(expectedID: UUID? = nil) -> Bool {
         guard draft == nil, importReview == nil, let item = selected, item.primaryActionAvailable else { return false }
+        guard expectedID == nil || expectedID == item.id else { return false }
+        if item.kind == .file && !item.fileAvailable {
+            guard !savingDisabled else { return false }
+            chooseFile(for: item); return true
+        }
         if item.kind == .prompt { copy(item) } else { open(item) }
         return true
     }
@@ -329,10 +378,26 @@ final class DemoLibraryModel: ObservableObject {
         if !savingDisabled { error = nil }
         notice = item.kind == .file ? "File path copied." : "\(item.kind.rawValue) copied. Paste when you are ready."
     }
-    func chooseFile(for existing: DemoResource? = nil) {
-        let panel = NSOpenPanel(); panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
-        panel.message = "Choose a video, deck, image, or demo file. Workbench keeps a reference to the original."
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+    func chooseFile(for existing: DemoResource? = nil, chooseURL: (() -> URL?)? = nil,
+                    makeBookmark: ((URL) throws -> Data)? = nil) {
+        guard !savingDisabled, draft == nil, importReview == nil else { return }
+        guard existing == nil || resources.contains(existing!) else { return }
+        let selectedURL: URL?
+        if let chooseURL = chooseURL ?? chooseFileURL { selectedURL = chooseURL() }
+        else {
+            let panel = NSOpenPanel(); panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
+            panel.message = "Choose a local file. Workbench keeps a reference; Save confirms the choice."
+            selectedURL = panel.runModal() == .OK ? panel.url : nil
+        }
+        guard let url = selectedURL else { return }
+        guard !savingDisabled, draft == nil, importReview == nil,
+              existing == nil || resources.contains(existing!) else { return }
+        let access = url.startAccessingSecurityScopedResource()
+        defer { if access { url.stopAccessingSecurityScopedResource() } }
+        guard url.isFileURL, FileManager.default.isReadableFile(atPath: url.path) else {
+            notice = nil; error = "This file is unavailable. Choose a readable local file; the previous reference is unchanged."
+            return
+        }
         var item = existing ?? DemoResource(kind: .file, title: url.deletingPathExtension().lastPathComponent)
         item.kind = .file; item.content = url.path
         #if APP_STORE
@@ -340,8 +405,8 @@ final class DemoLibraryModel: ObservableObject {
         #else
         let options: URL.BookmarkCreationOptions = [.minimalBookmark]
         #endif
-        do { item.bookmark = try url.bookmarkData(options: options, includingResourceValuesForKeys: nil, relativeTo: nil) }
-        catch { self.error = "File access could not be saved. Choose the file again. \(error.localizedDescription)"; return }
+        do { item.bookmark = try makeBookmark?(url) ?? url.bookmarkData(options: options, includingResourceValuesForKeys: nil, relativeTo: nil) }
+        catch { notice = nil; self.error = "File access could not be prepared. The previous reference is unchanged. \(error.localizedDescription)"; return }
         draft = item
     }
     /// Reads the currently saved reference once. Cancel in the receiving editor
@@ -423,7 +488,7 @@ final class DemoLibraryModel: ObservableObject {
     func open(_ item: DemoResource, reveal: Bool = false) {
         if !reveal && showImage(item) { return }
         if item.kind == .link {
-            if item.browserTarget != nil {
+            if item.browserTarget != nil && BrowserIntegration.isAvailable {
                 guard let switchBrowser else { error = "Open the complete Workbench app to switch to this Chrome destination."; return }
                 switchBrowser(item.id); return
             }
@@ -492,9 +557,28 @@ final class DemoLibraryModel: ObservableObject {
             return false
         }
     }
+    func exportSavedBrowserSettings(_ snapshot: SavedBrowserSettings, chooseDestination: (() -> URL?)? = nil) {
+        guard snapshot.hasSavedSettings else { return }
+        do {
+            let data = try snapshot.encoded()
+            let url: URL
+            if let chooseDestination {
+                guard let chosen = chooseDestination() else { return }; url = chosen
+            } else {
+                let panel = NSSavePanel(); panel.allowedContentTypes = [.json]
+                panel.nameFieldStringValue = "Workbench Saved Browser Settings.json"
+                panel.message = "Save a readable copy of the old connection, profile-bound links and inactive shortcut. This file cannot enable or import browser switching."
+                guard panel.runModal() == .OK, let chosen = panel.url else { return }; url = chosen
+            }
+            try data.write(to: url, options: .atomic)
+            error = nil; notice = "Saved browser settings exported. Browser switching stays paused."
+        } catch {
+            notice = nil; self.error = "Could not export saved browser settings. " + error.localizedDescription
+        }
+    }
     func exportLibrary() {
-        let panel = NSSavePanel(); panel.allowedContentTypes = [.json]; panel.nameFieldStringValue = "Workbench Demo Library.json"
-        panel.message = "Export prompts, links, notes and file paths. Media files stay in their original folders."
+        let panel = NSSavePanel(); panel.allowedContentTypes = [.json]; panel.nameFieldStringValue = "Workbench Library.json"
+        panel.message = "Export this Library's prompts, links, notes and file references. Original media, local access grants and browser bindings are not included."
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do { try DemoLibraryStore.encoded(resources, portable: true).write(to: url, options: .atomic); notice = "Library exported. Original media files were not copied." }
         catch { self.error = error.localizedDescription }
@@ -524,6 +608,25 @@ final class DemoLibraryModel: ObservableObject {
 
     func cancelImport() { importReview = nil; importChoices = []; importError = nil }
 
+    /// Explicit Pack-file recovery reviews current storage before retrying its one
+    /// reference. This never discards an editor/import decision or writes the store.
+    @discardableResult func reviewForSavedFileReference() -> Bool {
+        guard draft == nil, importReview == nil else { return false }
+        do {
+            let data = try store.currentData()
+            guard data != nil || savedData == nil else {
+                throw VoiceError.message("The saved Library file is missing. Restore it before retrying this reference.")
+            }
+            let latest = try data.map(DemoLibraryStore.decode) ?? []
+            closePreview(); savedData = data; resources = latest
+            savingDisabled = false; storageFailure = nil; error = nil; notice = nil
+            return true
+        } catch {
+            holdWrites("The saved Library could not be reviewed. Its file is preserved and editing is paused. Resolve the file and retry adding the saved reference. \(error.localizedDescription)")
+            return false
+        }
+    }
+
     func refreshImportReview() {
         guard let review = importReview, draft == nil else { return }
         do {
@@ -531,15 +634,28 @@ final class DemoLibraryModel: ObservableObject {
             let latest = try data.map(DemoLibraryStore.decode) ?? []
             let refreshed = try DemoLibraryImport(incoming: review.entries.map(\.incoming), existing: latest, sourceName: review.sourceName)
             closePreview(); savedData = data; resources = latest; importChoices = []; importError = nil; importReview = refreshed
-        } catch { importError = "The saved library could not be reloaded. \(error.localizedDescription)" }
+            savingDisabled = false; storageFailure = nil; error = nil; notice = nil
+        } catch {
+            let problem = "The saved Library could not be reloaded. Its file is preserved and editing is paused. Choose Review again to retry, or reopen Workbench after resolving the file. \(error.localizedDescription)"
+            holdWrites(problem); importError = problem
+        }
     }
 
     @discardableResult func applyImport() -> Bool {
         guard !savingDisabled, draft == nil, let review = importReview else { return false }
+        let current: Data?
+        do { current = try store.currentData() }
+        catch {
+            let problem = "The saved Library could not be verified. Its file is preserved and editing is paused. Choose Review again to retry, or reopen Workbench after resolving the file. \(error.localizedDescription)"
+            holdWrites(problem); importError = problem
+            return false
+        }
+        guard review.baseline == resources, current == savedData else {
+            let problem = "The saved Library changed during review. The newer file is preserved and editing is paused. Choose Review again to reload it and reset your choices, or reopen Workbench."
+            holdWrites(problem); importError = problem
+            return false
+        }
         do {
-            guard review.baseline == resources, try store.currentData() == savedData else {
-                throw VoiceError.message("The saved library changed during review. Choose Review again to reload it and reset your choices.")
-            }
             let next = try review.applying(useIncoming: importChoices)
             let added = review.count(.new), updated = importChoices.count
             if next != resources { savedData = try store.save(next); resources = next }

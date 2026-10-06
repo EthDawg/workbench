@@ -21,13 +21,13 @@ session or operation invalidates a held capture click. Selection never changes a
 shortcut default. Escape saves nothing and starts no microphone.
 
 The floating toolbar is the shared live control surface for Snap & Talk, Draw,
-Present and Persona Overlay, and it carries dictation, narration and reading
+Present and Persona Overlay, and it carries dictation and narration
 too (#134 T4). Desktop pages own preparation and saved libraries. The compact
 menu-bar panel owns quick utilities, adjustments and shortcut editing. Dictate
-and Read start, stop, pause and resume here; their options stay in Workbench.
+starts and finishes here; its options stay in Workbench.
 
 **The mode follows you.** A mode, which the launcher calls the tool, is one
-capability or named workflow: Dictate, Read, Snap, Snap & Talk, Draw, Present or
+capability or named workflow: Dictate, Snap, Snap & Talk, Draw, Present or
 Persona. Starting anything from any door (a key, a panel row, Home, an app menu,
 the toolbar itself) makes it the mode; ending leaves the mode where it was.
 Before anything has ever been started the seed is Dictate, because it works in
@@ -35,7 +35,7 @@ every app with only the microphone. The choice persists across relaunch under
 `workbench.toolbarMode.v1`. Timer is a panel row and part of Draw, not a mode; its chooser row offers the next step, Show or Hide timer and Stop timer.
 
 **At rest the toolbar is a compact mark** (#134), whatever is running: idle,
-recording, playing, paused, processing, drawing, presenting, a persona, a timer,
+recording, paused, processing, drawing, presenting, a persona, a timer,
 a Snap & Talk session, or a result waiting for the person. Its ordinary rest is a
 quiet 48 × 8 handle in a fixed 48 × 28 target. Left and right edges turn this into
 an 8 × 48 handle in a 28 × 48 target. It carries no selected-tool or
@@ -43,7 +43,7 @@ live-work icon: at this size the symbol adds little useful information, and one
 symbol cannot describe concurrent work. Hover or click reveals the remembered
 tool and its action. Only recording adds a red dot and voice trace in a 48 × 20 capsule inside the same target. All other collapsed states stay icon-free (see Status at rest). The resting window is exactly that target, and everything outside it passes clicks through. Work never
 holds the row open, and a new failure or result never opens it either. Keep open
-is the one explicit way to keep it up. Dictation, narration, reading and their
+is the one explicit way to keep it up. Dictation, narration and their
 results keep the toolbar up even while Hide toolbar is on, at rest as the mark.
 
 Hover, after the 120 ms dwell, or a click reveals the row. A click on the mark
@@ -53,24 +53,21 @@ receives its mouse-up. A double-click that begins on the mark cannot start or
 stop work either. A right-click opens toolbar settings, and a drag
 moves the toolbar (see Placement).
 
-**Recording, reading and their results in the same host** (#134 T4). The same
-window, anchor and tiers carry dictation, narration and reading from start to
+**Recording and its results in the same host** (#134 T4). The same
+window, anchor and tiers carry dictation and narration from start to
 result; nothing swaps the floating window to a panel of its own. Live work is
-the row: its next action is Stop, Stop narration, Pause or Resume reading, Cancel
+the row: its next action is Stop, Stop narration, Cancel
 request or Processing…, a separate slot carries the capture signal, and the chooser lists
 what the work can do besides, under its capability's name: Cancel and Copy
-now for a dictation, Cancel for a narration, Stop reading. Dictated words that
+now for a dictation, Cancel for a narration. Dictated words that
 wait for drawing to end lead with Stop drawing, which delivers them, with Copy now
-in the Dictate chooser row (#211). While drawing or a prompt insertion holds the next action, the chooser's
-Read row also has reading's own next action: Cancel while it prepares, Pause
-reading or Resume reading. A recording's elapsed
+in the Dictate chooser row (#211). A recording's elapsed
 time is the Stop's tooltip and VoiceOver help, never its label, whose width would
 tick; in the last ten seconds before the 5-minute limit, the accessible status names the limit without adding an icon. The Dictate page keeps the recording's
 details.
 
 A technical failure keeps its recovery view: dictation has its reason, Retry,
-Record again or Open Workbench and Dismiss; a stopped reading has its reason,
-Retry and Dismiss. These commands and their workspace doors also stay in the chooser. Dismiss keeps Read’s text and voice; Listen can render it again, while Retry belongs only to an existing failure. Saved failures do not put
+Record again or Open Workbench and Dismiss. These commands and their workspace doors also stay in the chooser. Retry belongs only to an existing failure. Saved failures do not put
 warnings on the compact pill, the recording trace or Switch tool. A failure
 waiting before input-consuming work began cannot replace that work's revealed
 controls. Revealing, collapsing or choosing a tool does not acknowledge or retry
@@ -121,8 +118,7 @@ commands, current Persona labels, counts and the exact Stop, Pause or Resume.
 
 The next action is the label for where you are in the journey, from one pure
 function of what is live (`ToolbarNextAction`) with a fixed priority: what is
-consuming your input now (inserting, dictating, capturing, narrating, drawing,
-reading) whatever the mode, then the selected mode's own step or ending
+consuming your input now (inserting, dictating, capturing, narrating, drawing) whatever the mode, then the selected mode's own step or ending
 (`Capture next · 3`, `Stop & transcribe`, `End presentation`, `Hide personas`),
 then its start verb. Another mode's ending never claims the label: presenting
 while Draw is the mode reads `Draw`, the accessible value names live work, and
@@ -159,7 +155,7 @@ hover response and keyboard behaviour. A click, Space, Return or Down opens the
 chooser. Its accessible value names the current tool and concurrent work.
 Recording has its own signal beside the launcher.
 
-**The chooser** has seven fixed tool headers, in order: Dictate, Read, Snap,
+**The chooser** has six fixed tool headers, in order: Dictate, Snap,
 Snap & Talk, Draw, Present and Persona. At standard text it is 320 points wide with
 36-point headers. Each has its symbol, exact name, current-tool checkmark, labelled
 running dot and assigned key. Choosing a header changes only the remembered tool;
@@ -170,12 +166,11 @@ existing workspace; hovering another header never retargets that button.
 
 Each live or recoverable tool has its own visible, named commands immediately
 under its header. Dictate keeps Stop/Cancel, Copy now, saved-recording review and
-recovery, and unresolved-delivery review/copy/dismiss. Read keeps Cancel, Pause,
-Resume, Stop and its applicable failure recovery. Snap reviews the retained draft;
+recovery, and unresolved-delivery review/copy/dismiss. Snap reviews the retained draft;
 Snap & Talk finishes/cancels the current narration and reviews its current session.
 Draw stops drawing. Present ends the live scene or stops an insertion. Persona
 hides, resumes or ends the live copy/set. Independent Meetings and Timer appear
-below the seven tools only while they have work or recovery; they never become
+below the six tools only while they have work or recovery; they never become
 additional modes. Each has its own transport and real workspace route where one
 exists. Commands recheck the exact operation identity on release. Replacing work,
 or changing a command and changing it back while held, invalidates the old press;
@@ -195,8 +190,8 @@ adjustments stay in their workspace and capability’s menu-bar Options. Present
 live controls bind the running snapshot even while another saved scene is selected.
 They include window/full-screen, source and connection recovery, device proportions
 and applicable motion controls. Apple-app handoffs remain in the connection guide
-and release capture before opening the chosen app. Saved Prompts… and Switch to
-Browser Tab… have explicit Present workspace controls. Persona’s workspace has
+and release capture before opening the chosen app. Saved Prompts… belongs to
+Library; browser switching remains paused. Persona’s workspace has
 live-copy Appearance, size, position, lock, replace/update, visibility, add/remove,
 front/back and explicit layout saving; saved library selection cannot silently
 replace the shown artwork. Read-only preparation never disables a live control.
@@ -221,7 +216,7 @@ combinations are omitted; the toolbar has no shortcut editor. Keep open is an
 explicit persistent preference.
 
 **Contextual controls.** Snap & Talk has Review while its session is open;
-Draw has Tools; Present has Prompts, plus View while a presentation is live. View
+Draw has Tools; Present has View while a presentation is live. View
 contains only the current presentation’s applicable source, motion and window
 controls. End stays the primary/chooser action, and Apple handoffs stay in the
 connection guide. Persona always has Choose Persona, because the live camera is
@@ -234,9 +229,10 @@ has Choose Set instead. Next Persona or Next set appears when more than one froz
 choice exists and advances once without opening a menu; it never cycles into the
 camera. The picker uses frozen public labels and every choice checks again that
 Persona is as it was drawn. One-item sets have no inert Next. Failure preserves the
-shown artwork and exposes its notice through the chooser and picker. Dictate, Read and Snap have no settings accessory.
-Review and Next act directly; Tools, Prompts, View and Persona selection open their
-focused menus/picker. Space, Return, Enter or Down open admitted menus. The full
+shown artwork and exposes its notice through the chooser and picker. Dictate and Snap have no settings accessory.
+Review and Next act directly; Tools, View and Persona selection open their
+focused menus/picker. Space, Return, Enter or Down open admitted menus once per
+press; repeat events cannot reopen a dismissed menu. The full
 contextual group hides together when it cannot fit; the chooser’s workspace door
 and menu-bar Options retain every adjustment.
 
@@ -251,7 +247,7 @@ other way, in that order at every dock, the mirrored right-hand row included; a
 control that is absent or disabled is passed over. The row moves
 the focus itself (`ToolbarKeyCycle`), so the cycle is the same whether Full
 Keyboard Access is on or off: AppKit's own key-view loop leaves buttons out while
-it is off (#223). The chooser, the Prompts picker and Position… take the keyboard
+it is off (#223). The chooser and Position… take the keyboard
 without making Workbench the active app, and each keeps the field that was in
 front before it took the keyboard. A choice returns the keyboard to the launcher;
 the first Escape closes the picker and the second leaves keyboard interaction. A
@@ -284,33 +280,21 @@ carries on: hiding never clears marks, ends a scene, hides persona artwork or st
 a timer, and each keeps its key and its menu-bar panel row. Window → Show floating
 toolbar, Window → Focus floating toolbar and Settings bring the tools back with the
 current mode and live state. A prompt insertion keeps the tools until it ends,
-because its Stop is there. Recording, processing, narration and reading keep their
+because its Stop is there. Recording, processing and narration keep their
 own controls whatever the choice (`FloatingToolbarSurface.resolve`, checked by
 `--check-floating-toolbar`).
 
-Saved Prompts reads the existing Library. Favourite, Product and
-Persona groupings do not create another store. The Prompts accessory and Present’s
-Saved Prompts… open one picker: a search field, favourites and then
-every other prompt once, and one optional Product or Persona filter that narrows
-the list without a submenu. It is a transient panel of at most 420 points, kept
-16 points inside the display near either edge, above a bottom dock and below a
-top one. Long names wrap to two lines or truncate and keep their full accessible
-text. It takes keyboard focus without activating Workbench, holds the row open
-as a native menu does, and closes on Escape, a click outside, a second click on
-Prompts or a choice; ↑ ↓ and Return choose. A choice acts only after the picker
-has gone, as a menu item's action runs after tracking, and typing waits, for about
-a second at most, until the frozen app is in front with the frozen field focused.
-The picker's panel is sized from its content's `onGeometryChange` report, never
-from a background `GeometryReader` preference (#152).
-
-The original field, value and UTF-16 selection are captured before the picker
-opens. Supported fields receive confirmed literal chunks; other readable fields
-get one guarded paste labelled as such. Without Accessibility approval, or with
-no readable field, the action is Copy prompt: one copy of the exact text and the
-Copied, Paste with ⌘V. receipt, with no paste or Accessibility write. The last
-delivery is one line naming its destination, with Details for the full reason.
-Escape, Stop, changed focus/selection/value and shortcut editing cancel
-insertion. No partial write is replayed and no submit key is sent.
+Library's Saved Prompts… opens the existing picker: search, favourites, all other
+prompts once, and an optional Product or Persona filter. It copies the complete
+prompt through Library's copy owner and reports clipboard failure beside the
+resource. Opening Library never captures an external field, requests Accessibility
+or inserts text. Cancel leaves the clipboard and saved prompt unchanged. The
+picker remains at most 420 points wide and inside the display, with complete
+accessible names for truncated rows, Escape/outside-click dismissal and arrow-key
+selection. Its panel still follows the content's `onGeometryChange` report (#152).
+The retained insertion owner requires an explicitly frozen valid target; Escape,
+Stop, changed focus/selection/value and shortcut editing cancel it. No partial
+write is replayed and no submit key is sent.
 
 ## Status at rest
 
@@ -331,7 +315,7 @@ recorder's level; in silence the bars rest as a row of dots and nothing moves on
 own. It retains its input response and its Reduce Motion (one still waveform that
 only brightens) and Increase Contrast behaviour. Expanded, it occupies a separate slot;
 Switch tool remains the same four-tile icon. Accessible status can describe live
-recording, playback, processing and paused work. Recovery commands stay with their
+recording, processing and paused work. Recovery commands stay with their
 owners and in the chooser; preserving a failed recording never decorates another tool.
 
 ## Placement
@@ -581,7 +565,7 @@ approximations. Visual acceptance still requires inspecting the images.
 
 The surface gallery (`LocalVoice --render-surfaces`) adds the host: it drives the
 production `CapturePanelController` offscreen for every mode at rest and revealed,
-then switches between Dictate and Present with the row open, a width change that
+then switches between Dictate and Draw with the row open, a width change from Draw's retained Tools accessory that
 reaches the host only through the row's own report, then shows Present at the
 right-hand dock, revealed and at rest, and the compact mark while a synthetic
 meeting records. It flags a window smaller than
@@ -596,9 +580,21 @@ panel can cause in a local run, is reported and its sizes are not compared; the
 gallery's other flags are reported without failing it too. A Mac with no display
 renders no host states and has nothing to fail.
 
+On 7 October 2026, source `7d80fb20c7f26fc7b76b4cd56b447167de9055dd`
+corrected the stale Present width-growth fixture after A1 removed its Prompts
+accessory. The exact release build passed, and the full synthetic surface gallery
+passed 298 renders, 147 entries and zero flags. Dictate → Draw → Dictate rendered
+96 → 136 → 96 pt in both themes; the launcher reference and direction stayed
+fixed at both free positions. A temporary negative control suppressing Draw's
+Tools failed all four growth checks and four existing accessory-focus checks,
+then production source and the exact positive executable were restored. Local
+evidence is under `.build/a1-toolbar-fixture-gallery` and
+`.build/a1-toolbar-negative-gallery`; this is offscreen evidence, not installed
+pointer, keyboard or VoiceOver acceptance. No production toolbar behavior changed.
+
 The gallery also releases the same host at free positions on each half of the
 display and near an edge, and reads the placement reference after an update, a reveal
-and a collapse, while choosing Present widens the row (released just left of the
+and a collapse, while choosing Draw widens the row and returning to Dictate shrinks it (released just left of the
 middle and on the right half), in a new host as after a relaunch, in new hosts
 reading each earlier build's save and a later move by one, at the right-hand dock,
 after Reset position, and at rest while a synthetic meeting records, where the
@@ -621,7 +617,7 @@ keyboard entry must keep the launcher row, whose Switch tool button takes focus;
 Escape must leave without discarding saved recovery. A copied cue must contain
 no buttons and vanish after its own lifetime. Repeated hover after expiry must
 show tools, with no warning left behind. The same checks apply at side docks.
-Older technical failures remain available while a reading or recording keeps
+Older technical failures remain available while a recording keeps
 its own controls. A new failure still offers its owner's recovery actions.
 
 The gallery opens the Saved Prompts picker's production panel,

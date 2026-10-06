@@ -26,17 +26,22 @@ enum SubscriptionProvider: String, Codable, CaseIterable, Identifiable {
 /// version and `detail` is a short sentence for the host's status row. No
 /// account identifier, plan holder, organisation or token material is carried
 /// here, persisted or logged.
+enum SubscriptionConnectionProblem {
+    case missing, unsupported, signIn, unverified, restricted
+}
+
 struct SubscriptionConnection: Identifiable {
     let provider: SubscriptionProvider
     let executable: URL?
     let version: String
     let ready: Bool
     let detail: String
+    var problem: SubscriptionConnectionProblem? = nil
 
     var id: String { provider.rawValue }
 
-    static func unavailable(_ provider: SubscriptionProvider, _ detail: String, executable: URL? = nil, version: String = "") -> SubscriptionConnection {
-        SubscriptionConnection(provider: provider, executable: executable, version: version, ready: false, detail: detail)
+    static func unavailable(_ provider: SubscriptionProvider, _ detail: String, executable: URL? = nil, version: String = "", problem: SubscriptionConnectionProblem = .unverified) -> SubscriptionConnection {
+        SubscriptionConnection(provider: provider, executable: executable, version: version, ready: false, detail: detail, problem: problem)
     }
 }
 
@@ -606,14 +611,30 @@ enum SubscriptionClaudeInput {
             content.append(["type": "image", "source": ["type": "base64",
                 "media_type": mediaTypes[image.pathExtension.lowercased()]!, "data": bytes.base64EncodedString()]])
         }
+        let input = try envelope(prompt: prompt, content: content)
+        guard input.count <= SubscriptionCLILimits.claudeMaximumRequestBytes else {
+            throw SubscriptionCLIError.unavailable("The encoded images and request exceed the Claude Code handoff's size limit. Select fewer images and try again.")
+        }
+        return input
+    }
+
+    /// Exact size for the PNG images in a reviewed Workbench selection, without
+    /// reading files or allocating their base64 copies while the review renders.
+    static func projectedBytes(prompt: String, imageBytes: [Int]) throws -> Int {
+        guard !imageBytes.isEmpty else { return prompt.utf8.count }
+        let content: [[String: Any]] = imageBytes.map { _ in
+            ["type": "image", "source": ["type": "base64", "media_type": "image/png", "data": ""]]
+        }
+        return try envelope(prompt: prompt, content: content).count + imageBytes.reduce(0) { $0 + 4 * (($1 + 2) / 3) }
+    }
+
+    private static func envelope(prompt: String, content images: [[String: Any]]) throws -> Data {
+        var content = images
         content.append(["type": "text", "text": prompt])
         let message: [String: Any] = ["type": "user", "message": ["role": "user", "content": content],
                                       "parent_tool_use_id": NSNull()]
         var input = try JSONSerialization.data(withJSONObject: message, options: [.sortedKeys, .withoutEscapingSlashes])
         input.append(0x0A)
-        guard input.count <= SubscriptionCLILimits.claudeMaximumRequestBytes else {
-            throw SubscriptionCLIError.unavailable("The encoded images and request exceed the Claude Code handoff's size limit. Select fewer images and try again.")
-        }
         return input
     }
 
@@ -1257,19 +1278,37 @@ enum SubscriptionCLI {
     /// the CLI app; the host offers that separately.
     static func discover(_ provider: SubscriptionProvider) async -> SubscriptionConnection {
         let home = URL(fileURLWithPath: NSHomeDirectory())
-        return await discover(provider,
-                              candidates: SubscriptionCLICandidates.urls(for: provider, home: home),
-                              probe: liveProbe(for: provider, home: home))
+        // Existence and successful execution are different facts. An installed
+        // candidate denied by the OS boundary must never look uninstalled.
+        let candidates = SubscriptionCLICandidates.urls(for: provider, home: home)
+            .filter(candidateMayExist)
+        if !candidates.isEmpty, !FileManager.default.isExecutableFile(atPath: SubscriptionSandbox.executable.path) {
+            return .unavailable(provider, "The required macOS boundary is unavailable. Connected tasks cannot run; Copy instructions is available.",
+                executable: candidates.first, problem: .restricted)
+        }
+        return await discover(provider, candidates: candidates, probe: liveProbe(for: provider, home: home))
+    }
+
+    /// Only a definite absent path is "missing". A dangling wrapper or a path
+    /// behind a denied directory stays a candidate whose status is unverified.
+    static func candidateMayExist(_ url: URL) -> Bool {
+        var info = stat()
+        if lstat(url.path, &info) == 0 { return true }
+        return errno != ENOENT && errno != ENOTDIR
     }
 
     static func discover(_ provider: SubscriptionProvider, candidates: [URL], probe: ProbeRunner) async -> SubscriptionConnection {
         var outdated: (URL, String)?
+        var unverified: URL?
         for candidate in candidates {
             if Task.isCancelled {
                 return .unavailable(provider, "Checking for \(provider.title) was cancelled.")
             }
             guard let result = await probe(candidate, versionArguments()), result.status == 0,
-                  let version = SubscriptionVersionCheck.parse(result.standardOutput, provider: provider) else { continue }
+                  let version = SubscriptionVersionCheck.parse(result.standardOutput, provider: provider) else {
+                if unverified == nil { unverified = candidate }
+                continue
+            }
             guard SubscriptionVersionCheck.isSupported(version, provider: provider) else {
                 // A newer copy may still be ahead in the candidate list.
                 if outdated == nil { outdated = (candidate, version) }
@@ -1284,17 +1323,23 @@ enum SubscriptionCLI {
                     ? "\(provider.title) \(version) is signed in with a \(summary) subscription."
                     : "\(provider.title) \(version) is signed in with \(summary)."
                 return SubscriptionConnection(provider: provider, executable: candidate, version: version, ready: true, detail: detail)
-            case .needsSignIn(let message), .unreadable(let message):
-                return .unavailable(provider, message, executable: candidate, version: version)
+            case .needsSignIn(let message):
+                return .unavailable(provider, message, executable: candidate, version: version, problem: .signIn)
+            case .unreadable(let message):
+                return .unavailable(provider, message, executable: candidate, version: version, problem: .unverified)
             }
         }
         if let outdated {
             let required = SubscriptionVersionCheck.minimum(for: provider).map(String.init).joined(separator: ".")
             return .unavailable(provider,
                                 "\(provider.title) \(outdated.1) is installed, but this handoff needs \(required) or newer.",
-                                executable: outdated.0, version: outdated.1)
+                                executable: outdated.0, version: outdated.1, problem: .unsupported)
         }
-        return .unavailable(provider, "No installed \(provider.title) command line was found. Install and sign in to it yourself, then check again.")
+        if let unverified {
+            return .unavailable(provider, "Workbench could not verify the \(provider.title) command line at a known installation location. It may be restricted, unreadable or incomplete. Check the installation and macOS access, then check again; Copy instructions still works.",
+                executable: unverified, problem: .unverified)
+        }
+        return .unavailable(provider, "No installed \(provider.title) command line was found. Install and sign in to it yourself, then check again.", problem: .missing)
     }
 
     /// Discovery uses the same OS boundary as a run, with a disposable write

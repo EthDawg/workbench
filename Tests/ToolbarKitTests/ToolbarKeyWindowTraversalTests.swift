@@ -33,7 +33,7 @@ final class ToolbarKeyWindowTraversalTests: XCTestCase {
         func buttons(_ view: NSView) -> [NSButton] { (view as? NSButton).map { [$0] } ?? view.subviews.flatMap(buttons) }
         var runs: [String: [String]] = [:]
         for (name, state) in [("Draw with Tools", ToolbarViewState(name: "draw", tier: .revealed, mode: .draw, accessory: .tools)),
-                              ("Read, no accessory", ToolbarViewState(name: "read", tier: .revealed, mode: .read)),
+                              ("Snap, no accessory", ToolbarViewState(name: "snap", tier: .revealed, mode: .snap)),
                               ("Draw at the right-hand dock", ToolbarViewState(name: "draw", tier: .revealed, anchor: .right, mode: .draw, accessory: .tools))] {
             let view = NSHostingView(rootView: ToolbarRow(state: state))
             let panel = KeyPanel(contentRect: NSRect(origin: NSPoint(x: 240, y: 240), size: view.fittingSize),

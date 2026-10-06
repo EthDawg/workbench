@@ -30,7 +30,8 @@ ditto "$SPARKLE" "$APP_DIR/Contents/Frameworks/Sparkle.framework"
 cp "$PROJECT_DIR/.build/artifacts/sparkle/Sparkle/LICENSE" "$APP_DIR/Contents/Resources/Sparkle-LICENSE.txt"
 cp "$BIN_DIR/LocalVoice" "$APP_DIR/Contents/MacOS/Workbench"
 cp "$BIN_DIR/WorkbenchBrowserHost" "$APP_DIR/Contents/MacOS/WorkbenchBrowserHost"
-ditto "$PROJECT_DIR/BrowserExtension" "$APP_DIR/Contents/Resources/BrowserExtension"
+# Browser integration is paused. Keep the inert host for existing manifest paths;
+# do not ship extension installation/store material in new Mac packages.
 for bundle in "$BIN_DIR"/*.bundle; do
     [ -e "$bundle" ] || continue
     ditto "$bundle" "$APP_DIR/Contents/Resources/$(basename "$bundle")"

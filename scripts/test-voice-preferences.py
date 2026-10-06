@@ -15,6 +15,7 @@ from swift_extract import SwiftFile
 
 PROJECT = Path(__file__).resolve().parents[1]
 sources = [
+    SwiftFile(PROJECT / "Sources/PresenterKit/PresenterProtocol.swift").extract(["BrowserIntegration"]),
     SwiftFile(PROJECT / "Sources/LocalVoice/VoicePreferences.swift").extract([
         "CaptureMode", "DeliveryMode", "FirstDictationGuide", "VoiceShortcut", "VoicePreferences"]),
     SwiftFile(PROJECT / "Sources/LocalVoice/DictationCleanup.swift").extract(["CleanupStyle"]),

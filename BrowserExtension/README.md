@@ -1,20 +1,12 @@
 # Workbench Preview Chrome adapter
 
+> **Paused, including Mac runtime admission — 6 October 2026.** Retained source and compatibility tests only. Current Workbench refuses browser connections even when an older preference enabled them; old extensions may retry but commands are not queued or replayed. Mac packages no longer include this extension or its setup material. Existing Chrome profiles/extensions and Library URLs/bindings are preserved. Use Library’s Copy link or Open in default browser. Resumption requires an explicit decision under [Foundation G](../docs/mac-foundation.md#5-remove-dormant-scope-without-losing-work).
+
 An unpacked Manifest V3 adapter for the Workbench Mac app. Saved resources in Workbench owns the destinations; each Chrome profile explicitly pairs under a name you choose. This adapter stores no passwords and does not sign in, change credentials, read page content, or establish that a persona is authenticated.
 
-## Try the development build
+## Historical setup
 
-1. Install the matching Workbench development app and enable **Chrome connection** in **Saved resources**.
-2. In the intended Chrome profile, open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and select this `BrowserExtension` folder. Repeat for each profile you want to pair.
-3. Pin Workbench, open its popup, type a profile name such as **Manager profile**, and select **Connect profile**.
-4. Open the intended demo tab. In Workbench’s popup, expand **Save or update this tab**, type an audience-safe label such as **Manager**, and review the exact address. For a new site, choose **Allow this site**; Chrome closes the popup for its permission prompt. Reopen Workbench and finish **Save destination**. Your temporary draft survives, and no save runs after a denied prompt. Already-allowed sites save directly.
-5. Choose a destination from any connected profile or Workbench’s Saved resources. Workbench routes it to its paired profile. Keep that profile open and connected.
-
-When a tenant’s subdomain changes, open its new tab in the intended profile, select its existing destination under **Save or update this tab**, review the old and new addresses, and select **Update to this tab**. The existing destination ID is retained. Another profile cannot update it.
-
-The stable unpacked ID is `ajafaiojgpdgmeblldllnhhfnafiiieo`. The existing Chrome Web Store draft has the separate assigned ID `alckfplchkdcjdlhlnhanonkelljnioj`. Native host `com.ethdawg.workbench.browser` allows exactly those two extension origins, both in its registration and when accepting a connection. The manifest's public key preserves the unpacked identity; it is not a signing secret or evidence of a published Web Store package. Updating the companion does not migrate extension storage or remove existing unpacked connections.
-
-After installing a companion with support for both identities, existing users should choose **Saved resources → Chrome destinations → Repair Chrome connection** to refresh the native host registration before connecting a store-installed extension. This preserves saved destinations and profile bindings. Each extension installation owns its own pairing and storage; the store build does not automatically inherit the unpacked installation's profile identity.
+The former development setup and its acceptance evidence remain in the [historical presenter record](../docs/presenter-direction.md#historical-use-before-the-pause). Those controls are no longer available in current Workbench. Do not install or repair the extension to access a saved URL.
 
 ## What activation means
 
@@ -38,12 +30,12 @@ Run `node --test BrowserExtension/tests/*.test.js` from the repository root. No 
 
 These tests do not establish live Chrome/native integration. Dogfood the matching native host with synthetic profiles and pages before distribution, including two profiles, browser restart, closed tabs, duplicate URLs, minimized windows, permission refusal and a tenant subdomain update.
 
-## Prepare the Chrome Web Store package
+## Retained package compatibility
 
-Run `python3 scripts/package-chrome.py` from the repository root. The reproducible archive is `dist/WorkbenchPreview-Chrome-0.1.1.zip`; the manifest sits at ZIP root. The ZIP omits the development-only `key` so an upload to the existing store item uses that item’s signing identity. The source manifest retains its key and stable unpacked ID. The script validates manifest capabilities, local asset references, exact icon dimensions and ZIP readback. Its fixed runtime allowlist excludes tests, development metadata, source artwork, listing copy and private or unrecognised files. `--check` validates without writing, and `--output` selects another ZIP destination.
+`scripts/package-chrome.py --check` validates the retained extension source without creating a distribution. The package script and allowlist remain for compatibility checks; no Chrome release or upload is part of the active Mac workflow.
 
-Run `python3 BrowserExtension/tests/package_test.py` for the packaging regressions; they also run in the ordinary `scripts/test.sh` suite. CI builds the allowlisted ZIP and retains it as the `workbench-chrome-preview` artifact. Store copy, reviewer steps, permissions reasons and remaining publication requirements live in [store/listing.md](store/listing.md). [privacy.html](privacy.html) is the in-product privacy page; [the public-policy draft](store/privacy-policy-draft.md) must also be published on the companion website before submission.
+Run `python3 BrowserExtension/tests/package_test.py` for the retained packaging regressions; they also run in `scripts/test.sh`. CI does not distribute a Chrome ZIP. Store copy and reviewer steps in [store/listing.md](store/listing.md) are historical, as is [the policy publication draft](store/privacy-policy-draft.md).
 
-The icons reuse the repository’s canonical `scripts/icon.swift` artwork. To regenerate them on macOS, first run that script into a temporary directory, then run `swift BrowserExtension/store/render-assets.swift <temporary-directory>/icon_512x512@2x.png BrowserExtension`. This creates exact 16/32/48/128px PNGs and the separate 440×280 promotional tile. The 128px icon keeps transparent store padding. The tile is branding artwork; the store still needs a screenshot of the actual extension.
+The retained icons derive from the repository’s canonical `scripts/icon.swift` artwork. Store assets and former submission requirements remain historical reference in `store/`; they are not active packaging work.
 
-The store name is **Workbench Preview**, version **0.1.1**. Keep the existing draft item `alckfplchkdcjdlhlnhanonkelljnioj` and unpacked identity `ajafaiojgpdgmeblldllnhhfnafiiieo`; do not create a replacement store item or change the manifest key to repair native connectivity. Verify store-installed pairing against the matching companion before distribution. Packaging and the two-origin native allowlist do not establish store approval, publication or live store-installed acceptance.
+The retained store name is **Workbench Preview**, version **0.1.1**, with item `alckfplchkdcjdlhlnhanonkelljnioj` and unpacked identity `ajafaiojgpdgmeblldllnhhfnafiiieo`. Preserve these identities. Their presence in source establishes neither current availability nor store approval, publication or installed acceptance.

@@ -21,7 +21,7 @@
       "--check-input"
     ],
     [
-      "--self-test"
+      "--check-read-retirement"
     ],
     [
       "--check-presenter"
@@ -35,10 +35,182 @@
     [
       "--check-readback-pack",
       "--check-transcript-handoff"
-    ],
-    [
-      "--check-reading-service-native"
     ]
   ],
-  "component_archive": ".build/component/Workbench.zip"
+  "component_archive": ".build/component/Workbench.zip",
+  "acceptance": {
+    "schemaVersion": 1,
+    "claim": "foundation-candidate",
+    "journeys": [
+      {
+        "id": "D1",
+        "variant": "native",
+        "phase": "candidate"
+      },
+      {
+        "id": "M1",
+        "variant": "native",
+        "phase": "candidate"
+      },
+      {
+        "id": "M2",
+        "variant": "native",
+        "phase": "candidate"
+      },
+      {
+        "id": "H1",
+        "variant": "native",
+        "phase": "candidate"
+      },
+      {
+        "id": "S1",
+        "variant": "native",
+        "phase": "candidate"
+      },
+      {
+        "id": "ST1",
+        "variant": "native",
+        "phase": "candidate"
+      },
+      {
+        "id": "P2",
+        "variant": "native",
+        "phase": "candidate"
+      },
+      {
+        "id": "R1",
+        "variant": "native",
+        "phase": "candidate"
+      },
+      {
+        "id": "U1",
+        "variant": "native",
+        "phase": "candidate"
+      },
+      {
+        "id": "I2",
+        "variant": "native",
+        "phase": "candidate"
+      },
+      {
+        "id": "Q1",
+        "variant": "native",
+        "phase": "candidate"
+      },
+      {
+        "id": "Q2",
+        "variant": "native",
+        "phase": "candidate"
+      },
+      {
+        "id": "Q3",
+        "variant": "native",
+        "phase": "candidate"
+      },
+      {
+        "id": "L1",
+        "variant": "native",
+        "phase": "candidate"
+      },
+      {
+        "id": "L2",
+        "variant": "native",
+        "phase": "candidate"
+      },
+      {
+        "id": "L3",
+        "variant": "native",
+        "phase": "candidate"
+      },
+      {
+        "id": "L4",
+        "variant": "native",
+        "phase": "candidate"
+      },
+      {
+        "id": "X1",
+        "variant": "native",
+        "phase": "candidate"
+      },
+      {
+        "id": "X2",
+        "variant": "native",
+        "phase": "candidate"
+      },
+      {
+        "id": "H2",
+        "variant": "manual-codex",
+        "phase": "candidate"
+      },
+      {
+        "id": "H2",
+        "variant": "manual-claude",
+        "phase": "candidate"
+      },
+      {
+        "id": "H2",
+        "variant": "connected-codex",
+        "phase": "candidate"
+      },
+      {
+        "id": "H2",
+        "variant": "connected-claude",
+        "phase": "candidate"
+      },
+      {
+        "id": "P1",
+        "variant": "usb-teams",
+        "phase": "candidate"
+      },
+      {
+        "id": "P1",
+        "variant": "usb-zoom",
+        "phase": "candidate"
+      },
+      {
+        "id": "U2",
+        "variant": "signed-old-to-new",
+        "phase": "candidate"
+      },
+      {
+        "id": "I1",
+        "variant": "public-first-install",
+        "phase": "delivery"
+      },
+      {
+        "id": "U2",
+        "variant": "public-feed-update",
+        "phase": "delivery"
+      },
+      {
+        "id": "X3",
+        "variant": "native",
+        "phase": "candidate"
+      }
+    ],
+    "storageFormats": [
+      "Preferences",
+      "Library",
+      "Packs",
+      "Snap & Talk",
+      "Meetings",
+      "History",
+      "Present and Persona"
+    ],
+    "impact": {
+      "packages": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E",
+        "F",
+        "G",
+        "H",
+        "I",
+        "J"
+      ],
+      "reason": "Candidate for the decided Mac foundation, including Library L1-L4. Public delivery remains a later observation."
+    }
+  }
 }

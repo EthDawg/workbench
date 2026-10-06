@@ -5,6 +5,7 @@ import AVFoundation
 import Combine
 import StageKit
 import ToolbarCore
+import PresenterKit
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
@@ -31,7 +32,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     var shortcutsSuspended = false
     var navigationObserver: NSObjectProtocol?
     var receiptObservations = Set<AnyCancellable>()
-    var readSelectionService: ReadSelectionService!
     private var receiptStatus: String?
     private var registeredVoiceShortcutConflicts: [String: String] = [:]
     private var terminating = false
@@ -103,15 +103,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             guard let model else { throw VoiceError.message("The transcript library is unavailable.") }
             try model.retainMeetingTranscript(capture, purpose: purpose)
         }
-        model.meetings.mayStart = { [weak self] in
-            guard let self, !self.terminating else { return "Workbench is closing." }
-            guard self.model.ready else { return "Prepare your speech engine in Settings › Models first." }
-            return self.model.phase == .idle && !self.model.rendering && !self.readback.blocksDictation && !self.shortcutsSuspended
-                ? nil : "Finish Dictate, reading or Snap & Talk before starting a meeting."
+        model.meetings.loadSavedTranscript = { [weak model] id in
+            guard let model else { throw VoiceError.message("The transcript library is unavailable.") }
+            return try model.savedMeetingTranscript(id)
+        }
+        model.meetings.hostAdmission = { [weak self] in
+            guard let self else { return MeetingHostAdmission(closing: true) }
+            return MeetingHostAdmission(recognition: self.model.recognition,
+                captureProblem: self.model.phase == .idle && !self.readback.blocksDictation && !self.shortcutsSuspended
+                    ? nil : .busy("Finish Dictate or Snap & Talk before starting a meeting."), closing: self.terminating)
         }
         model.meetings.mayPlayRecording = { [weak self] in
             guard let self, !self.terminating else { return false }
-            return self.model.phase == .idle && !self.model.rendering && !self.model.playing
+            return self.model.phase == .idle
                 && !self.model.meetings.isBusy && !self.readback.blocksDictation
         }
         model.meetings.onStateChange = { [weak self] in self?.updateRecordingUI() }
@@ -128,7 +132,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         stage.mayBeginInteraction = { [weak self] in
             guard let self else { return false }
-            return self.model.phase == .idle && !self.model.rendering && !self.shortcutsSuspended && !self.readback.isRecording && !self.readback.isCapturing
+            return self.model.phase == .idle && !self.shortcutsSuspended && !self.readback.isRecording && !self.readback.isCapturing
         }
         stage.mayBeginDrawing = { [weak self] in
             guard let self else { return false }
@@ -168,8 +172,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             guard let self else { return "Workbench is unavailable." }
             if self.shortcutsSuspended { return "Finish changing the shortcut before starting Snap & Talk." }
             if self.snap.isCapturing { return "Finish the current Snap before starting Snap & Talk." }
-            return self.model.phase == .idle && !self.model.rendering && !self.model.meetings.isBusy
-                ? nil : "Finish the current dictation, reading or meeting before starting Snap & Talk narration."
+            return self.model.phase == .idle && !self.model.meetings.isBusy
+                ? nil : "Finish the current dictation or meeting before starting Snap & Talk narration."
         }
         readback.onEditShortcut = { [weak self] in self?.navigate("shortcuts") }
         readback.onNarrationNotHeard = { [weak self] in self?.model.showNarrationCue() }
@@ -226,19 +230,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             guard let self else { return false }
             return self.model.phase == .idle && !self.stage.isDrawing && !self.shortcutsSuspended && !self.readback.isRecording && !self.readback.isCapturing
         }
-        presenterPanel = PresenterPanelController(model: model.presenter, setup: { [weak self] in self?.navigate("library") })
-        model.onShowPresenter = { [weak self] in self?.showPresenter() }
-        model.presenter.mayActivate = { [weak self] in
-            guard let self else { return false }
-            return self.model.phase == .idle && !self.shortcutsSuspended && !self.readback.isRecording && !self.readback.isCapturing
-        }
-        model.library.switchBrowser = { [weak self] id in
-            self?.model.presenter.activate(id) { [weak self] reply in
-                if reply.ok != true { self?.showPresenter() }
+        if BrowserIntegration.isAvailable {
+            presenterPanel = PresenterPanelController(model: model.presenter, setup: { [weak self] in self?.navigate("library") })
+            model.onShowPresenter = { [weak self] in self?.showPresenter() }
+            model.presenter.mayActivate = { [weak self] in
+                guard let self else { return false }
+                return self.model.phase == .idle && !self.shortcutsSuspended && !self.readback.isRecording && !self.readback.isCapturing
             }
-        }
-        model.presenter.onSwitch = { [weak self] in
-            self?.stage.escape(); self?.presenterPanel.hide(); self?.closeControls(); self?.window.orderOut(nil)
+            model.library.switchBrowser = { [weak self] id in
+                self?.model.presenter.activate(id) { [weak self] reply in
+                    if reply.ok != true { self?.showPresenter() }
+                }
+            }
+            model.presenter.onSwitch = { [weak self] in
+                self?.stage.escape(); self?.presenterPanel.hide(); self?.closeControls(); self?.window.orderOut(nil)
+            }
         }
         popover = NSPopover(); popover.behavior = .transient; popover.animates = false; popover.delegate = self
         // These are the panel's doors: each starts its capability. Ending,
@@ -286,21 +292,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         model.onResetPanel = { [weak self] in self?.capturePanel.position(reset: true) }
         hotkeys.onKey = { [weak self] id, down, time in
-            guard let self else { return }
+            guard let self, VoicePreferences.shortcutIDs.contains(id) else { return }
             if id == 1 { self.model.shortcutChanged(down: down, at: time) }
             else if down, id == 3 { self.model.showLibrary() }
-            else if down, id == 4 { self.showPresenter() }
-            else if down, id == 6 {
-                if self.model.rendering { self.model.cancelReading() }
-                else if self.model.playing || self.model.paused { self.model.listen() }
-                else { self.navigate("speak") }
-            }
             else if down, id == 7 {
                 if self.stage.isPresenting { self.stage.endDeviceScene() }
                 else { self.stage.presentSelectedScene() }
             }
             else if down, id == 8 { self.toolbarSnapCapture() }
             else if down, id == 5 {
+                if self.readback.isRecording { self.readback.stopNarration(); return }
                 self.readback.refreshPermissionState()
                 if self.readback.sessionURL == nil {
                     self.readback.notice = "Create or open a Snap & Talk session before using the capture shortcut."
@@ -312,7 +313,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                     self.navigate("readback")
                 } else { Task { await self.readback.toggleCapture() } }
             }
-            else if down { self.toggleControls() }
+            else if down, id == 2 { self.toggleControls() }
         }
         readback.onStateChange = { [weak self] in
             guard let self else { return }
@@ -327,7 +328,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         WorkbenchUpdates.shared.activity = { [weak self] in
             guard let self else { return WorkbenchUpdateActivity(interaction: true) }
             return WorkbenchUpdateActivity(voice: self.model.phase != .idle || self.model.preparing,
-                reading: self.model.rendering || self.model.playing || self.model.paused || self.model.promptInsertion.running,
+                insertion: self.model.promptInsertion.running,
                 capture: self.readback.blocksDictation || self.snap.isBusy || self.stage.isTakingScreenshot || self.model.meetings.isBusy || self.model.handoffJobs.isBusy,
                 presentation: self.stage.isPresenting || self.stage.hasActivePersona, drawing: self.stage.isDrawing,
                 timer: self.stage.hasActiveTimer,
@@ -336,10 +337,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         WorkbenchUpdates.shared.showUpdate = { [weak self] in self?.showWindow() }
         WorkbenchUpdates.shared.start()
         setupMenus()
-        readSelectionService = ReadSelectionService { [weak self] selection in
-            self?.model.receiveReadingSelection(selection)
-        }
-        NSApp.servicesProvider = readSelectionService
         registerShortcuts(); showWindow()
         meetingOffer = MeetingOfferPanelController(model: model.meetings) { [weak self] in self?.navigate("meeting") }
         model.clipboardReceipt.$receipt.receive(on: RunLoop.main)
@@ -359,10 +356,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         stage.objectWillChange.receive(on: RunLoop.main).sink { [weak self] _ in
             self?.updateRecordingUI()
         }.store(in: &receiptObservations)
-        model.$rendering.combineLatest(model.$playing, model.$paused).receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.updateRecordingUI() }.store(in: &receiptObservations)
         model.promptInsertion.objectWillChange.receive(on: RunLoop.main).sink { [weak self] _ in
             self?.updateRecordingUI()
+        }.store(in: &receiptObservations)
+        // Deliver after published assignments complete; a synchronous willChange
+        // read would project the previous readiness or narration busy state.
+        model.$recognition.receive(on: RunLoop.main).sink { [weak self] _ in
+            self?.model.meetings.refreshAdmission()
+        }.store(in: &receiptObservations)
+        readback.objectWillChange.receive(on: RunLoop.main).sink { [weak self] _ in
+            self?.model.meetings.refreshAdmission()
         }.store(in: &receiptObservations)
     }
     func registerShortcuts() {
@@ -448,11 +451,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         menu.addItem(withTitle: Self.floatingToolbarTitle(visible: model.floatingToolbarVisible), action: #selector(toggleFloatingToolbar), keyEquivalent: "")
         menu.addItem(withTitle: "Focus floating toolbar", action: #selector(focusFloatingToolbar), keyEquivalent: "")
         menu.addItem(withTitle: "Restore menu-bar icon", action: #selector(restoreMenuBarIcon), keyEquivalent: "")
-        menu.addItem(withTitle: "Switch to…", action: #selector(showPresenter), keyEquivalent: "")
         menu.addItem(.separator())
         // Every sidebar page, in the sidebar's order and by its name, so the Window menu's doors never
         // differ from the window's own list (#134).
-        menu.addItem(pageItem("dictate")); menu.addItem(pageItem("meeting", more: true)); menu.addItem(pageItem("speak"))
+        menu.addItem(pageItem("dictate")); menu.addItem(pageItem("meeting", more: true))
         menu.addItem(pageItem("snap")); menu.addItem(pageItem("readback")); menu.addItem(pageItem("annotate"))
         menu.addItem(pageItem("present")); menu.addItem(pageItem("personas"))
         menu.addItem(.separator())
@@ -584,6 +586,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         Task { await readback.captureNewSection(fromEditor: false, mode: mode) }
     }
     func updateRecordingUI() {
+        model.meetings.refreshAdmission()
         model.meetings.updateRecordingPlaybackAdmission()
         let receipt = model.clipboardReceipt.receipt
         let state: String
@@ -603,8 +606,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             else if stage.isPresenting { state = "Presenting" }
             else if stage.hasActivePersona { state = "Persona Overlays" }
             else if model.promptInsertion.running { state = "Inserting Prompt" }
-            else if model.playing || model.paused { state = model.paused ? "Reading Paused" : "Reading" }
-            else if model.rendering { state = "Preparing Reading" }
             else {
                 state = receipt?.isClipboardCurrent == true ? (receipt?.title ?? "Transcript copied") : "Quick controls"
             }
@@ -613,7 +614,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             ?? NSImage(systemSymbolName: "square.stack.3d.up", accessibilityDescription: "Workbench")
         // Keep the stack recognisable. A small dot marks activity without
         // turning the app into a clipboard or microphone icon.
-        let busy = model.phase != .idle || model.meetings.isBusy || model.handoffJobs.isBusy || model.rendering || model.playing || model.paused || readback.isRecording || readback.hasPendingTranscriptions || stage.isDrawing || stage.isPresenting || stage.hasActivePersona || model.promptInsertion.running
+        let busy = model.phase != .idle || model.meetings.isBusy || model.handoffJobs.isBusy || readback.isRecording || readback.hasPendingTranscriptions || stage.isDrawing || stage.isPresenting || stage.hasActivePersona || model.promptInsertion.running
         let statusIcon = busy ? NSImage(size: NSSize(width: 20, height: 18), flipped: false) { _ in
             icon?.draw(in: NSRect(x: 0, y: 1, width: 16, height: 16))
             NSColor.labelColor.setFill(); NSBezierPath(ovalIn: NSRect(x: 16, y: 0, width: 4, height: 4)).fill()
@@ -629,11 +630,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     @objc func copyBuildDetails() { WorkbenchUpdates.shared.copyDetails() }
     @objc func showSettings() { model.page = "settings"; showWindow() }
     @objc func showPresenter() {
-        guard model.phase == .idle, !shortcutsSuspended else { return }
+        guard BrowserIntegration.isAvailable, model.phase == .idle, !shortcutsSuspended else { return }
         stage.escape(); closeControls(); presenterPanel.show()
     }
     @objc func showWindow() { closeControls(); if window.isMiniaturized { window.deminiaturize(nil) }; window.makeKeyAndOrderFront(nil); statusItem?.isVisible = true; NSApp.activate(ignoringOtherApps: true) }
-    @objc func showAbout() { NSApp.orderFrontStandardAboutPanel(options: [.applicationName: Workbench.displayName, .applicationVersion: WorkbenchUpdates.shared.build.label, .credits: NSAttributedString(string: "\(WorkbenchUpdates.shared.build.details)\n\nEveryday tools for speaking, explaining and presenting.\nSpeech powered by Parakeet, FluidAudio, macOS voices and your chosen providers.")]) }
+    @objc func showAbout() { NSApp.orderFrontStandardAboutPanel(options: [.applicationName: Workbench.displayName, .applicationVersion: WorkbenchUpdates.shared.build.label, .credits: NSAttributedString(string: "\(WorkbenchUpdates.shared.build.details)\n\nEveryday tools for speaking, explaining and presenting.\nSpeech powered by Parakeet, FluidAudio and your selected recognition provider.")]) }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showWindow(); return true }
     func applicationDidBecomeActive(_ notification: Notification) {
         readback?.refreshPermissionState()
@@ -669,7 +670,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationWillTerminate(_ notification: Notification) {
         terminating = true
-        NSApp.servicesProvider = nil
         presenterPanel?.hide(); model?.presenter.stop()
         capturePanel?.close()
         meetingOffer?.close()
@@ -681,7 +681,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         keyboard?.stopInteraction(); keyboard?.replaceEntries(shortcutEntries()); model.page = page; showWindow()
     }
     /// The voice catalogue's titles, one per id in `VoicePreferences.shortcutIDs`.
-    static let voiceShortcutCatalogue: [(UInt32, String)] = [(1, "Dictate"), (2, "Quick controls"), (3, "Library"), (4, "Switch to"), (5, "Snap & Talk"), (6, "Read"), (7, "Present"), (8, "Snap")]
+    static let voiceShortcutCatalogue: [(UInt32, String)] = [(1, "Dictate"), (2, "Quick controls"), (3, "Library"), (4, "Switch to"), (5, "Snap & Talk"), (7, "Present"), (8, "Snap")]
+        .filter { VoicePreferences.shortcutIDs.contains($0.0) }
     func voiceShortcutEntries() -> [ShortcutEntry] {
         Self.voiceShortcutCatalogue.map { id, title in
             ShortcutEntry(id: "voice.\(id)", title: title, shortcut: model.preferences.shortcut(id), error: model.shortcutFailures[id])
@@ -739,41 +740,18 @@ func runCLI(_ args: [String]) async -> Int32 {
             try await MainActor.run { try WorkbenchPageChecks.run(); try HomeRecentWorkChecks.run() }
             try InsertionBoundaryChecks.run()
             try CoreChecks.run(); try CleanupChecks.run(); try DemoLibraryChecks.run(); try ReadbackChecks.run(); try await ReadbackChecks.runAdmissionChecks(); try ProviderChecks.run(); try CaptureHUDChecks.run(); try CaptureSettingsChecks.run(); try LocalRefinementChecks.run()
-            try await AudioRendererCancellationChecks.run()
-            try await NeuralVoiceChecks.run()
-            try await MainActor.run { try ReadSelectionChecks.run(); try DemoLibraryChecks.runModelChecks(); try IntegrationChecks.run(); try KeyboardCoachChecks.run(); try ClipboardReceiptChecks.run(); try FeedbackChecks.run(); try ReadingChecks.run() }
+            try await AccessibilityBridgeChecks.run()
+            try await MainActor.run { try DemoLibraryChecks.runModelChecks(); try IntegrationChecks.run(); try KeyboardCoachChecks.run(); try ClipboardReceiptChecks.run(); try FeedbackChecks.run() }
         case "--check-feedback":
             // Brief feedback alone (#134 T5): no check here writes preferences outside its own temporary folder.
             try await MainActor.run { try ClipboardReceiptChecks.run(); try FeedbackChecks.run() }
         case "--check-floating-toolbar":
             try await WorkbenchControlChecks.run()
-        case "--check-reading-cancellation":
-            try await AudioRendererCancellationChecks.run()
-        case "--check-reading":
-            try await MainActor.run { try ReadingChecks.run() }
-        case "--check-reading-render":
-            try await ReadingChecks.runRender()
-        case "--check-neural-voice":
-            try await NeuralVoiceChecks.run()
-        case "--check-neural-voice-download":
-            guard args.count == 2 else { throw VoiceError.message("Usage: --check-neural-voice-download NEW_FOLDER") }
-            try await NeuralVoiceChecks.runDownload(root: URL(fileURLWithPath: args[1]))
-        case "--check-neural-voice-render":
-            // --check-neural-voice-render [FOLDER holding Models/pocket-tts]
-            try await NeuralVoiceChecks.runRender(root: args.count > 1 ? URL(fileURLWithPath: args[1]) : nil)
-        case "--measure-reading-latency":
-            // --measure-reading-latency VOICE_ID[,VOICE_ID] TEXT_FILE…
-            guard args.count >= 3 else { throw VoiceError.message("Usage: --measure-reading-latency VOICE_ID[,VOICE_ID] TEXT_FILE…") }
-            try await ReadingChecks.measureLatency(voices: args[1].split(separator: ",").map(String.init), files: args.dropFirst(2).map { URL(fileURLWithPath: $0) })
-        case "--render-reading-fixture":
-            guard args.count == 2 else { throw VoiceError.message("Usage: --render-reading-fixture NEW_OUTPUT_FOLDER") }
-            try await MainActor.run {
-                _ = NSApplication.shared
-                try ReadingChecks.renderFixtures(to: URL(fileURLWithPath: args[1]))
-            }
         case "--check-library":
             try DemoLibraryChecks.run()
             try await MainActor.run { try DemoLibraryChecks.runModelChecks() }
+        case "--check-read-retirement":
+            try await MainActor.run { try ReadRetirementChecks.run() }
         case "--check-capture-preview":
             try await CaptureImagePreviewChecks.run()
         case "--check-image-workspace":
@@ -781,35 +759,20 @@ func runCLI(_ args: [String]) async -> Int32 {
         case "--check-quick-look-panel":
             let urls = args.dropFirst().map { URL(fileURLWithPath: $0).standardizedFileURL }
             try await MainActor.run { try DemoLibraryChecks.runQuickLookPanelChecks(urls) }
-        case "--check-reading-service":
-            try await MainActor.run { try ReadSelectionChecks.run() }
-        case "--check-reading-service-native":
-            try await MainActor.run {
-                _ = NSApplication.shared
-                NSApp.setActivationPolicy(.prohibited)
-                NSApp.finishLaunching()
-                try ReadSelectionChecks.runNativePasteboard()
-            }
         case "--check-persona-voice-native":
-            guard args.count >= 2 else { throw VoiceError.message("Usage: --check-persona-voice-native NEW_OUTPUT_FOLDER [--speak]") }
+            guard args.count == 2 else { throw VoiceError.message("Usage: --check-persona-voice-native NEW_OUTPUT_FOLDER") }
             await MainActor.run {
                 _ = NSApplication.shared
                 NSApp.setActivationPolicy(.accessory)
                 NSApp.finishLaunching()
             }
-            print(try await PersonaVoiceNativeCheck.run(output: URL(fileURLWithPath: args[1]), speak: args.dropFirst(2).contains("--speak")))
+            print(try await PersonaVoiceNativeCheck.run(output: URL(fileURLWithPath: args[1]), speak: false))
             print(WorkbenchBuild().details)
-        case "--render-reading-service-fixture":
-            guard args.count == 2 else { throw VoiceError.message("Usage: --render-reading-service-fixture OUTPUT.png") }
-            try await MainActor.run {
-                _ = NSApplication.shared
-                try ReadSelectionChecks.renderReviewCard(to: URL(fileURLWithPath: args[1]))
-            }
         case "--render-surfaces":
             guard args.count == 2 else { throw VoiceError.message("Usage: --render-surfaces OUTPUT_DIRECTORY") }
             try SurfaceGallery.run(output: URL(fileURLWithPath: args[1], isDirectory: true))
         case "--check-providers":
-            try ProviderChecks.run(); try await ProviderChecks.runTransportChecks()
+            try ProviderChecks.run(); try await ProviderChecks.runTransportChecks(); try await RecognitionLifecycleChecks.run()
         case "--check-subscription-cli":
             try SubscriptionCLIChecks.run()
             try await SubscriptionCLIChecks.runAdapterChecks()
@@ -840,8 +803,6 @@ func runCLI(_ args: [String]) async -> Int32 {
             try await HandoffJobsChecks.runMetadataFixture(output: URL(fileURLWithPath: args[1]))
         case "--check-integrations":
             try await MainActor.run { try IntegrationChecks.run() }
-        case "--check-speko":
-            try SpekoChecks.run()
         case "--check-refinement":
             try LocalRefinementChecks.run(); try await LocalRefinementChecks.runTransportChecks()
             try await LocalRefinementChecks.runOwnershipChecks()
@@ -876,6 +837,7 @@ func runCLI(_ args: [String]) async -> Int32 {
             try await PhoneLinkChecks.run(folder: folder, seconds: seconds, live: live)
         case "--check-readback-pack":
             try await MainActor.run { try ReadbackPackChecks.run() }
+            try await PackLibraryChecks.run()
         case "--check-readback-ordering-ui":
             let output = args.count > 1 ? URL(fileURLWithPath: args[1]) : nil
             try await MainActor.run { try ReadbackOrderingChecks.runNative(output: output) }
@@ -890,41 +852,18 @@ func runCLI(_ args: [String]) async -> Int32 {
             let result = await CleanupEngine().clean(text, style: args.count > 2 ? (CleanupStyle(rawValue: args[2]) ?? .light) : .light)
             print(result.text)
         case "--prepare-model":
-            try await engine().prepare(); print("MODEL_READY: \(await engine().statusDescription())")
+            try await engine().acquireSelectedModel(); print("MODEL_READY: \(await engine().statusDescription())")
         case "--transcribe":
             guard args.count == 2 else { throw VoiceError.message("Usage: LocalVoice --transcribe AUDIO_FILE") }
+            try await engine().prepareCached()
             print(try await engine().transcribe(URL(fileURLWithPath: args[1])))
-        case "--self-test":
-            try CoreChecks.run()
-            let phrase = "The quick brown fox jumps over the lazy dog. Please bring the blue notebook to the meeting tomorrow morning."
-            let audio = try AudioRenderer.render(text: phrase, voice: "Karen", rate: 165)
-            defer { AudioRenderer.remove(audio) }
-            let output = try await engine().transcribe(audio)
-            let lower = output.lowercased()
-            guard lower.contains("brown fox"), lower.contains("blue notebook"), lower.contains("tomorrow") else { throw VoiceError.message("Speech round-trip failed: \(output)") }
-            print("ROUND_TRIP_OK: \(output)")
-            let m4a = FileManager.default.temporaryDirectory.appendingPathComponent("LocalVoice-self-test.m4a")
-            defer { try? FileManager.default.removeItem(at: m4a) }
-            try AudioRenderer.export(audio, to: m4a)
-            let file = try AVAudioFile(forReading: m4a)
-            guard file.length > 0 else { throw VoiceError.message("M4A export was empty") }
-            print("AUDIO_EXPORT_OK: \(Double(file.length) / file.processingFormat.sampleRate) seconds")
-            let second = try await engine().transcribe(m4a)
-            guard second.lowercased().contains("blue notebook") else { throw VoiceError.message("M4A recognition failed: \(second)") }
-            print("M4A_TRANSCRIPTION_OK")
-        default: throw VoiceError.message("Usage: LocalVoice [--prepare-model | --transcribe AUDIO_FILE | --check-core | --check-readback | --check-speko | --check-reading-cancellation | --check-library | --check-quick-look-panel FILE… | --check-reading-service | --check-reading-service-native | --render-reading-service-fixture OUTPUT.png | --render-surfaces OUTPUT_DIRECTORY | --phone-link NEW_FOLDER [SECONDS] [--live] | --self-test]")
+        default: throw VoiceError.message("Usage: LocalVoice [--prepare-model | --transcribe AUDIO_FILE | --check-core | --check-readback | --check-read-retirement | --check-library | --check-quick-look-panel FILE… | --render-surfaces OUTPUT_DIRECTORY | --phone-link NEW_FOLDER [SECONDS] [--live]]")
         }
         return 0
     } catch { fputs("Local Voice: \(error.localizedDescription)\n", stderr); return 1 }
 }
 
-if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--presenter-fixture", CommandLine.arguments[2].hasPrefix("/tmp/wb-presenter-fixture-") {
-    MainActor.assumeIsolated {
-        let app = NSApplication.shared; app.setActivationPolicy(.regular)
-        let delegate = PresenterFixtureDelegate(root: URL(fileURLWithPath: CommandLine.arguments[2]))
-        app.delegate = delegate; app.run()
-    }
-} else if CommandLine.arguments.count > 1, CommandLine.arguments[1] == SurfaceGallery.passFlag {
+if CommandLine.arguments.count > 1, CommandLine.arguments[1] == SurfaceGallery.passFlag {
     // An isolated pass started by --render-surfaces. It waits on the main run loop for SwiftUI,
     // so it runs here rather than inside a main-queue job.
     MainActor.assumeIsolated { exit(SurfaceGallery.runPass(Array(CommandLine.arguments.dropFirst(2)))) }

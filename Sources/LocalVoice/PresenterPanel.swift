@@ -77,6 +77,7 @@ final class PresenterPanelController: NSWindowController, NSSearchFieldDelegate,
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     func show() {
+        guard BrowserIntegration.isAvailable else { hide(); return }
         if window?.isVisible != true {
             previous = NSWorkspace.shared.frontmostApplication
             search.stringValue = ""
@@ -139,36 +140,4 @@ final class PresenterPanelController: NSWindowController, NSSearchFieldDelegate,
     }
     private func activate(_ id: UUID) { model.activate(id) { [weak self] reply in if reply.ok != true { self?.show() } } }
     @objc private func manage() { hide(); setup() }
-}
-
-struct ChromeConnectionView: View {
-    @ObservedObject var presenter: PresenterModel
-    @State private var expanded = false
-    var body: some View {
-        DisclosureGroup(isExpanded: $expanded) {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Save a tab as Manager or HR Admin in each Chrome profile. Use Switch to from any app to bring back the right tab.")
-                HStack {
-                    Button(presenter.enabled ? "Repair Chrome connection" : "Enable Chrome connection") { presenter.enable() }
-                    Button("Show Chrome extension") {
-                        if let url = presenter.extensionFolder { NSWorkspace.shared.activateFileViewerSelecting([url]) }
-                    }
-                    if presenter.enabled { Button("Pause connection") { presenter.pause() } }
-                }
-                Text("Once per profile: open chrome://extensions, turn on Developer mode, choose Load unpacked and select the BrowserExtension folder. Open the extension, name the profile and connect it.")
-                    .foregroundStyle(.secondary).textSelection(.enabled)
-                Text("Allow only each site you save. Passwords stay in Chrome or your password manager. Connections are local to this Mac; keep Workbench and the participating Chrome profiles open.")
-                    .foregroundStyle(.secondary)
-                if let message = presenter.message { Text(message).foregroundStyle(.orange).textSelection(.enabled) }
-            }.font(.caption).padding(.top, 8)
-        } label: {
-            HStack {
-                Label("Chrome destinations", systemImage: "arrow.up.forward.app")
-                Spacer()
-                Text(presenter.enabled ? "\(presenter.connectedCount) profiles connected" : "Set up once")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-        }
-        .padding(12).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 10))
-    }
 }

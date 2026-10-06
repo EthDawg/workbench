@@ -10,7 +10,7 @@ Scope: ENTRY_POINTS, CATALOGUES and offers. That is the quick panel (header,
 capability rows, each row's shortcut key and options, status rows, footer and
 views embedded in it); the Draw, Present, Persona and Timer menus that the
 rows, the floating toolbar and the app menu bar open, with any native views
-embedded in them, and the Saved Prompts picker the toolbar opens; the
+embedded in them, and the Saved Prompts picker Library opens; the
 floating toolbar's modes (its launcher's chooser), next action and hover
 labels, accessory and More menu, and the live dictation, narration and
 reading controls shown in the same window; the app menu bar and any status
@@ -91,7 +91,7 @@ import sys
 
 REPO = Path(__file__).resolve().parents[1]
 MODULES = ('LocalVoice', 'StageKit', 'ToolbarCore', 'ToolbarKit')
-OWNERS = set('dictate snap snapAndTalk read draw present persona timer history library settings app'.split())
+OWNERS = set('dictate snap snapAndTalk draw present persona timer history library settings app'.split())
 KINDS = set('capability workflow option action place setting status'.split())
 GUIDANCE = ("Workbench keeps a small grammar (docs/workbench.md#grammar). "
             "Before adding an entry: can this be Quality (no new entry) or an Option "
@@ -116,10 +116,11 @@ ENTRY_POINTS = [
     ('LocalVoice/FloatingToolbar.swift', 'FloatingToolbar', 'floating toolbar context menu', 'controls'),
     ('LocalVoice/ToolbarActivityActions.swift', 'FloatingToolbar', 'floating toolbar activity chooser', 'controls'),
     ('LocalVoice/PresentWorkspaceView.swift', 'PresentWorkspaceView', 'Present workspace', 'page'),
-    ('LocalVoice/PresentWorkspaceView.swift', 'PresentPromptButton', 'Present workspace', 'controls'),
+    ('LocalVoice/LibraryPromptButton.swift', 'LibraryPromptButton', 'Library', 'controls'),
     ('StageKit/PersonaLiveSettings.swift', 'PersonaLiveSettings', 'Persona live copies', 'controls'),
     ('StageKit/PersonaLibraryView.swift', 'PersonaLibraryView.shownPanel', 'Persona live copy', 'controls'),
     ('StageKit/PersonaLibraryView.swift', 'PersonaLibraryView.liveSourceControl', 'Persona source', 'controls'),
+    ('StageKit/PersonaLibraryView.swift', 'PersonaLibraryView', 'Persona workspace', 'doors'),
     # Persona's other live source: the local camera bubble, prepared and run beside
     # the shown card's controls on the same page.
     ('StageKit/PersonaCamera.swift', 'PersonaCameraPanel', 'Persona live camera', 'controls'),
@@ -130,7 +131,7 @@ ENTRY_POINTS = [
     # Position… in that menu opens the toolbar's placement control (#163).
     ('StageKit/FloatingPositionControl.swift', 'FloatingPositionControl', 'floating position control', 'controls'),
     # The same window's live controls: the no-speech cue, and a result's own controls, which the
-    # toolbar reveals in place of its row (#134 T4). Recording, narration and reading are the row's.
+    # toolbar reveals in place of its row (#134 T4). Recording and narration are the row's.
     ('LocalVoice/FloatingToolbar.swift', 'WorkbenchFloatingContent', 'floating toolbar live controls', 'page'),
     ('LocalVoice/FloatingToolbar.swift', 'FloatingResultView', 'floating toolbar live controls', 'page'),
     # Persona's Appearance accessory opens its own menu for the selected live copy (#134 part B).
@@ -142,6 +143,7 @@ ENTRY_POINTS = [
     ('StageKit/Persona.swift', 'PersonaLibrary.makeControlsMenu', 'Persona menu', 'controls'),
     ('StageKit/StageKitController.swift', 'StageKitController.makeTimerMenu', 'Timer menu', 'controls'),
     ('LocalVoice/PromptPicker.swift', 'PromptPickerView', 'Saved Prompts picker', 'controls'),
+    ('LocalVoice/PackLibraryView.swift', 'PackLibraryView', 'Library Packs', 'controls'),
     ('LocalVoice/main.swift', 'AppDelegate', 'app menu bar', 'controls'),
     ('LocalVoice/WorkbenchHome.swift', 'WorkbenchHome.settings', 'settings page', 'page'),
     ('LocalVoice/WorkbenchHome.swift', 'WorkbenchHome.welcome', 'window home', 'page'),
@@ -157,9 +159,7 @@ ENTRY_POINTS = [
     # Settings, and the views it embeds (VoiceOptions) are followed.
     ('LocalVoice/Views.swift', 'ContentView.dictate', 'dictate page options', 'options'),
     ('LocalVoice/Views.swift', 'ContentView.dictateHeader', 'dictate page', 'page'),
-    ('LocalVoice/Views.swift', 'ContentView.readingHeader', 'read page', 'page'),
     ('LocalVoice/Views.swift', 'DictateSettingsView', 'dictate settings', 'page'),
-    ('LocalVoice/Views.swift', 'ReadingSettingsView', 'read settings', 'page'),
     ('LocalVoice/Views.swift', 'DictionaryView', 'dictionary page', 'doors'),
     # Capability pages also carry doors (rule 8: opens a place or page, wherever
     # it appears). Mode 'doors' keeps the page's own actions (editor, selection,
@@ -183,17 +183,18 @@ ENTRY_POINTS = [
     ('LocalVoice/HistoryView.swift', 'HistoryMadeFrom', 'history page', 'doors'),
     ('LocalVoice/HistoryView.swift', 'HistoryInputChip', 'history page', 'doors'),
     ('LocalVoice/CaptureHistoryView.swift', 'TranscriptHistoryRow', 'history page', 'doors'),
+    ('LocalVoice/HistorySelectionControls.swift', 'HandoffReviewView', 'handoff review', 'page'),
     ('LocalVoice/HistorySelectionControls.swift', 'HandoffJobCard', 'history page', 'doors'),
     ('LocalVoice/HistorySelectionControls.swift', 'HandoffResultPreview', 'history page', 'doors'),
     ('LocalVoice/HistorySelectionControls.swift', 'HistorySelectionControls', 'history page', 'doors'),
     ('LocalVoice/HistorySelectionControls.swift', 'TranscriptMetadataEditor', 'history page', 'doors'),
-    ('LocalVoice/DemoLibraryView.swift', 'DemoLibraryView', 'library page', 'doors'),
+    ('LocalVoice/DemoLibraryView.swift', 'DemoLibraryView', 'Library Resources', 'controls'),
+    ('LocalVoice/DemoLibraryView.swift', 'DemoResourceEditor', 'Library resource editor', 'controls'),
 ]
 # Calls that change the window's route or open a place (mode 'doors').
 # openHistory opens History with a door's starting view; openTranscript opens
-# a transcript on the Dictate page; importReading opens text on the Read page
-# through its import decision.
-ROUTES = {'navigate', 'onShowEditor', 'showHistory', 'showLibrary', 'showControls', 'openHistory', 'openTranscript', 'importReading', 'reviewUnresolvedDelivery'}
+# a transcript on the Dictate page.
+ROUTES = {'navigate', 'onShowEditor', 'showHistory', 'showLibrary', 'showControls', 'openHistory', 'openTranscript', 'reviewUnresolvedDelivery'}
 # Calls in a menu action's own body that open a page (Inventory.menu_page): None takes
 # the route from the call's literal argument; otherwise the call always opens that page.
 MENU_ROUTES = {'navigate': None, 'onShowEditor': None, 'openHistory': 'history', 'showLibrary': 'library'}
@@ -225,7 +226,7 @@ ROWS = {'WorkbenchControlTool': ('quick-panel.row.', 'quick panel rows')}
 
 # CapturePreviewButton is a capture image that opens the read-only preview; its
 # first argument is its accessible name. PanelSwitch is the panel header's switch row.
-CONTROLS = set('''Button Toggle Picker Menu Label ColorPicker TextField SecureField
+CONTROLS = set('''Button Toggle Picker Menu Label ColorPicker TextField SecureField DisclosureGroup
     Stepper Slider Link NativeControlMenu PanelSwitch ToolbarMenuAction StageMenuAction
     NSMenuItem NSButton addItem addSubmenu card workspaceCard command actionItem action CapturePreviewButton StageLiveMenu submenu'''.split())
 # Label-taking helpers, counted only in the file that declares them.
@@ -879,6 +880,9 @@ class Inventory:
             calls = {w for n, w in enumerate(words[:-1]) if words[n + 1] in ('(', '?')}
             return (any(words[n:n + 2] == ['page', '='] for n in range(len(words) - 1))
                     or bool(calls & ROUTES) or bool(set(words) & injected)
+                    # Meetings owns these typed, result-checked Settings actions.
+                    or (swift.type_context(i) == 'MeetingWorkspaceView'
+                        and bool(set(words) & {'openMicrophoneSettings', 'openAudioRecordingSettings'}))
                     or any(words[n:n + 2] == ['open', '('] and words[n - 1] != '.' for n in range(1, len(words) - 1)))
 
         def record(i, api, tokens, **metadata):
@@ -1032,8 +1036,8 @@ class Inventory:
             # Native menu titles assigned after construction.
             if v[i:i + 3] == ['.', 'title', '='] and swift.stem == 'main' and literal([swift.tokens[i + 3]]):
                 self.add(swift, i, 'menu-title', [swift.tokens[i + 3]], 'app menu bar', identity=v[i - 1])
-            if v[i:i + 3] == ['.', 'title', '='] and swift.stem == 'PresentWorkspaceView' and literal([swift.tokens[i + 3]]):
-                self.add(swift, i, 'button-title', [swift.tokens[i + 3]], 'Present workspace', identity=v[i - 1])
+            if v[i:i + 3] == ['.', 'title', '='] and swift.stem == 'LibraryPromptButton' and literal([swift.tokens[i + 3]]):
+                self.add(swift, i, 'button-title', [swift.tokens[i + 3]], 'Library', identity=v[i - 1])
             # The floating toolbar resolves its action title before rendering the row.
             # A title computed by another function is recorded where that function is.
             if v[i:i + 2] == ['title', '='] and v[i - 1] != '.' and swift.stem == 'FloatingToolbar':

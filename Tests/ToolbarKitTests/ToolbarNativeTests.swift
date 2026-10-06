@@ -66,7 +66,7 @@ final class ToolbarNativeTests: XCTestCase {
             XCTAssertEqual(quiet.width, 48)
         }
         for activity in [ToolbarActivity(capture: .dictation, level: 0.6), ToolbarActivity(capture: .narration, level: 0.3, stopsSoon: true),
-                         ToolbarActivity(processing: true), ToolbarActivity(playback: true), ToolbarActivity(paused: true),
+                         ToolbarActivity(processing: true), ToolbarActivity(paused: true),
                          ToolbarActivity(failure: true), ToolbarActivity(pendingDelivery: true), ToolbarActivity(unsavedCapture: true)] {
             let working = try drawn(.resolve(activity))
             XCTAssertEqual(working.size, ToolbarLayout.mark, "\(activity)")
@@ -148,8 +148,8 @@ final class ToolbarNativeTests: XCTestCase {
         _ = NSApplication.shared
         let plain = NSHostingView(rootView: ToolbarRow(state: ToolbarViewState(name: "plain", tier: .revealed, mode: .draw))).fittingSize
         XCTAssertEqual(plain, NSSize(width: ToolbarLayout.standardWidth, height: ToolbarLayout.rowHeight))
-        let accessory = NSHostingView(rootView: ToolbarRow(state: ToolbarViewState(name: "prompts", tier: .revealed, mode: .present, accessory: .prompts))).fittingSize
-        var waiting = ToolbarViewState(name: "prompts-in-more", tier: .revealed, mode: .present, accessory: .prompts)
+        let accessory = NSHostingView(rootView: ToolbarRow(state: ToolbarViewState(name: "tools", tier: .revealed, mode: .draw, accessory: .tools))).fittingSize
+        var waiting = ToolbarViewState(name: "tools-in-more", tier: .revealed, mode: .draw, accessory: .tools)
         waiting.showsAccessory = false
         let without = NSHostingView(rootView: ToolbarRow(state: waiting)).fittingSize.width
         XCTAssertEqual(accessory.width - without, ToolbarLayout.accessoryWidth + ToolbarLayout.gap, accuracy: 0.5)
@@ -240,7 +240,7 @@ final class ToolbarNativeTests: XCTestCase {
         _ = NSApplication.shared
         for scale in [CGFloat(1), 1.35] {
             for anchor in ToolbarAnchor.allCases {
-                let view = laidOut(ToolbarRow(state: ToolbarViewState(name: "launcher", tier: .revealed, anchor: anchor, mode: .present, accessory: .prompts), textScale: scale))
+                let view = laidOut(ToolbarRow(state: ToolbarViewState(name: "launcher", tier: .revealed, anchor: anchor, mode: .draw, accessory: .tools), textScale: scale))
                 let launcher = try XCTUnwrap(buttons(view).first { $0.accessibilityIdentifier() == "toolbar.launcher" })
                 let frame = launcher.convert(launcher.bounds, to: view)
                 XCTAssertEqual(anchor.isVertical ? frame.height : frame.width, ToolbarLayout.launcherWidth, "\(anchor) at \(scale)")
@@ -255,7 +255,7 @@ final class ToolbarNativeTests: XCTestCase {
     @MainActor func testARightHandRowReversesItsSlots() {
         _ = NSApplication.shared
         func order(_ anchor: ToolbarAnchor) -> [String] {
-            let view = laidOut(ToolbarRow(state: ToolbarViewState(name: "order", tier: .revealed, anchor: anchor, mode: .present, accessory: .prompts)))
+            let view = laidOut(ToolbarRow(state: ToolbarViewState(name: "order", tier: .revealed, anchor: anchor, mode: .draw, accessory: .tools)))
             return buttons(view).filter { $0.accessibilityIdentifier().hasPrefix("toolbar.") }
                 .sorted { $0.convert($0.bounds, to: view).minX < $1.convert($1.bounds, to: view).minX }
                 .map { $0.accessibilityIdentifier() }
@@ -804,7 +804,7 @@ final class ToolbarNativeTests: XCTestCase {
             let size = NSHostingView(rootView: ToolbarChooserView(model: ToolbarChooserModel(choices: choices), textScale: scale)).fittingSize
             XCTAssertEqual(size.width, ToolbarChooserLayout.width * scale, accuracy: 0.5, "at \(scale)")
             // Rows of 48.6 points at larger text land on whole pixels.
-            XCTAssertEqual(size.height, ToolbarChooserLayout.height(rows: 7, scale: scale) + 45 * scale, accuracy: 1, "at \(scale)")
+            XCTAssertEqual(size.height, ToolbarChooserLayout.height(rows: 6, scale: scale) + 45 * scale, accuracy: 1, "at \(scale)")
         }
         let short = NSHostingView(rootView: ToolbarChooserView(model: ToolbarChooserModel(choices: choices), available: 150)).fittingSize
         XCTAssertEqual(short.height, 150, accuracy: 0.5, "a short display scrolls the list rather than clipping it")
@@ -816,7 +816,7 @@ final class ToolbarNativeTests: XCTestCase {
         let model = ToolbarChooserModel(choices: ToolbarNextAction.choices(for: ToolbarLiveState(mode: .dictate)),
                                         choose: { chosen.append($0) }, dismiss: { dismissed += 1 })
         XCTAssertTrue(model.handle(keyCode: 125, characters: nil, time: 0))
-        XCTAssertEqual(model.state.highlighted, .read)
+        XCTAssertEqual(model.state.highlighted, .snap)
         XCTAssertTrue(model.handle(keyCode: 53, characters: nil, time: 0))
         XCTAssertEqual(dismissed, 1); XCTAssertTrue(chosen.isEmpty, "Escape changes nothing")
         XCTAssertTrue(model.handle(keyCode: 35, characters: "p", time: 1))
