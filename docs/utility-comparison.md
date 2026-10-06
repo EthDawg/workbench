@@ -1,5 +1,7 @@
 # The next useful step in each utility
 
+**6 October 2026 product decision:** Read retirement supersedes this record's within-category improvement recommendations. The [adversarial decision](research/mac-foundation-2026-10.md#adversarial-review-and-read-decision) distinguishes real implementation improvements from missing repeat-use evidence. This dated comparison is history, not an active Read backlog.
+
 Review date: 13 September 2026. Scope: the existing Workbench categories, not new product lines. The ranking is a product judgment based on source review and documented workflows; it is not a user survey or a feature-parity claim. The September 2026 baseline below updates the comparison against macOS and AI assistants; the rest of this record is unchanged.
 
 ## September 2026 baseline
