@@ -172,12 +172,17 @@ actor PackAuthorizationFixture: PackHTTPClient {
             chooseDestination: { _ in choices += 1; return conflicting }, write: { bytes, url in writes += 1; try bytes.write(to: url) })
                   && model.savedResource != nil && library.savingDisabled && Data(contentsOf: library.store.url) == newer,
                   "Library conflict keeps the exported file and newer records with reference-only recovery")
+        try check(model.notice?.contains("Choose Add saved file to Library") == true
+                  && model.notice?.contains("Resources → Library details") == true && model.notice?.contains("Reopen Workbench") == false
+                  && library.storageFailure?.contains("Reopen Workbench") == true && library.savingDisabled,
+                  "Packs offers its in-place file-reference retry while Library retains the original persistent diagnostic")
         let pending = model.savedResource!.id, beforeRetryWrites = writes, beforeRetryChoices = choices
         let reloaded = library
         let keptDraft = DemoResource(title: "Unfinished personal edit", content: "Keep this draft exactly")
         library.draft = keptDraft
         try check(!model.addSavedResource(to: library, reviewCurrentStore: true) && library.draft == keptDraft
-                  && library.savingDisabled && model.savedResource?.id == pending && library.resources.count == 1,
+                  && library.savingDisabled && model.savedResource?.id == pending && library.resources.count == 1
+                  && model.notice?.contains("Finish the current Library review") == true,
                   "reference retry cannot discard a pending resource edit to reload the Library")
         library.draft = nil
         let incoming = root.appendingPathComponent("Incoming library.json")
@@ -185,7 +190,8 @@ actor PackAuthorizationFixture: PackHTTPClient {
         let reviewing = DemoLibraryModel(store: DemoLibraryStore(directory: root.appendingPathComponent("Import review")))
         reviewing.prepareImport(from: incoming)
         try check(reviewing.importReview != nil && !model.addSavedResource(to: reviewing, reviewCurrentStore: true)
-                  && reviewing.importReview != nil && reviewing.resources.isEmpty && model.savedResource?.id == pending,
+                  && reviewing.importReview != nil && reviewing.resources.isEmpty && model.savedResource?.id == pending
+                  && model.notice?.contains("Finish the current Library review") == true,
                   "reference retry cannot dismiss a pending import decision or add into its reviewed Library")
         try FileManager.default.moveItem(at: library.store.url, to: root.appendingPathComponent("Retained Library.json"))
         try check(!model.addSavedResource(to: library, reviewCurrentStore: true) && library.savingDisabled
@@ -197,7 +203,8 @@ actor PackAuthorizationFixture: PackHTTPClient {
                   "explicit reference retry preserves readable records and its pending file when current Library cannot decode")
         try newer.write(to: library.store.url)
         try Data(repeating: 120, count: data.count).write(to: conflicting)
-        try check(!model.addSavedResource(to: reloaded, reviewCurrentStore: true) && model.savedResource?.id == pending && reloaded.resources.count == 1,
+        try check(!model.addSavedResource(to: reloaded, reviewCurrentStore: true) && model.savedResource?.id == pending && reloaded.resources.count == 1
+                  && model.notice?.contains("contents changed") == true && model.notice?.contains("Choose Add saved file to Library") == false,
                   "same-sized changed export is not silently adopted by retry")
         try data.write(to: conflicting)
         try check(model.addSavedResource(to: reloaded, reviewCurrentStore: true) && reloaded.selected?.id == pending && reloaded.resources.count == 3 && !reloaded.savingDisabled
@@ -242,7 +249,8 @@ actor PackAuthorizationFixture: PackHTTPClient {
             guard let retryID = model.savedResource?.id else { throw VoiceError.message("The post-commit fixture lost its saved export.") }
             let exportCount = writes, chooserCount = choices
             try check(!saved && sawCommittedReference && !currentLibrary.savingDisabled && currentLibrary.resources.count == 2
-                      && currentLibrary.resources.contains(where: { $0.id == retryID }) && Data(contentsOf: export) == data,
+                      && currentLibrary.resources.contains(where: { $0.id == retryID }) && Data(contentsOf: export) == data
+                      && model.notice?.contains("Synthetic final reference readback failure") == true,
                       "post-commit \(fault) readback failure leaves the exact cached UUID initially unheld")
             if fault == "restored" {
                 currentLibrary.draft = keptDraft
