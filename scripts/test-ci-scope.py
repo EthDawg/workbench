@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """Exercise the classifier against real Git changes, including renames/deletions."""
 import importlib.util
+import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import textwrap
 import unittest
+from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location("ci_scope", Path(__file__).with_name("ci-scope.py"))
 scope = importlib.util.module_from_spec(spec)
@@ -68,17 +71,58 @@ class ScopeTests(unittest.TestCase):
         self.assertTrue(scope.native_required(self.base, head, "pull_request", ["bug", " ci:native "]))
         self.assertFalse(scope.native_required(self.base, head, "pull_request", ["ci:nativeish"]))
 
-    def test_push_of_a_queue_merge_skips_native(self):
-        # The group's run validated exactly this tree; the push to main must not repeat it.
+    def test_only_verified_push_reuses_queue(self):
         self.write("Sources/New.swift")
         head = self.commit()
-        queued = "Merge pull request #290 from Ship-Work/claude/readiness-fixes\n\nKeep dictated names"
-        self.assertFalse(scope.native_required(self.base, head, "push", head_message=queued))
-        for message in ("Fix the thing", "Merge pull request from nowhere", "", "merge pull request #1 from x"):
-            with self.subTest(message=message):
-                self.assertTrue(scope.native_required(self.base, head, "push", head_message=message))
-        # Only a push is a queue merge; a merge group with the same words is still classified.
-        self.assertTrue(scope.native_required(self.base, head, "merge_group", head_message=queued))
+        self.assertFalse(scope.native_required(self.base, head, "push", queue_verified=True))
+        self.assertTrue(scope.native_required(self.base, head, "push"))
+        for event in ("merge_group", "workflow_dispatch", "unknown"):
+            self.assertTrue(scope.native_required(self.base, head, event, queue_verified=True))
+
+    def test_merge_message_is_not_evidence(self):
+        self.write("Sources/New.swift")
+        self.commit()
+        self.git("commit", "--amend", "-qm", "Merge pull request #1 from owner/branch")
+        self.assertTrue(scope.native_required(self.base, self.git("rev-parse", "HEAD"), "push"))
+
+    def test_cli_queue_evidence_and_fallback(self):
+        # Exercise the real entry point and gh boundary, without network or credentials.
+        self.write("Sources/New.swift")
+        head = self.commit()
+        gh = Path(self.temp.name) / "gh"
+        gh.write_text('#!/bin/sh\nprintf "%s" "$CI_TEST_RESPONSE"\n')
+        gh.chmod(0o755)
+        env = dict(os.environ, PATH=self.temp.name + os.pathsep + os.environ["PATH"])
+        evidence = {"workflow_runs": [{"id": 123, "head_sha": head,
+                    "event": "merge_group", "path": ".github/workflows/ci.yml",
+                    "status": "completed", "conclusion": "success",
+                    "head_branch": "gh-readonly-queue/main/pr-1-abc",
+                    "repository": {"full_name": "example/workbench"}}]}
+        script = str(Path(scope.__file__).resolve())
+        for payload, expected in ((json.dumps(evidence), "native=false"),
+                                  ("invalid json", "native=true"),
+                                  ('{"workflow_runs": []}', "native=true")):
+            env["CI_TEST_RESPONSE"] = payload
+            result = subprocess.run([sys.executable, script, "--event", "push",
+                "--base", self.base, "--head", head, "--repository", "example/workbench"],
+                env=env, capture_output=True, text=True, check=True)
+            self.assertEqual(result.stdout.strip(), expected)
+
+        # A receipt must never suppress a queue or manual run, nor trigger an API
+        # call on the PR path (including read-only fork tokens).
+        gh.write_text('#!/bin/sh\ntouch "$CI_TEST_CALLED"\nexit 1\n')
+        called = Path(self.temp.name) / "called"
+        env["CI_TEST_CALLED"] = str(called)
+        for event, labels, expected in (("pull_request", "", "false"),
+                                      ("pull_request", "ci:native", "true"),
+                                      ("merge_group", "", "true"),
+                                      ("workflow_dispatch", "", "true")):
+            result = subprocess.run([sys.executable, script, "--event", event,
+                "--base", self.base, "--head", head, "--labels", labels,
+                "--repository", "example/workbench"], env=env,
+                capture_output=True, text=True, check=True)
+            self.assertEqual(result.stdout.strip(), "native=" + expected)
+            self.assertFalse(called.exists())
 
     def test_documentation_and_site_changes_for_each_event(self):
         for path in ("README.md", "AGENTS.md", "CONTRIBUTING.md", "SECURITY.md",
@@ -155,6 +199,71 @@ class ScopeTests(unittest.TestCase):
                     self.assertTrue(scope.native_required(base, self.base, event))
                     self.assertTrue(scope.native_required(self.base, base, event))
                 self.assertFalse(scope.native_required(base, self.base, "pull_request"))
+
+
+class QueueEvidenceTests(unittest.TestCase):
+    head = "a" * 40
+    repository = "example/workbench"
+
+    def run_record(self, **changes):
+        return dict({"id": 123, "head_sha": self.head, "event": "merge_group",
+                     "path": ".github/workflows/ci.yml", "status": "completed",
+                     "conclusion": "success", "repository": {"full_name": self.repository},
+                     "head_branch": "gh-readonly-queue/main/pr-1-abc"}, **changes)
+
+    def verify(self, payload):
+        response = subprocess.CompletedProcess([], 0, json.dumps(payload), "")
+        with patch.object(scope.subprocess, "run", return_value=response) as call:
+            result = scope.verified_queue_run(self.head, self.repository)
+            self.assertEqual(call.call_args.args[0], ["gh", "api",
+                f"repos/{self.repository}/actions/workflows/ci.yml/runs"
+                f"?event=merge_group&head_sha={self.head}&per_page=100"])
+            self.assertEqual(call.call_args.kwargs["timeout"], 15)
+            return result
+
+    def test_exact_successful_queue_run(self):
+        self.assertEqual(self.verify({"workflow_runs": [self.run_record()]}), 123)
+        self.assertEqual(self.verify({"workflow_runs": [self.run_record(
+            path=".github/workflows/ci.yml@refs/heads/main")]}), 123)
+
+    def test_wrong_or_incomplete_evidence(self):
+        for changes in ({"head_sha": "b" * 40}, {"event": "pull_request"},
+                        {"path": ".github/workflows/other.yml"},
+                        {"repository": {"full_name": "other/workbench"}},
+                        {"repository": None}, {"repository": {"full_name": None}},
+                        {"repository": {"full_name": 123}}, {"path": None}, {"head_branch": "gh-readonly-queue/other/pr-1"},
+                        {"status": "in_progress"}, {"conclusion": "failure"},
+                        {"conclusion": "cancelled"}, {"conclusion": "skipped"},
+                        {"conclusion": None}, {"id": None}):
+            with self.subTest(changes=changes):
+                self.assertIsNone(self.verify({"workflow_runs": [self.run_record(**changes)]}))
+        for payload in ({}, [], {"workflow_runs": None}, {"workflow_runs": []},
+                        {"workflow_runs": [None, "invalid", {}]}):
+            self.assertIsNone(self.verify(payload))
+
+    def test_newer_unsuccessful_run_prevents_reuse(self):
+        old = self.run_record()
+        for status, conclusion in (("completed", "failure"), ("queued", None),
+                                   ("completed", "cancelled")):
+            new = self.run_record(id=124, status=status, conclusion=conclusion)
+            for runs in ([old, new], [new, old]):
+                self.assertIsNone(self.verify({"workflow_runs": runs}))
+
+    def test_api_failures_fall_back(self):
+        for error in (FileNotFoundError(), subprocess.CalledProcessError(1, "gh"),
+                      subprocess.TimeoutExpired("gh", 15)):
+            with patch.object(scope.subprocess, "run", side_effect=error):
+                self.assertIsNone(scope.verified_queue_run(self.head, self.repository))
+        with patch.object(scope.subprocess, "run", return_value=
+                          subprocess.CompletedProcess([], 0, "not json", "")):
+            self.assertIsNone(scope.verified_queue_run(self.head, self.repository))
+
+    def test_invalid_identity_never_calls_api(self):
+        with patch.object(scope.subprocess, "run") as call:
+            for head, repo in (("", self.repository), ("--bad", self.repository),
+                               (self.head, ""), (self.head, "owner/repo?redirect=bad")):
+                self.assertIsNone(scope.verified_queue_run(head, repo))
+            call.assert_not_called()
 
 
 class GateTests(unittest.TestCase):
