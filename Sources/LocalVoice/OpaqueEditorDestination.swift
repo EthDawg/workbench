@@ -36,12 +36,8 @@ final class OpaqueEditorDestination {
         private let read: (AXUIElement, String) -> (AXError, CFTypeRef?)
         private(set) var valid = true
         init(now: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
-             setTimeout: @escaping (AXUIElement, Float) -> AXError = { AXUIElementSetMessagingTimeout($0, $1) },
-             read: @escaping (AXUIElement, String) -> (AXError, CFTypeRef?) = { element, key in
-                 var value: CFTypeRef?
-                 let result = AXUIElementCopyAttributeValue(element, key as CFString, &value)
-                 return (result, value)
-             }) {
+             setTimeout: @escaping (AXUIElement, Float) -> AXError = { AccessibilityBridge.setMessagingTimeout($0, $1) },
+             read: @escaping (AXUIElement, String) -> (AXError, CFTypeRef?) = { AccessibilityBridge.attribute($0, $1) }) {
             self.now = now; deadline = now() + Self.maximum; self.setTimeout = setTimeout; self.read = read
         }
         func attribute(_ element: AXUIElement, _ key: String) -> CFTypeRef? {
@@ -97,11 +93,8 @@ final class OpaqueEditorDestination {
     static func window(pid: pid_t, bundleID: String?, accessibility ax: TextDelivery.Accessibility) -> Window? {
         guard supports(bundleID),
               ax.isTrusted(), ax.frontmostPID() == pid else { return nil }
-        func element(_ value: CFTypeRef?) -> AXUIElement? {
-            guard let value, CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
-            return (value as! AXUIElement)
-        }
-        let app = AXUIElementCreateApplication(pid)
+        let element = AccessibilityBridge.element
+        let app = AccessibilityBridge.application(pid)
         guard let focused = element(ax.attribute(app, kAXFocusedUIElementAttribute)),
               let window = element(ax.attribute(app, kAXFocusedWindowAttribute)), CFEqual(focused, window),
               ax.attribute(window, kAXRoleAttribute) as? String == kAXWindowRole,

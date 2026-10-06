@@ -44,6 +44,8 @@ suite_plists > "$SUITES_BEFORE"
 harnesses() {
   python3 scripts/check-surfaces.py
   PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-check-surfaces.py
+  python3 scripts/check-accessibility-bridge.py
+  PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-accessibility-bridge.py
   PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-swift-extract.py
   PYTHONDONTWRITEBYTECODE=1 python3 scripts/release/test_release.py
   PYTHONDONTWRITEBYTECODE=1 python3 scripts/release/test_preview.py
