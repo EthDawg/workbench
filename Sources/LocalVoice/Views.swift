@@ -44,7 +44,7 @@ struct ContentView: View {
                     Spacer()
                     // The fix is in System Settings, so the page opens it beside the microphone refusal
                     // itself. The Mac's microphone setting says nothing about which problem this is.
-                    if error.hasPrefix("Microphone access is off") {
+                    if model.canOpenMicrophoneSettings {
                         Button("Microphone Settings…") { model.openMicrophoneSettings() }.controlSize(.small)
                             .help("Open Privacy & Security › Microphone in System Settings")
                     }
@@ -193,7 +193,7 @@ struct ContentView: View {
                     .foregroundStyle(ink).background(model.phase == .recording ? Color.red.opacity(0.9) : mint, in: Circle())
             }
             .buttonStyle(.plain)
-            .disabled(!model.ready || ![.idle, .requesting, .recording].contains(model.phase))
+            .disabled(!model.canToggleRecording)
             .accessibilityLabel(model.phase == .requesting ? "Cancel microphone request" : model.phase == .recording ? "Finish dictation" : "Start recording")
             VStack(alignment: .leading, spacing: 5) {
                 Text(captureTitle).font(Workbench.sectionTitle)
@@ -216,6 +216,7 @@ struct ContentView: View {
                         ProgressView().controlSize(.small)
                         Text(model.preparing ? "Preparing your speech engine" : model.phase == .cancelling ? "Waiting for the speech engine to stop" : model.phase == .delivering ? "Checking the destination" : model.captureProcessingLabel)
                         if model.canCancelCurrentCapture { Button("Cancel") { model.cancelCurrentCapture() } }
+                        if model.preparing { Button("Cancel setup") { model.cancelSpeechPreparation() }.disabled(model.recognition.phase == .cancelling) }
                     }.font(.caption).foregroundStyle(.secondary)
                 } else {
                     Text(model.ready ? recordingHint : model.modelMessage)
@@ -250,13 +251,15 @@ struct ContentView: View {
                     Text(line).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }
+        } else if model.phase == .idle {
+            Button("Models…") { model.page = "models" }.buttonStyle(.link).font(.caption)
         }
     }
 
     private var captureTitle: String {
-        if model.preparing { return "Preparing dictation…" }
+        if model.preparing && model.phase == .idle { return "Preparing dictation…" }
         switch model.phase {
-        case .idle: return model.ready ? "Ready to dictate" : "Dictation unavailable"
+        case .idle: return model.idleMicrophoneTitle ?? (model.ready ? "Ready to dictate" : "Dictation unavailable")
         case .requesting: return "Waiting for microphone access"
         case .recording: return model.voiceSession.recordingTitle
         case .transcribing: return "Transcribing…"

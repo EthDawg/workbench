@@ -480,7 +480,12 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
             return "Screen Recording is off for Workbench, so Snap & Talk can't capture the screen. Your sessions, screenshots and narration stay available, and you can add Snaps you already have."
         }
         if microphonePermission != .authorized {
-            return "Microphone access isn't on for Workbench, so Snap & Talk can't record narration. Your sessions and screenshots stay available, and you can type notes."
+            switch microphonePermission {
+            case .restricted: return "macOS reports that microphone access is restricted. Your sessions and screenshots stay available, and you can type notes."
+            case .denied: return "Microphone access is off. Review it in System Settings. Your sessions and screenshots stay available, and you can type notes."
+            case .notDetermined: return "Request capture access when you want to record narration. Your sessions and screenshots stay available, and you can type notes."
+            default: return "Microphone access could not be determined. Your sessions and screenshots stay available, and you can type notes."
+            }
         }
         return nil
     }
@@ -612,6 +617,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     /// Workbench is active again, perhaps back from System Settings. Only a
     /// return after Snap & Talk opened Screen Recording settings suggests reopening.
     func returnedToWorkbench() {
+        microphonePermission = microphoneAccess()
         let granted = screenAccess.isGranted()
         if granted != screenPermissionGranted { screenPermissionGranted = granted }
         let suggests = openedScreenAccessSettings && !granted
@@ -795,6 +801,15 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
 
     func preflightPermissions() async {
         screenPermissionGranted = screenAccess.isGranted()
+        microphonePermission = microphoneAccess()
+        if permissionsReady { notice = nil }
+        else { notice = permissionsProblem }
+        stateChanged()
+    }
+
+    /// Explicit capture setup only. Opening/reviewing a session never requests access.
+    func requestCaptureAccess() async {
+        screenPermissionGranted = screenAccess.isGranted()
         if !screenPermissionGranted { screenPermissionGranted = screenAccess.request() }
         microphonePermission = microphoneAccess()
         if microphonePermission == .notDetermined {
@@ -812,7 +827,10 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
 
     func openMicrophoneSettings() {
-        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!)
+        if !NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!) {
+            notice = "System Settings could not be opened. Open it manually and choose Privacy & Security › Microphone."
+            stateChanged()
+        }
     }
 
     func toggleCapture() async {

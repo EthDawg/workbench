@@ -41,7 +41,7 @@ methods = model.extract([
     'scheduleCaptureCueExpiry',
     'saveNow', 'session', 'shutdown',
     # Preparing the speech model, whose failure is Home's (#134).
-    'prepare', 'dismissCaptureFailure',
+    'prepare', 'acceptRecognition', 'dismissCaptureFailure',
 ])
 
 # Static inventories of AppModel, so a new way of reaching the receipt or the
@@ -91,7 +91,7 @@ clear_sites = receipt_clear_sites(model)
 writers = undelivered_writers(model)
 # Launch restores the undelivered result only once capture recovery has settled the draft,
 # so a draft that recovery replaced drops a draft entry instead of showing it.
-launch = model.select(['init(preferences:)'])[0].code
+launch = model.select(['init(preferences:startSpeechLifecycle:)'])[0].code
 assert 'undelivered.restore(' in launch and launch.index('restoreCaptureRecovery()') < launch.index('undelivered.restore('), \
     'launch restores the undelivered result after capture recovery'
 labels = model.extract(['retryCaptureLabel', 'retryCaptureHelp', 'hasCaptureRecovery', 'canRecordAgain',
@@ -153,8 +153,15 @@ struct CaptureSettings {
     func release() { let c = continuation; continuation = nil; c?.resume(returning: "um synthetic captured words") }
     /// Preparing the speech model: ready, or this failure.
     var prepareFailure: Error?
-    func prepare() async throws { if let prepareFailure { throw prepareFailure } }
-    func statusDescription() async -> String { "Fixture model ready" }
+    var state = RecognitionSnapshot()
+    func prepareCached() async throws {
+        state.sequence += 1
+        state.admission = prepareFailure == nil ? .localReady : .unavailable
+        state.failure = prepareFailure.map { RecognitionFailure(kind: .load, message: $0.localizedDescription) }
+        if let prepareFailure { throw prepareFailure }
+    }
+    func snapshot() async -> RecognitionSnapshot { state }
+    func cancelPreparation() async { }
 }
 @MainActor final class Cleanup {
     struct Result { let text: String; let method: String }
@@ -288,6 +295,8 @@ struct FixtureVoicePreferences { var capture = CaptureMode.hold; var dictationSh
     var holdGesture: HoldGesture?
     var captureUsesHoldShortcut = false, isMicrophoneQuiet = false, rendering = false
     var microphoneStartFailure: ((TextDelivery.Target?) -> String?)?
+    var microphoneFailure: AVAuthorizationStatus?
+    var onShowEditor: ((String) -> Void)?
     var undelivered = UnresolvedDeliverySlot()
     var draftRevision: UInt64 = 0
     var persistWork: DispatchWorkItem?
@@ -311,6 +320,7 @@ struct FixtureVoicePreferences { var capture = CaptureMode.hold; var dictationSh
     func report(_ message: String, on page: Attention.Page) { attention = Attention(message: message, page: page) }
     var previewingPanel = false, canRetry = false, accessibilityGranted = false, ready = true
     var preparing = false, modelMessage = "", modelFailure: String? = nil
+    var recognition = RecognitionSnapshot()
     var recordURL: URL?, elapsed = 1.0, level = 0.0
     var liveCapture: FixtureLiveCapture?, meter: Timer?, recordingAttempt: UUID?
     var liveDictation: LiveDictationDelivery?
@@ -1129,21 +1139,21 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         superseded.coach.drop(stalePending)
         try check(superseded.captureCue == nil && superseded.phase != .idle, "a newer capture removes the pending card; a late drop shows no cue over it")
         superseded.cancelRecording()
-        // A speech model that could not be prepared is Home's problem, beside its Retry model: the
-        // page is recorded where it is raised, so the menu-bar panel opens Home. Guessing from the
-        // words opened Dictate (#134 review).
+        // Model preparation projects the engine's typed readiness without a second
+        // attention notice, touching saved words, or automatically starting capture.
         let unprepared = CaptureHarness(directory: folder("model-preparation"))
         unprepared.ready = false
-        unprepared.engine.prepareFailure = CheckFailure(description: "Synthetic model download failure")
+        unprepared.engine.prepareFailure = RecognitionFailure(kind: .load, message: "Synthetic cached model failure")
         await unprepared.prepare()
-        try check(unprepared.attention?.page == .home && unprepared.error?.hasPrefix("Could not prepare the speech model.") == true
-                  && unprepared.modelMessage == "The speech model couldn’t be prepared" && !unprepared.ready && !unprepared.preparing,
-                  "A model that could not be prepared is Home's problem, where Retry model is")
-        try check(unprepared.modelFailure != nil, "Settings › Models keeps the reason beside Try download again")
+        try check(unprepared.attention == nil && unprepared.modelMessage == "Synthetic cached model failure"
+                  && !unprepared.ready && !unprepared.preparing && unprepared.startedAttempts.isEmpty,
+                  "Cached preparation failure uses engine readiness without capture or duplicate attention")
+        try check(unprepared.modelFailure != nil, "Models retains the engine failure beside explicit retry choices")
         unprepared.engine.prepareFailure = nil
         await unprepared.prepare()
-        try check(unprepared.ready && unprepared.modelMessage == "Fixture model ready" && unprepared.modelFailure == nil,
-                  "Retry model prepares it and clears the reason")
+        try check(unprepared.ready && unprepared.modelMessage == RecognitionConfiguration().summary && unprepared.modelFailure == nil
+                  && unprepared.startedAttempts.isEmpty && unprepared.transcript == "Old draft",
+                  "Cached retry clears the failure while preserving saved words and never starting recording")
 
         // A refusal is shown where the person acted (1 October audit, finding 7). The Dictate page's
         // mic: the reason is Dictate's, whose banner is beside that mic, and the capture HUD's.
@@ -1176,6 +1186,8 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
 }
 '''
 values = '\n'.join([core.imports(), core.extract(['VoiceError', 'SavedState', 'extension SavedState']),
+                    SwiftFile(PROJECT / 'Sources/LocalVoice/RecognitionProviders.swift').extract(['RecognitionProvider', 'RecognitionConfiguration', 'LocalTranscriptionEndpoint']),
+                    SwiftFile(PROJECT / 'Sources/LocalVoice/RecognitionReadiness.swift').extract(['RecognitionSnapshot', 'RecognitionFailure']),
                     SwiftFile(PROJECT / 'Sources/LocalVoice/HistoryView.swift').extract(['HistoryFilter', 'HistoryDoor'])])
 fixture = fixture.replace('__CLEAR_CALL_SITES__', '[' + ', '.join('"%s"' % site for site in sorted(clear_sites)) + ']')
 fixture = fixture.replace('__UNDELIVERED_WRITERS__', '[' + ', '.join('"%s"' % site for site in sorted(writers)) + ']')

@@ -4,10 +4,12 @@ Workbench has one transcription engine used by the window, global shortcuts and 
 
 | Choice | Model and execution | Setup | Readiness means |
 | --- | --- | --- | --- |
-| Parakeet | Parakeet TDT v2, English, FluidAudio 0.15.6, on-device Core ML | Download on first preparation; reuse FluidAudio's local model cache | Model loaded and ready for local inference |
+| Parakeet | Parakeet TDT v2, English, FluidAudio 0.15.6, on-device Core ML | Explicit Download; cached-only preparation reuses validated local files without network or repair | Model loaded and ready for local inference |
 | Local model server | Model requested from a transcription server on this Mac; routing depends on that server | Run and configure the server yourself; enter its full endpoint and model ID | Configuration valid; connection and response are checked on the first real transcription, not the server's actual model identity |
 
 The default is Parakeet. There is no automatic fallback to another provider or cloud. Workbench does not accept arbitrary downloaded model files: format, tokenizer, runtime and model architecture must be supported by an explicit provider. Models supported by a separately managed server can change without changing Workbench's UI or recording implementation.
+
+Cached preparation reads only local files; it never calls FluidAudio’s downloader or repair loaders. Explicit Download writes an isolated candidate and validates it before adopting it, retaining the previous cache directory. Cancellation retains a non-interruptible load slot until it finishes and prevents stale adoption. The source checks establish those boundaries with synthetic stores. Successful native inference after candidate adoption, including replacement of an existing cache, remains a separate acceptance requirement: CoreML’s lazy file access after a pathname exchange is not established by the pinned Swift wrapper or by successful model construction alone.
 
 ## Local-server contract
 
@@ -59,7 +61,7 @@ The 1 October 2026 comparisons of Mac, Pocket TTS and Speko voices describe the 
 
 ## Adding another provider
 
-Add an explicit `RecognitionProvider` choice and one dispatch branch in `RecognitionEngine`, including its readiness, availability, cancellation and input contract. Keep microphone capture, text cleanup, history, hotkeys and presentation outside provider implementations. Changes should not alter the public `prepare`, `isReady` or `transcribe` call pattern.
+Add an explicit `RecognitionProvider` choice and one dispatch branch in `RecognitionEngine`, including its readiness, availability, cancellation and input contract. Keep microphone capture, text cleanup, history, hotkeys and presentation outside provider implementations. Preserve the separate cached preparation, deliberate acquisition, observable readiness/admission and transcription boundaries; neither transcription entrypoint may acquire assets.
 
 Apple Speech is not offered in this preview. A future on-device provider must check authorization, locale and on-device availability, require on-device recognition for every request, and report unavailable rather than silently using Apple's network recognizer.
 
@@ -67,7 +69,7 @@ The FluidAudio integration is pinned to [0.15.6](https://github.com/FluidInferen
 
 ## Verification
 
-`--check-providers` runs the deterministic checks and real HTTP transport against synthetic loopback fixtures: success, redirect refusal, HTTP failure, declared and streamed response limits, cancellation, and in-flight model selection. These checks use synthetic bytes and isolated temporary defaults. They establish protocol behaviour, not recognition accuracy.
+`--check-providers` runs the deterministic checks and real HTTP transport against synthetic loopback fixtures: success, redirect refusal, HTTP failure, declared and streamed response limits, cancellation, and in-flight model selection. These checks use synthetic bytes and isolated temporary defaults. The same command exercises the recognition lifecycle with injected held loads, cancellation, configuration reversal, candidate validation/adoption, cache preservation and configured-server first-use failure. They establish protocol and ownership behaviour, not actual model loading, recognition accuracy or native permission acceptance.
 
 ### Real server checked on 12 September 2026
 

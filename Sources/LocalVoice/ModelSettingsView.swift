@@ -1,29 +1,18 @@
 import SwiftUI
 
-/// Integrate with ModelSettingsView(engine: model.engine,
-///   isBusy: model.phase != .idle || model.preparing || model.rendering) { ready, message in ... }
-/// The caller updates its recording readiness from onChange; this view owns only the draft.
+/// This view owns only the configuration draft; readiness comes from the engine's snapshot.
 struct ModelSettingsView: View {
     let engine: RecognitionEngine
     var isBusy: Bool
-    /// The app's one readiness line, which carries a model setup's progress (checking files,
-    /// Downloading Parakeet · 42%, preparing for this Mac) from whichever door started it.
-    var progress: String? = nil
-    /// The app is preparing the model itself, as it does at launch or from Home's Retry model.
-    var hostPreparing = false
-    /// Why the app's own preparation failed, shown here beside Try download again.
-    var hostFailure: String? = nil
-    /// Why this page's own Use or Download stopped, or nil as it starts, so the host's readiness
-    /// line shows one failure wherever it shows (Snap & Talk's Retry model reads it).
-    var onFailure: @MainActor (String?) -> Void = { _ in }
-    var onChange: @MainActor (Bool, String) -> Void = { _, _ in }
+    var snapshot: RecognitionSnapshot
+    var onNotNow: () -> Void = {}
+    var onSnapshot: @MainActor (RecognitionSnapshot) -> Void = { _ in }
     @State private var draft = RecognitionConfiguration()
     @State private var active = RecognitionConfiguration()
     @State private var applying = false
-    @State private var ready = false
-    @State private var status = "Checking model settings…"
     @State private var failure: String?
     @State private var loaded = false
+    private var current: RecognitionSnapshot { snapshot }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -34,16 +23,16 @@ struct ModelSettingsView: View {
                     Text("Choose what turns your recordings into text.").foregroundStyle(.secondary)
                 }
             }
-            Label((applying || hostPreparing) ? (progress ?? status) : status, systemImage: ready ? "checkmark.circle" : "circle.dotted")
-                .font(.callout).foregroundStyle(ready ? .primary : .secondary)
-                .accessibilityLabel("Active model: \(status)")
+            Label(current.line, systemImage: current.canTranscribe ? "checkmark.circle" : "circle.dotted")
+                .font(.callout).foregroundStyle(current.canTranscribe ? .primary : .secondary)
+                .accessibilityLabel("Active model: \(current.line)")
 
             Picker("Transcribe with", selection: $draft.provider) {
                 ForEach(RecognitionProvider.allCases) { Text($0.title).tag($0) }
-            }.pickerStyle(.segmented)
+            }.pickerStyle(.segmented).disabled(isBusy || applying || current.isPreparing || !loaded)
 
             if draft.provider == .parakeet {
-                Text("English recognition on this Mac. First setup downloads Parakeet v2; later recordings work offline. Audio is processed inside Workbench.")
+                Text("Parakeet v2 turns English speech into text on this Mac. About 450 MB to download; validated saved files work offline. Setup never starts recording. You can keep using saved work without downloading.")
                     .font(.callout).foregroundStyle(.secondary)
             } else {
                 VStack(alignment: .leading, spacing: 10) {
@@ -68,69 +57,80 @@ struct ModelSettingsView: View {
                 }
             }
 
-            if let failure = failure ?? (hostPreparing || ready ? nil : hostFailure) {
+            if let failure {
                 Label(failure, systemImage: "exclamationmark.triangle").font(.callout).foregroundStyle(.red).textSelection(.enabled)
             }
-            HStack(spacing: 10) {
-                Button {
-                    Task { await apply() }
-                } label: {
-                    Text(actionTitle)
-                }.buttonStyle(.borderedProminent).disabled(ready && draft == active)
-                if applying || hostPreparing { ProgressView().controlSize(.small) }
-                else if draft != active { Text("Changes apply to the next recording.").font(.caption).foregroundStyle(.secondary) }
+            if let details = current.failure?.details {
+                DisclosureGroup("Details") { Text(details).font(.callout).textSelection(.enabled) }
             }
-            if isBusy && !applying {
+            HStack(spacing: 10) {
+                if current.isPreparing {
+                    ProgressView().controlSize(.small)
+                    Button("Cancel setup") { Task { await engine.cancelPreparation(); await refresh() } }
+                        .disabled(current.phase == .cancelling)
+                } else {
+                    Button(actionTitle) { Task { await apply() } }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(isBusy || applying || !loaded || (current.canTranscribe && draft == active))
+                    if draft == active && draft.provider == .parakeet && !current.canTranscribe {
+                        Button("Retry saved files") { Task { await prepareCached() } }.disabled(isBusy || applying)
+                        Button("Not now", action: onNotNow)
+                    }
+                }
+            }
+            if isBusy {
                 Text("Model changes are available when recording and processing finish.").font(.caption).foregroundStyle(.secondary)
             }
         }
-        .disabled(isBusy || applying || !loaded)
         .task {
             draft = await engine.configuration(); active = draft
-            ready = await engine.isReady; status = await engine.statusDescription(); loaded = true
+            await refresh(); loaded = true
         }
-        .onChange(of: isBusy) { _, busy in
-            guard !busy, !applying else { return }
-            Task { ready = await engine.isReady; status = await engine.statusDescription() }
-        }
+
     }
 
     /// What the one button does now: download or retry the model in use, switch to another,
     /// or nothing while the chosen model is ready.
     private var actionTitle: String {
-        if applying || hostPreparing { return "Preparing…" }
         if draft != active { return draft.provider == .parakeet ? "Use Parakeet" : "Use local server" }
-        if ready { return "In use" }
-        guard draft.provider == .parakeet else { return "Use local server" }
-        return (failure ?? hostFailure) == nil ? "Download Parakeet" : "Try download again"
+        if current.canTranscribe { return "In use" }
+        return draft.provider == .parakeet ? "Download Parakeet" : "Use local server"
     }
 
-    @MainActor private func apply() async {
+    @MainActor private func refresh() async {
+        onSnapshot(await engine.snapshot())
+    }
+    static func operationFailure(_ error: Error, snapshot: RecognitionSnapshot) -> String? {
+        // Cancel is a completed user choice, not a stopped setup to diagnose.
+        guard !(error is CancellationError), snapshot.failure == nil else { return nil }
+        return error.localizedDescription
+    }
+    @MainActor private func prepareCached() async {
         guard !isBusy, !applying else { return }
-        applying = true; failure = nil; onFailure(nil)
+        applying = true; failure = nil
         defer { applying = false }
-        // Close the recording gate on the main actor before the first suspension:
-        // another window or hotkey must not begin capture while selection changes.
-        ready = false
-        status = "Changing speech model…"
-        onChange(false, status)
+        do { try await engine.prepareCached() } catch { }
+        await refresh()
+    }
+    @MainActor private func apply() async {
+        guard !isBusy, !applying, !current.isPreparing else { return }
+        applying = true; failure = nil
+        defer { applying = false }
         do {
+            let switching = draft != active
             try await engine.configure(draft)
             active = await engine.configuration(); draft = active
-            ready = false
-            status = draft.provider == .parakeet ? "Preparing Parakeet · first setup may take a few minutes" : "Applying local server settings…"
-            onChange(false, status)
-            try await engine.prepare()
-            ready = await engine.isReady; status = await engine.statusDescription()
-            onChange(ready, status)
+            await refresh()
+            if active.provider == .parakeet {
+                // Selecting Parakeet reviews its cache, never implies download consent.
+                if switching { try await engine.prepareCached() }
+                else { try await engine.acquireSelectedModel() }
+            }
         } catch {
-            failure = error.localizedDescription
-            ready = await engine.isReady; status = await engine.statusDescription()
-            // A failed switch that leaves the engine in use ready is this page's failure
-            // only: the host shows the ready engine, not a Retry model that has nothing
-            // to retry. Only an engine that is not ready is the host's failure too.
-            onFailure(ready ? nil : failure)
-            onChange(ready, status)
+            // Configuration refusals belong to this draft. Current admission is always
+            // read back from the engine, preserving a still-ready previous selection.
+            failure = Self.operationFailure(error, snapshot: await engine.snapshot())
         }
+        await refresh()
     }
 }

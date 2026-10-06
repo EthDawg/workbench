@@ -107,7 +107,16 @@ final class AppModel: NSObject, ObservableObject {
     }
     @Published var ready = false
     @Published var preparing = false
-    @Published var modelMessage = "Preparing local speech…"
+    @Published var modelMessage = "Download Parakeet to turn speech into text on this Mac."
+    @Published private(set) var recognition = RecognitionSnapshot()
+    @Published private(set) var microphoneAuthorization = AVAuthorizationStatus.notDetermined
+    @Published private(set) var microphoneFailure: AVAuthorizationStatus?
+    var readMicrophoneAuthorization: () -> AVAuthorizationStatus = { AVCaptureDevice.authorizationStatus(for: .audio) }
+    var requestMicrophoneAuthorization: @MainActor () async -> Bool = { await AVCaptureDevice.requestAccess(for: .audio) }
+    /// The engine remains authoritative; the isolated gallery can hold this reply
+    /// to exercise cancellation without constructing any audio capture.
+    var readSpeechAdmission: @MainActor (RecognitionEngine) async -> Bool = { await $0.isReady }
+    var openMicrophonePrivacy: () -> Bool = { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!) }
     /// The writing model's one download, Ollama's, owned here as Parakeet's setup is: leaving
     /// Settings › Models changes nothing, and its line reaches wherever readiness shows (#134).
     private(set) lazy var cleanupModels: CleanupModelManager = {
@@ -169,6 +178,12 @@ final class AppModel: NSObject, ObservableObject {
     private var liveCapture: DictationVoiceCapture?
     var hasActiveVoiceCapture: Bool { liveCapture != nil }
     @Published private(set) var voiceSession = LiveVoiceSnapshot()
+    /// Only the verified, isolated surface-gallery child can project recording
+    /// state without creating a real audio capture.
+    func applyGalleryVoiceSnapshot(_ snapshot: LiveVoiceSnapshot) {
+        guard ProcessInfo.processInfo.arguments.contains(SurfaceGallery.passFlag) else { return }
+        voiceSession = snapshot
+    }
     private var recordURL: URL?
     private var meter: Timer?
 
@@ -203,16 +218,18 @@ final class AppModel: NSObject, ObservableObject {
     var onResetPanel: (() -> Void)?
     var microphoneStartFailure: ((TextDelivery.Target?) -> String?)?
 
-    init(preferences: VoicePreferences) {
+    init(preferences: VoicePreferences, startSpeechLifecycle: Bool = true) {
         self.preferences = preferences
         super.init()
         Self.intentModel = self
         // Any door that prepares the speech model shows its progress in the one readiness
         // line Home, the panel and Dictate read.
         let engine = self.engine, sink = ModelProgressSink(self)
-        Task { await engine.observeProgress { line in Task { @MainActor in sink.model?.showModelProgress(line) } } }
+        if startSpeechLifecycle {
+            Task { await engine.observe { state in Task { @MainActor in sink.model?.acceptRecognition(state) } } }
+        }
         photoHandoffActivation = NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
-            .sink { [weak self] _ in self?.refreshPhotoHandoffIfEnabled() }
+            .sink { [weak self] _ in self?.refreshPhotoHandoffIfEnabled(); self?.refreshMicrophoneAuthorization() }
         refreshPhotoHandoffIfEnabled()
         var savedUndelivered: UnresolvedDelivery?
         var loadedDraftRevision = draftRevision
@@ -245,7 +262,7 @@ final class AppModel: NSObject, ObservableObject {
         // With the draft settled: a delivery that did not finish comes back
         // only while its record still holds its words (#134 T5).
         undelivered.restore(savedUndelivered, loadedDraftRevision: loadedDraftRevision, in: deliveryRecords)
-        Task { await prepare() }
+        if startSpeechLifecycle { Task { await prepare() } }
     }
 
     func refreshPhotoHandoffIfEnabled() {
@@ -257,30 +274,31 @@ final class AppModel: NSObject, ObservableObject {
         }
     }
 
-    /// A model setup's progress, shown while speech is not ready yet.
-    func showModelProgress(_ line: String) {
-        guard !ready else { return }
-        modelMessage = line
+    /// Reject observer deliveries that crossed on their way back to the main actor.
+    func acceptRecognition(_ state: RecognitionSnapshot) {
+        guard state.sequence >= recognition.sequence else { return }
+        recognition = state; ready = state.canTranscribe; preparing = state.isPreparing
+        modelMessage = state.line; modelFailure = state.failure?.errorDescription
     }
-
     func prepare() async {
-        guard !preparing, !ready else { return }
-        preparing = true; modelFailure = nil; modelMessage = "Preparing speech · first setup may take a few minutes"
-        do { try await engine.prepare(); ready = true; modelMessage = await engine.statusDescription() }
-        // Retry model is on Home's engine banner, so Home owns the failure (#134 review); Settings
-        // › Models shows the same reason beside its own Try again.
-        catch {
-            modelFailure = error.localizedDescription
-            modelMessage = "The speech model couldn’t be prepared"
-            report("Could not prepare the speech model. Check your connection and click Retry model. \(error.localizedDescription)", on: .home)
-        }
-        preparing = false
+        do { try await engine.prepareCached() } catch { /* The engine owns the typed failure. */ }
+        acceptRecognition(await engine.snapshot())
+    }
+    func downloadSpeechModel() async {
+        do { try await engine.acquireSelectedModel() } catch { /* The engine owns the typed failure. */ }
+        acceptRecognition(await engine.snapshot())
+    }
+    func cancelSpeechPreparation() { Task { await engine.cancelPreparation(); acceptRecognition(await engine.snapshot()) } }
+    var canToggleRecording: Bool {
+        phase == .requesting || phase == .recording || (phase == .idle && ready)
     }
 
     func toggleRecording(fromShortcut: Bool = false, target: TextDelivery.Target? = nil) {
         if phase == .requesting { cancelRecording(); return }
         if phase == .recording { stopRecording(); return }
-        guard phase == .idle, ready else { return }
+        guard phase == .idle else { return }
+        guard ready else { page = "models"; onShowEditor?("models"); return }
+        microphoneFailure = nil
         let intendedTarget = target ?? (fromShortcut ? TextDelivery.capture() : nil)
         if let reason = microphoneStartFailure?(intendedTarget) {
             // Dictate's banner shows it beside the page's mic, as admitNewCapture's refusals are.
@@ -333,18 +351,25 @@ final class AppModel: NSObject, ObservableObject {
         guard recordingAttempt == attempt else { return }
         phase = .requesting; attention = nil; onPhaseChange?()
         let granted: Bool
-        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        microphoneAuthorization = readMicrophoneAuthorization()
+        switch microphoneAuthorization {
         case .authorized: granted = true
         case .notDetermined:
             status = "Allow Microphone access in the macOS prompt."
-            if permissionRequest == nil { permissionRequest = Task { await AVCaptureDevice.requestAccess(for: .audio) } }
+            if permissionRequest == nil { permissionRequest = Task { await requestMicrophoneAuthorization() } }
             granted = await permissionRequest!.value; permissionRequest = nil
         default: granted = false
         }
         guard recordingAttempt == attempt else { return }
-        guard granted else {
-            fail("Microphone access is off. Open System Settings › Privacy & Security › Microphone and allow \(Workbench.displayName)."); return
+        microphoneAuthorization = readMicrophoneAuthorization()
+        guard granted, microphoneAuthorization == .authorized else {
+            fail(Self.microphoneMessage(microphoneAuthorization)); microphoneFailure = microphoneAuthorization; return
         }
+        let admitted = await readSpeechAdmission(engine)
+        // Cancel or a new Start can run while the actor replies. Neither a true
+        // nor a false old reply may create recovery files or fail the new attempt.
+        guard recordingAttempt == attempt else { return }
+        guard ready, admitted else { fail("Speech is no longer ready. Open Models, then start a new recording when setup is complete."); return }
         var startedAudio: URL?
         do {
             let url = try captureRecovery.beginRecording()
@@ -579,7 +604,7 @@ final class AppModel: NSObject, ObservableObject {
             return
         }
         guard let url = recordURL else { return }
-        guard ready else { captureFailure = "Wait for the speech model to finish preparing, then retry transcription."; onPhaseChange?(); return }
+        guard ready else { captureFailure = "Open Models to prepare speech, then retry transcription. The original audio is kept."; onPhaseChange?(); return }
         destination = nil
         transcribe(url, duration: elapsed, temporary: true)
     }
@@ -952,7 +977,38 @@ final class AppModel: NSObject, ObservableObject {
         accessibilityGranted = step == .approved || AXIsProcessTrusted()
     }
     func refreshPermissions() { accessibilityGranted = AXIsProcessTrusted() }
-    func openMicrophoneSettings() { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!) }
+    static func microphoneMessage(_ status: AVAuthorizationStatus) -> String {
+        switch status {
+        case .authorized: return "Microphone access is available."
+        case .notDetermined: return "Microphone access has not been granted. Start recording when you want to request access; saved text remains available."
+        case .denied: return "Microphone access is off. Open System Settings › Privacy & Security › Microphone to review access. Saved text remains available."
+        case .restricted: return "macOS reports that microphone access is restricted. Your saved text remains available."
+        @unknown default: return "Microphone access could not be determined. Your saved text remains available."
+        }
+    }
+    var canOpenMicrophoneSettings: Bool { microphoneFailure == .denied }
+    var idleMicrophoneTitle: String? {
+        switch microphoneFailure {
+        case .denied: return "Microphone access is off"
+        case .restricted: return "Microphone access is restricted"
+        default: return nil
+        }
+    }
+    func refreshMicrophoneAuthorization() {
+        microphoneAuthorization = readMicrophoneAuthorization()
+        guard microphoneFailure != nil else { return }
+        if microphoneAuthorization == .authorized {
+            microphoneFailure = nil; dismissCaptureFailure()
+            if attention?.page == .dictate { dismissError() }
+        }
+    }
+    func openMicrophoneSettings() {
+        guard openMicrophonePrivacy() else {
+            let message = "System Settings could not be opened. Open it manually and choose Privacy & Security › Microphone."
+            captureFailure = message; report(message, on: .dictate); return
+        }
+        dismissCaptureFailure()
+    }
     func exportTranscript() -> String? {
         let panel = NSSavePanel(); panel.allowedContentTypes = [.plainText]; panel.nameFieldStringValue = "Transcript.txt"
         guard panel.runModal() == .OK, let url = panel.url else { return nil }
@@ -1250,6 +1306,7 @@ final class AppModel: NSObject, ObservableObject {
                           voice: voice, rate: rate, rawDraft: rawTranscript, undelivered: undelivered.saved(in: records))
     }
     func shutdown() {
+        Task { await engine.cancelPreparation() }
         // Quit never attempts another external write. Preserve provisional field text
         // and the existing recovery audio; next launch cannot replay this target.
         liveDictation?.end(); liveDictation = nil
