@@ -60,6 +60,7 @@ harnesses() {
   PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-remember-correction.py
   PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-read-retirement.py
   PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-readback-resources.py
+  PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-verify-preview.py
   PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-library-recall.py
   PYTHONDONTWRITEBYTECODE=1 python3 BrowserExtension/tests/package_test.py
   PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-library-recall.py --import-review
