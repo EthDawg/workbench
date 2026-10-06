@@ -272,6 +272,8 @@ enum ReadbackChecks {
         try check(applying.preparing && !applying.needsAttention, "Settings › Models' own Use or Download is preparing too, never a failure with a second Retry")
         let failedEngine = ReadbackView.NarrationEngine(name: "The speech model couldn’t be prepared", ready: false, failure: "Check your connection.")
         try check(failedEngine.line == "The speech model couldn’t be prepared. Check your connection." && failedEngine.needsAttention && !failedEngine.preparing, "a failed preparation names its reason and needs Retry model")
+        let keptEngine = ReadbackView.NarrationEngine(name: RecognitionConfiguration().summary, ready: true, failure: "The local server could not be reached.")
+        try check(keptEngine.line == "Parakeet v2 · English · on this Mac" && !keptEngine.needsAttention && !keptEngine.preparing, "a failed switch beside a ready engine shows that engine's name, with no Retry model to press")
         print("READBACK_CHECKS_OK: \(passed) checks")
     }
 
