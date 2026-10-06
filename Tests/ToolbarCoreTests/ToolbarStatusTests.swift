@@ -30,8 +30,6 @@ final class ToolbarStatusTests: XCTestCase {
                 XCTAssertFalse(status.announces(after: status), "Transport changes announce once, not on each elapsed tick")
             }
         }
-        XCTAssertEqual(ToolbarStatus.resolve(.init(capture: .dictation, playback: true, captureTransport: .paused)).indicator,
-                       .playback, "A paused recording does not hide independent live playback")
         XCTAssertEqual(ToolbarStatus.resolve(.init(captureTransport: .reconnecting)), .idle,
                        "A completed session's stale transport cannot resurrect activity")
     }
@@ -48,18 +46,15 @@ final class ToolbarStatusTests: XCTestCase {
             let interrupted = ToolbarStatus.resolve(.init(capture: .meeting, captureTransport: transport, meetingFinishesSoon: true))
             XCTAssertFalse(interrupted.stopsSoonBadge || interrupted.description.contains("Call audio ended"))
         }
-        let reading = ToolbarStatus.resolve(.init(playback: true, meetingFinishesSoon: true))
-        XCTAssertEqual(reading, ToolbarStatus.resolve(.init(playback: true)), "A stale grace flag cannot change reading controls or status")
+        XCTAssertEqual(ToolbarStatus.resolve(.init(meetingFinishesSoon: true)), .idle, "A stale grace flag cannot resurrect work")
     }
 
     /// Capture and playback, processing, failure, a pending result or capture, paused work, other
     /// live work, idle: each wins over everything after it.
     func testThePriorityIsFixed() {
         let ladder: [(ToolbarActivity, ToolbarStatus.Indicator)] = [
-            (ToolbarActivity(capture: .dictation, playback: true, processing: true, failure: true, pendingDelivery: true,
+            (ToolbarActivity(capture: .dictation, processing: true, failure: true, pendingDelivery: true,
                              unsavedCapture: true, paused: true, live: [.presenting]), .capture),
-            (ToolbarActivity(playback: true, processing: true, failure: true, pendingDelivery: true, unsavedCapture: true,
-                             paused: true, live: [.presenting]), .playback),
             (ToolbarActivity(processing: true, failure: true, pendingDelivery: true, unsavedCapture: true, paused: true, live: [.presenting]), .processing),
             (ToolbarActivity(failure: true, pendingDelivery: true, unsavedCapture: true, paused: true, live: [.presenting]), .failure),
             (ToolbarActivity(pendingDelivery: true, unsavedCapture: true, paused: true, live: [.presenting]), .pendingDelivery),
@@ -96,7 +91,7 @@ final class ToolbarStatusTests: XCTestCase {
         XCTAssertEqual(ToolbarStatus.resolve(ToolbarActivity(capture: .dictation, level: 3)).level, 1)
         XCTAssertEqual(ToolbarStatus.resolve(ToolbarActivity(capture: .dictation, level: -1)).level, 0)
         XCTAssertNil(ToolbarStatus.resolve(ToolbarActivity(capture: .meeting)).level, "an owner without a sample shows the still outline")
-        XCTAssertNil(ToolbarStatus.resolve(ToolbarActivity(level: 0.5, playback: true)).level)
+        XCTAssertNil(ToolbarStatus.resolve(ToolbarActivity(level: 0.5, processing: true)).level)
     }
 
     /// VoiceOver hears a new indicator, badge or state in words once, never a level or a repeated state.
@@ -116,7 +111,7 @@ final class ToolbarStatusTests: XCTestCase {
     func testAResultArrivingUnderProcessingOrPlaybackIsHeard() {
         for (base, added) in [(ToolbarActivity(processing: true), ToolbarActivity(processing: true, failure: true)),
                               (ToolbarActivity(processing: true), ToolbarActivity(processing: true, pendingDelivery: true)),
-                              (ToolbarActivity(playback: true), ToolbarActivity(playback: true, unsavedCapture: true))] {
+                              (ToolbarActivity(processing: true), ToolbarActivity(processing: true, unsavedCapture: true))] {
             let before = ToolbarStatus.resolve(base), after = ToolbarStatus.resolve(added)
             XCTAssertEqual(after.indicator, before.indicator, "the indicator keeps its priority")
             XCTAssertTrue(after.announces(after: before), "\(after.description) is heard")
@@ -164,8 +159,7 @@ final class ToolbarStatusTests: XCTestCase {
         XCTAssertEqual([quiet.levelWords, sound.levelWords, low.levelWords], ["Quiet", "Receiving sound", "Low microphone level"])
         XCTAssertEqual(sound.spokenValue, "Recording dictation. Receiving sound")
         XCTAssertNil(ToolbarStatus.resolve(ToolbarActivity(capture: .meeting)).levelWords, "no words without a level sample")
-        XCTAssertNil(ToolbarStatus.resolve(ToolbarActivity(playback: true, quiet: true)).levelWords, "and none without a capture")
-        XCTAssertEqual(ToolbarStatus.resolve(ToolbarActivity(playback: true)).spokenValue, "Reading aloud")
+        XCTAssertNil(ToolbarStatus.resolve(ToolbarActivity(processing: true, quiet: true)).levelWords, "and none without a capture")
         XCTAssertFalse(sound.announces(after: quiet) || low.announces(after: sound) || quiet.announces(after: low),
                        "the level and its words are never announced")
     }

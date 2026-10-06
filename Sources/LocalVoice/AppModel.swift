@@ -6,7 +6,7 @@ import PhotoHandoffKit
 import ToolbarCore
 
 @MainActor
-final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
+final class AppModel: NSObject, ObservableObject {
     static weak var intentModel: AppModel?
     let shortcutRequest = DictationRequest()
     func cancelShortcut(_ id: UUID) {
@@ -15,7 +15,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     }
     func transcribeForShortcut(_ url: URL, id: UUID = UUID()) async throws -> String {
         guard ready else { throw VoiceError.message("Open Workbench and finish preparing the speech model, then run this shortcut again.") }
-        guard phase == .idle, !rendering else { throw VoiceError.message("Workbench is busy. Finish the current recording or reading first.") }
+        guard phase == .idle else { throw VoiceError.message("Workbench is busy. Finish the current recording first.") }
         guard !meetings.isBusy else { throw VoiceError.message("Finish the meeting recording or transcription first.") }
         guard !captureRecovery.hasRecovery else { throw CaptureRecoveryError.pending }
         let file = try AVAudioFile(forReading: url)
@@ -137,177 +137,13 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     var resolveAdditionalHandoffItems: ((Set<WorkbenchItemReference>) throws -> [HandoffSourceSnapshot])?
     @Published var replacements: [Replacement] = []
     @Published private(set) var rememberedCorrection: RememberedCorrection?
-    /// The saved Mac voice: an identifier, or a name an earlier build saved.
-    /// Empty means nothing was chosen, so the best installed voice is used.
+    /// Dormant Read values retained exactly for SavedState compatibility.
     @Published var voice = "" { didSet { persist() } }
     @Published var rate = 180.0 { didSet { persist() } }
     @Published var elapsed = 0.0
     @Published var level = 0.0
-    @Published var readingProvider = ReadingProvider(rawValue: UserDefaults.standard.string(forKey: "readingProvider.v1") ?? "") ?? .mac {
-        didSet {
-            UserDefaults.standard.set(readingProvider.rawValue, forKey: "readingProvider.v1")
-            stopPlayback()
-            if readingProvider == .speko { Task { await refreshSpekoVoices() } }
-            // The neural model holds memory only while Read uses it.
-            if oldValue == .neural, readingProvider != .neural { let store = neuralVoices; Task { await store.release() } }
-        }
-    }
-    /// The neural voice Read uses, by its name in the download.
-    @Published var neuralVoice = NeuralVoiceCatalog.resolve(UserDefaults.standard.string(forKey: "readingProvider.neuralVoice.v1")) {
-        didSet {
-            guard oldValue != neuralVoice else { return }
-            UserDefaults.standard.set(neuralVoice, forKey: "readingProvider.neuralVoice.v1")
-            invalidateAudio()
-        }
-    }
-    let neuralVoices = NeuralVoiceStore()
-    @Published private(set) var neuralVoicesDownloaded = false
-    /// The download's one line ("Downloading neural voices · 42%") while it runs.
-    @Published private(set) var neuralVoiceProgress: String?
-    @Published private(set) var neuralVoiceNotice = ""
-    private var neuralVoiceDownload: Task<Void, Never>?
-    func refreshNeuralVoices() { neuralVoicesDownloaded = neuralVoices.isDownloaded }
-    /// The one download Read's neural voices need, started only from its button.
-    func downloadNeuralVoices() {
-        guard neuralVoiceDownload == nil, !neuralVoicesDownloaded else { return }
-        neuralVoiceProgress = "Checking neural voices files…"; neuralVoiceNotice = ""
-        let store = neuralVoices, sink = ModelProgressSink(self)
-        neuralVoiceDownload = Task {
-            do {
-                try await store.download { line in Task { @MainActor in
-                    if sink.model?.neuralVoiceProgress != nil { sink.model?.neuralVoiceProgress = line }
-                } }
-                // The first load prepares the voices for this Mac, so the first Listen need not.
-                // If it fails here, the download is still good and Listen will say why.
-                neuralVoiceProgress = "Preparing neural voices for this Mac…"
-                _ = try? await store.ready()
-                if readingProvider != .neural { await store.release() }
-                neuralVoiceNotice = ""
-            } catch is CancellationError {
-                neuralVoiceNotice = "Download stopped. What arrived is kept for next time."
-            } catch {
-                neuralVoiceNotice = Task.isCancelled ? "Download stopped. What arrived is kept for next time."
-                    : "The neural voices couldn’t be downloaded. \(error.localizedDescription)"
-            }
-            neuralVoiceProgress = nil; neuralVoiceDownload = nil
-            refreshNeuralVoices()
-        }
-    }
-    func cancelNeuralVoiceDownload() { neuralVoiceDownload?.cancel() }
-    func removeNeuralVoices() {
-        guard neuralVoiceDownload == nil, !rendering, !playing, !paused else { return }
-        stopVoicePreview()
-        invalidateAudio()
-        let store = neuralVoices
-        Task {
-            do { try await store.remove(); neuralVoiceNotice = "Removed. Download them again at any time." }
-            catch { neuralVoiceNotice = error.localizedDescription }
-            refreshNeuralVoices()
-        }
-    }
-    @Published var selectedSpekoVoice = SpekoVoicePreference.load() {
-        didSet {
-            guard oldValue != selectedSpekoVoice else { return }
-            SpekoVoicePreference.save(selectedSpekoVoice)
-            invalidateAudio()
-        }
-    }
-    @Published private(set) var spekoVoices: [SpekoVoice] = []
-    @Published private(set) var loadingSpekoVoices = false
-    @Published private(set) var spekoVoiceNotice = ""
-    private var spekoVoiceRefreshID: UUID?
-    @Published var keyNotice = SpekoKeychain.hasKey ? "Key ready in Keychain." : "Add your own key to use Speko."
-    private var readingTask: Task<Void, Never>?
-    private var readingGenerationID: UUID?
-    var readingLimit: Int { readingProvider == .speko ? SpekoRenderer.maximumCharacters : 50_000 }
-    var displayedSpekoVoices: [SpekoVoice] {
-        guard let selectedSpekoVoice, !spekoVoices.contains(where: { $0.id == selectedSpekoVoice.id }) else { return spekoVoices }
-        return [selectedSpekoVoice] + spekoVoices
-    }
-    func saveSpekoKey(_ key: String) {
-        do {
-            try SpekoKeychain.save(key)
-            invalidateAudio()
-            keyNotice = "Key saved in Keychain."
-            Task { await refreshSpekoVoices(force: true) }
-        }
-        catch { report(error.localizedDescription, on: .read) }
-    }
-    func removeSpekoKey() {
-        do {
-            try SpekoKeychain.remove()
-            readingProvider = .mac
-            spekoVoiceRefreshID = nil
-            loadingSpekoVoices = false
-            spekoVoices = []
-            selectedSpekoVoice = nil
-            spekoVoiceNotice = ""
-            invalidateAudio()
-            keyNotice = "Key removed. Using Mac voices."
-        }
-        catch { report(error.localizedDescription, on: .read) }
-    }
-    func selectSpekoVoice(id: String?) {
-        selectedSpekoVoice = id.flatMap { id in displayedSpekoVoices.first(where: { $0.id == id }) }
-    }
-    func refreshSpekoVoices(force: Bool = false) async {
-        guard readingProvider == .speko, (!loadingSpekoVoices || force), !rendering else { return }
-        guard SpekoKeychain.hasKey else {
-            spekoVoiceNotice = "Save your Speko key to browse voices."
-            return
-        }
-        let refreshID = UUID()
-        spekoVoiceRefreshID = refreshID
-        loadingSpekoVoices = true
-        spekoVoiceNotice = "Loading English voices…"
-        defer {
-            if spekoVoiceRefreshID == refreshID { loadingSpekoVoices = false }
-        }
-        do {
-            let voices = try await SpekoVoiceCatalog.load(key: SpekoKeychain.read())
-            try Task.checkCancellation()
-            guard spekoVoiceRefreshID == refreshID, readingProvider == .speko, SpekoKeychain.hasKey else { return }
-            spekoVoices = voices
-            spekoVoiceNotice = voices.isEmpty ? "Speko returned no English voices that support a 5,000-character reading." : "\(voices.count) voices available."
-        } catch is CancellationError {
-            if spekoVoiceRefreshID == refreshID { spekoVoiceNotice = "" }
-        } catch {
-            if spekoVoiceRefreshID == refreshID { spekoVoiceNotice = error.localizedDescription }
-        }
-    }
-    private func invalidateAudio() { stopPlayback(); audio?.discard(); audio = nil }
-    /// What Read's Cancel ends: audio being made, or Save audio's whole run, whose
-    /// export continues after the audio is made.
-    var canCancelReading: Bool { readingGenerationActive || savingAudio }
-    func cancelReading() {
-        guard canCancelReading else { return }
-        // Only making audio sends text to Speko; an export sends nothing.
-        let mayBeBilled = readingGenerationActive && readingProvider == .speko
-        let cancelled = savingAudio ? "Save audio cancelled." : "Reading generation cancelled."
-        let task = readingTask
-        if savingAudioID == readingGenerationID { savingAudioID = nil }
-        readingGenerationID = nil
-        readingTask = nil
-        readingGenerationActive = false
-        cloudRequestActive = false
-        rendering = false
-        task?.cancel()
-        pendingRender?.cancel(); pendingRender = nil
-        status = mayBeBilled ? cancelled + " Speko may still bill text already accepted." : cancelled
-    }
-    @Published private(set) var readingGenerationActive = false
-    /// Save audio's whole run, from making the audio to writing the file.
-    @Published private(set) var savingAudioID: UUID?
-    var savingAudio: Bool { savingAudioID != nil }
-    @Published var cloudRequestActive = false
-    @Published var rendering = false
-    @Published var playing = false
-    @Published var paused = false
-    @Published var audioDuration = 0.0
-    @Published var playbackTime = 0.0
-    @Published private(set) var pendingReadingSelection: ReadingSelectionImport?
     @Published private(set) var pendingTranscript: Transcript?
-    @Published private(set) var readingFailure: ReadingFailure?
+
     @Published var accessibilityGranted = AXIsProcessTrusted()
     @Published var canRetry = false
     var retryCaptureLabel: String { captureRecovery.pending?.capture == nil ? "Retry transcription" : "Retry saving" }
@@ -335,25 +171,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     @Published private(set) var voiceSession = LiveVoiceSnapshot()
     private var recordURL: URL?
     private var meter: Timer?
-    private var player: ReadingPlayer?
-    private var playTimer: Timer?
-    private var playbackID: UUID?
-    /// The latest reading's audio, reused while its signature matches.
-    private var audio: ReadingTrack?
-    /// What the current player plays; it can differ after Save audio.
-    private var playingTrack: ReadingTrack?
-    /// A render on this Mac that has not produced playable audio yet.
-    private var pendingRender: (any ReadingRenderer)?
-    private var audioURL: URL? { audio?.url }
-    private var audioSignature: String { audio?.signature ?? "" }
-    private var voicePreview: AVSpeechSynthesizer?
-    private var neuralPreview: NeuralSpeechRenderer?
-    private var neuralPreviewPlayer: AVAudioPlayer?
-    private var voiceObservers: [AnyCancellable] = []
-    /// Set once a saved choice needed the `say` list; it then stays in the catalogue.
-    private var sayVoicesWanted = false
-    /// A voice listing in flight on the utility queue; one at a time.
-    private var voiceRefreshPending = false
+
     private var peakPower: Float = -160
     private var destination: TextDelivery.Target? {
         didSet { oldValue?.opaqueEditor?.end(); liveDictation?.end(); liveDictation = nil }
@@ -369,9 +187,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     var toolbarCaptureIdentity: String {
         [recordingAttempt, transcriptionID, captureRecovery.pending?.id].compactMap { $0?.uuidString }.joined(separator: ":")
     }
-    var toolbarReadingIdentity: String {
-        [readingGenerationID, playbackID].compactMap { $0?.uuidString }.joined(separator: ":")
-    }
+
     private var persistWork: DispatchWorkItem?
     var onPhaseChange: (() -> Void)?
     var onShortcutsChanged: (() -> Void)?
@@ -386,12 +202,6 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     var onResetShortcuts: (() -> Void)?
     var onResetPanel: (() -> Void)?
     var microphoneStartFailure: ((TextDelivery.Target?) -> String?)?
-    @Published private(set) var macVoices: [MacVoice] = []
-    @Published private(set) var voiceLanguage = "en-US"
-    @Published private(set) var previewingVoice = false
-    @Published private(set) var readingHighlight: NSRange?
-    /// Playback started while a Mac voice keeps rendering the rest.
-    @Published private(set) var renderingAhead = false
 
     init(preferences: VoicePreferences) {
         self.preferences = preferences
@@ -429,17 +239,8 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
                 return
             }
         }
-        // A saved voice that is missing stays chosen and is reported; it is
-        // never silently replaced. Voices added in Settings appear without a relaunch.
-        refreshVoices()
-        refreshNeuralVoices()
-        voiceObservers = [
-            NotificationCenter.default.publisher(for: AVSpeechSynthesizer.availableVoicesDidChangeNotification)
-                .receive(on: RunLoop.main).sink { [weak self] _ in MacVoiceCatalog.forgetSayVoices(); self?.refreshVoices(inBackground: true) },
-            NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
-                .sink { [weak self] _ in self?.refreshVoices(inBackground: true) }
-        ]
         loaded = true
+        library.preserveRetiredReading(speechText)
         restoreCaptureRecovery()
         // With the draft settled: a delivery that did not finish comes back
         // only while its record still holds its words (#134 T5).
@@ -476,186 +277,10 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         preparing = false
     }
 
-    /// The one owner of text arriving in Read: the macOS Service, History and
-    /// Library items all come here. An empty draft or the same text needs no
-    /// choice; a different draft waits behind Replace reading / Keep current,
-    /// with the current reading untouched. Nothing here starts audio or sends
-    /// text online.
-    func receiveReadingSelection(_ selection: ReadingSelectionImport) {
-        attention = nil
-        clipboardReceipt.dismissHUD()
-        if ReadingSelectionImport.needsReview(current: speechText, incoming: selection.text) {
-            pendingReadingSelection = selection
-            status = "\(selection.origin.name) is ready. Choose Replace reading or Keep current."
-        } else {
-            pendingReadingSelection = nil
-            if speechText != selection.text { applyReadingSelection(selection) }
-            else { status = "\(selection.origin.name) already matches this reading draft." }
-        }
-        page = "speak"
-        onShowEditor?("speak")
-    }
-
-    /// Read aloud in History and Library.
-    func importReading(_ text: String, from origin: ReadingSelectionImport.Origin) {
-        do { receiveReadingSelection(try ReadingSelectionImport(text: text, origin: origin)) }
-        catch {
-            page = "speak"; onShowEditor?("speak")
-            report(error.localizedDescription, on: .read)
-        }
-    }
-
-    func importReadingFile() {
-        guard canReplaceReading else { status = Self.replaceWaitsForSave; return }
-        let panel = NSOpenPanel()
-        panel.title = "Import text"; panel.prompt = "Import"
-        panel.allowedContentTypes = [.plainText]
-        panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
-        guard panel.runModal() == .OK else { return }
-        importReadingFile(panel.url)
-    }
-    func importReadingFile(_ url: URL?) {
-        guard let url else { return }
-        guard canReplaceReading else { status = Self.replaceWaitsForSave; return }
-        do { receiveReadingSelection(try ReadingSelectionImport.readFile(url)) }
-        catch { report(error.localizedDescription, on: .read) }
-    }
-
-    /// Home's Read tile: the click is the choice. Different text replaces the
-    /// reading through the same step as Replace reading, then Listen starts.
-    /// The same text is not restarted: paused resumes, playing carries on.
-    func listen(to text: String) {
-        // Only replace the draft when the reading can start, so it never waits unheard.
-        guard !meetings.isBusy else {
-            report("Finish the meeting recording or transcription before playing a reading.", on: .read, from: .homeReadTileMeeting); return
-        }
-        guard phase == .idle else { return }
-        guard canReplaceReading else { status = Self.replaceWaitsForSave; return }
-        // Text the selected provider cannot read is turned away before anything changes: the
-        // draft, its audio, player and playhead, and any review stay exactly as they were, and
-        // nothing starts. The reason is Read's, heard at once wherever the tile was (#173).
-        if let rejection = readingRejection(for: text) {
-            let reason = copiedTextRefusal(rejection, text: text)
-            report(reason, on: .read, from: .homeReadTileRefused)
-            announceForAccessibility(reason)
-            return
-        }
-        let setAside = pendingReadingSelection != nil
-        pendingReadingSelection = nil
-        if text != speechText {
-            let note = endReadingForNewText()
-            speechText = text
-            let notes = [setAside ? "Reading the copied text instead of the text waiting for review." : nil, note].compactMap { $0 }
-            if !notes.isEmpty { status = notes.joined(separator: " ") }
-        }
-        guard !playing else { return }
-        listen()
-    }
-
-    /// Replace ends a reading that is generating, playing or paused, but waits
-    /// for Save audio, which the person chose, to finish.
-    var canReplaceReading: Bool { !savingAudio }
-    static let replaceWaitsForSave = "Save audio is still making its file. Replace reading when it finishes."
-
-    func replaceReadingWithSelection() {
-        guard pendingReadingSelection != nil else { return }
-        guard canReplaceReading, let selection = pendingReadingSelection else { status = Self.replaceWaitsForSave; return }
-        applyReadingSelection(selection)
-    }
-
-    func keepCurrentReading() {
-        guard let selection = pendingReadingSelection else { return }
-        pendingReadingSelection = nil
-        status = "Current reading kept. " + selection.origin.keptNote
-    }
-
-    func readingLimitMessage(for text: String) -> String? {
-        guard text.count > readingLimit else { return nil }
-        return "This text has \(text.count.formatted()) characters. \(readingProviderName) accepts up to \(readingLimit.formatted()); shorten the draft before choosing Listen or Save audio."
-    }
-    private var readingProviderName: String {
-        switch readingProvider {
-        case .mac: return "Mac reading"
-        case .neural: return "Neural reading"
-        case .speko: return "Speko"
-        }
-    }
-
-    /// Why the selected provider cannot read a text (#173).
-    enum ReadingRejection: Equatable {
-        /// More characters than the provider accepts.
-        case tooLong
-        /// Within the limit as shown, but over it once prepared: Speko receives the prepared text,
-        /// which can be a little longer than what is shown.
-        case preparedTooLong
-        /// Nothing left to say once the text is prepared for listening.
-        case nothingToRead
-        /// What Listen and Save audio report when the draft itself cannot be read.
-        var message: String {
-            switch self {
-            case .tooLong, .preparedTooLong: return "This reading is too long for the selected provider."
-            case .nothingToRead: return "This text has nothing to read aloud."
-            }
-        }
-    }
-    /// The one admission check every reading passes before any audio is made, any text is sent
-    /// or an earlier reading ends: the provider's limit on the text as shown and, for Speko, on
-    /// the prepared text, then something to read. The prepared text is made only when the text
-    /// is within the limit, unless the caller already has it. Nil when the text can be read.
-    func readingRejection(for text: String, prepared: ListeningText? = nil) -> ReadingRejection? {
-        guard text.count <= readingLimit else { return .tooLong }
-        let spoken = (prepared ?? ListeningText(text)).spoken
-        guard readingProvider != .speko || spoken.count <= readingLimit else { return .preparedTooLong }
-        guard !spoken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return .nothingToRead }
-        return nil
-    }
-    /// Home's tile read nothing: why, and that the draft it would have replaced is kept.
-    private func copiedTextRefusal(_ rejection: ReadingRejection, text: String) -> String {
-        let kept = "Your reading draft is unchanged."
-        switch rejection {
-        case .tooLong:
-            return "The copied text has \(text.count.formatted()) characters, more than \(readingProviderName) accepts (\(readingLimit.formatted())). \(kept)"
-        case .preparedTooLong:
-            return "Prepared for listening, the copied text is longer than \(readingProviderName) accepts (\(readingLimit.formatted()) characters). \(kept)"
-        case .nothingToRead:
-            return "The copied text has nothing to read aloud. \(kept)"
-        }
-    }
-
-    private func applyReadingSelection(_ selection: ReadingSelectionImport) {
-        let note = endReadingForNewText()
-        pendingReadingSelection = nil
-        speechText = selection.text
-        status = [readingLimitMessage(for: selection.text) ?? "\(selection.origin.name) is ready. Choose Listen to hear it.", note]
-            .compactMap { $0 }.joined(separator: " ")
-    }
-
-    /// New text ends everything the old text started, so nothing from it can
-    /// land later over the new text: its generation, through the same
-    /// cancellation as Cancel generation (which also stops a `say` process),
-    /// then playback, progress and reusable audio. A late result from the old
-    /// generation fails its generation check and is dropped. Returns Speko's
-    /// billing note when an online generation stopped.
-    private func endReadingForNewText() -> String? {
-        clearReadingFailure()
-        var note: String?
-        if readingGenerationActive {
-            if readingProvider == .speko { note = "Speko may still bill text already accepted." }
-            cancelReading()
-        } else if let task = readingTask {
-            // A Listen whose generation has not begun yet.
-            readingGenerationID = nil; readingTask = nil; rendering = false
-            task.cancel()
-        }
-        invalidateAudio()
-        return note
-    }
-
-
     func toggleRecording(fromShortcut: Bool = false, target: TextDelivery.Target? = nil) {
         if phase == .requesting { cancelRecording(); return }
         if phase == .recording { stopRecording(); return }
-        guard phase == .idle, ready, !rendering else { return }
+        guard phase == .idle, ready else { return }
         let intendedTarget = target ?? (fromShortcut ? TextDelivery.capture() : nil)
         if let reason = microphoneStartFailure?(intendedTarget) {
             // Dictate's banner shows it beside the page's mic, as admitNewCapture's refusals are.
@@ -666,7 +291,6 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         captureFailure = nil; dismissCaptureCue()
         coach.remove(); holdGesture = nil
         previewingPanel = false
-        stopPlayback()
         captureUsesHoldShortcut = fromShortcut && preferences.capture == .hold
         recordingSettings = captureSettings()
         isMicrophoneQuiet = false
@@ -1357,409 +981,18 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         }
     }
 
-    private var signature: String {
-        let selectedVoice: String
-        switch readingProvider {
-        case .mac: selectedVoice = voiceChoice?.voice?.id ?? "missing:" + voice
-        case .neural: selectedVoice = neuralVoice
-        case .speko: selectedVoice = selectedSpekoVoice?.requestSignature ?? "automatic"
-        }
-        return "\(readingProvider.rawValue)|\(selectedVoice)|\(Int(rate))|listening-\(ListeningText.version)|\(speechText)"
-    }
-
     // MARK: Mac voices
 
-    /// The chosen voice, the best default when none was chosen, or a missing choice.
-    var voiceChoice: MacVoiceChoice? {
-        MacVoiceCatalog.resolve(voice, in: macVoices, preferredLanguage: voiceLanguage)
-            ?? MacVoiceCatalog.preferredDefault(in: macVoices, preferredLanguage: voiceLanguage).map(MacVoiceChoice.installed)
-    }
-    var selectedVoiceID: String { voiceChoice?.voice?.id ?? "" }
-    var voiceHint: MacVoiceHint? { MacVoiceCatalog.upgradeHint(for: macVoices, preferredLanguage: voiceLanguage) }
-    var missingVoiceMessage: String {
-        if case .missing(let name) = voiceChoice {
-            return "\(name) is not installed on this Mac. Choose another voice, or add it again in \(MacVoiceCatalog.settingsTitle) settings."
-        }
-        return "No Mac voice is installed. Add one in \(MacVoiceCatalog.settingsTitle) settings."
-    }
-    /// Lists installed voices by identifier: at launch, when macOS reports a
-    /// voice change and on returning to the app (a voice added in Settings
-    /// appears without a relaunch). Launch waits for the list; later refreshes
-    /// read it on a GCD utility queue (35–90 ms measured, 0 Accessibility
-    /// faults there, where a Swift task's thread logs one per call) and apply
-    /// it on the main thread. The `say` list is read once, on the main thread,
-    /// and only when the saved choice is an older name or a voice only `say`
-    /// can speak (#140).
-    func refreshVoices(inBackground: Bool = false) {
-        let language = MacVoiceCatalog.preferredLanguage
-        guard inBackground else { applyVoices(listed: MacVoiceCatalog.listed(preferredLanguage: language), language: language); return }
-        guard !voiceRefreshPending else { return }
-        voiceRefreshPending = true
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            let listed = MacVoiceCatalog.listed(preferredLanguage: language)
-            DispatchQueue.main.async {
-                MainActor.assumeIsolated {
-                    self?.voiceRefreshPending = false
-                    self?.applyVoices(listed: listed, language: language)
-                }
-            }
-        }
-    }
-    private func applyVoices(listed: [MacVoice], language: String) {
-        var voices = MacVoiceCatalog.catalogue(listed, preferredLanguage: language)
-        if sayVoicesWanted || MacVoiceCatalog.needsSayVoices(for: voice, in: voices, preferredLanguage: language) {
-            sayVoicesWanted = true
-            voices = MacVoiceCatalog.catalogue(listed, sayVoices: MacVoiceCatalog.sayVoices(), preferredLanguage: language)
-        }
-        if voices != macVoices { macVoices = voices }
-        if language != voiceLanguage { voiceLanguage = language }
-    }
-    func chooseVoice(_ id: String) {
-        guard macVoices.contains(where: { $0.id == id }), id != voice else { return }
-        stopVoicePreview()
-        voice = id
-    }
-    func openVoiceSettings() { NSWorkspace.shared.open(MacVoiceCatalog.settingsURL) }
-    /// A short sample in the chosen voice and pace, so voices can be compared.
-    func toggleVoicePreview() {
-        if previewingVoice { stopVoicePreview(); return }
-        if readingProvider == .neural { previewNeuralVoice(); return }
-        guard !rendering, !playing, phase == .idle, !meetings.isBusy, let voice = voiceChoice?.voice, !voice.sayOnly,
-              let systemVoice = AVSpeechSynthesisVoice(identifier: voice.id) else { return }
-        let utterance = AVSpeechUtterance(string: "This is \(voice.name). Here is how your readings will sound.")
-        utterance.voice = systemVoice
-        utterance.rate = MacVoicePace.utteranceRate(forWordsPerMinute: rate)
-        let synthesizer = AVSpeechSynthesizer()
-        synthesizer.delegate = self
-        voicePreview = synthesizer
-        previewingVoice = true
-        synthesizer.speak(utterance)
-    }
-    /// The same sample in the chosen neural voice. It is made first, then played.
-    private func previewNeuralVoice() {
-        guard !rendering, !playing, phase == .idle, !meetings.isBusy, neuralVoicesDownloaded,
-              let render = try? NeuralSpeechRenderer(text: ListeningText("This is \(NeuralVoiceCatalog.title(neuralVoice)). Here is how your readings will sound.")) else { return }
-        previewingVoice = true
-        neuralPreview = render
-        render.start(voice: neuralVoice, store: neuralVoices)
-        Task {
-            do {
-                try await render.ready(complete: true)
-                guard neuralPreview === render, let url = render.audio?.url else { return }
-                let player = try AVAudioPlayer(contentsOf: url)
-                neuralPreviewPlayer = player
-                player.play()
-                try await Task.sleep(nanoseconds: UInt64((player.duration + 0.2) * 1_000_000_000))
-            } catch {
-                if !(error is CancellationError), neuralPreview === render { report(error.localizedDescription, on: .read) }
-            }
-            if neuralPreview === render { stopVoicePreview() }
-        }
-    }
-    func stopVoicePreview() {
-        if let render = neuralPreview {
-            neuralPreview = nil; previewingVoice = false
-            neuralPreviewPlayer?.stop(); neuralPreviewPlayer = nil
-            render.cancel()
-        }
-        guard let preview = voicePreview else { return }
-        voicePreview = nil
-        previewingVoice = false
-        preview.delegate = nil
-        preview.stopSpeaking(at: .immediate)
-    }
-    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
-        Task { @MainActor in
-            guard self.voicePreview === synthesizer else { return }
-            self.voicePreview = nil; self.previewingVoice = false
-        }
-    }
-
-    // MARK: Reading playback
-
-    /// The text being read, with the spoken word marked, while a Mac voice plays.
-    var followAlongText: String? {
-        guard playing || paused, let playingTrack, playingTrack.marks != nil else { return nil }
-        return playingTrack.text
-    }
-    func makeReadingPlayer(_ source: ReadingAudioSource) throws -> ReadingPlayer { try ReadingPlayer(source: source) }
-    var canSeekReading: Bool { !rendering && (playing || paused) && player != nil && audioDuration.isFinite && audioDuration > 0 }
-    func seekReading(to seconds: TimeInterval) {
-        guard canSeekReading, seconds.isFinite, let player else { return }
-        // Stay on the final frame that exists: a reading that is still rendering
-        // can only move within what is ready, and a paused reading stays paused.
-        let lastFrame = max(0, player.duration - 1 / max(1, player.sampleRate))
-        player.currentTime = min(max(0, seconds), lastFrame)
-        playbackTime = player.currentTime
-        showReadingPosition(player)
-    }
-    func skipReading(by seconds: TimeInterval) {
-        guard seconds.isFinite, let player else { return }
-        seekReading(to: player.currentTime + seconds)
-    }
-    func listen() {
-        // A meeting can start while a reading plays. Pause still pauses it, so the
-        // reading never keeps playing into the meeting; Listen and Resume wait.
-        let pausing = playing && !rendering && phase == .idle
-        guard pausing || !meetings.isBusy else { report("Finish the meeting recording or transcription before playing a reading.", on: .read); return }
-        guard !rendering, phase == .idle else { return }
-        stopVoicePreview()
-        clearReadingFailure()
-        if playing {
-            player?.pause(); playbackTime = player?.currentTime ?? 0
-            playing = false; paused = true; status = "Reading paused."; return
-        }
-        if paused, signature == audioSignature, let player, player.source === audio?.source {
-            guard player.play() else {
-                stopPlayback(); report("Audio could not resume. Check your Mac's audio output.", on: .read); return
-            }
-            playing = true; paused = false; status = "Reading aloud."; return
-        }
-        stopPlayback()
-        let generationID = UUID()
-        readingGenerationID = generationID
-        rendering = true
-        readingTask = Task {
-            defer {
-                if readingGenerationID == generationID {
-                    rendering = false; readingGenerationActive = false; cloudRequestActive = false
-                    readingTask = nil; readingGenerationID = nil
-                }
-            }
-            do {
-                let track = try await generateAudio(generationID: generationID)
-                try Task.checkCancellation()
-                guard readingGenerationID == generationID else { throw CancellationError() }
-                let activePlayer = try makeReadingPlayer(track.source)
-                activePlayer.onFinish = { [weak self] finished, success in self?.readingPlayerDidFinish(finished, successfully: success) }
-                try Task.checkCancellation()
-                guard readingGenerationID == generationID else { throw CancellationError() }
-                guard activePlayer.play() else { throw VoiceError.message("Audio could not play. Check your Mac's audio output.") }
-                player = activePlayer; playingTrack = track
-                renderingAhead = track.isRendering
-                let invocation = UUID(); playbackID = invocation
-                playing = true; audioDuration = activePlayer.duration; status = "Reading aloud."
-                // The playback clock, not rendering, drives the elapsed time and
-                // the highlighted word. Common modes keep it running while the
-                // scrubber is dragged.
-                let timer = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
-                    MainActor.assumeIsolated {
-                        guard let self, self.playbackID == invocation, let activePlayer = self.player else { return }
-                        self.followPlayback(activePlayer)
-                    }
-                }
-                RunLoop.main.add(timer, forMode: .common)
-                playTimer = timer
-            } catch {
-                if !(error is CancellationError), readingGenerationID == generationID { report(error.localizedDescription, on: .read) }
-            }
-        }
-    }
-    private func followPlayback(_ activePlayer: ReadingPlayer) {
-        activePlayer.tick()
-        guard player === activePlayer else { return }
-        let time = activePlayer.currentTime
-        if abs(time - playbackTime) >= 0.1 || (!playing && time != playbackTime) { playbackTime = time }
-        if activePlayer.duration != audioDuration { audioDuration = activePlayer.duration }
-        showReadingPosition(activePlayer)
-    }
-    private func showReadingPosition(_ activePlayer: ReadingPlayer) {
-        let range = playingTrack?.marks?.range(at: activePlayer.positionFrame)
-        if range != readingHighlight { readingHighlight = range }
-    }
-    /// Returns audio for the current signature: reused, or newly made. A Mac
-    /// voice returns as soon as the first audio exists and keeps rendering the
-    /// rest into the same file; `complete` waits for all of it.
-    private func generateAudio(generationID: UUID, complete: Bool = false) async throws -> ReadingTrack {
-        if let audio, signature == audioSignature, audio.isComplete || (!complete && audio.isRendering) { return audio }
-        guard readingGenerationID == generationID else { throw CancellationError() }
-        rendering = true; readingGenerationActive = true; attention = nil
-        let text = speechText, prepared = ListeningText(text), selectedChoice = voiceChoice, selectedSpekoVoice = self.selectedSpekoVoice, selectedNeuralVoice = neuralVoice, selectedRate = rate, selectedProvider = readingProvider, originalSignature = signature
-        // The same admission Home's tile runs before it replaces the draft (#173).
-        if let rejection = readingRejection(for: text, prepared: prepared) { throw VoiceError.message(rejection.message) }
-        defer {
-            if readingGenerationID == generationID {
-                readingGenerationActive = false; cloudRequestActive = false
-            }
-        }
-        let url: URL
-        if selectedProvider == .speko {
-            let key = try SpekoKeychain.read()
-            cloudRequestActive = true
-            url = try await SpekoRenderer.render(text: prepared.spoken, key: key, voice: selectedSpekoVoice)
-        } else if selectedProvider == .neural {
-            // Never a download in passing: a reading with no voices says where to get them.
-            guard neuralVoices.isDownloaded else { refreshNeuralVoices(); throw VoiceError.message(NeuralVoiceStore.missingMessage) }
-            let render = try NeuralSpeechRenderer(text: prepared), store = neuralVoices
-            return try await stream(render, text: text, signature: originalSignature, generationID: generationID, complete: complete) {
-                render.start(voice: selectedNeuralVoice, store: store)
-            }
-        } else {
-            guard let voice = selectedChoice?.voice else { throw VoiceError.message(missingVoiceMessage) }
-            if !voice.sayOnly {
-                let render = try MacSpeechRenderer(text: prepared)
-                return try await stream(render, text: text, signature: originalSignature, generationID: generationID, complete: complete) {
-                    try render.start(voiceIdentifier: voice.id, rate: MacVoicePace.utteranceRate(forWordsPerMinute: selectedRate))
-                }
-            }
-            url = try await AudioRenderer.renderCancellable(text: prepared.spoken, voice: voice.sayName, rate: Int(selectedRate))
-        }
-        do {
-            try Task.checkCancellation()
-            guard readingGenerationID == generationID else { throw CancellationError() }
-            let track = ReadingTrack(url: url, source: try ReadingFileSource(url: url), text: text, signature: originalSignature)
-            keepAudio(track)
-            return track
-        } catch {
-            AudioRenderer.remove(url); throw error
-        }
-    }
-    /// Plays a voice on this Mac while it renders: a Mac voice or a neural voice.
-    private func stream(_ render: any ReadingRenderer, text: String, signature: String, generationID: UUID, complete: Bool,
-                        start: () throws -> Void) async throws -> ReadingTrack {
-        pendingRender?.cancel()
-        pendingRender = render
-        defer { if pendingRender === render { pendingRender = nil } }
-        // Late callbacks from a replaced or stopped render never reach newer audio.
-        render.onAudio = { [weak self, weak render] in
-            guard let self, let render, let player = self.player, self.playingTrack?.renderer === render, player.isWaitingForAudio else { return }
-            player.tick()
-        }
-        render.onFinish = { [weak self, weak render] failure in
-            guard let self, let render, let track = self.audio, track.renderer === render else { return }
-            if let failure {
-                // Audio that stopped partway cannot be replayed or saved.
-                if self.playingTrack === track { self.stopPlayback() }
-                track.discard(); if self.audio === track { self.audio = nil }
-                self.report(failure.localizedDescription, on: .read)
-            } else {
-                track.finishedRendering()
-                if self.playingTrack === track { self.renderingAhead = false; self.player?.tick() }
-            }
-        }
-        do {
-            try start()
-            try await render.ready(complete: complete)
-            try Task.checkCancellation()
-            guard readingGenerationID == generationID, pendingRender === render, let file = render.audio else { throw CancellationError() }
-            let track = ReadingTrack(url: file.url, source: file, text: text, signature: signature, renderer: render)
-            keepAudio(track)
-            return track
-        } catch {
-            render.cancel()
-            throw error
-        }
-    }
-    /// The newest audio replaces the reusable copy; audio still playing stays
-    /// readable until its player stops.
-    private func keepAudio(_ track: ReadingTrack) {
-        if let previous = audio, previous !== playingTrack { previous.discard() }
-        audio = track
-    }
-    var canSaveAudio: Bool { !rendering && !renderingAhead && !speechText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-    func saveAudio(completion: ((String) -> Void)? = nil) {
-        guard canSaveAudio else { return }
-        let panel = NSSavePanel(); panel.allowedContentTypes = [.mpeg4Audio]; panel.nameFieldStringValue = "Reading.m4a"
-        guard panel.runModal() == .OK, let destination = panel.url else { return }
-        saveAudio(to: destination, completion: completion)
-    }
-    /// The save the person chose. Replace and Home's Read tile wait for it
-    /// rather than cancel it; only Cancel generation ends it early.
-    func saveAudio(to destination: URL, completion: ((String) -> Void)? = nil) {
-        guard canSaveAudio else { return }
-        let generationID = UUID()
-        readingGenerationID = generationID
-        savingAudioID = generationID
-        rendering = true
-        readingTask = Task {
-            defer {
-                if savingAudioID == generationID { savingAudioID = nil }
-                if readingGenerationID == generationID {
-                    rendering = false; readingGenerationActive = false; cloudRequestActive = false
-                    readingTask = nil; readingGenerationID = nil
-                }
-            }
-            do {
-                let url = try await generateAudio(generationID: generationID, complete: true).url
-                try Task.checkCancellation()
-                guard readingGenerationID == generationID else { throw CancellationError() }
-                try await AudioRenderer.exportBounded(url, to: destination)
-                // A Cancel that landed as the file was written leaves no file behind.
-                guard !Task.isCancelled, readingGenerationID == generationID else {
-                    try? FileManager.default.removeItem(at: destination); throw CancellationError()
-                }
-                status = "Audio saved to \(destination.lastPathComponent)."
-                completion?(status)
-            } catch {
-                if !(error is CancellationError), readingGenerationID == generationID { report(error.localizedDescription, on: .read) }
-            }
-        }
-    }
-    func stopPlayback() {
-        let wasActive = playing || paused
-        player?.stop(); player = nil; playing = false; paused = false; playbackTime = 0; audioDuration = 0
-        playTimer?.invalidate(); playTimer = nil; playbackID = nil
-        readingHighlight = nil
-        stopVoicePreview()
-        if let render = pendingRender { pendingRender = nil; render.cancel() }
-        // Audio a Mac voice has not finished cannot be reused: discard it.
-        if let track = playingTrack, track.isRendering {
-            track.discard()
-            if audio === track { audio = nil }
-        } else if let track = playingTrack, track !== audio {
-            track.discard()
-        }
-        playingTrack = nil; renderingAhead = false
-        if wasActive { status = "Reading stopped." }
-    }
-    /// Why a reading stopped early. Read shows it beside Listen with Retry, and
-    /// the panel and other pages show its message, until Listen, Retry, a
-    /// replaced draft or Dismiss clears it. A later, unrelated error does not.
-    enum ReadingFailure: Equatable {
-        case audioUnreadable
-        var message: String { "The reading stopped because its audio could not be read. Try again to make new audio." }
-    }
-    var canRetryReading: Bool { readingFailure != nil && phase == .idle && !rendering && !playing && !paused }
-    func retryReading() {
-        guard canRetryReading else { return }
-        listen()
-    }
-    func reportReadingFailure(_ failure: ReadingFailure) {
-        readingFailure = failure
-        report(failure.message, on: .read)
-        announceForAccessibility(failure.message)
-    }
-    /// Dismiss beside Retry: the reading stays stopped, with its text and voice.
-    func dismissReadingFailure() { clearReadingFailure() }
     /// Raises a problem with the page that shows it in full (#134): the menu-bar panel's door
     /// opens that page, so it is chosen here, where the problem is known, never from the words.
-    /// `origin` names a control that also shows it beside itself; only Home's Read tile does (#173).
-    func report(_ message: String, on page: Attention.Page, from origin: Attention.Origin? = nil) {
-        attention = Attention(message: message, page: page, origin: origin)
+    func report(_ message: String, on page: Attention.Page) {
+        attention = Attention(message: message, page: page)
     }
-    /// The error banner's dismiss, which also dismisses a reading failure it shows.
+    /// Dismiss the error banner without changing saved work.
     func dismissError() {
-        if let failure = readingFailure, error == failure.message { readingFailure = nil }
         attention = nil
     }
-    private func clearReadingFailure() {
-        guard let failure = readingFailure else { return }
-        if error == failure.message { attention = nil }
-        readingFailure = nil
-    }
-    func readingPlayerDidFinish(_ finished: ReadingPlayer, successfully flag: Bool) {
-        guard self.player === finished else { return }
-        let track = playingTrack
-        stopPlayback()
-        guard finished.readFailure == nil else {
-            // Audio that could not be read is not reused: Retry or Listen makes
-            // it again. The text, voice and pace stay as they were.
-            if let track, audio === track { track.discard(); audio = nil }
-            reportReadingFailure(.audioUnreadable)
-            return
-        }
-        status = flag ? "Finished reading." : "Playback interrupted."
-    }
+
     // Dictionary saves through the same validation and phrase identity as Remember
     // correction. Add never saves a phrase twice, and a new output for a saved
     // phrase needs the explicit Update. Neither rewrites the current draft.
@@ -2021,11 +1254,11 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         // and the existing recovery audio; next launch cannot replay this target.
         liveDictation?.end(); liveDictation = nil
         meetings.shutdown(); handoffJobs.shutdown()
-        photoHandoffRefresh?.cancel(); photoHandoffActivation = nil; readingTask?.cancel()
+        photoHandoffRefresh?.cancel(); photoHandoffActivation = nil
         shortcutRequest.cancel(); transcriptionTask?.cancel(); transcriptionID = nil; recordingAttempt = nil
         clipboardReceipt.clear(); coach.remove(); liveCapture?.requestStop(); meter?.invalidate(); meter = nil
         if let capture = liveCapture { Task { _ = await capture.finish(recognize: false) } }
-        stopPlayback(); saveNow(); AudioRenderer.remove(audioURL)
+        saveNow()
         // Quit stops work. Only a durable capture commit or explicit Cancel may
         // delete the owned audio/journal; the next launch discovers unfinished work.
     }

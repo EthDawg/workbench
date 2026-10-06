@@ -21,13 +21,13 @@ session or operation invalidates a held capture click. Selection never changes a
 shortcut default. Escape saves nothing and starts no microphone.
 
 The floating toolbar is the shared live control surface for Snap & Talk, Draw,
-Present and Persona Overlay, and it carries dictation, narration and reading
+Present and Persona Overlay, and it carries dictation and narration
 too (#134 T4). Desktop pages own preparation and saved libraries. The compact
 menu-bar panel owns quick utilities, adjustments and shortcut editing. Dictate
-and Read start, stop, pause and resume here; their options stay in Workbench.
+starts and finishes here; its options stay in Workbench.
 
 **The mode follows you.** A mode, which the launcher calls the tool, is one
-capability or named workflow: Dictate, Read, Snap, Snap & Talk, Draw, Present or
+capability or named workflow: Dictate, Snap, Snap & Talk, Draw, Present or
 Persona. Starting anything from any door (a key, a panel row, Home, an app menu,
 the toolbar itself) makes it the mode; ending leaves the mode where it was.
 Before anything has ever been started the seed is Dictate, because it works in
@@ -35,7 +35,7 @@ every app with only the microphone. The choice persists across relaunch under
 `workbench.toolbarMode.v1`. Timer is a panel row and part of Draw, not a mode; its chooser row offers the next step, Show or Hide timer and Stop timer.
 
 **At rest the toolbar is a compact mark** (#134), whatever is running: idle,
-recording, playing, paused, processing, drawing, presenting, a persona, a timer,
+recording, paused, processing, drawing, presenting, a persona, a timer,
 a Snap & Talk session, or a result waiting for the person. Its ordinary rest is a
 quiet 48 × 8 handle in a fixed 48 × 28 target. Left and right edges turn this into
 an 8 × 48 handle in a 28 × 48 target. It carries no selected-tool or
@@ -43,7 +43,7 @@ live-work icon: at this size the symbol adds little useful information, and one
 symbol cannot describe concurrent work. Hover or click reveals the remembered
 tool and its action. Only recording adds a red dot and voice trace in a 48 × 20 capsule inside the same target. All other collapsed states stay icon-free (see Status at rest). The resting window is exactly that target, and everything outside it passes clicks through. Work never
 holds the row open, and a new failure or result never opens it either. Keep open
-is the one explicit way to keep it up. Dictation, narration, reading and their
+is the one explicit way to keep it up. Dictation, narration and their
 results keep the toolbar up even while Hide toolbar is on, at rest as the mark.
 
 Hover, after the 120 ms dwell, or a click reveals the row. A click on the mark
@@ -53,24 +53,21 @@ receives its mouse-up. A double-click that begins on the mark cannot start or
 stop work either. A right-click opens toolbar settings, and a drag
 moves the toolbar (see Placement).
 
-**Recording, reading and their results in the same host** (#134 T4). The same
-window, anchor and tiers carry dictation, narration and reading from start to
+**Recording and its results in the same host** (#134 T4). The same
+window, anchor and tiers carry dictation and narration from start to
 result; nothing swaps the floating window to a panel of its own. Live work is
-the row: its next action is Stop, Stop narration, Pause or Resume reading, Cancel
+the row: its next action is Stop, Stop narration, Cancel
 request or Processing…, a separate slot carries the capture signal, and the chooser lists
 what the work can do besides, under its capability's name: Cancel and Copy
-now for a dictation, Cancel for a narration, Stop reading. Dictated words that
+now for a dictation, Cancel for a narration. Dictated words that
 wait for drawing to end lead with Stop drawing, which delivers them, with Copy now
-in the Dictate chooser row (#211). While drawing or a prompt insertion holds the next action, the chooser's
-Read row also has reading's own next action: Cancel while it prepares, Pause
-reading or Resume reading. A recording's elapsed
+in the Dictate chooser row (#211). A recording's elapsed
 time is the Stop's tooltip and VoiceOver help, never its label, whose width would
 tick; in the last ten seconds before the 5-minute limit, the accessible status names the limit without adding an icon. The Dictate page keeps the recording's
 details.
 
 A technical failure keeps its recovery view: dictation has its reason, Retry,
-Record again or Open Workbench and Dismiss; a stopped reading has its reason,
-Retry and Dismiss. These commands and their workspace doors also stay in the chooser. Dismiss keeps Read’s text and voice; Listen can render it again, while Retry belongs only to an existing failure. Saved failures do not put
+Record again or Open Workbench and Dismiss. These commands and their workspace doors also stay in the chooser. Retry belongs only to an existing failure. Saved failures do not put
 warnings on the compact pill, the recording trace or Switch tool. A failure
 waiting before input-consuming work began cannot replace that work's revealed
 controls. Revealing, collapsing or choosing a tool does not acknowledge or retry
@@ -121,8 +118,7 @@ commands, current Persona labels, counts and the exact Stop, Pause or Resume.
 
 The next action is the label for where you are in the journey, from one pure
 function of what is live (`ToolbarNextAction`) with a fixed priority: what is
-consuming your input now (inserting, dictating, capturing, narrating, drawing,
-reading) whatever the mode, then the selected mode's own step or ending
+consuming your input now (inserting, dictating, capturing, narrating, drawing) whatever the mode, then the selected mode's own step or ending
 (`Capture next · 3`, `Stop & transcribe`, `End presentation`, `Hide personas`),
 then its start verb. Another mode's ending never claims the label: presenting
 while Draw is the mode reads `Draw`, the accessible value names live work, and
@@ -159,7 +155,7 @@ hover response and keyboard behaviour. A click, Space, Return or Down opens the
 chooser. Its accessible value names the current tool and concurrent work.
 Recording has its own signal beside the launcher.
 
-**The chooser** has seven fixed tool headers, in order: Dictate, Read, Snap,
+**The chooser** has six fixed tool headers, in order: Dictate, Snap,
 Snap & Talk, Draw, Present and Persona. At standard text it is 320 points wide with
 36-point headers. Each has its symbol, exact name, current-tool checkmark, labelled
 running dot and assigned key. Choosing a header changes only the remembered tool;
@@ -170,12 +166,11 @@ existing workspace; hovering another header never retargets that button.
 
 Each live or recoverable tool has its own visible, named commands immediately
 under its header. Dictate keeps Stop/Cancel, Copy now, saved-recording review and
-recovery, and unresolved-delivery review/copy/dismiss. Read keeps Cancel, Pause,
-Resume, Stop and its applicable failure recovery. Snap reviews the retained draft;
+recovery, and unresolved-delivery review/copy/dismiss. Snap reviews the retained draft;
 Snap & Talk finishes/cancels the current narration and reviews its current session.
 Draw stops drawing. Present ends the live scene or stops an insertion. Persona
 hides, resumes or ends the live copy/set. Independent Meetings and Timer appear
-below the seven tools only while they have work or recovery; they never become
+below the six tools only while they have work or recovery; they never become
 additional modes. Each has its own transport and real workspace route where one
 exists. Commands recheck the exact operation identity on release. Replacing work,
 or changing a command and changing it back while held, invalidates the old press;
@@ -284,7 +279,7 @@ carries on: hiding never clears marks, ends a scene, hides persona artwork or st
 a timer, and each keeps its key and its menu-bar panel row. Window → Show floating
 toolbar, Window → Focus floating toolbar and Settings bring the tools back with the
 current mode and live state. A prompt insertion keeps the tools until it ends,
-because its Stop is there. Recording, processing, narration and reading keep their
+because its Stop is there. Recording, processing and narration keep their
 own controls whatever the choice (`FloatingToolbarSurface.resolve`, checked by
 `--check-floating-toolbar`).
 
@@ -331,7 +326,7 @@ recorder's level; in silence the bars rest as a row of dots and nothing moves on
 own. It retains its input response and its Reduce Motion (one still waveform that
 only brightens) and Increase Contrast behaviour. Expanded, it occupies a separate slot;
 Switch tool remains the same four-tile icon. Accessible status can describe live
-recording, playback, processing and paused work. Recovery commands stay with their
+recording, processing and paused work. Recovery commands stay with their
 owners and in the chooser; preserving a failed recording never decorates another tool.
 
 ## Placement
@@ -621,7 +616,7 @@ keyboard entry must keep the launcher row, whose Switch tool button takes focus;
 Escape must leave without discarding saved recovery. A copied cue must contain
 no buttons and vanish after its own lifetime. Repeated hover after expiry must
 show tools, with no warning left behind. The same checks apply at side docks.
-Older technical failures remain available while a reading or recording keeps
+Older technical failures remain available while a recording keeps
 its own controls. A new failure still offers its owner's recovery actions.
 
 The gallery opens the Saved Prompts picker's production panel,

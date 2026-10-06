@@ -8,14 +8,6 @@
     "note": "Quality (#137): the existing draft-replacement door is explicitly named and lives in More. Review transcript opens the full saved result inside History without replacing a draft."
   },
   {
-    "id": "LocalVoice.CaptureHistoryView.TranscriptHistoryRow.Button.read-aloud",
-    "surface": "history page",
-    "label": "Read aloud",
-    "kind": "action",
-    "belongsTo": "read",
-    "note": "Existing door, moved with the transcript row into History: opens the transcript on the Read page (Option of read; #134, #137). Quality (#173): it goes through Read's import decision, so a different draft waits behind Replace reading / Keep current."
-  },
-  {
     "id": "LocalVoice.CapturePanel.CapturePositionMenu.Button.reset-position",
     "surface": "floating toolbar live controls",
     "label": "Reset position",
@@ -190,14 +182,6 @@
     "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
   },
   {
-    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.read-aloud",
-    "surface": "library page",
-    "label": "Read aloud",
-    "kind": "action",
-    "belongsTo": "read",
-    "note": "Existing door: opens the saved text on the Read page (Option of read; #134). Quality (#173): it goes through Read's import decision, so a different draft waits behind Replace reading / Keep current."
-  },
-  {
     "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.use-in-persona",
     "surface": "library page",
     "label": "Use in Persona…",
@@ -248,23 +232,6 @@
     "belongsTo": "app",
     "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
     "aliasOf": "app"
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.ReadingStoppedView.Button.retry",
-    "surface": "floating toolbar live controls",
-    "label": "Retry",
-    "kind": "action",
-    "belongsTo": "read",
-    "note": "Quality (#134 T4): the same control in the same result view, which the toolbar now reveals from its compact rest in place of its row instead of showing it by itself. Quality (#156, #161): a reading that stopped because its audio could not be read keeps its compact controls, where Retry makes new audio. No new entry point; the Read page has the same Retry."
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.ReadingStoppedView.Button.runtime-772d4201867d",
-    "surface": "floating toolbar live controls",
-    "label": null,
-    "expression": "Image ( systemName : \"xmark\" )",
-    "note": "Quality (#134 T4): the same control in the same result view, which the toolbar now reveals from its compact rest in place of its row instead of showing it by itself. Quality (#156, #161): dismisses a stopped reading's reason; its text and voice stay. Runtime label from Image ( systemName : \"xmark\" ); no rendered text assumed.",
-    "kind": "action",
-    "belongsTo": "read"
   },
   {
     "id": "LocalVoice.FounderIntroduction.FounderIntroductionCard.Button.copy-addresses",
@@ -320,15 +287,6 @@
     "kind": "action",
     "belongsTo": "history",
     "note": "Quality (#137): copies the exact reviewed result with the shared clipboard receipt, whose Review returns to this task. No paste or original edit."
-  },
-  {
-    "id": "LocalVoice.HistorySelectionControls.HandoffResultPreview.Button.read-aloud",
-    "surface": "history page",
-    "label": "Read aloud",
-    "kind": "option",
-    "belongsTo": "read",
-    "aliasOf": "LocalVoice.CaptureHistoryView.TranscriptHistoryRow.Button.read-aloud",
-    "note": "Option of Read (#137): opens the exact reviewed assistant result through the existing reading import decision, preserving a different draft until Replace reading or Keep current. Playback never starts automatically."
   },
   {
     "id": "LocalVoice.HistorySelectionControls.HistorySelectionControls.Button.hand-off",
@@ -589,63 +547,6 @@
     "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
   },
   {
-    "id": "LocalVoice.NeuralVoiceViews.NeuralVoicePanel.Button.runtime-ae6c35c0e8ac",
-    "surface": "read settings",
-    "label": null,
-    "expression": "Image ( systemName : model . previewingVoice ? \"stop.fill\" : \"speaker.wave.2\" )",
-    "note": "Hears a short sample of the chosen neural voice, as the Mac voice picker's sample does. Option of Read (1 October, Ethan's request for local model support in Read): neural voices are downloaded once, on request, and then read on this Mac. Off until chosen; Mac voices stay the default.",
-    "kind": "option",
-    "belongsTo": "read"
-  },
-  {
-    "id": "LocalVoice.NeuralVoiceViews.NeuralVoicePanel.Picker.neural-voice",
-    "surface": "read settings",
-    "label": "Neural voice",
-    "kind": "option",
-    "belongsTo": "read",
-    "note": "Which of the downloaded neural voices reads. Option of Read (1 October, Ethan's request for local model support in Read): neural voices are downloaded once, on request, and then read on this Mac. Off until chosen; Mac voices stay the default."
-  },
-  {
-    "id": "LocalVoice.NeuralVoiceViews.NeuralVoiceSetupView.Button.download-neural-voices",
-    "surface": "settings page",
-    "label": "Download neural voices",
-    "kind": "action",
-    "belongsTo": "read",
-    "note": "The one download neural voices need, about 530 MB, started only here. Option of Read (1 October, Ethan's request for local model support in Read): neural voices are downloaded once, on request, and then read on this Mac. Off until chosen; Mac voices stay the default."
-  },
-  {
-    "id": "LocalVoice.NeuralVoiceViews.NeuralVoiceSetupView.Button.keep",
-    "surface": "settings page",
-    "label": "Keep",
-    "kind": "action",
-    "belongsTo": "read",
-    "note": "Closes the removal question and keeps the download. Option of Read (1 October, Ethan's request for local model support in Read): neural voices are downloaded once, on request, and then read on this Mac. Off until chosen; Mac voices stay the default."
-  },
-  {
-    "id": "LocalVoice.NeuralVoiceViews.NeuralVoiceSetupView.Button.remove-download",
-    "surface": "settings page",
-    "label": "Remove download…",
-    "kind": "action",
-    "belongsTo": "read",
-    "note": "Asks before removing the neural voices download to free its space. Option of Read (1 October, Ethan's request for local model support in Read): neural voices are downloaded once, on request, and then read on this Mac. Off until chosen; Mac voices stay the default."
-  },
-  {
-    "id": "LocalVoice.NeuralVoiceViews.NeuralVoiceSetupView.Button.remove-download.0a692f73",
-    "surface": "settings page",
-    "label": "Remove download",
-    "kind": "action",
-    "belongsTo": "read",
-    "note": "Confirms the removal in its question; the voices can be downloaded again. Option of Read (1 October, Ethan's request for local model support in Read): neural voices are downloaded once, on request, and then read on this Mac. Off until chosen; Mac voices stay the default."
-  },
-  {
-    "id": "LocalVoice.NeuralVoiceViews.NeuralVoiceSetupView.Button.stop-download",
-    "surface": "settings page",
-    "label": "Stop download",
-    "kind": "action",
-    "belongsTo": "read",
-    "note": "Stops the neural voices download it sits beside; what arrived is kept. Option of Read (1 October, Ethan's request for local model support in Read): neural voices are downloaded once, on request, and then read on this Mac. Off until chosen; Mac voices stay the default."
-  },
-  {
     "id": "LocalVoice.PhotoHandoffView.PhotoHandoffArrivalCue.Button.from-iphone",
     "surface": "proactive offer PhotoHandoffArrivalCue",
     "label": "From iPhone",
@@ -822,79 +723,6 @@
     "note": "Accepted image reuse option in #134: export the explicitly chosen rendered image to a user-chosen file, then commit its Library reference. Cancel preserves all records; a different unfinished Snap is never an input."
   },
   {
-    "id": "LocalVoice.ReadingFollowAlong.MacVoiceHintRow.Button.runtime-2e29afee6d79",
-    "surface": "read settings",
-    "label": null,
-    "expression": "hint . buttonTitle",
-    "note": "Runtime label from hint . buttonTitle; no rendered text assumed.",
-    "kind": "option",
-    "belongsTo": "read"
-  },
-  {
-    "id": "LocalVoice.ReadingProviderView.ReadingProviderView.Button.refresh-voices",
-    "surface": "settings page",
-    "label": "Refresh voices",
-    "kind": "option",
-    "belongsTo": "read",
-    "note": "Quality (1 October): unchanged in Read › Voice & pace, and now also under Reading voice in Settings › Models, because Read's voice source is an engine and engines are set in Models (Grammar rule 9). The same control in both places; no new option."
-  },
-  {
-    "id": "LocalVoice.ReadingProviderView.ReadingProviderView.Button.remove-key",
-    "surface": "settings page",
-    "label": "Remove key",
-    "kind": "option",
-    "belongsTo": "read",
-    "note": "Quality (1 October): unchanged in Read › Voice & pace, and now also under Reading voice in Settings › Models, because Read's voice source is an engine and engines are set in Models (Grammar rule 9). The same control in both places; no new option."
-  },
-  {
-    "id": "LocalVoice.ReadingProviderView.ReadingProviderView.Button.save-key",
-    "surface": "settings page",
-    "label": "Save key",
-    "kind": "option",
-    "belongsTo": "read",
-    "note": "Quality (1 October): unchanged in Read › Voice & pace, and now also under Reading voice in Settings › Models, because Read's voice source is an engine and engines are set in Models (Grammar rule 9). The same control in both places; no new option."
-  },
-  {
-    "id": "LocalVoice.ReadingProviderView.ReadingProviderView.Link.speko-account",
-    "surface": "settings page",
-    "label": "Speko account ↗",
-    "kind": "option",
-    "belongsTo": "read",
-    "note": "Quality (1 October): unchanged in Read › Voice & pace, and now also under Reading voice in Settings › Models, because Read's voice source is an engine and engines are set in Models (Grammar rule 9). The same control in both places; no new option."
-  },
-  {
-    "id": "LocalVoice.ReadingProviderView.ReadingProviderView.Picker.read-with",
-    "surface": "settings page",
-    "label": "Read with",
-    "kind": "option",
-    "belongsTo": "read",
-    "note": "Quality (1 October): unchanged in Read › Voice & pace, and now also under Reading voice in Settings › Models, because Read's voice source is an engine and engines are set in Models (Grammar rule 9). The same control in both places; no new option."
-  },
-  {
-    "id": "LocalVoice.ReadingProviderView.ReadingProviderView.Picker.speko-voice",
-    "surface": "settings page",
-    "label": "Speko voice",
-    "kind": "option",
-    "belongsTo": "read",
-    "note": "Quality (1 October): unchanged in Read › Voice & pace, and now also under Reading voice in Settings › Models, because Read's voice source is an engine and engines are set in Models (Grammar rule 9). The same control in both places; no new option."
-  },
-  {
-    "id": "LocalVoice.ReadingProviderView.ReadingProviderView.SecureField.personal-speko-api-key",
-    "surface": "settings page",
-    "label": "Personal Speko API key",
-    "kind": "option",
-    "belongsTo": "read",
-    "note": "Quality (1 October): unchanged in Read › Voice & pace, and now also under Reading voice in Settings › Models, because Read's voice source is an engine and engines are set in Models (Grammar rule 9). The same control in both places; no new option."
-  },
-  {
-    "id": "LocalVoice.ReadingProviderView.ReadingProviderView.choice.automatic-balanced-route",
-    "surface": "settings page",
-    "label": "Automatic · balanced route",
-    "kind": "option",
-    "belongsTo": "read",
-    "note": "Quality (1 October): unchanged in Read › Voice & pace, and now also under Reading voice in Settings › Models, because Read's voice source is an engine and engines are set in Models (Grammar rule 9). The same control in both places; no new option."
-  },
-  {
     "id": "LocalVoice.SnapWorkspaceView.SnapWorkspaceView.Button.add-to-snap-talk",
     "surface": "snap page",
     "label": "Add to Snap & Talk",
@@ -919,15 +747,6 @@
     "belongsTo": "snapAndTalk",
     "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
     "aliasOf": "snapAndTalk"
-  },
-  {
-    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.cancel.2",
-    "surface": "floating toolbar activity chooser",
-    "label": "Cancel",
-    "kind": "action",
-    "belongsTo": "read",
-    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
-    "aliasOf": "read"
   },
   {
     "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.copy-again",
@@ -964,15 +783,6 @@
     "belongsTo": "dictate",
     "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
     "aliasOf": "dictate"
-  },
-  {
-    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.dismiss-message.2",
-    "surface": "floating toolbar activity chooser",
-    "label": "Dismiss message",
-    "kind": "action",
-    "belongsTo": "read",
-    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
-    "aliasOf": "read"
   },
   {
     "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.end-presentation",
@@ -1033,15 +843,6 @@
     "note": "Quality: shared voice session transport. Finish saves and completes; Pause and Resume keep the same recording. Commands revalidate the displayed session and state."
   },
   {
-    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.pause-reading",
-    "surface": "floating toolbar activity chooser",
-    "label": "Pause reading",
-    "kind": "action",
-    "belongsTo": "read",
-    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
-    "aliasOf": "read"
-  },
-  {
     "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.record-again",
     "surface": "floating toolbar activity chooser",
     "label": "Record again",
@@ -1065,24 +866,6 @@
     "kind": "action",
     "belongsTo": "dictate",
     "note": "Quality: shared voice session transport. Finish saves and completes; Pause and Resume keep the same recording. Commands revalidate the displayed session and state."
-  },
-  {
-    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.resume-reading",
-    "surface": "floating toolbar activity chooser",
-    "label": "Resume reading",
-    "kind": "action",
-    "belongsTo": "read",
-    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
-    "aliasOf": "read"
-  },
-  {
-    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.retry",
-    "surface": "floating toolbar activity chooser",
-    "label": "Retry",
-    "kind": "action",
-    "belongsTo": "read",
-    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
-    "aliasOf": "read"
   },
   {
     "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.review",
@@ -1194,24 +977,6 @@
     "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work. Quality: renamed from Finish narration so every door says Stop narration."
   },
   {
-    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.stop-reading",
-    "surface": "floating toolbar activity chooser",
-    "label": "Stop reading",
-    "kind": "action",
-    "belongsTo": "read",
-    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
-    "aliasOf": "read"
-  },
-  {
-    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.stop-reading.2",
-    "surface": "floating toolbar activity chooser",
-    "label": "Stop reading",
-    "kind": "action",
-    "belongsTo": "read",
-    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
-    "aliasOf": "read"
-  },
-  {
     "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.stop-timer",
     "surface": "floating toolbar activity chooser",
     "label": "Stop timer",
@@ -1246,14 +1011,6 @@
     "belongsTo": "dictate"
   },
   {
-    "id": "LocalVoice.Views.ContentView.Button.import-text",
-    "surface": "read page",
-    "label": "Import text…",
-    "kind": "action",
-    "belongsTo": "read",
-    "note": "Quality: imports one bounded local plain-text file through Read’s existing Keep current / Replace reading owner; no playback or new destination."
-  },
-  {
     "id": "LocalVoice.Views.ContentView.Button.review-text",
     "surface": "dictate page",
     "label": "Review text",
@@ -1269,14 +1026,6 @@
     "belongsTo": "dictate",
     "aliasOf": "settings",
     "note": "Contextual Dictate settings sheet; the pinned Settings page owns app-wide configuration."
-  },
-  {
-    "id": "LocalVoice.Views.ContentView.Button.voice-pace",
-    "surface": "read page",
-    "label": "Voice & pace…",
-    "kind": "option",
-    "belongsTo": "read",
-    "note": "Opens the existing provider, voice and pace controls in one workspace settings sheet."
   },
   {
     "id": "LocalVoice.Views.DictateSettingsView.Button.models",
@@ -1307,31 +1056,6 @@
     "kind": "action",
     "belongsTo": "dictate",
     "note": "Returns to the current Dictate draft without replacing it."
-  },
-  {
-    "id": "LocalVoice.Views.MacVoicePanel.Button.runtime-e4c15dda5475",
-    "surface": "read settings",
-    "label": null,
-    "expression": "Image ( systemName : previewing ? \"stop.fill\" : \"speaker.wave.2\" )",
-    "note": "Runtime label from Image ( systemName : previewing ? \"stop.fill\" : \"speaker.wave.2\" ); no rendered text assumed.",
-    "kind": "option",
-    "belongsTo": "read"
-  },
-  {
-    "id": "LocalVoice.Views.MacVoicePanel.Picker.voice",
-    "surface": "read settings",
-    "label": "Voice",
-    "kind": "option",
-    "belongsTo": "read"
-  },
-  {
-    "id": "LocalVoice.Views.MacVoicePanel.choice.runtime-976b51a7b9d6",
-    "surface": "read settings",
-    "label": null,
-    "expression": "\"\\(name) (not installed)\"",
-    "note": "Runtime label from \"\\(name) (not installed)\"; no rendered text assumed.",
-    "kind": "option",
-    "belongsTo": "read"
   },
   {
     "id": "LocalVoice.Workbench.WorkbenchAppearancePicker.Picker.suite-appearance",
@@ -1373,6 +1097,15 @@
     "label": "Stop timer",
     "kind": "action",
     "belongsTo": "timer"
+  },
+  {
+    "id": "LocalVoice.WorkbenchDesktopChrome.WorkbenchUpdateSidebar.Button.runtime-e9b18abfdfc4",
+    "surface": "window sidebar",
+    "label": null,
+    "expression": "updates . buttonTitle",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Existing sidebar update action: a version, short release benefit and one routine install/restart choice. Preserves the current page; exceptional releases open native review."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchClipboardShelf.Button.copy-again",
@@ -1466,15 +1199,6 @@
     "note": "Requested sidebar collapse/expand control. Its tooltip and accessibility label name the current action; Control-Command-S performs the same local navigation setting.",
     "kind": "action",
     "belongsTo": "app"
-  },
-  {
-    "id": "LocalVoice.WorkbenchDesktopChrome.WorkbenchUpdateSidebar.Button.runtime-e9b18abfdfc4",
-    "surface": "window sidebar",
-    "label": null,
-    "expression": "updates . buttonTitle",
-    "kind": "action",
-    "belongsTo": "settings",
-    "note": "Existing sidebar update action: a version, short release benefit and one routine install/restart choice. Preserves the current page; exceptional releases open native review."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Button.show-me-a-first-dictation",
@@ -1656,24 +1380,6 @@
     "belongsTo": "snap"
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.sidebar.speak",
-    "surface": "window sidebar",
-    "label": "Read",
-    "page": "speak",
-    "kind": "capability",
-    "belongsTo": "read",
-    "note": "Quality: Read aloud takes its Grammar name, Read, in the same place. The alias it needed is gone (#134)."
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.cancel",
-    "surface": "window home",
-    "label": "Cancel",
-    "kind": "action",
-    "belongsTo": "read",
-    "aliasOf": "read",
-    "note": "Existing contextual \"Cancel\" label inside read; shared wording, not a separate capability. Current work's action while Read makes audio: it cancels the generation, as Read's Cancel generation does (#134 H1)."
-  },
-  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.copy",
     "surface": "window home",
     "label": "Copy",
@@ -1753,15 +1459,6 @@
     "kind": "action",
     "belongsTo": "history",
     "note": "Option: a door on Home to History, shown once right after the first dictation so its result can be found again; it opens History on Transcripts, where that dictation is newest (#15). Same words as the recent transcript's Open in Dictate."
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.retry",
-    "surface": "window home",
-    "label": "Retry",
-    "kind": "action",
-    "belongsTo": "read",
-    "aliasOf": "read",
-    "note": "Existing contextual \"Retry\" label inside read; shared wording, not a separate capability. Current work's recovery for a reading that stopped, the same Retry Read shows beside Listen (#134 H1)."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.retry-model",
@@ -1845,14 +1542,6 @@
     "kind": "action",
     "belongsTo": "snapAndTalk",
     "note": "Quality: was Stop. Home's live row ends narration with the words the page, panel and toolbar use (1 Oct). Stops narration from Home."
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.stop-reading",
-    "surface": "window home",
-    "label": "Stop reading",
-    "kind": "action",
-    "belongsTo": "read",
-    "note": "Option: live strip action, the one way to end what is running from Home (#134 W9)."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.stop-task",
@@ -2427,15 +2116,6 @@
     "page": "snap",
     "kind": "action",
     "belongsTo": "snap",
-    "note": "Quality: Window lists every sidebar page in the sidebar's order, named by the page record (#134; 1 Oct)."
-  },
-  {
-    "id": "LocalVoice.main.AppDelegate.page-item.speak",
-    "surface": "app menu bar",
-    "label": "Read",
-    "page": "speak",
-    "kind": "action",
-    "belongsTo": "read",
     "note": "Quality: Window lists every sidebar page in the sidebar's order, named by the page record (#134; 1 Oct)."
   },
   {
@@ -3685,15 +3365,6 @@
     "note": "Quality: the shared Persona action names the current camera operation, respects admission and rejects stale camera visits."
   },
   {
-    "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.cancelReading",
-    "surface": "floating toolbar next action",
-    "label": "Cancel",
-    "kind": "action",
-    "belongsTo": "read",
-    "aliasOf": "read",
-    "note": "Existing contextual \"Cancel\" label inside read; shared wording, not a separate capability."
-  },
-  {
     "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.captureNext",
     "surface": "floating toolbar next action",
     "label": null,
@@ -3763,13 +3434,6 @@
     "belongsTo": "persona"
   },
   {
-    "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.pauseReading",
-    "surface": "floating toolbar next action",
-    "label": "Pause reading",
-    "kind": "action",
-    "belongsTo": "read"
-  },
-  {
     "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.persona",
     "surface": "floating toolbar next action",
     "label": "Show persona",
@@ -3784,25 +3448,11 @@
     "belongsTo": "present"
   },
   {
-    "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.read",
-    "surface": "floating toolbar next action",
-    "label": "Read",
-    "kind": "capability",
-    "belongsTo": "read"
-  },
-  {
     "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.resumeOverlays",
     "surface": "floating toolbar next action",
     "label": "Show personas",
     "kind": "action",
     "belongsTo": "persona"
-  },
-  {
-    "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.resumeReading",
-    "surface": "floating toolbar next action",
-    "label": "Resume reading",
-    "kind": "action",
-    "belongsTo": "read"
   },
   {
     "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.retryPersonaCamera",
@@ -3859,13 +3509,6 @@
     "kind": "action",
     "belongsTo": "dictate",
     "note": "Quality: shared voice session transport. Finish saves and completes; Pause and Resume keep the same recording. Commands revalidate the displayed session and state."
-  },
-  {
-    "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.stopReading",
-    "surface": "floating toolbar next action",
-    "label": "Stop reading",
-    "kind": "action",
-    "belongsTo": "read"
   },
   {
     "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.wait",
@@ -3945,14 +3588,6 @@
     "case": "present",
     "kind": "capability",
     "belongsTo": "present"
-  },
-  {
-    "id": "ToolbarCore.ToolbarViewState.ToolbarMode.title.read",
-    "surface": "floating toolbar modes",
-    "label": "Read",
-    "case": "read",
-    "kind": "capability",
-    "belongsTo": "read"
   },
   {
     "id": "ToolbarCore.ToolbarViewState.ToolbarMode.title.snap",
@@ -4231,31 +3866,6 @@
     "note": "One of Persona's three appearances (#169), chosen in the Persona workspace or the shown copy's Appearance. Shows the image unchanged, the same sense of the word as Dictate's Original text style: the source kept as it is."
   },
   {
-    "id": "choices.ReadingProvider.mac",
-    "surface": "choices ReadingProvider",
-    "label": "Mac voices",
-    "case": "mac",
-    "kind": "option",
-    "belongsTo": "read"
-  },
-  {
-    "id": "choices.ReadingProvider.neural",
-    "surface": "choices ReadingProvider",
-    "label": "Neural voices",
-    "case": "neural",
-    "kind": "option",
-    "belongsTo": "read",
-    "note": "Option of Read (1 October, Ethan's request for local model support in Read): neural voices are downloaded once, on request, and then read on this Mac. Off until chosen; Mac voices stay the default."
-  },
-  {
-    "id": "choices.ReadingProvider.speko",
-    "surface": "choices ReadingProvider",
-    "label": "Speko · online",
-    "case": "speko",
-    "kind": "option",
-    "belongsTo": "read"
-  },
-  {
     "id": "choices.RecognitionProvider.localServer",
     "surface": "choices RecognitionProvider",
     "label": "Local model server",
@@ -4358,14 +3968,6 @@
     "case": "present",
     "kind": "capability",
     "belongsTo": "present"
-  },
-  {
-    "id": "quick-panel.row.read",
-    "surface": "quick panel rows",
-    "label": "Read",
-    "case": "read",
-    "kind": "capability",
-    "belongsTo": "read"
   },
   {
     "id": "quick-panel.row.snap",
@@ -4664,5 +4266,29 @@
     "case": "whiteboard",
     "kind": "action",
     "belongsTo": "draw"
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.retry-saving-read-text",
+    "surface": "library recovery",
+    "label": "Retry saving Read text",
+    "kind": "action",
+    "belongsTo": "library",
+    "note": "Conditional recovery for the retired Read draft: inspect the precise problem, retry preservation, or reveal the unchanged saved source."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.show-original-saved-state",
+    "surface": "library recovery",
+    "label": "Show original saved state",
+    "kind": "action",
+    "belongsTo": "library",
+    "note": "Conditional recovery for the retired Read draft: inspect the precise problem, retry preservation, or reveal the unchanged saved source."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.DisclosureGroup.details",
+    "surface": "library recovery",
+    "label": "Details",
+    "kind": "action",
+    "belongsTo": "library",
+    "note": "Conditional recovery for the retired Read draft: inspect the precise problem, retry preservation, or reveal the unchanged saved source."
   }
 ]

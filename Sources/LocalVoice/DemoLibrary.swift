@@ -273,6 +273,21 @@ final class DemoLibraryModel: ObservableObject {
         do { savedData = try store.currentData(); resources = try savedData.map(DemoLibraryStore.decode) ?? []; reconcileSelection() }
         catch { self.error = "The library could not be read. Saving is paused to preserve it. \(error.localizedDescription)"; savingDisabled = true }
     }
+    @Published private(set) var readPreservationFailure: String?
+    private var retiredReadingText = ""
+    func preserveRetiredReading(_ text: String) {
+        retiredReadingText = text
+        retryReadPreservation()
+    }
+    func retryReadPreservation() {
+        do {
+            try ReadRetirement.preserve(retiredReadingText, in: self)
+            readPreservationFailure = nil
+        } catch {
+            readPreservationFailure = error.localizedDescription
+        }
+    }
+    var readPreservationSource: URL { store.url.deletingLastPathComponent().appendingPathComponent("state.json") }
     var matches: [DemoResource] { DemoResource.matching(resources, query: query, favoritesOnly: favoritesOnly) }
     var selected: DemoResource? { matches.first { $0.id == selection } }
     private func reconcileSelection() {

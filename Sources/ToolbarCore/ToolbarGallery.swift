@@ -32,7 +32,7 @@ public enum ToolbarGallery {
         case .dictate: return "⌥V"
         case .snapAndTalk: return "⌥C"
         case .draw: return "⌥D"
-        case .present, .persona, .read, .snap: return nil
+        case .present, .persona, .snap: return nil
         }
     }
 
@@ -50,11 +50,11 @@ public enum ToolbarGallery {
         if live.persona == .shown || live.persona == .session { running.append(.persona) }
         if live.timer == .running { running.append(.timer) }
         if live.insertingPrompt { running.append(.inserting) }
-        return ToolbarActivity(capture: captures, playback: live.reading == .playing,
+        return ToolbarActivity(capture: captures,
             processing: live.dictation == .processing || live.dictation == .cancelling || live.dictation == .requesting
-                || live.pendingNarration || live.reading == .preparing,
+                || live.pendingNarration,
             pendingDelivery: live.dictation == .waitingForDrawing,
-            paused: live.reading == .paused || live.timer == .paused || live.persona == .sessionHidden, live: running)
+            paused: live.timer == .paused || live.persona == .sessionHidden, live: running)
     }
 
     private static func live(_ live: ToolbarLiveState, name: String, tier: ToolbarTier = .revealed,
@@ -124,7 +124,7 @@ public enum ToolbarGallery {
         live(ToolbarLiveState(mode: .dictate, canRecordAgain: true), name: "idle-record-again")
     ]
 
-    /// Dictation, narration and reading in the same host as the tools (#134 T4). At rest each is
+    /// Dictation and narration in the same host as the tools (#134 T4). At rest each is
     /// the compact mark with its status; revealed, the row's next action is its Stop, Pause or
     /// Resume, the launcher carries the capture signal, and the rest of its commands are in the chooser.
     public static let recording: [ToolbarViewState] = [
@@ -149,10 +149,7 @@ public enum ToolbarGallery {
         live(ToolbarLiveState(mode: .dictate, dictation: .processing), name: "recording-processing"),
         live(ToolbarLiveState(mode: .dictate, dictation: .processing), name: "recording-processing-resting", tier: .resting),
         live(ToolbarLiveState(mode: .snapAndTalk, narrating: true, captureCount: 2), name: "recording-narration",
-             activity: ToolbarActivity(capture: .narration, level: 0.4, live: [.snapAndTalk])),
-        live(ToolbarLiveState(mode: .read, reading: .playing), name: "reading-playing"),
-        live(ToolbarLiveState(mode: .read, reading: .playing), name: "reading-playing-resting", tier: .resting),
-        live(ToolbarLiveState(mode: .read, reading: .paused), name: "reading-paused")
+             activity: ToolbarActivity(capture: .narration, level: 0.4, live: [.snapAndTalk]))
     ] + [ToolbarActivity.Capture.dictation, .meeting].flatMap { capture in
         [ToolbarActivity.CaptureTransport.paused, .reconnecting].flatMap { transport in
             ToolbarTier.allCases.map { tier in
@@ -172,14 +169,13 @@ public enum ToolbarGallery {
     ]
 
     /// The compact rest in each indicator (#134), in priority order: capture with its level,
-    /// capture in silence, capture with a job that needs attention, playback, processing,
+    /// capture in silence, capture with a job that needs attention, processing,
     /// failure, a pending result, an unsaved capture, paused work and other live work.
     public static let statuses: [ToolbarViewState] = [
         ("capture", ToolbarActivity(capture: .dictation, level: 0.62)),
         ("capture-silent", ToolbarActivity(capture: .meeting)),
         ("capture-attention", ToolbarActivity(capture: .narration, level: 0.35, failure: true)),
         ("capture-stops-soon", ToolbarActivity(capture: .dictation, level: 0.5, failure: true, stopsSoon: true)),
-        ("playback", ToolbarActivity(playback: true)),
         ("processing", ToolbarActivity(processing: true)),
         ("failure", ToolbarActivity(failure: true)),
         ("pending-delivery", ToolbarActivity(pendingDelivery: true)),
@@ -201,10 +197,9 @@ public enum ToolbarGallery {
             if choice.mode == .persona { choice.detail = "2 overlays"; choice.actions = [.init("persona.hide", "Hide"), .init("persona.end", "End Persona")] }
             return choice
         }),
-        ("chooser-recovery", ToolbarNextAction.choices(for: ToolbarLiveState(mode: .read, reading: .playing, drawing: true), key: exampleKey).map {
+        ("chooser-recovery", ToolbarNextAction.choices(for: ToolbarLiveState(mode: .draw, drawing: true), key: exampleKey).map {
             var choice = $0
             if choice.mode == .dictate { choice.detail = "Recording kept for recovery"; choice.actions = [.init("dictate.retry", "Retry transcription"), .init("dictate.review", "Review recordings")] }
-            if choice.mode == .read { choice.actions = [.init("read.pause", "Pause reading"), .init("read.stop", "Stop reading")] }
             if choice.mode == .draw { choice.actions = [.init("draw.stop", "Stop drawing")] }
             return choice
         })

@@ -7,7 +7,7 @@
 
 [Download Workbench](https://workbench-mac.vercel.app/) · [Product guide](https://workbench-mac.vercel.app/guide/) · [Contribute](CONTRIBUTING.md) · [Mac release gate](https://github.com/Ship-Work/workbench/issues/7)
 
-Workbench brings dictation, reading, narrated screen captures, drawing, presentation and saved prompts into one native Mac app.
+Workbench brings dictation, narrated screen captures, drawing, presentation and saved prompts into one native Mac app.
 
 ## Current focus: get Mac right
 
@@ -35,7 +35,7 @@ These surfaces share the same underlying jobs and saved resources. Starting or a
 
 Closing the desktop window leaves Workbench available. Quit Workbench stops the app. Open at login is optional. Older releases without the updater need one manual upgrade; see [installation and updates](docs/updating.md).
 
-The [product guide](https://workbench-mac.vercel.app/guide/) explains dictation, reading, Snap & Talk, drawing, device presentation, personas and saved resources. Device presentation is video-only; Apple's QuickTime and iPhone Mirroring remain separate apps. A connected iPhone used as a Mac presentation source does not imply an active Workbench iOS release.
+The [product guide](https://workbench-mac.vercel.app/guide/) explains dictation, Snap & Talk, drawing, device presentation, personas and saved resources. Device presentation is video-only; Apple's QuickTime and iPhone Mirroring remain separate apps. A connected iPhone used as a Mac presentation source does not imply an active Workbench iOS release.
 
 **Team packs (2.2+):** open **Library → Packs**, connect GitHub and add the private repository link your team shares. Choose a compatible skill or import your own scene/persona copy. New sessions carry the complete versioned skill and resources for the existing **Hand off** flow. Share the [installation guide](https://workbench-mac.vercel.app/guide/#servicenow-pack) and pack link with colleagues. Ordinary Workbench tools remain account-free; existing sessions keep their own files.
 
@@ -60,7 +60,7 @@ Follow [the shared installation and release workflow](docs/updating.md). One int
 
 ## Data and privacy
 
-The core Mac app needs no account or subscription. Parakeet recognition and installed Mac reading voices run locally after setup, as do the optional neural reading voices after their one download. Original transcripts remain available. Optional text refinement and online reading have explicit model/provider choices; there is no automatic cloud fallback. See [model setup and limits](docs/model-providers.md).
+The core Mac app needs no account or subscription. Parakeet recognition runs locally after setup. Original transcripts remain available. Optional text refinement has explicit model/provider choices; there is no automatic cloud fallback. Read text-to-speech is retired; existing Read drafts are preserved as exact text files in Library. See [model setup and limits](docs/model-providers.md).
 
 Automatic text delivery checks the original destination, excludes secure fields and never submits it. Review any unconfirmed insertion. Screen captures and narrated sessions can contain sensitive information: inspect a session before sharing it. Workbench's handoff opens your chosen tool and copies a prompt; you still grant access and submit it.
 

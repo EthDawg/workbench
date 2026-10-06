@@ -418,8 +418,7 @@ struct HistoryView: View {
                             HandoffJobCard(jobs: jobs, job: job, expanded: $expandedResult, revealed: target?.task,
                                            focus: $focusedTask, voiceOverFocus: $voiceOverTask,
                                            applySuggestedMetadata: applySuggestedMetadata, query: appliedQuery,
-                                           copyResult: { model.copySavedResult($1, jobID: $0.id) },
-                                           readAloud: { model.importReading($0, from: .result) }) {
+                                           copyResult: { model.copySavedResult($1, jobID: $0.id) }) {
                                 HistoryMadeFrom(jobs: jobs, job: job) {
                                     HistoryList.availability(of: $0, transcripts: stores.transcripts, snaps: stores.snaps)
                                 }

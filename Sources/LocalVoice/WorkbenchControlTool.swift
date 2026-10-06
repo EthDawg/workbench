@@ -6,12 +6,11 @@ import ToolbarCore
 /// The panel's rows, in moment order. Choosing controls never starts, stops or
 /// replaces an independent activity.
 enum WorkbenchControlTool: String, CaseIterable, Identifiable {
-    case dictate, read, snap, snapAndTalk, annotate, present, persona, timer
+    case dictate, snap, snapAndTalk, annotate, present, persona, timer
     var id: String { rawValue }
     var title: String {
         switch self {
         case .dictate: return "Dictate"
-        case .read: return "Read"
         case .snap: return "Snap"
         case .snapAndTalk: return "Snap & Talk"
         case .annotate: return "Draw"
@@ -23,7 +22,6 @@ enum WorkbenchControlTool: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .dictate: return "mic"
-        case .read: return "speaker.wave.2"
         case .snap: return "viewfinder"
         case .snapAndTalk: return "rectangle.dashed.badge.record"
         case .annotate: return "pencil.tip"
@@ -37,7 +35,6 @@ enum WorkbenchControlTool: String, CaseIterable, Identifiable {
     var mode: ToolbarMode? {
         switch self {
         case .dictate: return .dictate
-        case .read: return .read
         case .snap: return .snap
         case .snapAndTalk: return .snapAndTalk
         case .annotate: return .draw
@@ -60,7 +57,6 @@ struct WorkbenchControlState {
     var ready = true
     /// Meeting capture and processing keep the shared audio admission closed.
     var meetingBusy = false
-    var rendering = false
     var narrating = false
     var capturing = false
     var pendingNarration = false
@@ -70,8 +66,6 @@ struct WorkbenchControlState {
     var presenting = false
     var mayDraw = true
     var mayPresent = true
-    var playing = false
-    var paused = false
     var overlays = false
     /// A prepared multiple-overlay set is running, shown or temporarily hidden.
     var overlaySession = false
@@ -98,10 +92,9 @@ struct WorkbenchControlState {
     private func mayStart(_ tool: WorkbenchControlTool) -> Bool {
         switch tool {
         case .dictate:
-            return phase == .idle && ready && !rendering && !narrating && !capturing && !pendingNarration && !meetingBusy
-        case .read: return true
+            return phase == .idle && ready && !narrating && !capturing && !pendingNarration && !meetingBusy
         case .snap: return phase == .idle && !capturing && !narrating && !screenshotting && !snapBusy
-        case .snapAndTalk: return phase == .idle && !rendering && !capturing && !screenshotting && !meetingBusy
+        case .snapAndTalk: return phase == .idle && !capturing && !screenshotting && !meetingBusy
         case .annotate: return mayDraw
         case .persona: return mayPresent && personaCameraMayResume
         case .present, .timer: return mayPresent
@@ -128,7 +121,6 @@ struct WorkbenchControlState {
         case .failed: persona = .cameraFailed
         }
         return ToolbarLiveState(mode: mode, dictation: dictation, canRecordAgain: canRecordAgain,
-            reading: rendering ? .preparing : playing ? .playing : paused ? .paused : .idle,
             narrating: narrating, capturingScreen: capturing || screenshotting,
             pendingNarration: pendingNarration, captureCount: captureCount ?? (hasSession ? 0 : nil),
             drawing: drawing, presenting: presenting,
@@ -154,10 +146,6 @@ struct WorkbenchControlState {
         guard let mode = tool.mode else { return nil }
         let own = ownLive(mode)
         var action = ToolbarNextAction.resolve(own)
-        if action.operation == .pauseReading || action.operation == .resumeReading {
-            action.operation = .stopReading
-            action.title = ToolbarNextAction.title(.stopReading, live: own)
-        }
         if action.operation == .captureNext || action.operation == .resumeOverlays { action.isEnabled = own.mayStart }
         return action
     }
@@ -212,7 +200,6 @@ struct WorkbenchControlState {
             own.dictation = phase == .delivering ? .processing : all.dictation
             own.meetingRecording = all.meetingRecording
             own.canRecordAgain = all.canRecordAgain
-        case .read: own.reading = all.reading
         case .snap: break
         case .snapAndTalk:
             own.narrating = all.narrating; own.capturingScreen = capturing
@@ -280,13 +267,13 @@ struct WorkbenchControlContext {
     let stage: StageKitController
     var snap: SnapModel? = nil
     var state: WorkbenchControlState {
-        WorkbenchControlState(phase: model.phase, ready: model.ready, meetingBusy: model.meetings.isBusy, rendering: model.rendering,
+        WorkbenchControlState(phase: model.phase, ready: model.ready, meetingBusy: model.meetings.isBusy,
             narrating: readback.isRecording, capturing: readback.isCapturing,
             pendingNarration: readback.hasPendingTranscriptions, hasSession: readback.sessionURL != nil,
             captureCount: readback.sessionURL == nil ? nil : readback.activeSections.count,
             drawing: stage.isDrawing, presenting: stage.isPresenting,
             mayDraw: stage.mayBeginDrawing?() ?? stage.mayBeginInteraction?() ?? true,
-            mayPresent: stage.mayBeginInteraction?() ?? true, playing: model.playing, paused: model.paused,
+            mayPresent: stage.mayBeginInteraction?() ?? true,
             overlays: stage.hasActivePersona, overlaySession: stage.hasActivePersonaSession,
             overlaysPaused: stage.isPersonaSessionPaused, personaCamera: stage.personaCameraPhase,
             personaCameraMayResume: stage.personaCameraMayResume, personaIdentity: stage.personaSessionIdentity, timerStarted: stage.hasTimerSession,
@@ -321,13 +308,13 @@ struct WorkbenchControlContext {
         if let snapAndTalkSequence, readback.sessionURL?.standardizedFileURL == snapAndTalkSequence.standardizedFileURL {
             live.append(.snapAndTalk)
         }
-        return ToolbarActivity(capture: capture, level: level, playback: model.playing,
-            processing: dictationBusy || model.rendering || readback.isCapturing || readback.hasPendingTranscriptions
+        return ToolbarActivity(capture: capture, level: level,
+            processing: dictationBusy || readback.isCapturing || readback.hasPendingTranscriptions
                 || model.meetings.isStarting || model.meetings.isProcessing || snap?.isCapturing == true,
             // Saved recovery and clipboard records remain with their owners. They are not
             // live activity and must not follow the person into another tool's toolbar.
             pendingDelivery: model.waitingForDrawing,
-            paused: model.paused || timer.paused || stage.isPersonaSessionPaused,
+            paused: timer.paused || stage.isPersonaSessionPaused,
             live: live,
             // The last ten seconds before a dictation or narration stops at its 5-minute limit (#134 T4).
             stopsSoon: (model.phase == .recording && model.elapsed >= 290) || (readback.isRecording && readback.recordingElapsed >= 290),
@@ -350,7 +337,6 @@ struct WorkbenchControlContext {
         switch tool {
         case .dictate: return voiceShortcut(1)
         case .snapAndTalk: return voiceShortcut(5)
-        case .read: return voiceShortcut(6)
         case .present: return voiceShortcut(7)
         case .snap: return voiceShortcut(8)
         case .persona: return stageShortcut("personaToggle")
@@ -367,7 +353,6 @@ struct WorkbenchControlContext {
     func shortcutID(_ tool: WorkbenchControlTool) -> String {
         switch tool {
         case .dictate: return "voice.1"
-        case .read: return "voice.6"
         case .snap: return "voice.8"
         case .snapAndTalk: return "voice.5"
         case .annotate: return "stage.pen"
@@ -385,8 +370,6 @@ struct WorkbenchControlContext {
         case .operation(.cancelDictationRequest): return "Cancel the pending microphone request."
         case .operation(.stopDictation): return "Stop recording and keep the captured speech."
         case .operation(.stopMeetingTranscription): return "Stop the meeting recording and keep its captured audio."
-        case .operation(.cancelReading): return "Cancel audio generation and keep the source text."
-        case .operation(.stopReading): return "Stop this reading and keep the source text."
         case .operation(.finishNarration): return "Stop narration and keep this capture."
         case .operation(.wait):
             return tool == .dictate ? "Wait for the current dictation to finish." : "Wait for this screen capture to finish."
@@ -406,7 +389,7 @@ struct WorkbenchControlContext {
                 : model.accessibilityGranted ? "Paste in a Mac field" : "Copy for ⌘V until automatic paste is approved")
         case .snap: return snap?.isBusy == true ? "Finish or cancel the current Snap first." : "Capture a region of the screen into Snap."
         case .snapAndTalk:
-            if !state.enabled(tool) { return "Finish the current dictation, reading, meeting or screen capture before capturing again." }
+            if !state.enabled(tool) { return "Finish the current dictation, meeting or screen capture before capturing again." }
             if readback.isCapturing { return "Capturing the display under the pointer…" }
             if !readback.screenPermissionGranted && !readback.isRecording {
                 return "Screen Recording is off for Workbench. Saved sessions and narration stay available; Snap & Talk shows how to allow it."
@@ -418,7 +401,6 @@ struct WorkbenchControlContext {
         case .present: return state.presenting ? "End the scene; it stays saved." : "Present your selected device scene."
         case .persona: return state.personaDetail
         case .timer: return state.timerStarted ? stage.timerStateDetail : "Start your saved timer."
-        case .read: return model.rendering ? "Preparing audio…" : model.playing ? "Reading aloud" : model.paused ? "Reading paused" : "Listen to text from Workbench."
         }
     }
     var activitySummary: String {
@@ -429,7 +411,6 @@ struct WorkbenchControlContext {
         else if readback.hasPendingTranscriptions { labels.append("Transcribing narration") }
         if model.phase == .recording { labels.append("Dictating") }
         else if model.phase != .idle { labels.append(model.waitingForDrawing ? "Text ready" : "Processing speech") }
-        if model.playing { labels.append("Reading") }
         return labels.joined(separator: " · ")
     }
 }

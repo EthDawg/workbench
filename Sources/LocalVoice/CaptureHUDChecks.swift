@@ -58,8 +58,8 @@ enum CaptureHUDChecks {
                   "letting go resumes the time that was left, once")
         let technical = CaptureCueClock(routine: false, shownAt: shown)
         try check(technical.deadline == nil && !technical.isExpired(at: .distantFuture), "a technical failure never goes by itself")
-        try check(FloatingToolbarSurface.resolve(enabled: false, capturingScreen: false, dictation: false, narration: false, reading: true) == .tools,
-                  "a stopped reading keeps the shared host, and its controls, even with the toolbar hidden")
+        try check(FloatingToolbarSurface.resolve(enabled: false, capturingScreen: false, dictation: false, narration: true) == .tools,
+                  "narration keeps its controls even with the toolbar hidden")
         let cues = [CaptureCue(reason: .tooShort), CaptureCue(reason: .tooQuiet),
                     CaptureCue(reason: .nothingRecognised(keptAudio: true)), CaptureCue(reason: .nothingRecognised(keptAudio: false)),
                     CaptureCue(reason: .narrationNotHeard)]

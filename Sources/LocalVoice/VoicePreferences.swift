@@ -70,7 +70,7 @@ struct VoicePreferences: Codable, Equatable {
     /// Loops derive from this,
     /// never from a literal range, so a new key is registered, reset, checked
     /// for duplicates and reported everywhere at once.
-    static var shortcutIDs: [UInt32] { (1...8).filter { $0 != 4 || BrowserIntegration.isAvailable } }
+    static var shortcutIDs: [UInt32] { (1...8).filter { $0 != 6 && ($0 != 4 || BrowserIntegration.isAvailable) } }
     var cleanup = CleanupStyle.light
     var capture = CaptureMode.toggle
     var delivery = DeliveryMode.paste
@@ -81,7 +81,7 @@ struct VoicePreferences: Codable, Equatable {
     var presenterShortcut: VoiceShortcut? = VoicePreferences.defaultPresenterShortcut
     // Optional decoding preserves preferences written before Snap & Talk sessions existed.
     var readbackShortcut: VoiceShortcut? = VoicePreferences.defaultReadbackShortcut
-    // Read is opt-in and Present defaults to its presenter key; earlier assignments remain unchanged.
+    // Retired Read remains decodable; Present keeps its presenter key and earlier assignments.
     var readingShortcut: VoiceShortcut?
     var presentationShortcut: VoiceShortcut?
     // Snap is opt-in; it has no 2.0.0 default to migrate from.

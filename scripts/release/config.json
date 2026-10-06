@@ -21,7 +21,7 @@
       "--check-input"
     ],
     [
-      "--self-test"
+      "--check-read-retirement"
     ],
     [
       "--check-presenter"
@@ -35,9 +35,6 @@
     [
       "--check-readback-pack",
       "--check-transcript-handoff"
-    ],
-    [
-      "--check-reading-service-native"
     ]
   ],
   "component_archive": ".build/component/Workbench.zip"

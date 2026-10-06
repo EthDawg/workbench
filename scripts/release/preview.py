@@ -45,7 +45,7 @@ def configuration(root=ROOT, production=False):
 
 
 def update_bundle_info(info, config, build_version):
-    """Apply the selected app identity, including its distinct Services port."""
+    """Apply the selected app identity without reviving the retired Read Service."""
     info.update(CFBundleIdentifier=config["identifier"], CFBundleExecutable=config["executable"],
                 CFBundleName=config["bundle"].removesuffix(".app"),
                 CFBundleDisplayName=config["bundle"].removesuffix(".app"),
@@ -54,14 +54,11 @@ def update_bundle_info(info, config, build_version):
         info["WorkbenchChannel"] = "preview"
     else:
         info.pop("WorkbenchChannel", None)
-    for service in info.get("NSServices", []):
-        if service.get("NSMessage") != "readSelection":
-            continue
-        service["NSPortName"] = config["bundle"].removesuffix(".app")
-        service.setdefault("NSMenuItem", {})["default"] = (
-            "Read Selection in Workbench Preview" if config["channel"] == "preview"
-            else "Read Selection in Workbench"
-        )
+    if "NSServices" in info:
+        info["NSServices"] = [service for service in info["NSServices"]
+                              if service.get("NSMessage") != "readSelection"]
+        if not info["NSServices"]:
+            del info["NSServices"]
     return info
 
 
@@ -81,11 +78,10 @@ def validate_bundle(app, config, allow_ad_hoc=False, require_services=True):
     if any(info.get(key) != value for key, value in expected.items()):
         raise RuntimeError("Refusing a bundle without the exact selected identity, executable and channel")
     reading_services = [service for service in info.get("NSServices", []) if service.get("NSMessage") == "readSelection"]
-    service_title = "Read Selection in Workbench Preview" if config["channel"] == "preview" else "Read Selection in Workbench"
-    service_port = config["bundle"].removesuffix(".app")
-    if require_services and (len(reading_services) != 1 or reading_services[0].get("NSPortName") != service_port \
-            or reading_services[0].get("NSMenuItem", {}).get("default") != service_title):
-        raise RuntimeError("Refusing a bundle without the exact selected-app Services identity")
+    # Incoming bundles must retire Read. Existing installed bundles are checked
+    # with require_services=False so this does not prevent their replacement.
+    if require_services and reading_services:
+        raise RuntimeError("Refusing a new bundle that registers the retired Read Service")
     run("codesign", "--verify", "--deep", "--strict", app)
     signature = run("codesign", "-d", "--verbose=4", app, capture=True).stderr
     if not allow_ad_hoc and "Authority=Developer ID Application:" not in signature:

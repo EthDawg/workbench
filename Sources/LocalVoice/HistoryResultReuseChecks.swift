@@ -63,10 +63,6 @@ enum HistoryResultReuseChecks {
                   "Copy result uses the exact reviewed value despite a later external edit, without pasting")
         try check(receipt.receipt?.source == .result(older.id) && receipt.receipt?.title == "Copied" && receipt.receipt?.canSuggestPaste == true,
                   "Copy result issues the existing receipt with the exact result identity")
-        let incoming = try ReadingSelectionImport(text: reviewed, origin: .result)
-        try check(incoming.text == exact && incoming.origin == .result
-                  && ReadingSelectionImport.needsReview(current: "Existing reading", incoming: incoming.text),
-                  "Read aloud preserves exact reviewed words and requires review for a different draft")
         await jobs.loadTaskFiles(jobs.jobs)
         try check(jobs.files(older)?.resultText == "Externally edited jade result."
                   && jobs.matchesResult(newer, query: "jade") && !jobs.matchesResult(newer, query: "sapphire"),

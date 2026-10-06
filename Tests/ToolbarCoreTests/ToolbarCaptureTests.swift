@@ -8,14 +8,13 @@ final class ToolbarCaptureTests: XCTestCase {
         XCTAssertTrue(ToolbarCaptureKind.offered(for: .init(mode: .snapAndTalk)).isEmpty)
         for mode in [ToolbarMode.snap, .snapAndTalk] {
             for live in [ToolbarLiveState(mode: mode, dictation: .recording),
-                         .init(mode: mode, reading: .playing), .init(mode: mode, narrating: true),
+                         .init(mode: mode, narrating: true),
                          .init(mode: mode, capturingScreen: true), .init(mode: mode, drawing: true),
                          .init(mode: mode, insertingPrompt: true)] {
                 XCTAssertTrue(ToolbarCaptureKind.offered(for: live).isEmpty, "\(live)")
             }
         }
-        // A paused reading or a dictation still processing consumes nothing, so Snap keeps its sources.
-        XCTAssertEqual(ToolbarCaptureKind.offered(for: .init(mode: .snap, reading: .paused)), [.region, .window, .screen])
+        // A dictation still processing consumes nothing, so Snap keeps its sources.
         XCTAssertEqual(ToolbarCaptureKind.offered(for: .init(mode: .snap, dictation: .processing)), [.region, .window, .screen])
     }
 

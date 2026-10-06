@@ -30,7 +30,7 @@ import ToolbarKit
 /// file store resolves there (`CFFIXED_USER_HOME`). cfprefsd ignores that variable, so the child
 /// also keeps every preference in plist files beside that home; see `isolatePreferences`.
 enum SurfaceGallery {
-    /// Speko.swift and PackCredentials.swift check this same argument and never query Keychain in a pass.
+    /// PackCredentials.swift checks this argument and never queries Keychain in a pass.
     static let passFlag = "--render-surfaces-pass"
     static let workPrefix = ".surface-pass-"
     /// A bounded desktop pass uses the same child-process and store isolation as the full gallery.
@@ -288,8 +288,8 @@ enum SurfaceGallery {
     }
 }
 
-/// A deliberately bounded native host. History and the reading-replacement
-/// card are the production views; the draft inspector is test instrumentation.
+/// A deliberately bounded native host. History is the production view;
+/// the draft inspector is test instrumentation.
 private struct HistoryNativeAcceptanceView: View {
     @ObservedObject var model: AppModel
     @ObservedObject var snap: SnapModel
@@ -309,16 +309,8 @@ private struct HistoryNativeAcceptanceView: View {
                     Text(model.transcript).textSelection(.enabled)
                     Text("Read draft").font(.caption)
                     Text(model.speechText).textSelection(.enabled)
-                    Text("Playback: \(model.playing ? "playing" : "stopped") · Selection: \(model.historyLibrary.selected.count)").font(.caption)
+                    Text("Selection: \(model.historyLibrary.selected.count)").font(.caption)
                 }.frame(maxWidth: .infinity, alignment: .leading).padding(12)
-            }
-            if let selection = model.pendingReadingSelection {
-                ReadingSelectionReviewCard(selection: selection,
-                    limitMessage: model.readingLimitMessage(for: selection.text),
-                    replacingDisabled: !model.canReplaceReading,
-                    waitReason: model.canReplaceReading ? nil : AppModel.replaceWaitsForSave,
-                    keep: model.keepCurrentReading, replace: model.replaceReadingWithSelection)
-                    .padding(12)
             }
             Divider()
             HistoryView(model: model, snap: snap, applySuggestedMetadata: { _, _ in })
@@ -382,6 +374,9 @@ private struct HistoryNativeAcceptanceView: View {
             for index in 0..<160 { buffer.floatChannelData![0][index] = 0 }
             try file.write(from: buffer)
         }
+        if ProcessInfo.processInfo.environment["WORKBENCH_READ_RETIREMENT_GALLERY_ONLY"] == "1" {
+            try StateStore().save(SavedState(speechText: "Synthetic old Read text.\r\nKeep this exact wording and spacing.  \n"))
+        }
         model = AppModel(preferences: preferences)
         toolbarSettingsControls = CaptureHUDControls(defaults: try SurfaceGallery.isolatedDefaults("ToolbarSettings", home: home))
         model.toolbarControls = toolbarSettingsControls
@@ -417,7 +412,7 @@ private struct HistoryNativeAcceptanceView: View {
         stage = StageKitController(reserving: preferences.enabledCombinations, defaults: stageDefaults)
         stage.useSharedActivityControls()
         let model = model
-        stage.mayBeginInteraction = { model.phase == .idle && !model.rendering }
+        stage.mayBeginInteraction = { model.phase == .idle }
         stage.mayBeginDrawing = { WorkbenchDrawingAdmission.allows(phase: model.phase, suspended: false, capturingScreen: false, terminating: false) }
         shell.model = model; shell.stage = stage
         keyboard = KeyboardCoachModel(entries: shell.shortcutEntries(), update: { _, _ in "The surface gallery does not save shortcuts." },
@@ -470,7 +465,6 @@ private struct HistoryNativeAcceptanceView: View {
         model.history = [transcript] + Self.history
         model.transcript = "Unfinished Dictate draft. Preserve this exact wording."
         model.rawTranscript = model.transcript
-        model.importReading("Unfinished Read draft. Keep this until I choose Replace.", from: .savedText)
         model.historyLibrary.setMetadata(TranscriptMetadata(purpose: .meeting, person: "Avery Example", company: "Synthetic Orchard"), for: transcript.id)
         model.historyLibrary.setSelected([.init(kind: .transcript, id: Self.history[0].id)])
         let jobs = model.handoffJobs
@@ -523,6 +517,7 @@ private struct HistoryNativeAcceptanceView: View {
     }
 
     func render(to output: URL) throws -> SurfaceGallery.Pass {
+        if ProcessInfo.processInfo.environment["WORKBENCH_READ_RETIREMENT_GALLERY_ONLY"] == "1" { return try renderReadRetirement(to: output) }
         if SurfaceGallery.desktopOnly { return try renderDesktopOnly(to: output) }
         if ProcessInfo.processInfo.environment["WORKBENCH_HOME_GALLERY_ONLY"] == "1" { return try renderHomeOnly(to: output) }
         if ProcessInfo.processInfo.environment["WORKBENCH_TOOLBAR_GALLERY_ONLY"] == "1" {
@@ -562,7 +557,6 @@ private struct HistoryNativeAcceptanceView: View {
         for (route, shots) in try renderFoldedStates(to: output) {
             if let index = pages.firstIndex(where: { $0.route == route }) { pages[index].shots += shots }
         }
-        if let read = pages.firstIndex(where: { $0.route == "speak" }) { pages[read].shots += try renderReadStates(to: output) }
         let dictateStates = try renderDictateStates(to: output)
         if let dictate = pages.firstIndex(where: { $0.route == "dictate" }) { pages[dictate].shots += dictateStates.shots }
         // Home's first-dictation states come before History's, which add Hand off tasks to recent work.
@@ -782,7 +776,7 @@ private struct HistoryNativeAcceptanceView: View {
 
     /// The floating surface's own moments, which no page shows: the routine cue at the toolbar's
     /// place after a dictation that heard no speech, and the results the toolbar reveals in place
-    /// of its row (#134 T4): a reading that stopped because its audio could not be read, and the
+    /// of its row (#134 T4): a dictation failure and the
     /// clipboard receipt with its ring. Each at the size it uses.
     func renderFloatingStates(to output: URL) throws -> [SurfaceGallery.Shot] {
         let controls = CaptureHUDControls(defaults: .standard)
@@ -807,10 +801,6 @@ private struct HistoryNativeAcceptanceView: View {
         try shot("floating-no-speech", "Floating: no speech heard",
                  "At the toolbar's place for under two seconds, then the compact mark again. Hover holds it.")
         model.dismissCaptureCue()
-        model.reportReadingFailure(.audioUnreadable)
-        try shot("floating-reading-stopped", "Floating: reading stopped",
-                 "Revealed from the compact mark's warning: a reading whose audio could not be read keeps Retry and dismiss.",
-                 result: .readingFailure)
         /// A result as it shows at a right-hand dock: mirrored, its words over the mark the pointer
         /// came from and its commands at the far end (#211 F3).
         func mirrored(_ id: String, _ title: String, _ result: FloatingResult, size: NSSize) throws {
@@ -826,8 +816,6 @@ private struct HistoryNativeAcceptanceView: View {
                                   detail: "At a right-hand dock it grows leftward from the mark, so it is mirrored: the words sit over the mark the pointer came from, the commands at the far end.",
                                   file: "panel-\(id)-\(theme).png", to: output))
         }
-        try mirrored("floating-reading-stopped-right", "Floating: reading stopped, right-hand dock", .readingFailure, size: CaptureHUDLayout.compact)
-        model.dismissReadingFailure()
         model.captureFailure = "The speech engine stopped before it finished."
         try mirrored("floating-dictation-failure-right", "Floating: dictation failure, right-hand dock", .dictationFailure, size: CaptureHUDLayout.message)
         model.dismissCaptureFailure()
@@ -978,75 +966,7 @@ private struct HistoryNativeAcceptanceView: View {
 
     // MARK: Read states
 
-    /// Read after a reading stopped because its audio could not be read (one error with Retry,
-    /// and the text back in the editor), and with a History transcript waiting for Replace
-    /// reading or Keep current over a different draft.
-    func renderReadStates(to output: URL) throws -> [SurfaceGallery.Shot] {
-        let size = SurfaceGallery.sizes[0].size
-        let window = homeWindow(size: size)
-        defer { window.contentViewController = nil; window.close(); model.dismissReadingFailure() }
-        model.importReading("The workshop starts at nine with a short review of last week's notes. Maya walks through the revised budget.", from: .savedText)
-        model.reportReadingFailure(.audioUnreadable)
-        var (rep, drawn) = try renderPage("speak", in: window)
-        var shots = [try save(rep, id: "state-audio-unreadable", title: "Read, audio could not be read, \(Int(drawn.width)) × \(Int(drawn.height)) pt",
-                              detail: "The reading stopped; the text is editable again and Retry makes new audio.",
-                              file: "page-speak-state-audio-unreadable-\(theme).png", to: output)]
-        model.dismissReadingFailure()
-        // The existing import owner rejects 50,001 synthetic characters before any audio or
-        // provider request. This is an admission check, not a Home clipboard action.
-        let announce = model.announceForAccessibility
-        model.announceForAccessibility = { _ in }
-        model.listen(to: String(repeating: "x", count: 50_001))
-        model.announceForAccessibility = announce
-        (rep, drawn) = try renderPage("speak", in: window)
-        shots.append(try save(rep, id: "state-copied-text-refused", title: "Read, oversized text refused, \(Int(drawn.width)) × \(Int(drawn.height)) pt",
-                              detail: "50,001 supplied synthetic characters exceed Mac reading's limit: the draft stays unchanged, no audio starts, and the owned banner says why.",
-                              file: "page-speak-state-copied-text-refused-\(theme).png", to: output))
-        model.dismissError()
-        model.importReading(SurfacePass.history[0].text, from: .transcript)
-        defer { model.keepCurrentReading() }
-        for (name, size) in SurfaceGallery.sizes {
-            let sized = name == "default" ? window : homeWindow(size: size)
-            defer { if sized !== window { sized.contentViewController = nil; sized.close() } }
-            (rep, drawn) = try renderPage("speak", in: sized)
-            shots.append(try save(rep, id: "state-import-review-\(name)", title: "Read, a transcript to review, \(Int(drawn.width)) × \(Int(drawn.height)) pt",
-                                  detail: "Read aloud on a History transcript while a different draft is in Read: nothing changes until Replace reading or Keep current.",
-                                  file: "page-speak-state-import-review-\(name)-\(theme).png", to: output))
-        }
-        shots.append(try renderReadingSettings(to: output))
-        shots.append(try renderReadingSettings(to: output, with: .neural))
-        return shots
-    }
 
-    /// The production settings sheet, rendered directly without playing audio, saving a key or
-    /// requesting a voice catalogue. Its scroll viewport and complete host must both lay out.
-    /// With Neural voices chosen, the temporary home holds no download, so the sheet shows the
-    /// one download they need. Nothing is fetched.
-    func renderReadingSettings(to output: URL, with source: ReadingProvider = .mac) throws -> SurfaceGallery.Shot {
-        final class Frames { var byID: [String: CGRect] = [:] }
-        let frames = Frames(), size = NSSize(width: 570, height: 510)
-        let provider = model.readingProvider
-        model.readingProvider = source
-        let host = NSHostingView(rootView: ReadingSettingsView(model: model, done: {})
-            .environment(\.pageSectionFrames, { id, frame in frames.byID[id] = frame }))
-        let window = offscreenWindow(size: size, styleMask: [.borderless])
-        window.contentView = host
-        defer { window.contentView = nil; window.close(); model.readingProvider = provider }
-        settle(host)
-        guard let root = frames.byID["read.settings"], let viewport = frames.byID["read.settings.visible"],
-              abs(root.width - 570) < 1, abs(root.height - 510) < 1, !viewport.isEmpty else {
-            throw VoiceError.message("Read's Voice & pace settings did not lay out at 570 × 510 with a visible scroll viewport.")
-        }
-        if source == .neural {
-            guard !model.neuralVoicesDownloaded else { throw VoiceError.message("The temporary home already held neural voices; the gallery downloads none.") }
-            return try save(try snapshot(host), id: "voice-settings-neural", title: "Voice & pace settings, Neural voices before their download, 570 × 510 pt",
-                            detail: "Neural voices chosen with nothing downloaded: what they are, their size and the one Download button. Nothing is fetched.",
-                            file: "page-speak-voice-settings-neural-\(theme).png", to: output)
-        }
-        return try save(try snapshot(host), id: "voice-settings", title: "Voice & pace settings, 570 × 510 pt",
-                        detail: "The production Read settings sheet with Mac voices and pace. The reading draft stays on the page; no audio is played.",
-                        file: "page-speak-voice-settings-\(theme).png", to: output)
-    }
 
     // MARK: Home checks
 
@@ -1399,7 +1319,7 @@ private struct HistoryNativeAcceptanceView: View {
                 "The panel's switch, Settings › General's switch and the Window menu each turned the floating toolbar off or on, and every other door then showed the same: the switches' states and Show or Hide floating toolbar.",
                 "In the panel header, a click on the words Floating toolbar, the gap beside the switch, the row above and below the words, the row above the switch and the switch itself each toggled it once; a click 3 points above the 32 point row missed it.",
                 "The header switch is the one accessibility element, named Floating toolbar with its On or Off value; VoiceOver's press and Space on the focused switch each toggled it once.",
-                "The toolbar's context-menu Hide toolbar, as that menu builds it, turned it off, and every other door then showed the same; the panel's switch turned it back on. Which surface shows during drawing, presenting, personas, recording, reading and insertion is checked by CaptureHUDChecks (#155)."]
+                "The toolbar's context-menu Hide toolbar, as that menu builds it, turned it off, and every other door then showed the same; the panel's switch turned it back on. Which surface shows during drawing, presenting, personas, recording and insertion is checked by CaptureHUDChecks (#155)."]
     }
 
     /// The panel header's switch rows under `view`.
@@ -1566,7 +1486,6 @@ private struct HistoryNativeAcceptanceView: View {
         for (route, shots) in try renderFoldedStates(to: output) {
             if let index = pass.pages.firstIndex(where: { $0.route == route }) { pass.pages[index].shots += shots }
         }
-        if let index = pass.pages.firstIndex(where: { $0.route == "speak" }) { pass.pages[index].shots += try renderReadStates(to: output) }
         if let index = pass.pages.firstIndex(where: { $0.route == "dictate" }) { pass.pages[index].shots += dictate.shots }
         if let index = pass.pages.firstIndex(where: { $0.route == "meeting" }) { pass.pages[index].shots += [completed.meeting, try renderMeetingKept(to: output)] }
         if let index = pass.pages.firstIndex(where: { $0.route == "history" }) {
@@ -1703,6 +1622,33 @@ private struct HistoryNativeAcceptanceView: View {
         return try save(image, id: "state-kept", title: "Meetings, one call kept for later and one without speech, \(Int(size.width)) × \(Int(size.height)) pt",
             detail: "The real meeting owner settled a recording that heard no speech: it is shown once with its audio kept and is not offered for retry. The call kept for later is listed with its own Transcribe, Show in Finder and Move to Trash.",
             file: "page-meeting-state-kept-\(theme).png", to: output)
+    }
+
+    /// The retired route's replacement, through the production startup and Library owners.
+    func renderReadRetirement(to output: URL) throws -> SurfaceGallery.Pass {
+        let original = model.speechText
+        guard let item = model.library.resources.first(where: { $0.id == ReadRetirement.resourceID }),
+              item.kind == .file, model.library.readPreservationFailure == nil,
+              try Data(contentsOf: URL(fileURLWithPath: item.content)) == Data(original.utf8) else {
+            throw VoiceError.message("Startup did not preserve the synthetic Read draft exactly.")
+        }
+        var pages: [SurfaceGallery.Page] = []
+        let window = homeWindow(size: SurfaceGallery.sizes[0].size)
+        defer { window.contentViewController = nil; window.close() }
+        for route in ["home", "models", "library", "shortcuts"] {
+            let (rep, _) = try renderPage(route, in: window)
+            let shot = try save(rep, id: "retired", title: WorkbenchHome.name(of: route), detail: "Retired Read has no launch or setup controls; Library holds the exact preserved file.",
+                                file: "read-retirement-\(route)-\(theme).png", to: output)
+            pages.append(.init(route: route, title: WorkbenchHome.name(of: route), fallsThrough: false, shots: [shot]))
+        }
+        model.library.preserveRetiredReading("A conflicting synthetic source")
+        guard model.library.readPreservationFailure != nil else { throw VoiceError.message("The recovery fixture did not reach its refusal.") }
+        let (rep, _) = try renderPage("library", in: window)
+        pages[2].shots.append(try save(rep, id: "recovery", title: "Library preservation recovery", detail: "A conflict retains original data and offers contextual retry and the original saved state.",
+                                      file: "read-retirement-library-recovery-\(theme).png", to: output))
+        model.library.preserveRetiredReading(original)
+        return SurfaceGallery.Pass(theme: theme, panels: [], toolbar: [], host: [], pickers: [], pickerHost: [], pages: pages,
+                                   entries: entries().filter { $0.route.map(["home", "models", "library", "shortcuts"].contains) == true }, menus: [], placement: [])
     }
 
     /// A bounded pass for desktop Home changes. It uses the same isolated fixtures and actual
@@ -1876,14 +1822,14 @@ private struct HistoryNativeAcceptanceView: View {
         try shot("first-result", "First result", "Right after the first dictation: the words, their delivery controls and where they were saved.") { [self] in
             model.rawTranscript = first.text; model.transcript = first.text; model.history = [first]
         }
-        // Current work, above everything: a dictation recording, then a paused reading (#134 H1).
+        // Current work, above everything: a dictation recording (#134 H1).
         model.history = kept.history; model.transcript = kept.draft; model.rawTranscript = kept.raw
         model.preferences.firstDictationGuide = .completed
         let phase = model.phase
-        try shot("current-work", "Current work", "A dictation recording and a paused reading keep their own controls above the four workspace cards.") { [self] in
-            model.phase = .recording; model.elapsed = 12; model.paused = true
+        try shot("current-work", "Current work", "A dictation recording keeps its controls above the four workspace cards.") { [self] in
+            model.phase = .recording; model.elapsed = 12
         }
-        model.phase = phase; model.elapsed = 0; model.paused = false
+        model.phase = phase; model.elapsed = 0
         return shots
     }
 
@@ -1983,14 +1929,14 @@ private struct HistoryNativeAcceptanceView: View {
     func renderResultReuse(to output: URL) throws -> SurfaceGallery.Shot {
         let preview = NSHostingView(rootView: HandoffResultPreview(
             text: "Follow-up for Sam\n\nWe agreed to review the pilot on Friday.\nSam will share the revised notes before the review.",
-            context: "Synthetic follow-up", copyText: {}, readAloud: {}).padding(16).workbenchTheme())
+            context: "Synthetic follow-up", copyText: {}).padding(16).workbenchTheme())
         let window = offscreenWindow(size: NSSize(width: 620, height: 230), styleMask: [.borderless])
         defer { window.contentView = nil; window.close() }
         window.contentView = preview
         window.appearance = NSAppearance(named: theme == "dark" ? .darkAqua : .aqua)
         settle(preview)
         return try save(snapshot(preview), id: "state-result-reuse", title: "History, saved result reuse",
-            detail: "The reviewed assistant result has Copy result and Read aloud. Both use these exact words; reading starts only from Read.",
+            detail: "The reviewed assistant result has Copy result, using these exact words.",
             file: "page-history-state-result-reuse-\(theme).png", to: output)
     }
 
@@ -2324,8 +2270,6 @@ private struct HistoryNativeAcceptanceView: View {
                        readback: readback, controlState: hidden,
                        apply: { model.phase = .recording; model.elapsed = 14 }, reset: { model.phase = .idle; model.elapsed = 0 }),
             PanelState(id: "snap-session", title: "Snap & Talk session", detail: "A session with three captures.", readback: sessionReadback),
-            PanelState(id: "reading", title: "Reading", detail: "Read aloud playing.", readback: readback,
-                       apply: { model.playing = true }, reset: { model.playing = false }),
             PanelState(id: "clipboard", title: "Clipboard receipt", detail: "A 42-word transcript copied and still on the clipboard.", readback: readback,
                        apply: { model.clipboardReceipt.record(outcome: .init(message: "Copied to the clipboard.", clipboardChangeCount: NSPasteboard.general.changeCount,
                                                                              wasPasted: false, destinationName: nil), wordCount: 42) },
@@ -2333,8 +2277,6 @@ private struct HistoryNativeAcceptanceView: View {
             PanelState(id: "microphone-denied", title: "Microphone denied", detail: "The error a denied microphone leaves in the panel.", readback: readback,
                        apply: { model.report("Microphone access is off. Open System Settings › Privacy & Security › Microphone and allow Workbench.", on: .dictate) },
                        reset: { model.dismissError() }),
-            PanelState(id: "reading-audio-unreadable", title: "Reading audio unreadable", detail: "The error a reading leaves when its audio cannot be read.", readback: readback,
-                       apply: { model.reportReadingFailure(.audioUnreadable) }, reset: { model.dismissReadingFailure() }),
             PanelState(id: "meeting-recording", title: "Meeting recording", detail: "A meeting recording app audio, which shows the meeting status row.", readback: readback,
                        apply: { [self] in model.meetings = recordingMeetings; try drive(recordingMeetings, start: true) },
                        reset: { [self] in try drive(recordingMeetings, start: false); model.meetings = meetings }),
@@ -3074,8 +3016,7 @@ private struct HistoryNativeAcceptanceView: View {
         let mark = host.window?.frame ?? .zero
         let failure = "The speech engine stopped before it finished."
         let results: [(String, () -> Void, () -> Void)] = [
-            ("A dictation failure", { self.model.captureFailure = failure }, { self.model.dismissCaptureFailure() }),
-            ("A stopped reading", { self.model.reportReadingFailure(.audioUnreadable) }, { self.model.dismissReadingFailure() })]
+            ("A dictation failure", { self.model.captureFailure = failure }, { self.model.dismissCaptureFailure() })]
         for (name, show, clear) in results {
             show(); settle(.resting)
             let pending = FloatingResult.pending(model)
@@ -3095,130 +3036,19 @@ private struct HistoryNativeAcceptanceView: View {
         controls.choosePosition?(.bottom); settle(.resting)
     }
 
-    /// Results waiting with their own controls, and the input-consuming work that holds them back
-    /// (#220, #222), through the real host and its owners' publishers, docked at bottom centre. The
-    /// result pending when a reading begins, an older dictation failure, a receipt or an
-    /// undelivered one, keeps out of the pointer's reveal while the reading prepares, plays or is
-    /// paused: the reveal shows the reading's own row, the reading goes on, the mark keeps the
-    /// warning and More the result's section, and once the reading ends the next reveal shows the
-    /// result again. A result that arrives during the reading is revealed, a failure set again in
-    /// the same words among them, while a held receipt stays held when the dictation failure's slot
-    /// is cleared. A narration and a newer recording keep their rows too; the chosen tool's own
-    /// sessions hold nothing back, at the selection seam. And a result revealed under the pointer
-    /// keeps its place as a reading starts, until the pointer or a hold lets go.
+    /// Retained input work holds older results; new results and saved sessions stay reachable.
     func checkResultsYieldToLiveWork(host: CapturePanelController, controls: CaptureHUDControls,
                                      expect: (String, [String?]) -> Void, settle: (ToolbarTier) -> Void) {
-        func buttons(_ view: NSView) -> [NSButton] { (view as? NSButton).map { [$0] } ?? view.subviews.flatMap(buttons) }
-        func primary() -> String? { host.window?.contentView.map(buttons)?.first { $0.accessibilityIdentifier() == "toolbar.primary" }?.accessibilityLabel() }
-        /// The pointer's reveal, held by a menu's hold, as the real pointer is elsewhere.
-        func reveal() { controls.toolbar.send(.pointerEntered); controls.toolbar.send(.holdBegan(.menu)); settle(.revealed) }
-        func collapse() { controls.toolbar.send(.holdEnded(.menu)); controls.toolbar.send(.pointerLeft); settle(.resting) }
-        func receipt(_ outcome: @escaping () -> TextDelivery.Outcome) -> () -> Void {
-            { self.model.clipboardReceipt.record(outcome: outcome(), wordCount: 12); self.model.clipboardReceipt.holdHUD(true) }
+        func revealsNow() -> Bool {
+            controls.toolbar.send(.pointerEntered); controls.toolbar.send(.holdBegan(.menu)); settle(.revealed)
+            let result = controls.revealsResult
+            controls.toolbar.send(.holdEnded(.menu)); controls.toolbar.send(.pointerLeft); settle(.resting)
+            return result
         }
-        /// A receipt goes the moment the clipboard changes, so a copy made on this Mac while a local
-        /// run is under way would end a receipt case early. A case runs again, twice at most, when
-        /// the clipboard's change count moved while it ran; nothing here writes the clipboard.
-        func steady(_ run: () -> [String?]) -> [String?] {
-            var problems: [String?] = []
-            for _ in 0..<3 {
-                let before = NSPasteboard.general.changeCount
-                problems = run()
-                if NSPasteboard.general.changeCount == before { break }
-            }
-            return problems
-        }
-        func endReading() { model.rendering = false; model.playing = false; model.paused = false }
-        func described(_ title: String?) -> String { title.map { "\"\($0)\"" } ?? "nothing" }
-        let toolbar = FloatingToolbar(model: model, readback: readback, stage: stage, controls: controls, promptInsertion: model.promptInsertion,
-                                      meetings: model.meetings, snapModel: snap, receipts: model.clipboardReceipt,
-                                      dictate: {}, snap: {}, snapCapture: {}, draw: {}, present: {})
-        let copied = { TextDelivery.Outcome(message: TextDelivery.copiedMessage, clipboardChangeCount: NSPasteboard.general.changeCount,
-                                            wasPasted: false, destinationName: nil) }
+        func pendingIdentity() -> FloatingResult.Identity? { FloatingResult.pending(model)?.identity(in: model) }
         let words = "A recording was recovered. Use Retry transcription."
         let results: [(name: String, kind: FloatingResult, show: () -> Void, clear: () -> Void)] = [
             ("A dictation failure", .dictationFailure, { self.model.captureFailure = words }, { self.model.dismissCaptureFailure() })]
-        // A paused reading belongs to Read. In Dictate it neither leads the row nor holds Dictate's own
-        // failure back, and Resume reading stays in the chooser's Read row.
-        let readings: [(state: String, start: () -> Void, action: String, holdsBack: Bool)] = [
-            ("preparing", { self.model.rendering = true }, "Cancel", true),
-            ("playing", { self.model.playing = true }, "Pause reading", true),
-            ("paused", { self.model.paused = true }, "Dictate", false)]
-        func pendingIdentity() -> FloatingResult.Identity? { FloatingResult.pending(model)?.identity(in: model) }
-        model.toolbarMode = .dictate
-        for result in results {
-            for reading in readings {
-                // Waiting before the reading begins: held back while it lasts.
-                expect("\(result.name) waiting as a reading starts \(reading.state)", steady {
-                    result.show(); settle(.resting)
-                    reading.start(); settle(.resting)
-                    let warning = controls.status.description
-                    reveal()
-                    let row = !controls.revealsResult, reads = primary(), goesOn = model.rendering || model.playing || model.paused
-                    let commands = toolbar.chooserCommands.map { $0.value.title }
-                    let recovery = toolbar.chooserChoices.contains { $0.detail?.contains("attention") == true || $0.detail?.contains("stopped") == true }
-                    collapse()
-                    endReading(); settle(.resting)
-                    reveal()
-                    let back = controls.revealsResult
-                    collapse()
-                    result.clear(); endReading(); settle(.resting)
-                    return [
-                        row == reading.holdsBack ? nil : reading.holdsBack ? "the pointer's reveal showed the older result over the reading"
-                            : "the pointer's reveal held Dictate's failure back behind a paused reading",
-                        !reading.holdsBack || reads == reading.action ? nil : "the revealed row reads \(described(reads)), not \"\(reading.action)\"",
-                        goesOn ? nil : "revealing ended the reading",
-                        warning.contains("Needs attention") ? "saved recovery leaked into live activity" : nil,
-                        recovery ? nil : "The chooser lost the result's recovery route",
-                        reading.state == "preparing" || commands.contains("Stop reading") ? nil : "The Read row has no Stop reading",
-                        reading.state != "paused" || commands.contains("Resume reading") ? nil : "The Read row has no Resume reading",
-                        back ? nil : "once the reading ended the pointer's reveal did not show the result"]
-                })
-                // Arriving during the reading: revealed as any new result, with the reading still reachable.
-                expect("\(result.name) arriving during a reading \(reading.state)", steady {
-                    reading.start(); settle(.resting)
-                    result.show(); settle(.resting)
-                    reveal()
-                    let shown = controls.revealsResult, over = primary()
-                    collapse()
-                    let entry = ToolbarNextAction.resolve(toolbar.live).title, commands = toolbar.chooserCommands.map { $0.value.title }
-                    result.clear(); endReading(); settle(.resting)
-                    return [
-                        shown ? nil : "the pointer's reveal held a new result back",
-                        over == nil ? nil : "the reveal showed the row, reading \(described(over)), over the new result",
-                        entry == reading.action ? nil : "keyboard entry's row would read \"\(entry)\", not \"\(reading.action)\"",
-                        reading.state == "preparing" || commands.contains("Stop reading") ? nil : "The Read row has no Stop reading",
-                        reading.state != "paused" || commands.contains("Resume reading") ? nil : "The Read row has no Resume reading"]
-                })
-            }
-        }
-        // A failure set again in the same words during the reading is a new failure, cleared first
-        // or not; clearing the dictation failure's slot leaves a held receipt held.
-        func revealsNow() -> Bool { reveal(); defer { collapse() }; return controls.revealsResult }
-        model.captureFailure = words; settle(.resting)
-        model.playing = true; settle(.resting)
-        let heldFirst = !revealsNow()
-        model.captureFailure = nil; settle(.resting)
-        model.captureFailure = words; settle(.resting)
-        let clearedAndSet = revealsNow()
-        endReading(); model.dismissCaptureFailure(); settle(.resting)
-        model.captureFailure = words; settle(.resting)
-        model.playing = true; settle(.resting)
-        model.captureFailure = words; settle(.resting)
-        let setAgain = revealsNow()
-        endReading(); model.dismissCaptureFailure(); settle(.resting)
-        let receiptHeld = steady {
-            receipt(copied)(); settle(.resting)
-            model.playing = true; settle(.resting)
-            model.captureFailure = nil; settle(.resting)
-            let held = !revealsNow() && model.clipboardReceipt.receipt != nil
-            endReading(); model.clipboardReceipt.clear(); settle(.resting)
-            return [held ? nil : "clearing the dictation failure's slot let a held receipt over the reading"]
-        }
-        expect("A failure in the same words, and a held receipt, during a reading", [
-            heldFirst ? nil : "the failure waiting as the reading began was not held back",
-            clearedAndSet ? nil : "a failure cleared and set again in the same words stayed held back",
-            setAgain ? nil : "a failure set again in the same words stayed held back"] + receiptHeld)
         // At the selection seam, with the real results: global input work holds back the result
         // pending as it began, and the chosen tool's own sessions hold nothing back. Each row says
         // which it expects on its own, never from the rule under test. A result that arrives during
@@ -3258,40 +3088,6 @@ private struct HistoryNativeAcceptanceView: View {
         expect("Older results under global input work and the tools' own sessions", [olderWrong.isEmpty ? nil : olderWrong.joined(separator: "; ")])
         expect("Newer results under the same work", [newerWrong.isEmpty ? nil : "held back: " + newerWrong.joined(separator: "; ")])
         expect("Results under a newer recording and its processing", [recordingWrong.isEmpty ? nil : "took the reveal: " + recordingWrong.joined(separator: "; ")])
-        // A result revealed under the pointer keeps its place as a reading starts; once the pointer
-        // lets go the row is the reading's, and after it the result's again. A kept-open row does
-        // the same once its hold lets go.
-        results[0].show(); settle(.resting)
-        reveal()
-        let first = controls.revealsResult
-        model.playing = true; settle(.revealed)
-        let stays = controls.revealsResult && primary() == nil
-        collapse()
-        reveal()
-        let rowNow = !controls.revealsResult, readsNow = primary()
-        collapse()
-        endReading(); settle(.resting)
-        let backAfter = revealsNow()
-        controls.toolbar.send(.keepOpenChanged(true)); settle(.revealed)
-        let kept = controls.revealsResult
-        controls.toolbar.send(.holdBegan(.menu))
-        model.playing = true; settle(.revealed)
-        let keptStays = controls.revealsResult
-        controls.toolbar.send(.holdEnded(.menu)); settle(.revealed)
-        let keptRow = !controls.revealsResult, keptReads = primary()
-        endReading(); settle(.revealed)
-        let keptBack = controls.revealsResult
-        controls.toolbar.send(.keepOpenChanged(false)); settle(.resting)
-        results[0].clear(); settle(.resting)
-        expect("A revealed result as a reading starts under the pointer", [
-            first ? nil : "the pointer's reveal did not show the result",
-            stays ? nil : "the reading took the row from under the pointer",
-            rowNow && readsNow == "Pause reading" ? nil : "once the pointer let go the next reveal read \(described(readsNow)), not \"Pause reading\"",
-            backAfter ? nil : "once the reading ended the next reveal did not show the result",
-            kept ? nil : "the kept-open row did not show the result",
-            keptStays ? nil : "the reading took the kept-open row while a hold was on it",
-            keptRow && keptReads == "Pause reading" ? nil : "once the hold let go the kept-open row read \(described(keptReads)), not \"Pause reading\"",
-            keptBack ? nil : "once the reading ended the kept-open row did not show the result again"])
     }
 
     /// Each tool's one accessory (#134 part B) in the real host, docked at bottom centre. Revealed
@@ -3325,7 +3121,6 @@ private struct HistoryNativeAcceptanceView: View {
         }
         defer { controls.endKeyboardInteraction(); controls.choosePosition?(.bottom); model.toolbarMode = .dictate; settle(.resting) }
         let rows: [(ToolbarMode, FloatingControlAnchor, [String])] = [(.draw, .bottom, ["primary", "accessory", "launcher"]),
-                                                              (.read, .bottom, ["primary", "launcher"]),
                                                               (.draw, .right, ["primary", "accessory", "launcher"])]
         for (mode, anchor, cycle) in rows {
             model.toolbarMode = mode
@@ -3559,8 +3354,6 @@ private struct HistoryNativeAcceptanceView: View {
                          page(panel, "Dictate · Options · Open Dictate…", "dictate"),
                          action(panel, "Dictate · Options · Delivery and Text style", "Changes the saved dictation settings"),
                          action(panel, "Dictate · Options · Set up automatic paste…", "Asks macOS for Accessibility approval; shown while Paste automatically waits for it")]
-            case .read:
-                list += [page(panel, "Read, when nothing is playing", "speak"), action(panel, "Read, while reading", "Pauses, resumes or cancels the reading from the row itself")]
             case .snap:
                 list += [action(panel, "Snap", "Captures a region, saved in History"),
                          action(panel, "Snap · Options · Region, Window or Screen", "Captures that area, saved in History"),
@@ -3584,7 +3377,7 @@ private struct HistoryNativeAcceptanceView: View {
                  page(panel, "Open Workbench", "home"), page(panel, "Settings", "settings"), page(panel, "Shortcuts", "shortcuts"),
                  action(panel, WorkbenchUpdates.shared.panelTitle, "Checks for updates"), action(panel, "Quit", "Quits Workbench"),
                  page(panel, "Clipboard receipt · Review text", "history"), action(panel, "Clipboard receipt · Show cue", "Shows the clipboard cue"),
-                 page(panel, "Recovery · Open Dictate…, for a dictation error", "dictate"), page(panel, "Recovery · Open Read…, for a reading error", "speak"),
+                 page(panel, "Recovery · Open Dictate…, for a dictation error", "dictate"),
                  page(panel, "Recovery · Open History…, for a transcript removal or export", "history"),
                  page(panel, "Recovery · Open Home…, when the speech model could not be prepared", "home"),
                  page(panel, "Recovery · Open Models…, while speech is still preparing", "models"), page(panel, "Recovery · Open Snap & Talk…, for its notice", "readback"),
@@ -3624,24 +3417,21 @@ private struct HistoryNativeAcceptanceView: View {
                  action("Snap page", "Add image · Paste image or Import image…", "Opens a Snap draft from the clipboard or a chosen file"),
                  action("Snap page", "Add image · Import Desktop screenshots…", "Lists screenshots on the Desktop, then asks before importing them and moving the originals to the Trash"),
                  action("Transcript details", "Suggest details · Ask an assistant…", "Opens the handoff review to suggest names and tags"),
-                 action("Read page", "Voice & pace…", "Opens Read settings"),
-                 action("Read settings", "Open Read & Speak", "Opens System Settings to add a Mac voice"),
                  page("Meetings page", "History", "history"),
                  E(surface: "Meetings page", label: "Review transcript", leads: "Page: history, showing the exact completed transcript", route: "history"),
                  E(surface: "Handoff review", label: "Copy instructions or Start task", leads: "Page: history, revealing the task it prepared", route: "history"),
                  page("Remember correction", "Open Dictionary", "dictionary"),
-                 page("History page", "Transcript · More… · Open in Dictate", "dictate"), page("History page", "Transcript · More… · Read aloud", "speak"),
-                 page("History page", "Result · Read aloud", "speak"),
+                 page("History page", "Transcript · More… · Open in Dictate", "dictate"),
                  action("History page", "Connections…", "Shows provider connections over History"),
                  action("History page", "Hand off…", "Opens the handoff review for the selected items"),
                  action("History page", "Result · Review suggested details…", "Reviews an assistant's suggested details for the task's transcript"),
                  action("History page", "Stop task", "Stops the running task, whatever the filter shows")]
         list += appMenuEntries(surface: menu)
         list += [action("Library page", "Resources · Add · Save clipboard as prompt…, or ⇧⌘S while Resources shows", "Opens a new prompt with the clipboard's text")]
-        list += [page(other, "Library shortcut", "library"), page(other, "Read shortcut, when nothing is playing", "speak"),
+        list += [page(other, "Library shortcut", "library"),
                  page(other, "Snap & Talk shortcut, without a session or access", "readback"), page(other, "Present shortcut, without a scene", "present"),
                  action(other, "Quick controls shortcut", "Opens this panel"),
-                 page(other, "Read Selection service (selected text)", "speak"), page(other, "Private pack link", "packs"),
+                 page(other, "Private pack link", "packs"),
                  page(other, "Meeting offer panel", "meeting"), page(other, "Pack persona import", "personas"),
                  page(other, "StageKit controls and drawing settings", "annotate"),
                  page(other, "StageKit shortcut editing", "shortcuts"), page(other, "StageKit persona preparation", "personas")]
@@ -3798,7 +3588,7 @@ private struct SurfaceIndex {
             "Snap & Talk shows its first-run page. An open session shows its folder path and this Mac's Microphone access. Screen Recording reads as allowed, except in the Screen Recording off states.",
             "History shows the synthetic transcripts and Snaps, then its states: empty; All with Hand off tasks and two items selected; Results with running, completed, failed and Ready tasks; and Transcripts. Tasks run through a synthetic provider with a fixed clock; no process starts. The running strip draws a still symbol in place of its live indicator. Snap shows three synthetic Snaps with fixed dates.",
             "The meeting page lists two synthetic audio apps instead of this Mac's; the meeting status row comes from a synthetic capture that records nothing.",
-            "The speech engine is never loaded, so Models shows a fresh install. Mac voices, Apple Intelligence availability and keyboard labels come from the rendering Mac.",
+            "The speech engine is never loaded, so Models shows a fresh install. Apple Intelligence availability and keyboard labels come from the rendering Mac.",
             "Pixel sizes follow the rendering display's scale."].map { "<li>\(esc($0))</li>" }.joined() + "</ul></body></html>\n"
         try Data(html.utf8).write(to: output.appendingPathComponent("index.html"), options: .atomic)
         let shots = passes.flatMap { pass in pass.panels + pass.toolbar + pass.pickers + pass.pages.flatMap(\.shots) }.map { ["file": $0.file, "width": $0.width, "height": $0.height] as [String: Any] }
