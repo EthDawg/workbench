@@ -24,7 +24,22 @@ The floating toolbar is the shared live control surface for Snap & Talk, Draw,
 Present and Persona Overlay, and it carries dictation, narration and reading
 too (#134 T4). Desktop pages own preparation and saved libraries. The compact
 menu-bar panel owns quick utilities, adjustments and shortcut editing. Dictate
-and Read start, stop, pause and resume here; their options stay in Workbench.
+and Read start and stop here, and Read pauses and resumes in the chooser's Read
+row; their options stay in Workbench.
+
+**Read is one start** (Fit rule 6, 6 October). The pill's Read, the panel's Read
+row and the Read key resolve to the same host-level start, and its label follows
+the same state: `Read` while nothing plays, `Stop reading` while a reading plays
+or is paused, `Cancel` while audio is still being made. Clicked while idle, it
+reads the text selected in the front app's focused element at once with the
+current voice, as macOS Spoken Content's key does, and keeps that text as the
+Read page's draft under the page's Replace reading / Keep current rule: an empty,
+identical or already-heard draft is replaced quietly; a different draft nobody
+has heard keeps the selection behind that choice on the Read page, which opens,
+and nothing plays. With nothing selected it opens the Read page. The selection
+is read once, at the click, through the same Accessibility reads dictation
+makes, never from the clipboard, the window or the document. Home's sidebar and
+the Window menu stay page doors.
 
 **The mode follows you.** A mode, which the launcher calls the tool, is one
 capability or named workflow: Dictate, Read, Snap, Snap & Talk, Draw, Present or
@@ -56,14 +71,14 @@ moves the toolbar (see Placement).
 **Recording, reading and their results in the same host** (#134 T4). The same
 window, anchor and tiers carry dictation, narration and reading from start to
 result; nothing swaps the floating window to a panel of its own. Live work is
-the row: its next action is Stop, Stop narration, Pause or Resume reading, Cancel
+the row: its next action is Stop, Stop narration, Stop reading, Cancel
 request or Processing…, a separate slot carries the capture signal, and the chooser lists
 what the work can do besides, under its capability's name: Cancel and Copy
-now for a dictation, Cancel for a narration, Stop reading. Dictated words that
+now for a dictation, Cancel for a narration, Pause reading or Resume reading. Dictated words that
 wait for drawing to end lead with Stop drawing, which delivers them, with Copy now
 in the Dictate chooser row (#211). While drawing or a prompt insertion holds the next action, the chooser's
-Read row also has reading's own next action: Cancel while it prepares, Pause
-reading or Resume reading. A recording's elapsed
+Read row also has reading's own ending: Cancel while it prepares, Stop reading
+while it plays or is paused. A recording's elapsed
 time is the Stop's tooltip and VoiceOver help, never its label, whose width would
 tick; in the last ten seconds before the 5-minute limit, the accessible status names the limit without adding an icon. The Dictate page keeps the recording's
 details.
