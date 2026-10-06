@@ -297,6 +297,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             }
             else if down, id == 8 { self.toolbarSnapCapture() }
             else if down, id == 5 {
+                if self.readback.isRecording { self.readback.stopNarration(); return }
                 self.readback.refreshPermissionState()
                 if self.readback.sessionURL == nil {
                     self.readback.notice = "Create or open a Snap & Talk session before using the capture shortcut."
@@ -758,7 +759,7 @@ func runCLI(_ args: [String]) async -> Int32 {
             guard args.count == 2 else { throw VoiceError.message("Usage: --render-surfaces OUTPUT_DIRECTORY") }
             try SurfaceGallery.run(output: URL(fileURLWithPath: args[1], isDirectory: true))
         case "--check-providers":
-            try ProviderChecks.run(); try await ProviderChecks.runTransportChecks()
+            try ProviderChecks.run(); try await ProviderChecks.runTransportChecks(); try await RecognitionLifecycleChecks.run()
         case "--check-subscription-cli":
             try SubscriptionCLIChecks.run()
             try await SubscriptionCLIChecks.runAdapterChecks()
@@ -834,9 +835,10 @@ func runCLI(_ args: [String]) async -> Int32 {
             let result = await CleanupEngine().clean(text, style: args.count > 2 ? (CleanupStyle(rawValue: args[2]) ?? .light) : .light)
             print(result.text)
         case "--prepare-model":
-            try await engine().prepare(); print("MODEL_READY: \(await engine().statusDescription())")
+            try await engine().acquireSelectedModel(); print("MODEL_READY: \(await engine().statusDescription())")
         case "--transcribe":
             guard args.count == 2 else { throw VoiceError.message("Usage: LocalVoice --transcribe AUDIO_FILE") }
+            try await engine().prepareCached()
             print(try await engine().transcribe(URL(fileURLWithPath: args[1])))
         default: throw VoiceError.message("Usage: LocalVoice [--prepare-model | --transcribe AUDIO_FILE | --check-core | --check-readback | --check-read-retirement | --check-library | --check-quick-look-panel FILE… | --render-surfaces OUTPUT_DIRECTORY]")
         }

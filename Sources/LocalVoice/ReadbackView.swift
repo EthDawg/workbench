@@ -55,7 +55,7 @@ struct ReadbackView: View {
                     Text("You can record now. If the model still can’t be prepared, the recording is kept with Retry transcription.").font(.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 } else if !engine.ready {
-                    Text("You can record now; transcription waits for the speech model.").font(.caption).foregroundStyle(.secondary)
+                    Text("You can record for later. Open Models when you want to prepare speech; setup never starts recording.").font(.caption).foregroundStyle(.secondary)
                 }
             }
         }
@@ -63,22 +63,18 @@ struct ReadbackView: View {
 
     enum Sheet: String, Identifiable { case sessions, settings, ordering, deleted; var id: String { rawValue } }
 
-    /// The host's speech readiness as Snap & Talk shows it: the one readiness line's words, whether
-    /// narration can be transcribed now, and why not when preparation failed. Readiness comes
-    /// first, as Home's does: a ready engine is the engine in use whatever a failed switch in
-    /// Settings › Models reported (that reason stays on the Models page beside its own Try again),
-    /// a model that is not ready and has not failed is preparing, whichever door started it
-    /// (launch, Retry model or Settings › Models), and only a failure with no ready engine needs Retry.
+    /// The host supplies its actual phase; unavailable or deferred is never
+    /// inferred to mean preparing. The readiness line already names any failure.
     struct NarrationEngine: Equatable {
         var name: String
         var ready: Bool
         var failure: String?
         /// Still on its way: the line carries its progress and needs only patience.
-        var preparing: Bool { !ready && failure == nil }
+        var preparing: Bool = false
         /// A stopped preparation with no ready engine needs Retry model.
         var needsAttention: Bool { failure != nil && !ready }
         /// The line beside Record narration: the ready engine's name, or the readiness line with its reason.
-        var line: String { ready ? name : failure.map { "\(name). \($0)" } ?? name }
+        var line: String { name }
     }
 
     var body: some View {
@@ -287,13 +283,16 @@ struct ReadbackView: View {
         }
         if !model.isRecording && !model.isCapturing && model.currentSessionProblem == nil && !model.permissionsReady {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Label(model.screenPermissionGranted ? "Allow Microphone access to record narration." : "Allow Screen Recording to capture screens.",
+                Label(model.permissionsProblem ?? "Review capture access.",
                       systemImage: "lock").font(.callout).foregroundStyle(.secondary)
                 Spacer(minLength: 8)
                 Button("Open System Settings…") {
                     if model.screenPermissionGranted { model.openMicrophoneSettings() } else { model.openScreenRecordingSettings() }
                 }
                 Button("Check access") { Task { await model.preflightPermissions() } }
+                if !model.screenPermissionGranted || model.microphonePermission == .notDetermined {
+                    Button("Request capture access") { Task { await model.requestCaptureAccess() } }
+                }
             }.padding(.horizontal, 24).padding(.bottom, 12)
             if model.suggestsReopenForScreenAccess && !model.screenPermissionGranted {
                 Text(ScreenCaptureAccess.reopenHint).font(.callout).padding(.horizontal, 24).padding(.bottom, 12)
@@ -522,6 +521,9 @@ struct ReadbackView: View {
                 permission("Screen Recording", granted: model.screenPermissionGranted) { model.openScreenRecordingSettings() }
                 permission("Microphone", granted: model.microphonePermission == .authorized) { model.openMicrophoneSettings() }
                 Button("Check access") { Task { await model.preflightPermissions() } }
+                if !model.screenPermissionGranted || model.microphonePermission == .notDetermined {
+                    Button("Request capture access") { Task { await model.requestCaptureAccess() } }
+                }
             }
             Divider()
             HStack {

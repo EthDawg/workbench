@@ -48,19 +48,33 @@ struct RecognitionConfigurationStore {
 /// A selection is captured before any await. Changes are refused while a request is active.
 actor RecognitionEngine {
     private let store: RecognitionConfigurationStore
+    private let services: RecognitionServices
     private var selected = RecognitionConfiguration()
-    private var configurationError: String?
-    private var manager: AsrManager?
-    private var preparation: Task<AsrManager, Error>?
-    private var preparedConfiguration: RecognitionConfiguration?
+    private var backend: RecognitionBackend?
+    private var preparation: Task<PreparedRecognition, Error>?
+    private var cancelled = false
     private var transcribing = false
     private var liveSessionID: UUID?
-    /// Told what a model setup is doing now, from whichever door started it: Home, Settings ›
-    /// Models or a first transcription. Each word is the person's, never a file name.
-    private var progressObserver: (@Sendable (String) -> Void)?
-    func observeProgress(_ observer: @escaping @Sendable (String) -> Void) { progressObserver = observer }
-    /// One line for a download step: checking the files, the share downloaded, then the
-    /// one-time preparation for this Mac.
+    private var state = RecognitionSnapshot()
+    private var observer: (@Sendable (RecognitionSnapshot) -> Void)?
+
+    init(store: RecognitionConfigurationStore = RecognitionConfigurationStore(), services: RecognitionServices = RecognitionLocalModels.live) {
+        self.store = store; self.services = services
+        do {
+            selected = try store.load(); state.configuration = selected
+            if selected.provider == .localServer { state.admission = .serverUnverified }
+        } catch {
+            state.failure = .init(kind: .configuration, message: "Saved model settings could not be read. Choose and apply a model in Models.", details: error.localizedDescription)
+        }
+    }
+
+    func observe(_ observer: @escaping @Sendable (RecognitionSnapshot) -> Void) { self.observer = observer; observer(state) }
+    private func publish() { state.sequence &+= 1; observer?(state) }
+    func snapshot() -> RecognitionSnapshot { state }
+    var isReady: Bool { state.canTranscribe }
+    func configuration() -> RecognitionConfiguration { selected }
+    func statusDescription() -> String { state.line }
+
     static func progressLine(_ progress: DownloadProgress, model: String = "Parakeet") -> String {
         switch progress.phase {
         case .listing: return "Checking \(model) files…"
@@ -71,122 +85,128 @@ actor RecognitionEngine {
         }
     }
 
-    init(store: RecognitionConfigurationStore = RecognitionConfigurationStore()) {
-        self.store = store
-        do { selected = try store.load() }
-        catch { configurationError = "Saved model settings could not be read. Choose and apply a model in Settings. \(error.localizedDescription)" }
-    }
-
-    var isReady: Bool { configurationError == nil && preparedConfiguration == selected }
-    func configuration() -> RecognitionConfiguration { selected }
-    func statusDescription() -> String { configurationError ?? (isReady ? selected.summary : "\(selected.provider.title) · needs setup") }
-
     func configure(_ configuration: RecognitionConfiguration) throws {
-        guard !transcribing, preparation == nil, liveSessionID == nil else {
-            throw VoiceError.message("Finish the current model setup or transcription before switching models.")
-        }
+        guard !transcribing, liveSessionID == nil else { throw VoiceError.message("Finish the current transcription before switching models.") }
         let validated = try configuration.validated()
         try store.save(validated)
-        if validated != selected { preparedConfiguration = nil }
-        selected = validated
-        configurationError = nil
-        // Keep only the selected engine in memory. FluidAudio's disk cache remains reusable.
-        if selected.provider != .parakeet { manager = nil }
+        guard validated != selected || state.failure?.kind == .configuration else { return }
+        cancelPreparation()
+        selected = validated; backend = nil
+        state.configurationRevision &+= 1; state.configuration = validated
+        state.failure = nil
+        state.admission = validated.provider == .localServer ? .serverUnverified : .unavailable
+        if preparation == nil { state.detail = nil }
+        publish()
     }
 
-    func prepare() async throws {
-        if let configurationError { throw VoiceError.message(configurationError) }
-        let snapshot = selected
-        if preparedConfiguration == snapshot { return }
-        _ = try snapshot.validated()
-        switch snapshot.provider {
-        case .parakeet:
-            if manager == nil {
-                let task: Task<AsrManager, Error>
-                if let preparation { task = preparation }
-                else {
-                    let observer = progressObserver
-                    task = Task {
-                        let models = try await AsrModels.downloadAndLoad(version: .v2, progressHandler: { progress in
-                            observer?(RecognitionEngine.progressLine(progress))
-                        })
-                        try Task.checkCancellation()
-                        let engine = AsrManager(config: .default)
-                        try await engine.loadModels(models)
-                        return engine
-                    }
-                    preparation = task
-                }
-                do { manager = try await task.value; preparation = nil }
-                catch { preparation = nil; throw error }
+    /// Startup and Retry saved files may read local files only. Transcription never calls it.
+    func prepareCached() async throws { try await prepare(acquire: false) }
+    /// The only recognition acquisition door, reached by a deliberate Download action.
+    func acquireSelectedModel() async throws { try await prepare(acquire: true) }
+
+    func cancelPreparation() {
+        guard preparation != nil else { return }
+        cancelled = true; preparation?.cancel()
+        state.phase = .cancelling
+        state.detail = "Setup cancelled. Any model load already in progress is finishing safely; recording will not start."
+        publish()
+    }
+
+    private func prepare(acquire: Bool) async throws {
+        if state.failure?.kind == .configuration { throw state.failure! }
+        guard !transcribing, liveSessionID == nil else { throw VoiceError.message("Finish the current transcription before preparing a model.") }
+        guard preparation == nil else { throw VoiceError.message("The previous model operation is still finishing. Wait before trying again.") }
+        if state.canTranscribe { return }
+        guard selected.provider == .parakeet else { return }
+        let id = UUID(), revision = state.configurationRevision
+        cancelled = false; state.operationID = id; state.admission = .unavailable; state.failure = nil
+        state.phase = acquire ? .downloading : .checkingCache
+        state.detail = acquire ? "Downloading Parakeet…" : "Checking saved Parakeet files…"
+        publish()
+        let services = self.services
+        let operation = acquire ? services.acquire : services.prepareCached
+        let task = Task { try await operation { phase, line in await self.progress(phase, line, id: id, revision: revision) } }
+        preparation = task
+        do {
+            let prepared = try await task.value
+            guard !cancelled, !Task.isCancelled, state.configurationRevision == revision else {
+                prepared.discard(); throw CancellationError()
             }
-        case .localServer:
-            // There is no universal readiness API for transcription servers. Never call an
-            // unrelated health URL or send private audio as a hidden probe.
-            break
+            do { try prepared.adopt() } catch { prepared.discard(); throw error }
+            backend = prepared.backend; state.admission = .localReady
+            finishPreparation()
+        } catch {
+            if !cancelled, state.configurationRevision == revision, !(error is CancellationError) {
+                state.failure = RecognitionFailure.classify(error, acquiring: acquire)
+            }
+            finishPreparation()
+            throw error
         }
-        try Task.checkCancellation()
-        preparedConfiguration = snapshot
+    }
+
+    private func finishPreparation() {
+        preparation = nil; state.operationID = nil; state.phase = .idle; state.detail = nil; cancelled = false
+        publish()
+    }
+    private func progress(_ phase: RecognitionSnapshot.Phase, _ line: String, id: UUID, revision: UInt64) {
+        guard state.operationID == id, state.configurationRevision == revision, !cancelled else { return }
+        // Download callbacks can arrive after the loader has moved on; they cannot
+        // roll the displayed phase backwards or overwrite a cancelled operation.
+        if state.phase == .loading && phase != .loading { return }
+        if state.phase == .checkingCache && phase == .downloading { return }
+        state.phase = phase; state.detail = line; publish()
+    }
+
+    private func requireAdmission() throws {
+        guard state.canTranscribe else { throw state.failure ?? RecognitionFailure(kind: .missingAssets, message: "Open Models to prepare speech first. Your recording and saved work are kept.") }
     }
 
     func transcribe(_ url: URL) async throws -> String {
         guard !transcribing, liveSessionID == nil else { throw VoiceError.message("A transcription is already running. Wait for it to finish.") }
-        try Task.checkCancellation()
-        let snapshot = selected
-        transcribing = true
-        defer { transcribing = false }
-        try await prepare()
+        try Task.checkCancellation(); try requireAdmission()
+        let configuration = selected
+        transcribing = true; defer { transcribing = false }
         let text: String
-        switch snapshot.provider {
+        switch configuration.provider {
         case .parakeet:
-            guard let manager else { throw VoiceError.message("The speech model is not ready. Try preparing it again.") }
-            var decoderState = try TdtDecoderState(decoderLayers: 2)
-            var transcript = try await manager.transcribe(url, decoderState: &decoderState).text
-            // A recording longer than one window gets its ending read again (TranscriptEnding).
-            // A file whose ending cannot be read keeps the transcript it has.
-            if let ending = try? TranscriptEnding.window(of: url) {
-                try Task.checkCancellation()
-                var endingState = try TdtDecoderState(decoderLayers: 2)
-                transcript = TranscriptEnding.stitch(transcript, ending: try await manager.transcribe(ending, decoderState: &endingState).text)
-            }
-            text = transcript
+            guard let backend else { throw CancellationError() }
+            text = try await backend.transcribe(url)
         case .localServer:
-            let request = try LocalTranscriptionEndpoint.request(audio: url, configuration: snapshot)
-            text = try LocalTranscriptionEndpoint.decode(await LocalTranscriptionTransport().send(request))
+            do {
+                let request = try LocalTranscriptionEndpoint.request(audio: url, configuration: configuration)
+                text = try LocalTranscriptionEndpoint.decode(await services.send(request))
+                try Task.checkCancellation()
+                state.admission = .serverVerified; state.failure = nil; publish()
+            } catch {
+                if !(error is CancellationError) {
+                    state.admission = .serverUnverified
+                    state.failure = .init(kind: .service, message: "The configured local server could not transcribe this recording. The original audio is kept; check the server and retry.", details: error.localizedDescription)
+                    publish()
+                }
+                throw error
+            }
         }
         try Task.checkCancellation()
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Reserve the selected model for the entire capture, including the gaps between live
-    /// windows. Local servers retain their explicit file-transcription path.
     func beginLiveSession(_ id: UUID) throws -> Bool {
         guard !transcribing, liveSessionID == nil else { throw VoiceError.message("Finish the current transcription first.") }
-        if let configurationError { throw VoiceError.message(configurationError) }
+        try requireAdmission()
         liveSessionID = id
         return selected.provider == .parakeet
     }
-
     func endLiveSession(_ id: UUID) { if liveSessionID == id { liveSessionID = nil } }
-
     func transcribeLive(_ samples: [Float], sessionID: UUID) async throws -> [LiveVoiceWord] {
         guard liveSessionID == sessionID, !transcribing else { throw VoiceError.message("The live speech session is no longer available.") }
         guard (4_800...240_000).contains(samples.count) else { throw VoiceError.message("The live audio window has an invalid length.") }
-        transcribing = true
-        defer { transcribing = false }
-        try Task.checkCancellation()
-        try await prepare()
-        guard liveSessionID == sessionID, let manager else { throw CancellationError() }
-        // Fresh state per overlapping window and source. Its internal arrays are references.
-        var decoderState = try TdtDecoderState(decoderLayers: 2)
-        let result = try await manager.transcribe(samples, decoderState: &decoderState)
+        try requireAdmission(); try Task.checkCancellation()
+        guard let backend else { throw VoiceError.message("The selected server uses the saved recording after capture finishes.") }
+        transcribing = true; defer { transcribing = false }
+        let words = try await backend.transcribeLive(samples)
         try Task.checkCancellation()
         guard liveSessionID == sessionID else { throw CancellationError() }
-        let words = result.tokenTimings.map { buildWordTimings(from: $0) } ?? []
-        guard result.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !words.isEmpty else {
-            throw VoiceError.message("The speech model did not return word timing. The original recording is kept for transcription.")
-        }
-        return words.map { LiveVoiceWord(text: $0.word, start: $0.startTime, end: $0.endTime) }
+        return words
     }
 }
 

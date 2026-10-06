@@ -518,7 +518,7 @@
     "surface": "settings page",
     "label": null,
     "expression": "actionTitle",
-    "note": "Quality (1 October: local model download visibility). The same Models button now says what it does: Download Parakeet before its first setup, Try download again after a failure (with the reason beside it), Use Parakeet or Use local server to switch, In use once ready; its status line shows the setup's live progress from any door.",
+    "note": "Quality (#15 / foundation J): Download Parakeet is deliberate; Use Parakeet selects and checks cached files only. In use reflects actual admission. Cancel setup remains reachable during preparation.",
     "kind": "setting",
     "belongsTo": "settings"
   },
@@ -702,8 +702,8 @@
     "label": "Retry model",
     "kind": "action",
     "belongsTo": "settings",
-    "aliasOf": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.retry-model",
-    "note": "Quality: Home's Retry model repeated beside Record narration when the speech model could not be prepared, so narration never waits in a silent queue (Fit rule 2; #134 follow-up, 6 Oct)."
+    "aliasOf": "LocalVoice.ModelSettingsView.ModelSettingsView.Button.retry-saved-files",
+    "note": "Quality (#15): retry the selected local cache without download or repair; Models remains the deliberate acquisition door."
   },
   {
     "id": "LocalVoice.ReadbackView.ReadbackView.Button.review-selected-evidence",
@@ -1458,14 +1458,6 @@
     "kind": "action",
     "belongsTo": "history",
     "note": "Option: a door on Home to History, shown once right after the first dictation so its result can be found again; it opens History on Transcripts, where that dictation is newest (#15). Same words as the recent transcript's Open in Dictate."
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.retry-model",
-    "surface": "window home",
-    "label": "Retry model",
-    "kind": "action",
-    "belongsTo": "settings",
-    "note": "Quality: the existing engine banner gains Retry when preparation fails (#134 W9)."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.runtime-690989861a19",
@@ -5196,5 +5188,72 @@
     "belongsTo": "library",
     "aliasOf": "library",
     "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
+  },
+  {
+    "id": "LocalVoice.ModelSettingsView.ModelSettingsView.Button.cancel-setup",
+    "surface": "settings page",
+    "label": "Cancel setup",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Quality (#15 / foundation J): deliberate speech setup, cached-only retry, deferral or cancellation through the existing recognition owner; no capture starts on completion."
+  },
+  {
+    "id": "LocalVoice.ModelSettingsView.ModelSettingsView.Button.not-now",
+    "surface": "settings page",
+    "label": "Not now",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Quality (#15): contextual deferral of speech setup, using the existing Not now grammar; keeps saved work and unrelated tools usable and starts no capture.",
+    "aliasOf": "LocalVoice.FounderIntroduction.FounderIntroductionCard.Button.not-now"
+  },
+  {
+    "id": "LocalVoice.ModelSettingsView.ModelSettingsView.Button.retry-saved-files",
+    "surface": "settings page",
+    "label": "Retry saved files",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Quality (#15 / foundation J): deliberate speech setup, cached-only retry, deferral or cancellation through the existing recognition owner; no capture starts on completion."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.cancel",
+    "surface": "window home",
+    "label": "Cancel",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Quality (#15 / foundation J): deliberate speech setup, cached-only retry, deferral or cancellation through the existing recognition owner; no capture starts on completion."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.cancel-setup",
+    "surface": "window home",
+    "label": "Cancel setup",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Quality (#15 / foundation J): deliberate speech setup, cached-only retry, deferral or cancellation through the existing recognition owner; no capture starts on completion."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.download-parakeet",
+    "surface": "window home",
+    "label": "Download Parakeet",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Quality (#15 / foundation J): deliberate speech setup, cached-only retry, deferral or cancellation through the existing recognition owner; no capture starts on completion."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.not-now",
+    "surface": "window home",
+    "label": "Not now",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Quality (#15): contextual deferral of speech setup, using the existing Not now grammar; keeps saved work and unrelated tools usable and starts no capture.",
+    "aliasOf": "LocalVoice.FounderIntroduction.FounderIntroductionCard.Button.not-now"
+  },
+  {
+    "id": "LocalVoice.ModelSettingsView.ModelSettingsView.DisclosureGroup.details",
+    "surface": "settings page",
+    "label": "Details",
+    "kind": "option",
+    "belongsTo": "settings",
+    "aliasOf": "LocalVoice.DemoLibraryView.DemoLibraryView.DisclosureGroup.details",
+    "note": "Quality (#15): contextual speech-model failure detail under the useful recovery message; no separate settings place or setup gate."
   }
 ]
