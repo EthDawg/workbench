@@ -183,6 +183,7 @@ ENTRY_POINTS = [
     ('LocalVoice/HistoryView.swift', 'HistoryMadeFrom', 'history page', 'doors'),
     ('LocalVoice/HistoryView.swift', 'HistoryInputChip', 'history page', 'doors'),
     ('LocalVoice/CaptureHistoryView.swift', 'TranscriptHistoryRow', 'history page', 'doors'),
+    ('LocalVoice/HistorySelectionControls.swift', 'HandoffReviewView', 'handoff review', 'page'),
     ('LocalVoice/HistorySelectionControls.swift', 'HandoffJobCard', 'history page', 'doors'),
     ('LocalVoice/HistorySelectionControls.swift', 'HandoffResultPreview', 'history page', 'doors'),
     ('LocalVoice/HistorySelectionControls.swift', 'HistorySelectionControls', 'history page', 'doors'),
