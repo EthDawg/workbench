@@ -110,12 +110,12 @@ enum ReadingChecks {
         // The panel's Voice menu (Read's Option on its row): one heading per quality, best first.
         let mixed = compactCatalogue + [voice("com.apple.voice.premium.en-AU.Matilda", "Matilda", "en-AU", .premium),
                                         voice("com.apple.voice.enhanced.en-US.Ava", "Ava", "en-US", .enhanced)]
-        let tiers = MacVoiceCatalog.byQuality(mixed, preferredLanguage: "en-AU")
-        try check(tiers.map(\.quality) == [.premium, .enhanced, .compact] && tiers.map { $0.quality.title } == ["Premium", "Enhanced", "Compact"],
+        let menuTiers = MacVoiceCatalog.byQuality(mixed, preferredLanguage: "en-AU")
+        try check(menuTiers.map(\.quality) == [.premium, .enhanced, .compact] && menuTiers.map { $0.quality.title } == ["Premium", "Enhanced", "Compact"],
                   "the Voice menu lists installed voices by quality, best first, under the tier's name")
-        try check(tiers[0].voices.map(\.accentLabel) == ["Matilda (Australian)"] && tiers[1].voices.map(\.accentLabel) == ["Ava (American)"],
+        try check(menuTiers[0].voices.map(\.accentLabel) == ["Matilda (Australian)"] && menuTiers[1].voices.map(\.accentLabel) == ["Ava (American)"],
                   "each voice is named with its accent under a heading that already names the quality")
-        try check(tiers[2].voices.map(\.id) == voices.map(\.id) && tiers[2].voices.first?.name == "Karen" && tiers[2].voices.last?.isNovelty == true,
+        try check(menuTiers[2].voices.map(\.id) == voices.map(\.id) && menuTiers[2].voices.first?.name == "Karen" && menuTiers[2].voices.last?.isNovelty == true,
                   "within a tier the picker's order holds: the person's accent first, novelty voices last")
         try check(MacVoiceCatalog.byQuality(compactCatalogue, preferredLanguage: "en-AU").map(\.quality) == [.compact]
                   && MacVoiceCatalog.byQuality([], preferredLanguage: "en-AU").isEmpty, "an empty tier has no heading, and no voices make no menu")
