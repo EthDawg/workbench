@@ -70,8 +70,24 @@ This change neither resumes the extension nor establishes cross-profile native a
 
 Signed Preview **2.4.1 (20261006123415)**, clean combined source `dec1f343413b9c3ce68583e81863e6c9278ec0df`, was identified through actual Copy build details on macOS 26.5.1 (25F80). The native Keyboard page omitted browser switching and retired Read; Connections omitted browser setup. Library retained an existing bound public link with an explicit paused explanation, default-browser action and inactive shortcut label. Choosing **Open in default browser** opened the public Workbench URL in the browser; its exact tab URL/title were observed. A capture-tool error after the click did not prevent that observed opening. No old browser profile was activated or promised.
 
-**More → Export saved browser settings…** opened the native Save dialog with an inert-recovery explanation; **Cancel** returned to Library without saving. Reopening either the recovery or ordinary Library export through subsequent CUA menu activations did not reliably show a dialog. Complete export is therefore not passed; this observation does not isolate an application defect from the automation/focus path. Recheck it in the next native acceptance slot.
+**More → Export saved browser settings…** opened the native Save dialog with an inert-recovery explanation; **Cancel** returned to Library without saving. Reopening either the recovery or ordinary Library export through subsequent CUA menu activations did not reliably show a dialog. That first pass did not establish complete export and did not isolate an application defect from the automation/focus path. The independent follow-up below resolves the bounded export observation.
 
 The saved browser connection/shortcut values and all Library bytes were compared before and after the bounded check and were unchanged. Private baselines and the local result remain under `.build/native-foundation-dec1f34`; no private settings, fingerprints or names are published. Search was cleared and Preview returned to Home. No integration was enabled, preference edited, provider started or installed app replaced during this check.
 
-Fresh-profile behavior, complete successful export, older-extension refusal across actual relaunches, native shortcut dispatch and VoiceOver remain open. This addendum supersedes only the corresponding pending observations above, not the complete G acceptance gate or any public release claim.
+Fresh-profile behavior, repeated-opening reliability, older-extension refusal across actual relaunches, native shortcut dispatch and VoiceOver remain open. This addendum supersedes only the corresponding pending observations above, not the complete G acceptance gate or any public release claim.
+
+
+The integration owner independently repeated the export on this unchanged signed build,
+verified its identity again in About, and saved a new private local JSON through the
+native Save panel. The inert format and complete retained-owner settings matched;
+browser settings, the inactive shortcut and all Library bytes remained unchanged.
+Additional ordinary/recovery Save panels were canceled. Initial AX menu activation did
+not consistently reveal the panel, so repeated-opening reliability is still unclaimed.
+This verifies one complete native export, not an automation or application-defect diagnosis.
+Preview returned to Home; no installation, provider, cloud or permission action occurred.
+Private payloads and fingerprints remain local and are not included in this record.
+
+The actual signed installed `WorkbenchBrowserHost` also refused both previously
+allowlisted extension origins, each exiting 1 immediately with no stdout/stderr. Its
+source guard precedes socket lookup. This verifies the installed helper's inert response;
+it does not stand in for running an older Chrome extension through two app relaunches.
