@@ -15,4 +15,5 @@ import PrivatePackKit
     }
     var copyCode: (String) -> Bool = { TextDelivery.copy($0) != nil }
     var openURL: (URL) -> Bool = { NSWorkspace.shared.open($0) }
+    var readLibrary: (DemoLibraryStore) throws -> [DemoResource] = { try $0.load() }
 }

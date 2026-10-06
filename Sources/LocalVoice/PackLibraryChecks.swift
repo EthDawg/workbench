@@ -82,6 +82,8 @@ actor PackAuthorizationFixture: PackHTTPClient {
         services.removeCredential = { credential = nil; removals += 1 }
         services.openURL = { _ in opened += 1; return true }
         services.copyCode = { _ in copied += 1; return true }
+        var beforeLibraryRead: ((DemoLibraryStore) throws -> Void)?
+        services.readLibrary = { store in try beforeLibraryRead?(store); return try store.load() }
         services.contentSource = { _, _ in throw VoiceError.message("No network source is admitted by this fixture.") }
         let packsRoot = root.appendingPathComponent("Packs")
         let store = PackStore(root: packsRoot), source = try PackLibraryFixtureSource()
@@ -213,6 +215,61 @@ actor PackAuthorizationFixture: PackHTTPClient {
         model.keepSavedFileOnly()
         try check(model.savedResource == nil && Data(contentsOf: refusedFile) == data && reloaded.resources.count == 3,
                   "Keep file only dismisses recovery without deleting or adding the exported original")
+
+        // The commit can succeed before its separate readback fails. The cached UUID
+        // then exists without a write hold, while disk no longer has that reference.
+        // Explicit Retry must review disk even in this initially-unheld state.
+        for fault in ["restored", "missing", "corrupt"] {
+            let currentStore = DemoLibraryStore(directory: root.appendingPathComponent("Post-commit " + fault))
+            let retained = DemoResource(title: "Retained " + fault, content: "Keep the current saved records")
+            let baseline = try currentStore.save([retained])
+            let currentLibrary = DemoLibraryModel(store: currentStore)
+            let export = root.appendingPathComponent("Post-commit " + fault + ".txt")
+            var sawCommittedReference = false
+            beforeLibraryRead = { store in
+                let persisted = try store.load()
+                sawCommittedReference = persisted.count == 2 && persisted.contains { $0.kind == .file && $0.content == export.path }
+                switch fault {
+                case "restored": try baseline.write(to: store.url)
+                case "missing": try FileManager.default.removeItem(at: store.url)
+                default: try Data("corrupt post-commit fixture".utf8).write(to: store.url)
+                }
+                throw VoiceError.message("Synthetic final reference readback failure")
+            }
+            let saved = model.saveResource(data, title: "Post-commit " + fault, filename: export.lastPathComponent, library: currentLibrary,
+                chooseDestination: { _ in choices += 1; return export }, write: { bytes, url in writes += 1; try bytes.write(to: url) })
+            beforeLibraryRead = nil
+            guard let retryID = model.savedResource?.id else { throw VoiceError.message("The post-commit fixture lost its saved export.") }
+            let exportCount = writes, chooserCount = choices
+            try check(!saved && sawCommittedReference && !currentLibrary.savingDisabled && currentLibrary.resources.count == 2
+                      && currentLibrary.resources.contains(where: { $0.id == retryID }) && Data(contentsOf: export) == data,
+                      "post-commit \(fault) readback failure leaves the exact cached UUID initially unheld")
+            if fault == "restored" {
+                currentLibrary.draft = keptDraft
+                try check(!model.addSavedResource(to: currentLibrary, reviewCurrentStore: true) && currentLibrary.draft == keptDraft
+                          && currentLibrary.resources.count == 2 && !currentLibrary.savingDisabled && Data(contentsOf: currentStore.url) == baseline,
+                          "initially-unheld retry preserves an editor draft and does not reload or write beneath it")
+                currentLibrary.draft = nil
+                currentLibrary.prepareImport(from: incoming); currentLibrary.importChoices = [keptDraft.id]
+                try check(currentLibrary.importReview != nil && !model.addSavedResource(to: currentLibrary, reviewCurrentStore: true)
+                          && currentLibrary.importReview != nil && currentLibrary.importChoices == [keptDraft.id]
+                          && currentLibrary.resources.count == 2 && Data(contentsOf: currentStore.url) == baseline,
+                          "initially-unheld retry preserves the import decision and choices without reloading or writing")
+                currentLibrary.cancelImport()
+            } else {
+                let faultyBytes = try currentStore.currentData()
+                try check(!model.addSavedResource(to: currentLibrary, reviewCurrentStore: true) && currentLibrary.savingDisabled
+                          && currentLibrary.storageFailure != nil && currentLibrary.resources.count == 2
+                          && model.savedResource?.id == retryID && currentStore.currentData() == faultyBytes && Data(contentsOf: export) == data,
+                          "initially-unheld \(fault) store establishes a persistent hold while retaining cached records and export")
+                try baseline.write(to: currentStore.url)
+            }
+            try check(model.addSavedResource(to: currentLibrary, reviewCurrentStore: true) && !currentLibrary.savingDisabled
+                      && currentLibrary.resources.count == 2 && currentLibrary.resources.contains(retained) && currentLibrary.selected?.id == retryID
+                      && currentStore.load().filter { $0.id == retryID }.count == 1 && Data(contentsOf: export) == data
+                      && writes == exportCount && choices == chooserCount && model.savedResource == nil,
+                      "post-commit \(fault) retry reviews disk and commits one same-ID reference without another export or chooser")
+        }
         model.remove(pack.id)
         try await wait { !model.isBusy && model.packs.isEmpty }
         try check(Data(contentsOf: session.appendingPathComponent("SKILL.md")) == frozenSkill

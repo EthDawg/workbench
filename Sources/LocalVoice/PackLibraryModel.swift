@@ -323,7 +323,7 @@ final class PackLibraryModel: ObservableObject {
         defer { if access { saved.url.stopAccessingSecurityScopedResource() } }
         do {
             try saved.verify()
-            if reviewCurrentStore, library.savingDisabled {
+            if reviewCurrentStore {
                 guard library.reviewForSavedFileReference() else {
                     throw VoiceError.message(library.storageFailure ?? "Finish the current Library review before adding this file's reference.")
                 }
@@ -345,7 +345,7 @@ final class PackLibraryModel: ObservableObject {
                 let resource = DemoResource(id: saved.id, kind: .file, title: saved.title, content: saved.url.path, bookmark: bookmark)
                 guard library.save(resource) else { throw VoiceError.message(library.storageFailure ?? library.error ?? "Library could not be saved.") }
             }
-            guard try library.store.load().contains(where: { $0.id == saved.id && $0.kind == .file && $0.content == saved.url.path }) else {
+            guard try services.readLibrary(library.store).contains(where: { $0.id == saved.id && $0.kind == .file && $0.content == saved.url.path }) else {
                 throw VoiceError.message("The Library reference could not be verified.")
             }
             try saved.verify()
