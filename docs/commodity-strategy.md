@@ -1,5 +1,7 @@
 # A small app that benefits from better engines
 
+**6 October 2026 product decision:** The [focused foundation](mac-foundation.md) now retires Read and freezes unproven optional expansion. The listening rows and incremental reading improvements below retain historical rationale; they do not authorize further work. Useful ownership and preservation principles remain applicable.
+
 Decision record · 13 September 2026. Read with [Workbench's product boundary](workbench.md) and [the category comparison](utility-comparison.md). GitHub issues are the contribution queue; this document explains the enduring direction.
 
 Workbench should make a few everyday jobs dependable and pleasant without a required subscription. Better models and better coding agents should improve the implementation behind those jobs. They should not require people to relearn the app, surrender originals or migrate to another service.

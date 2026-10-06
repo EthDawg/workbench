@@ -12,7 +12,7 @@ The current [capability delivery, issue #112](https://github.com/Ship-Work/workb
 
 ### Decided refinement target · 6 October 2026
 
-The [focused Mac foundation](mac-foundation.md) is the decided refinement brief, with [current evidence and rejected alternatives](research/mac-foundation-2026-10.md). Keep the existing tool names and state owners. Complete each journey through usable output, useful degradation and a clear exit. Meetings leads from recording to directly copyable words; handoff keeps manual delivery usable without optional setup; Present means a phone on a clean stage, with a window and still backdrop by default. Optional setup cannot block a permission-free action on already saved material.
+The [focused Mac foundation](mac-foundation.md) is the decided refinement brief, with [current evidence, adversarial findings and rejected alternatives](research/mac-foundation-2026-10.md). **Read is retired from the target product**, including contextual TTS, providers and Services; old text/exports remain preserved. Keep names and state owners for retained tools where they serve the job, not as permanent entitlements. Meetings leads to directly copyable words; handoff keeps manual delivery usable without optional setup; Present means a phone on a clean stage. Optional setup cannot block a permission-free action on saved material. This is a target decision, not a claim that retirement has shipped.
 
 The brief's dated decisions supersede older proposals for the same work, including the old Meetings-inside-Dictate fold. Existing source descriptions below do not become claims that the target is implemented. Wallpaper creation, animated backgrounds and decorative hand-cutout authoring are retired from normal new use. Browser switching, phone-photo sync and scene-cloud sync pause both promotion and routine runtime admission, with explicit legacy preservation/recovery. Present reuses a frozen Persona card through a selection-only picker; prompts belong to Library. Do not revive these paths because an older section or issue describes them. Preserve all existing platform pauses.
 
@@ -30,9 +30,13 @@ Every contribution answers these questions in its existing issue or PR, proporti
 2. Can removal, a better default, an existing tool or the native Mac do it more simply?
 3. Which existing owner and accepted foundation does it use? What happens when a dependency is unavailable?
 4. What complexity does it remove or add across controls, permissions, settings, persistence, dependencies, CI/release work and public claims? Why is any net addition worth it?
-5. How will complete use and comprehension be verified, and what evidence would make us retire or revise it?
+5. How will complete use and comprehension be verified? For substantial investment or promotion, what practical advantage and later voluntary reuse will establish value over the person's current route? What would make us retire or revise it?
 
 Prefer repair, deletion, consolidation and better defaults. New top-level tools, destinations, modes, settings groups, persistent services or release entry points have a default answer of no; an exception needs a concrete unmet outcome, a simpler-route comparison and an explicit scope decision under the Grammar. Small quality fixes need a short answer, not a new design document, committee or scorecard. Do not reward feature count, test count, ticket count or number of parallel agents.
+
+Existing tools face the same value test. A different lifecycle, a recent request, a nearly finished PR or passing checks is not proof of a recurring job. Preserve data separately from maintaining feature prominence. Freeze advanced Persona, general Library expansion and additional provider/pack integrations until observed work warrants them; do not enlarge a weak proposition to justify earlier effort. Read's retirement supersedes its previous voice-quality and selected-text plans. Retiring TTS does not retire VoiceOver, original recording playback, recognition or Snap & Talk's historically named `Readback` implementation.
+
+Ship independently accepted improvements under the existing release gate. A useful Meetings or handoff fix must not wait for blocked phone hardware, a Persona restyle or a comprehensive new evidence framework. Keep whole-reset claims incomplete until all required acceptance is met; narrow each release claim to what its artifact and actual use establish. No telemetry or recurring governance programme is required to observe repeat value.
 
 This applies to the whole product. Permissions and updates support completing work; Settings holds necessary lasting preferences, not every uncertain design choice. CI catches concrete failures in the existing workflow; new jobs need measured coverage/cost justification and must not duplicate an existing authoritative gate. Marketing describes the accepted product and its limits; a mockup or sentence on a landing page cannot create a capability obligation. Keep one contract per subject, one issue per accepted slice and one release owner; archive or reconcile superseded guidance instead of layering another policy on top.
 
@@ -42,7 +46,7 @@ Workbench stays learnable as more people and agents contribute by speaking one s
 
 Every entry must make one of these faster or calmer.
 
-1. **Working.** You need a utility for seconds and return to work: Dictate, Snap, Read.
+1. **Working.** You need a utility for seconds and return to work: Dictate, Snap.
 2. **Capturing.** You explain screens aloud and get a deck in seconds: Snap & Talk.
 3. **Presenting.** You demonstrate with a device, your persona and live marks, and never get flustered: Present, Persona, Draw, Timer.
 
@@ -54,10 +58,9 @@ Reusing what you captured (History, then Hand off) supports these moments. It is
 | --- | --- | --- |
 | Dictate | voice into text | delivery, text style, activation and dictionary in Dictate settings; completed transcripts in History |
 | Snap | the screen into an image | region, window or screen; crop and marks on the image; copy |
-| Read | text into speech | voice, source text |
 | Draw | marks over anything | pen, arrow, shape, board, undo, clear |
 | Present | a phone or still scene into a shared stage window | device, optional backdrop/frame and frozen Persona artwork; route-specific audio guidance |
-| Persona | you onto the screen | cards, live camera, size, position, voice framing |
+| Persona | saved artwork onto the screen | basic show/hide and placement; existing camera, groups and voice framing are compatibility scope, not expansion priorities |
 | Timer | a break into a visible countdown | duration, placement |
 
 **Named workflows** combine capabilities and keep their own name because they are a moment: **Snap & Talk** (Snap with narration, building a deck) and **Meetings** (Dictate with a meeting or call’s audio, as a longer session). Meetings is the existing Transcribe meeting or call workflow, promoted to a visible desktop destination. A new named workflow is a new capability for review purposes.
@@ -77,17 +80,17 @@ Every use of Workbench is at most three visible choices: the capability, an opti
 ### Surfaces keep their roles
 
 - **Menu bar panel**: a row per capability or named workflow, with that row's adjustments. Footer: Open Workbench, Settings, Shortcuts.
-- **Floating toolbar**: live controls for Capturing and Presenting (Snap & Talk, Draw, Present, Persona), plus compact Dictate and Read start and stop.
+- **Floating toolbar**: live controls for Capturing and Presenting (Snap & Talk, Draw, Present, Persona), plus compact Dictate start and stop. Retired Read has no launcher or contextual action.
 - **Workbench window**: preparation pages named exactly as their capability, then History, Library and Settings.
 
 ### Names
 
-One capability has one name on every surface, menu and shortcut. Action labels may follow state ("Read", "Stop reading"). A shortened label is allowed only if it cannot be mistaken for another capability. The same action uses the same words everywhere: one set of words for stopping, cancelling, hiding and ending, and one set of drawing tools and colours whether you mark the screen or a Snap. Persona means your on-screen presence only; how you speak or write is a Style.
+One capability has one name on every surface, menu and shortcut. Action labels may follow state ("Dictate", "Stop dictation"). A shortened label is allowed only if it cannot be mistaken for another capability. The same action uses the same words everywhere: one set of words for stopping, cancelling, hiding and ending, and one set of drawing tools and colours whether you mark the screen or a Snap. Persona means your on-screen presence only; how you speak or write is a Style.
 
 ### Rules for every change
 
 1. **Classify before building.** Each user-facing change is:
-   - **Quality**: an existing capability works better with no new entry. Preferred.
+   - **Quality**: a retained capability serves its accepted job better with no new entry. Preferred. This classification does not exempt the capability from the value test or reopen retired scope.
    - **Option**: a new choice inside one capability's own options, named in its words, off by default unless it is that capability's core behaviour.
    - **New capability, named workflow or place**: needs Ethan's decision, the moment it serves, and why it cannot be an option. Something else should merge or leave.
 
@@ -120,7 +123,7 @@ The surface gallery holds rule 4, the names in rule 6 and the look of rule 7's c
 | Primitive | Workbench's responsibility | Boundary |
 | --- | --- | --- |
 | Speak → text | Capture/import, recognition, optional cleanup, original wording, history and safe delivery | Other apps own the note, message or document made from the result. |
-| Text → speech | Explicit selected-text handoff, Mac voices with word highlighting, playback/export and optional online reading | Review imported text and keep provider setup explicit; do not turn the utility into a general agent platform. |
+| Text → speech | Retired from the refinement target | Preserve old draft/exports and shared recognition; no contextual TTS, Services or provider setup. |
 | Screen → Snap | Capture a region, window or display; crop, annotate, copy and keep a searchable local history | Originals survive edits and reversible archive. Cancel creates no empty record or Desktop file. |
 | Snap + narration | Compose saved Snaps or a new region, window or pointer-display capture into an ordered portable Snap & Talk session | Narration follows a new capture; cancelled selectors start no audio. Narration is optional for saved images. Existing sections, original audio and frozen skill packs remain intact. |
 | Persona | Show saved artwork over windows and browsers, or place it in a Present scene | Independent overlays retain their own placement and lifecycle. The optional voice outline measures loudness only while its persona shows and never records. An explicitly started local camera can take the one floating slot as a mirrored bubble; it is video only, keeps no image, writes nothing and never opens the microphone. Remote streams, recording and a camera inside a Present scene are outside this source. |
@@ -136,7 +139,7 @@ Snap & Talk uses one session workspace: fixed capture controls, ordered thumbnai
 
 The bundled deck skill uses a neutral default. Colleagues can optionally connect a private GitHub content pack in Library → Packs and choose its compatible skills for new sessions. Company content is maintained outside the public application. GitHub sign-in is needed only for private pack downloads and updates. Each session keeps its complete chosen skill and assets; updates never rewrite earlier or customised sessions. Branded templates are explicit choices and optional branding cannot block neutral creation. Rich-file/deck skills retain the complete portable manual handoff; Workbench does not execute their helpers or silently replace their output contract with a text-only task.
 
-The bounded macOS Service accepts an explicit text selection into Read; it is not a clipboard watcher or document reader. Native equivalents remain the starting comparison. Broad demo orchestration, a generic plugin framework and a Windows rewrite are not prerequisites for this version.
+The former selected-text Read Service is retired from the target, including its packaged registration; the audio-to-text App Intent remains. Native equivalents remain the starting comparison. Broad demo orchestration, a generic plugin framework and a Windows rewrite are not prerequisites for this version.
 
 ## History and optional assistance
 
@@ -144,7 +147,7 @@ History lists transcripts, Snaps and Hand off results newest first, with one sea
 
 **Review transcript** opens the complete saved current text and original wording in a read-only History sheet. Home’s recent transcript and Meetings’ Review transcript open that same exact record. Inspecting, switching wording or closing never replaces the Dictate draft or changes the shared selection. Copy current text names its wording explicitly; export follows the chosen wording. More → Open in Dictate remains a deliberate action through the existing draft-replacement decision.
 
-Completed Hand off results are searchable by their saved answer as well as title and request. A matching earlier task remains reachable inside its review group. Read result shows the exact cached wording used by Copy result and Read aloud; Read aloud opens the existing Keep current / Replace reading decision and never starts playback. Returning to Workbench refreshes an externally edited answer. Missing, invalid or oversized results show a reason and keep their task folder; unavailable words are not reused. Passive Snap reloads and result-file reads run off the main thread, and an older load cannot replace a newer accepted change.
+Completed Hand off results are searchable by their saved answer as well as title and request. A matching earlier task remains reachable inside its review group. The target labels visual inspection Review result and shows the exact cached wording used by Copy result; the separate Read aloud action is retired. Returning to Workbench refreshes an externally edited answer. Missing, invalid or oversized results show a reason and keep their task folder; unavailable words are not reused. Passive Snap reloads and result-file reads run off the main thread, and an older load cannot replace a newer accepted change.
 
 History’s **Snap & Talk sessions…** opens the existing session picker without reloading or replacing the current session. Choosing another session uses the same busy and unsaved-edit admission as Snap & Talk. Sessions remain portable folders, not another History record type.
 
@@ -163,6 +166,8 @@ Detect Meetings & Calls is off by default. Enabling it inspects supported Mac au
 The [live voice backend](live-voice.md) adds a shared session projection for Meetings and Dictate, progressive Parakeet words, pause/resume, and recovery of the same selected source after an audio-device change. Confirmed words are checkpointed beside original audio; a revisable ending stays separate. A complete live pass finishes its remaining windows and commits once, while an incomplete pass uses saved-audio recovery. Dictate still delivers only the final result. The offer owner exposes a single explicit Start for the exact displayed app and rejects stale offers; detection itself never starts capture. The UI integration and physical Mac/headphone acceptance are separate from these backend checks. A separately selected local server retains its finish-then-transcribe behavior, with an explicit explanation that live words require Parakeet.
 
 ## One app, several ways in
+
+The detailed paragraphs below record the pre-retirement implementation baseline. Read-specific entries, status, model settings and Services are superseded by the [Read retirement contract](mac-foundation.md#read-retirement-is-a-narrow-removal-not-an-audio-rewrite), and are not instructions to retain or improve it. Implementors remove these baseline descriptions as each change lands; the active Grammar above is the target.
 
 **Switch to** is retained source for a paused Chrome adapter, not an active tool in the refinement target. The [foundation retirement contract](mac-foundation.md#5-remove-dormant-scope-without-losing-work) closes its menu, shortcut, setup, listener and indirect activation paths while preserving stored links and profile bindings. Copy link and explicit ordinary browser opening remain useful without promising a profile match. The older [presenter contract](presenter-direction.md) retains design history; it does not authorize resumption. Use the [production release record](../site/updates/production.json) for actual shipped identity; this decision is not an implementation claim.
 
