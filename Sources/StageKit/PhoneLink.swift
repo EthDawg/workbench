@@ -263,6 +263,7 @@ final class USBPhoneWatch {
     func start() {
         guard port == nil, let port = IONotificationPortCreate(kIOMainPortDefault) else { return }
         self.port = port
+        // Registered on the queue so an ordinary caller never races a stop in flight.
         IONotificationPortSetDispatchQueue(port, queue)
         let refcon = Unmanaged.passUnretained(self).toOpaque()
         let callback: IOServiceMatchingCallback = { refcon, iterator in
@@ -280,10 +281,14 @@ final class USBPhoneWatch {
         }
         queue.async { [weak self] in self?.publish() }
     }
+    /// Synchronous on the watch's own queue, where its callbacks run, so no callback
+    /// can run after this returns and the unretained reference they carry is safe.
     func stop() {
-        iterators.forEach { IOObjectRelease($0) }; iterators.removeAll()
-        if let port { IONotificationPortDestroy(port) }
-        port = nil
+        queue.sync {
+            iterators.forEach { IOObjectRelease($0) }; iterators.removeAll()
+            if let port { IONotificationPortDestroy(port) }
+            port = nil
+        }
     }
     deinit { stop() }
 
