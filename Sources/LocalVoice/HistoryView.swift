@@ -313,7 +313,7 @@ struct HistoryView: View {
                 HandoffConnectionsSheet(jobs: jobs, backTitle: "Back to History") { showingConnections = false }
             }
             .modifier(TranscriptHistoryDialogs(model: model, review: $transcriptReview, details: $details, removal: $removal, recording: $recording))
-            .onAppear { snap.refresh(); applyDoor() }
+            .onAppear { snap.requestRefresh(); applyDoor() }
             .onChange(of: model.historyDoor) { applyDoor() }
             .task(id: query) {
                 // Search runs once typing pauses; clearing it applies at once.
@@ -329,7 +329,7 @@ struct HistoryView: View {
             .onReceive(snap.$recognizedText.dropFirst()) { _ in searchRevision &+= 1 }
             .onReceive(jobs.$taskFiles.dropFirst()) { _ in searchRevision &+= 1 }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-                snap.refresh()
+                snap.requestRefresh()
                 Task { await jobs.loadTaskFiles(jobs.jobs) }
             }
     }
