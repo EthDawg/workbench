@@ -102,14 +102,11 @@ final class PromptInsertion: ObservableObject {
                           let selection = Self.selection(element) else { return nil }
                     return .init(value: value, selection: selection)
                 },
-                supportsProgressive: {
-                    var settable = DarwinBoolean(false)
-                    return AXUIElementIsAttributeSettable(element, kAXSelectedTextAttribute as CFString, &settable) == .success && settable.boolValue
-                },
+                supportsProgressive: { AccessibilityBridge.isAttributeSettable(element, kAXSelectedTextAttribute) },
                 insert: { chunk in
                     // Literal text, including newlines. No Return, Tab or submit
                     // key is posted. Failed/uncertain writes are never replayed.
-                    AXUIElementSetAttributeValue(element, kAXSelectedTextAttribute as CFString, chunk as CFString) == .success
+                    AccessibilityBridge.setAttribute(element, kAXSelectedTextAttribute, chunk as CFString) == .success
                 },
                 waitForConfirmation: { try await Task.sleep(nanoseconds: 45_000_000) },
                 paste: { text, expected in
@@ -163,13 +160,7 @@ final class PromptInsertion: ObservableObject {
     }
 
     static func selection(_ element: AXUIElement) -> NSRange? {
-        var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &value) == .success,
-              let value, CFGetTypeID(value) == AXValueGetTypeID() else { return nil }
-        let ax = value as! AXValue
-        var range = CFRange()
-        guard AXValueGetType(ax) == .cfRange, AXValueGetValue(ax, .cfRange, &range),
-              range.location >= 0, range.length >= 0 else { return nil }
-        return NSRange(location: range.location, length: range.length)
+        let (error, value) = AccessibilityBridge.attribute(element, kAXSelectedTextRangeAttribute)
+        return error == .success ? AccessibilityBridge.range(value) : nil
     }
 }

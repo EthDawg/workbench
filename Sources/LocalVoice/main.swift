@@ -741,6 +741,7 @@ func runCLI(_ args: [String]) async -> Int32 {
             try CoreChecks.run(); try CleanupChecks.run(); try DemoLibraryChecks.run(); try ReadbackChecks.run(); try await ReadbackChecks.runAdmissionChecks(); try ProviderChecks.run(); try CaptureHUDChecks.run(); try CaptureSettingsChecks.run(); try LocalRefinementChecks.run()
             try await AudioRendererCancellationChecks.run()
             try await NeuralVoiceChecks.run()
+            try await AccessibilityBridgeChecks.run()
             try await MainActor.run { try ReadSelectionChecks.run(); try DemoLibraryChecks.runModelChecks(); try IntegrationChecks.run(); try KeyboardCoachChecks.run(); try ClipboardReceiptChecks.run(); try FeedbackChecks.run(); try ReadingChecks.run() }
         case "--check-feedback":
             // Brief feedback alone (#134 T5): no check here writes preferences outside its own temporary folder.

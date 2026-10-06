@@ -80,10 +80,10 @@ enum PromptPickerChecks {
         // What a choice does. Insert types into the frozen field; Copy prompt copies once.
         try check(PromptPickerMode.resolve(trusted: false, destination: nil) == .copy(noField: false)
                   && PromptPickerMode.resolve(trusted: true, destination: nil) == .copy(noField: true)
-                  && PromptPickerMode.resolve(trusted: false, destination: .init(app: .current, element: AXUIElementCreateApplication(getpid()),
+                  && PromptPickerMode.resolve(trusted: false, destination: .init(app: .current, element: AccessibilityBridge.application(getpid()),
                                                                                   value: "", selection: NSRange(location: 0, length: 0))) == .copy(noField: false),
                   "without approval the action is Copy prompt, even over a readable field")
-        let readable = TextDelivery.Target(app: .current, element: AXUIElementCreateApplication(getpid()), value: "before", selection: NSRange(location: 6, length: 0))
+        let readable = TextDelivery.Target(app: .current, element: AccessibilityBridge.application(getpid()), value: "before", selection: NSRange(location: 6, length: 0))
         let insertMode = PromptPickerMode.resolve(trusted: true, destination: readable)
         try check(insertMode.inserts && insertMode.actionTitle.hasPrefix("Insert into ") && insertMode.note == nil,
                   "with approval and a readable field, the action inserts into that field")
