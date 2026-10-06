@@ -396,10 +396,12 @@ enum HandoffJobStore {
             }
             if !item.images.isEmpty {
                 parts.append("Selected image files (in this order):\n" + item.images.map { folder.appendingPathComponent($0).path }.joined(separator: "\n"))
-                parts.append("Link this source in the result using these relative Markdown image links: " + item.images.map { "[" + item.title.replacingOccurrences(of: "]", with: "") + "](" + $0 + ")" }.joined(separator: ", "))
+                let linkPrefix = manual ? "../" : ""
+                parts.append("Link this source in the result using these relative Markdown image links: " + item.images.map { "[" + item.title.replacingOccurrences(of: "]", with: "") + "](" + linkPrefix + $0 + ")" }.joined(separator: ", "))
             }
         }
-        if manual && snapshot.items.contains(where: { !$0.images.isEmpty }) {
+        if manual, let firstImage = snapshot.items.lazy.flatMap(\.images).first {
+            parts.append("The source links above are relative to a document directly inside outputs/. Adjust links to the location of each output document if you use subfolders. For example, from outputs/review/follow-up.md, link the first image as [Source](../../" + firstImage + "). Paths in selection.json and handoff.json remain relative to the selected work folder.")
             parts.append("Attach these selected image files before asking the assistant to use them. The images have not been uploaded by Workbench.")
         }
         return parts.joined(separator: "\n\n")
