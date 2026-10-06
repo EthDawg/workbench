@@ -2,7 +2,7 @@
 
 Source: branch `claude/ax-structured-sync` with `claude/read-voice-errors` (#269) merged in, from `main` 5f209cab. Nothing visible changed, so there are no renders; this folder records the measurement that grounds the two fixes and the bridge's own reruns. macOS 26.5.1 (25F80), the development Mac.
 
-The split, after review: the flood is the voice listing, and #269 fixes it inside `MacVoiceCatalog` (the catalogue from `AVSpeechSynthesisVoice` identifiers alone, the `NSSpeechSynthesizer` scan only when a saved choice needs it, refreshes on a GCD utility queue; `docs/verification/2026-10-06-read-voice/`). `AccessibilityBridge` is the one door for `AXUIElement*` and `AXObserver*` calls, which never fault (the table below), so it runs each call in place on the calling thread, with no queue, no wait and no process-wide timeout; `scripts/check-accessibility-bridge.py` keeps element calls there and voice listings in `ReadingVoices.swift`, outside `Task` closures.
+The split, after review: the flood is the voice listing, and #269 fixes it inside `MacVoiceCatalog` (the catalogue from `AVSpeechSynthesisVoice` identifiers alone, the `NSSpeechSynthesizer` scan only when a saved choice needs it, refreshes on a GCD utility queue; `docs/verification/2026-10-06-read-voice/`). `AccessibilityBridge` is the one door for `AXUIElement*` and `AXObserver*` calls, which never fault (the table below), so it runs each call in place on the calling thread, with no queue, no wait and no process-wide timeout. This branch also closes the two task-context voice calls #269 left: the catalogue keeps the voice objects each listing hands it, and `MacVoiceCatalog.voice(identifier:)` serves them to `MacSpeechRenderer.start` and the voice preview, so a Listen looks nothing up from its task; the checks list on a GCD utility queue. `scripts/check-accessibility-bridge.py` keeps element calls in the bridge and voice listings in `ReadingVoices.swift`, and fails a listing, a catalogue call or `AVSpeechSynthesisVoice(identifier:)` inside a `Task` closure in any file, the flood's own shape.
 
 ## What the installed app logged
 
@@ -25,16 +25,16 @@ So on this macOS the fault belongs to the speech-voice side of the Accessibility
 
 ## Production reproduction
 
-`.build/debug/LocalVoice` under the same capture (`--process LocalVoice`, `subsystem == "com.apple.Accessibility"`), base `main` before either fix, then this branch with #269 merged and the bridge inline. The measured faults on this branch are all speech-voice calls made from Swift task contexts in #269's checks and in `MacSpeechRenderer.start`, which the table attributes; none is an element call.
+`.build/debug/LocalVoice` under the same capture (`--process LocalVoice`, `subsystem == "com.apple.Accessibility"`), base `main` before either fix, then this branch at two points: with #269 merged and the bridge inline (the review's measurement), and at its head, with the listed voice objects served to readings and the checks listing on a GCD queue. Each cell was run once, in table order, on that source.
 
-| Mode | `main` before | This branch (bridge inline, #269 merged) |
-| --- | --- | --- |
-| `--check-live-dictation-delivery` | 0 (synthetic AX only) | 0 (27 field checks) |
-| `--check-floating-toolbar` (TextDeliveryChecks, PromptPickerChecks) | 0 (synthetic AX only) | 0 (`TEXT_DELIVERY_CHECKS_OK: 64`, `PROMPT_PICKER_CHECKS_OK: 38`) |
-| `--check-core` (now includes AccessibilityBridgeChecks) | 0 | 2: `ReadingChecks.run` lists the catalogue twice (`MacVoiceCatalog.installed`, lines 157 and 160) from the `MainActor.run` task; `ACCESSIBILITY_BRIDGE_CHECKS_OK: 12 checks` logged none |
-| `--check-reading` | 0 (no voice listing on `main`'s checks) | 2: the same two listings (`READING_CHECKS_OK: 106`) |
-| `--check-reading-render` | 931 | 8: one listing (`runRender`, line 441), the three `AVSpeechSynthesisVoice(identifier:)` lookups of its guard (line 449) and one lookup per `MacSpeechRenderer.start` from the async check (four) (`READING_RENDER_OK` Daniel, Karen, Samantha; `READING_STREAM_OK` 25) |
+| Mode | `main` before | #269 merged, bridge inline | Head (debug) | Head (release) |
+| --- | --- | --- | --- | --- |
+| `--check-live-dictation-delivery` | 0 (synthetic AX only) | 0 (27 field checks) | 0 (35 field checks, with #265's boundary fit merged) | – |
+| `--check-floating-toolbar` (TextDeliveryChecks, PromptPickerChecks) | 0 (synthetic AX only) | 0 (`TEXT_DELIVERY_CHECKS_OK: 64`, `PROMPT_PICKER_CHECKS_OK: 38`) | 0 (`TEXT_DELIVERY_CHECKS_OK: 74`, `PROMPT_PICKER_CHECKS_OK: 38`) | – |
+| `--check-core` (includes AccessibilityBridgeChecks) | 0 | 2: `ReadingChecks.run` listed the catalogue twice (`MacVoiceCatalog.installed`) from the `MainActor.run` task; `ACCESSIBILITY_BRIDGE_CHECKS_OK: 12 checks` logged none | 0 (`ACCESSIBILITY_BRIDGE_CHECKS_OK: 10 checks`, `READING_CHECKS_OK: 107`) | 0 (`ACCESSIBILITY_BRIDGE_CHECKS_OK: 10 checks`, `READING_CHECKS_OK: 107`) |
+| `--check-reading` | 0 (no voice listing on `main`'s checks) | 2: the same two listings (`READING_CHECKS_OK: 106`) | 0 (`READING_CHECKS_OK: 107`) | – |
+| `--check-reading-render` | 931 | 8: one listing (`runRender`), the three `AVSpeechSynthesisVoice(identifier:)` lookups of its guard and one lookup per `MacSpeechRenderer.start` from the async check (four) (`READING_RENDER_OK` Daniel, Karen, Samantha; `READING_STREAM_OK` 25) | 0 (`READING_RENDER_OK` Samantha, Karen, Daniel; `READING_STREAM_OK` 25) | 0 (`READING_RENDER_OK` Samantha, Karen, Daniel; `READING_STREAM_OK` 25) |
 
-Each row was run once, in this order, on the final source. The Siri `AFLocalization` lines did not appear in any run (0 in all five), which is #269's `say`-list rule at work. The eight and the two are the checks' own task-context voice calls, which the bridge no longer wraps by the lead's decision that the voice side belongs to the catalogue; they are listed for the lead in the pull request's Not verified.
+The Siri `AFLocalization` lines did not appear in any run (0 in every cell), which is #269's `say`-list rule at work. The two and the eight in the middle column were the checks' own task-context voice calls, and the same `MacSpeechRenderer.start` lookup ran once per Listen in the app; the head column is after `MacVoiceCatalog.voice(identifier:)` and the checks' `offMain` helper, and `ReadingChecks` holds that `voice(identifier:)` returns the listed object itself after a listing (the 107th check).
 
 Not verified here: the installed app's own count after this change, which needs a Preview build and a day of use.
