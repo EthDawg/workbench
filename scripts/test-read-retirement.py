@@ -42,7 +42,11 @@ class RetirementAdmission(unittest.TestCase):
         self.assertIn("id == 5", callback)
         for filename in ["Views.swift", "WorkbenchHome.swift", "CaptureHistoryView.swift", "DemoLibraryView.swift", "HistorySelectionControls.swift"]:
             source = (ROOT / "Sources/LocalVoice" / filename).read_text()
-            self.assertNotIn('"speak"', source, filename)
+            if filename == "WorkbenchHome.swift":
+                self.assertEqual(source.count('"speak"'), 1)
+                self.assertIn('if route == "speak" { return ("library", "library") }', source)
+            else:
+                self.assertNotIn('"speak"', source, filename)
             self.assertNotIn('"Read aloud"', source, filename)
         self.assertIn('"Review result"', (ROOT / "Sources/LocalVoice/HistorySelectionControls.swift").read_text())
 

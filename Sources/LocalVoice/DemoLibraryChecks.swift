@@ -109,6 +109,7 @@ enum DemoLibraryChecks {
     }
 
     @MainActor static func runModelChecks() throws {
+        try DemoLibraryResourceChecks.run()
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("Workbench-library-model-" + UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let store = DemoLibraryStore(directory: directory)
@@ -126,7 +127,7 @@ enum DemoLibraryChecks {
         let spaced = DemoResource(kind: .file, title: "Spaced path", content: spacedURL.path)
         guard model.save(spaced), model.selected?.content == spacedURL.path, model.selected?.fileAvailable == true else { throw VoiceError.message("Saving a file altered its exact path") }
         guard model.selection == spaced.id && !model.favoritesOnly && model.query.isEmpty else { throw VoiceError.message("Saving a new resource while filtering did not select that resource") }
-        model.remove(spaced)
+        model.remove(model.resources.first { $0.id == spaced.id }!)
         guard model.selection == model.matches.first?.id && model.selected != nil else { throw VoiceError.message("Removing a resource left the visible detail without a selected row") }
         guard model.save(spaced) else { throw VoiceError.message("Exact path test could not restore its file resource") }
         let restored = DemoLibraryModel(store: store)

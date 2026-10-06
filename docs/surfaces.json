@@ -183,7 +183,7 @@
   },
   {
     "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.use-in-persona",
-    "surface": "library page",
+    "surface": "Library Resources",
     "label": "Use in Persona…",
     "kind": "option",
     "belongsTo": "persona",
@@ -191,7 +191,7 @@
   },
   {
     "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.use-in-present",
-    "surface": "library page",
+    "surface": "Library Resources",
     "label": "Use in Present…",
     "kind": "option",
     "belongsTo": "present",
@@ -4260,7 +4260,7 @@
   },
   {
     "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.retry-saving-read-text",
-    "surface": "library recovery",
+    "surface": "Library Resources",
     "label": "Retry saving Read text",
     "kind": "action",
     "belongsTo": "library",
@@ -4268,7 +4268,7 @@
   },
   {
     "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.show-original-saved-state",
-    "surface": "library recovery",
+    "surface": "Library Resources",
     "label": "Show original saved state",
     "kind": "action",
     "belongsTo": "library",
@@ -4276,7 +4276,7 @@
   },
   {
     "id": "LocalVoice.DemoLibraryView.DemoLibraryView.DisclosureGroup.details",
-    "surface": "library recovery",
+    "surface": "Library Resources",
     "label": "Details",
     "kind": "action",
     "belongsTo": "library",
@@ -4464,5 +4464,427 @@
     "kind": "action",
     "belongsTo": "persona",
     "note": "Existing scene chooser callback, now included by the Persona route scanner while registering Me. Uses the selected saved Persona in the preparing scene and starts nothing."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.add-a-file",
+    "surface": "Library Resources",
+    "label": "Add a file…",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.add-a-link",
+    "surface": "Library Resources",
+    "label": "Add a link",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.add-a-prompt",
+    "surface": "Library Resources",
+    "label": "Add a prompt",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.add-local-file",
+    "surface": "Library Resources",
+    "label": "Add local file…",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.cancel",
+    "surface": "Library Resources",
+    "label": "Cancel",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.change-file",
+    "surface": "Library Resources",
+    "label": "Change file…",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Option of Library: explicit replacement draft for a readable file; only Save changes the saved reference. Cancel/error preserve the original."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.clear-filters",
+    "surface": "Library Resources",
+    "label": "Clear filters",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.copy-link",
+    "surface": "Library Resources",
+    "label": "Copy link",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.copy-path",
+    "surface": "Library Resources",
+    "label": "Copy path",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.edit",
+    "surface": "Library Resources",
+    "label": "Edit",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.export-library",
+    "surface": "Library Resources",
+    "label": "Export library…",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.export-saved-browser-settings",
+    "surface": "Library Resources",
+    "label": "Export saved browser settings…",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.find-resource",
+    "surface": "Library Resources",
+    "label": "Find resource",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.import-library",
+    "surface": "Library Resources",
+    "label": "Import library…",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.new-link",
+    "surface": "Library Resources",
+    "label": "New link",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.new-prompt",
+    "surface": "Library Resources",
+    "label": "New prompt",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.new-prompt.2",
+    "surface": "Library Resources",
+    "label": "New prompt",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.quick-look",
+    "surface": "Library Resources",
+    "label": "Quick Look",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.remove-resource",
+    "surface": "Library Resources",
+    "label": "Remove resource",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.runtime-0bef1078ce15",
+    "surface": "Library Resources",
+    "label": null,
+    "expression": "Image ( systemName : item . favorite ? \"star.fill\" : \"star\" )",
+    "note": "Runtime label from Image ( systemName : item . favorite ? \"star.fill\" : \"star\" ); no rendered text assumed. Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text.",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library"
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.runtime-13423a56c41a",
+    "surface": "Library Resources",
+    "label": null,
+    "expression": "item . primaryActionTitle",
+    "note": "Runtime label from item . primaryActionTitle; no rendered text assumed. Foundation A2/L1: current resource primary action is Copy prompt, Open link, Open in default browser, Open file or Locate file. Rechecks the rendered resource ID before dispatch.",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library"
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.runtime-772d4201867d",
+    "surface": "Library Resources",
+    "label": null,
+    "expression": "Image ( systemName : \"xmark\" )",
+    "note": "Runtime label from Image ( systemName : \"xmark\" ); no rendered text assumed. Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text.",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library"
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.runtime-ea8caf8f7971",
+    "surface": "Library Resources",
+    "label": null,
+    "expression": "Image ( systemName : \"trash\" )",
+    "note": "Runtime label from Image ( systemName : \"trash\" ); no rendered text assumed. Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text.",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library"
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.save-clipboard-as-prompt",
+    "surface": "Library Resources",
+    "label": "Save clipboard as prompt…",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.save-clipboard-as-prompt.2",
+    "surface": "Library Resources",
+    "label": "Save clipboard as prompt…",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.save-dictate-transcript-as-prompt",
+    "surface": "Library Resources",
+    "label": "Save Dictate transcript as prompt…",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Quality: names the existing draft source explicitly; opens the same prompt editor with full Dictate text and refuses oversize without truncation."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.show-in-finder",
+    "surface": "Library Resources",
+    "label": "Show in Finder",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.show-saved-library",
+    "surface": "Library Resources",
+    "label": "Show saved library",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.DisclosureGroup.file-details",
+    "surface": "Library Resources",
+    "label": "File details",
+    "kind": "option",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Quality: keeps the full path and Copy path in secondary details; filename and short location stay primary."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.DisclosureGroup.library-details",
+    "surface": "Library Resources",
+    "label": "Library details",
+    "kind": "option",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Option of Library recovery: reveals the retained storage diagnostic while saved data and original files remain untouched."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Label.runtime-138bf0706676",
+    "surface": "Library Resources",
+    "label": null,
+    "expression": "item . fileAvailable ? \"File found\" : \"File needs attention\"",
+    "note": "Runtime label from item . fileAvailable ? \"File found\" : \"File needs attention\"; no rendered text assumed. Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text.",
+    "kind": "status",
+    "belongsTo": "library",
+    "aliasOf": "library"
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Label.runtime-610dbe83b810",
+    "surface": "Library Resources",
+    "label": null,
+    "expression": "\"Chrome · \\(target.profileName)\"",
+    "note": "Runtime label from \"Chrome · \\(target.profileName)\"; no rendered text assumed. Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text.",
+    "kind": "status",
+    "belongsTo": "library",
+    "aliasOf": "library"
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Menu.add",
+    "surface": "Library Resources",
+    "label": "Add",
+    "kind": "option",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Menu.more",
+    "surface": "Library Resources",
+    "label": "More",
+    "kind": "option",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.TextField.search-resources",
+    "surface": "Library Resources",
+    "label": "Search resources…",
+    "kind": "option",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Toggle.runtime-643d86f3d5a5",
+    "surface": "Library Resources",
+    "label": null,
+    "expression": "Image ( systemName : library . favoritesOnly ? \"star.fill\" : \"star\" )",
+    "note": "Runtime label from Image ( systemName : library . favoritesOnly ? \"star.fill\" : \"star\" ); no rendered text assumed. Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text.",
+    "kind": "option",
+    "belongsTo": "library",
+    "aliasOf": "library"
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoResourceEditor.Button.cancel",
+    "surface": "Library resource editor",
+    "label": "Cancel",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoResourceEditor.Button.save",
+    "surface": "Library resource editor",
+    "label": "Save",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoResourceEditor.DisclosureGroup.library-details",
+    "surface": "Library resource editor",
+    "label": "Library details",
+    "kind": "option",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Option of Library recovery: reveals the retained storage diagnostic while saved data and original files remain untouched."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoResourceEditor.Label.runtime-7d72649f462b",
+    "surface": "Library resource editor",
+    "label": null,
+    "expression": "item . content",
+    "note": "Runtime label from item . content; no rendered text assumed. Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text.",
+    "kind": "status",
+    "belongsTo": "library",
+    "aliasOf": "library"
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoResourceEditor.TextField.https",
+    "surface": "Library resource editor",
+    "label": "https://…",
+    "kind": "option",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoResourceEditor.TextField.name",
+    "surface": "Library resource editor",
+    "label": "Name",
+    "kind": "option",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoResourceEditor.TextField.optional",
+    "surface": "Library resource editor",
+    "label": "Optional",
+    "kind": "option",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoResourceEditor.TextField.optional.2",
+    "surface": "Library resource editor",
+    "label": "Optional",
+    "kind": "action",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoResourceEditor.TextField.useful-context-or-reminders",
+    "surface": "Library resource editor",
+    "label": "Useful context or reminders",
+    "kind": "option",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoResourceEditor.Toggle.favorite",
+    "surface": "Library resource editor",
+    "label": "Favorite",
+    "kind": "option",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
   }
 ]

@@ -54,7 +54,7 @@ struct ContentView: View {
             }
             Group {
                 switch model.page {
-                case "library": DemoLibraryView(library: model.library, model: model,
+                case _ where WorkbenchHome.destination(model.page).section == "library": DemoLibraryView(library: model.library, model: model,
                     onUseImageInPresent: onUseImageInPresent, onUseImageInPersona: onUseImageInPersona)
                 case "dictionary": DictionaryView(model: model)
                 default: dictate
