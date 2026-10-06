@@ -11,8 +11,9 @@ Read these before deciding anything. They are the rules the work will be judged 
 1. [Grammar](workbench.md#grammar) and [Fit](workbench.md#fit) in the product contract: the classification of every change (Quality, Option, new capability), the surface registry rule, and the seven Fit rules with the check that holds each one.
 2. [Installing, testing and updating](updating.md): the two app identities, the one workflow, the merge queue, and what counts as evidence for each state (source checked, Preview installed, native acceptance, merged, packaged, published).
 3. [CONTRIBUTING.md](../CONTRIBUTING.md): the four test phases, the fixed member lists the Python harnesses compile, the galleries and the native History acceptance host.
-4. Issue #7, the Mac release gate, and its open acceptance items.
-5. The open issues and PRs, and every comment posted in the last day, which is where another lead's claim will be:
+4. [The focused Mac foundation](mac-foundation.md), the decided refinement brief: what is retired, what is paused and the outcomes a change must serve; its dated decisions supersede older proposals and any candidate list, including the one in a previous batch's research record.
+5. Issue #7, the Mac release gate, its open acceptance items and its current checkpoint comment, which is the implementation queue.
+6. The open issues and PRs, and every comment posted in the last day, which is where another lead's claim will be:
 
 ```sh
 gh issue list --repo Ship-Work/workbench --state open --limit 200
@@ -20,7 +21,7 @@ gh pr list --repo Ship-Work/workbench --state all --limit 40
 gh api 'repos/Ship-Work/workbench/issues/comments?since=YYYY-MM-DDT00:00:00Z&per_page=100' --jq '.[] | [.issue_url, .created_at, .user.login] | @tsv'
 ```
 
-6. Live writers on this Mac: `git worktree list` shows every checkout, and a worktree with recent commits on an unpushed branch is someone's work in progress even when no PR exists. Never write in another worktree.
+7. Live writers on this Mac: `git worktree list` shows every checkout, and a worktree with recent commits on an unpushed branch is someone's work in progress even when no PR exists. Never write in another worktree.
 
 ## 2. Ground the choice
 
@@ -49,7 +50,7 @@ git cherry origin/main <branch>
 git log origin/main --oneline --grep='#<issue>'
 ```
 
-A branch with `git cherry` pluses whose subjects already appear on main is a pre-rebase copy and is superseded. A closed PR with a maintainer decision stays closed.
+`git cherry` compares patch ids: a minus means that commit's patch is already on main; a plus means it is not, and a matching subject is not proof of anything. Before calling a plus-commit superseded, show patch equivalence: `git range-diff origin/main...<branch>` against the commits that landed, or an empty `git diff <landed commit> <branch commit>` for the files it touches. A branch whose net diff against main is empty is superseded; one with a non-empty diff is unlanded work, however familiar its subjects look. A closed PR with a maintainer decision stays closed.
 
 **The backlog map.** For each open ticket, find its landing commits with the `git log --grep` above and read its last comment. Many QA tickets stay open only for native acceptance of work already on main; they are not candidates, and reopening them with new scope wastes the next lead's hour.
 
@@ -118,7 +119,7 @@ ditto -x -k "dist/Workbench Preview.zip" .build/verify
 bash scripts/verify-preview.sh ".build/verify/Workbench Preview.app" .build/verify/out
 ```
 
-`scripts/verify-preview.sh` prints one row per check mode with four columns: `exit` is the mode's exit code, `axsync` counts Accessibility "unsafeForcedSync" faults, `siri` counts Siri AFLocalization errors and `runtime` counts AppKit and SwiftUI runtime-issue faults logged by that process id while the mode ran (the log window opens in local time, which is how `log show --start` reads a zone-less date). It never installs, opens the app's UI or touches saved data. Its mode list names the check modes on `main`; add a mode when the PR that brings it merges. Any non-zero count on a mode that was zero before is a regression to explain before release.
+`scripts/verify-preview.sh` prints one row per check mode with four columns: `exit` is the mode's exit code, `axsync` counts Accessibility "unsafeForcedSync" faults, `siri` counts Siri AFLocalization errors and `runtime` counts AppKit and SwiftUI runtime-issue faults logged by that process id while the mode ran (the log window opens in local time, which is how `log show --start` reads a zone-less date). Before any mode runs it validates the bundle through the release tooling (exact Preview identity, executable and channel, Services identity, strict codesign, Developer ID) and refuses a Stable, ad-hoc or tampered bundle. It never installs or touches saved data and opens no visible or interactive window; a check may host an invisible view. A failed log query prints capture-failed instead of a number and fails the script, so unavailable evidence never reads as a clean pass. This is source evidence from the packaged binary, not installed acceptance. Its mode list names the check modes on `main`; add a mode when the PR that brings it merges, and remove Read's modes when #284 retires them. Any non-zero count on a mode that was zero before is a regression to explain before release.
 
 Render the galleries for every visible change and compare them with the renders in the PRs:
 

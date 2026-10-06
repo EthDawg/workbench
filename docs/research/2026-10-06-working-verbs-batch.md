@@ -128,8 +128,8 @@ A second, quieter form of the same problem: #267 and #269 each added a local nam
 | 4 | Listing the five say-only voices by default | #269 | They are Siri-era Indian English voices with no word timing, reachable only through the `say` scan that caused the fault flood; a saved choice still works and still lists them | Someone asking for them | `MacVoiceCatalog.needsSayVoices` |
 | 5a | A Snap remembers its app and window | scout candidate 4; #64; the Snap row in [docs/utility-comparison.md](../utility-comparison.md) | Quality of Snap, but it adds fields to the Snap record, which needs the migration backup and old-binary readability statement [docs/updating.md](../updating.md) requires; window titles can hold private text; not a verb-trust fix | A Hand off recipe or #64 scope that needs the source context, with the privacy rule (optional, editable, never required by search) decided | n/a |
 | 5b | One set of marks on screen and on a Snap, plus select-and-move on screen | scout candidate 9; #19; the Names rule in [docs/workbench.md](../workbench.md) | A large StageKit Draw change (hit testing across displays, keyboard focus during a demo, two renderers to keep aligned); Draw does not rise in the maintainer's asks | #19 being assigned, or Draw rising in the asks | n/a |
-| 5c | The Snap & Talk deck through the connected Hand off | scout candidate 2; #63; the guide's "Explain your screens. Get a deck." | The product contract keeps rich-file skills on the manual route and Workbench runs no helper itself; a generated deck is not verified for faithfulness; the task cards live in History, which the Codex lead owned this round | A skill runner that can return files safely, and a deliberate change to the contract's rich-file wording | n/a |
-| 5d | Agents reach History search and Read aloud | scout candidate 10; #131 | A new integration; [docs/utility-comparison.md](../utility-comparison.md) says it needs the maintainer's explicit go before work starts; consent must live inside Workbench because harness flags cannot confine an agent | The maintainer's recorded decision on #131 | n/a |
+| 5c | The Snap & Talk deck through the connected Hand off | scout candidate 2; #63; the guide's "Explain your screens. Get a deck." | The product contract keeps rich-file skills on the manual route and Workbench runs no helper itself; a generated deck is not verified for faithfulness; the task cards live in History, which the Codex lead owned this round | A skill runner that can return files safely, and a deliberate change to the contract's rich-file wording; since 6 October, docs/mac-foundation.md keeps manual handoff as the route, so this is historical unless that brief changes | n/a |
+| 5d | Agents reach History search and Read aloud | scout candidate 10; #131 | A new integration; [docs/utility-comparison.md](../utility-comparison.md) says it needs the maintainer's explicit go before work starts; consent must live inside Workbench because harness flags cannot confine an agent | The maintainer's recorded decision on #131, for History search only; the Read aloud half is retired with Read (#278, #284) | n/a |
 | 5e | A repeatable installed-app acceptance runner | the maintainer's repeated ask; #164 | Partly served by `scripts/verify-preview.sh` and the Codex lead's history acceptance host; driving the installed Preview with a pointer needs an approved route | An approved way for agents to drive the installed Preview with a pointer, decided by the maintainer and written into the contributor workflow | n/a |
 | 6a | Lowercase a mid-sentence Title-case first word by default | #265 taste call, reversed by the readiness review in #290 | The review showed the evidence the rule needed (a dictionary term, or the same word mid-sentence in the field) is absent exactly where names appear, so Google Docs became google Docs; now only a closed list of everyday words (the, a, it, we, this, and so on) is lowercased and every other capital is kept | A measured list of words a recogniser capitalises at an utterance start that the closed list misses, or the maintainer preferring more lowercasing | `InsertionBoundary.everydayWords` |
 | 6b | Pause as the pill's primary while playing | #267 taste call; reverses #211 | Stop is the action people reach for from the pill and the key; Pause and Resume stay one step away | The maintainer preferring Pause on the pill | `ToolbarNextAction.resolve` |
@@ -154,11 +154,7 @@ All of these are for the shared Preview's integration owner, on a signed Preview
 - Dictate a known name mid-sentence with and without it in the dictionary; confirm the lowercasing rule reads as intended (section 2 taste call).
 - Known gap: a cancellation that lands during the 1.2 s confirmation poll leaves the fitted words on the clipboard.
 
-**#267 Read reads the selection**
-- Select text in a browser, a PDF and a Mail message and press the Read key (shortcut 6), the pill's Read and the panel row; confirm it reads at once, the pill shows Stop reading, and the panel row returns focus to the app only when a reading started.
-- Press Read during a live recording; confirm the Read page opens with the wait reason and keeps the selection.
-- With VoiceOver on, confirm the row's Options menu and the Stop reading label are announced.
-- Open the panel's Voice menu with the neural engine downloaded and with Speko (no Voice submenu by design).
+**#267 Read reads the selection** is closed as superseded by the merged foundation decision (PR #278, docs/mac-foundation.md), so it owes no acceptance; Read's acceptance now belongs to #284 (the retirement), which must reconcile the Read-specific check modes named in `scripts/verify-preview.sh` (`--check-reading`, `--check-reading-render`, `--check-reading-service`) while keeping the shared recognition and delivery checks.
 
 **#268 Timer Position… and Persona refusal**
 - Open Position… from the menu-bar panel's Timer Options while a countdown runs, and from Home's current work before the window first opens; confirm the control appears at the pointer, takes the keyboard, and the panel's own close-on-focus-loss does not dismiss it.
@@ -166,7 +162,7 @@ All of these are for the shared Preview's integration owner, on a signed Preview
 - With Settings › General › Appearance forced to Light or Dark, compare the Timer's Position… panel with the toolbar's (the review's P3).
 - Turn on React to my voice with the microphone refused; confirm the switch stays off, the reason shows with Microphone Settings…, and the stale refusal clears once allowed. `--check-persona-voice-native` via `open -n` needs a real microphone grant.
 
-**#269 Read voice catalogue** (the picker checks apply only until #284 removes Read)
+**#269 Read voice catalogue** (the launch and activation checks stand; the picker checks are historical and lapse when #284 removes Read)
 - Time launch and the first activation refresh; confirm no visible pause on app switch.
 - Install or remove a voice in System Settings; confirm `availableVoicesDidChangeNotification` refreshes the picker.
 - With a saved say-only choice (one of the five), confirm Read still speaks with it and the picker lists it.
@@ -186,7 +182,7 @@ All of these are for the shared Preview's integration owner, on a signed Preview
 
 ## 6. Candidates for the next batch
 
-Ranked by the maintainer's asks and the field evidence, each classified by the Grammar and tied to an issue.
+Ranked by the maintainer's asks and the field evidence, each classified by the Grammar and tied to an issue. The foundation decision merged after this batch (PR #278 and its coverage addendum #288, recorded in [docs/mac-foundation.md](../mac-foundation.md)) supersedes any candidate it rules out; rows marked superseded are kept as historical research, not as the implementation queue, and the current queue is #7's checkpoint.
 
 | Rank | Candidate | Grammar | Issue | Why it ranks here |
 | --- | --- | --- | --- | --- |
@@ -194,8 +190,8 @@ Ranked by the maintainer's asks and the field evidence, each classified by the G
 | 2 | Native acceptance of this batch, then the open #134 owner checks (Option-V into Sublime, Claude and ChatGPT desktop; toolbar and Persona drags to each edge; one real call; Persona camera during Zoom) | not a product change | #134, #164 | The batch is only source-checked until section 5 is run; the #134 checks have been owed since 1 October |
 | 3 | A repeatable installed-app acceptance runner with an approved pointer route | new capability for the maintainer (contributor tooling, no product surface) | #164, #7 | Asked eight times across four sessions; each batch pays the same acceptance debt |
 | 4 | One set of marks on screen and on a Snap; select and move a mark on screen with one Undo | Quality of Draw | #19 | Named by the contract's Names rule; medium size; waits for Draw to rise in the asks |
-| 5 | The Snap & Talk deck through the connected Hand off | Option of Hand off | #63 | Finishes the guide's promise; blocked on a safe file-returning skill runner and a contract change |
-| 6 | Agents reach History search and Read aloud with consent shown in Workbench | new capability, needs the maintainer's decision | #131 | Agreed in principle; a prototype worked; cannot start without the recorded go |
+| 5 | The Snap & Talk deck through the connected Hand off | Option of Hand off | #63 | Superseded in part by the foundation decision: docs/mac-foundation.md keeps manual handoff as the usable route without optional setup, so a connected rich-file runner is historical research unless that brief changes; #63's exact input, template and output work continues under its own owner |
+| 6 | Agents reach History search with consent shown in Workbench | new capability, needs the maintainer's decision | #131 | Superseded in part: the Read aloud half is retired with Read (#278, #284); History search alone remains a candidate and cannot start without the recorded go |
 | 7 | Keychain reads off the main thread: the signed scratch build's `--check-core` and `--check-reading` each log 12 `com.apple.runtime-issues:Security` lines ("This method should not be called on the main thread") from the integrations and provider checks, and the installed log carried 108 of them in the week | Quality of Settings (connections) | #7 | The last recurring non-Accessibility fault family in the installed log once this batch lands; small and measurable with scripts/verify-preview.sh |
 | 8 | The #268 review polish (suite theme on the Timer's Position… panel, "Return or Space" hint, README SHA) and the Home spinner note from #270 | Quality of Timer, Quality of Models | #134 | Small; fold into the next Timer or Models change |
 
@@ -209,7 +205,7 @@ Verification folders (each README names what was rendered or measured, the count
 - `docs/verification/2026-10-06-fit-timer-persona/` (on `main`)
 - `docs/verification/2026-10-06-fit-models/` (arrives with #270, merged after this record's base)
 - `docs/verification/2026-10-06-layout-faults/` (README only; arrives with #273, merged after this record's base)
-- `docs/verification/2026-10-06-read-selection/` (arrives with #267)
+- `docs/verification/2026-10-06-read-selection/` (on the closed #267 branch only; historical, Read is retired by #278)
 - `docs/verification/2026-10-06-read-voice/` (on `main`)
 
 Scripts and check modes:
