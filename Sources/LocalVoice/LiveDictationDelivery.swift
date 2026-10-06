@@ -30,14 +30,19 @@ final class LiveDictationDelivery {
     private(set) var attempted = false
     private(set) var invalidated = false
     private(set) var insertedText = ""
+    /// The text either side of the owned span and the boundary context (#14). The first
+    /// partial establishes the prefix; later partials and the final cleanup keep it.
+    private let boundary: (before: String, after: String, context: InsertionBoundary.Context)
+    private var fitPrefix: String?
 
     /// Nil means unsupported from the outset: the ordinary final-delivery path remains.
-    init?(initial: TextDelivery.FieldState, destinationName: String, system: System) {
+    init?(initial: TextDelivery.FieldState, destinationName: String, system: System, context: InsertionBoundary.Context = .init()) {
         guard let value = initial.value, value.utf16.count <= Self.maximumUTF16Length,
               let selection = initial.selection, let range = Self.range(selection, in: value),
               system.canReplaceSelection() else { return nil }
         self.system = system; original = initial; expected = initial; owned = selection
         originalText = String(value[range]); name = destinationName
+        boundary = (String(value[..<range.lowerBound]), String(value[range.upperBound...]), context)
         guard system.read() == initial else { invalidated = true; return }
         stopObservation = system.observe({ [weak self] in self?.invalidate() }, { [weak self] in self?.check() })
         guard stopObservation != nil else { return nil }
@@ -58,10 +63,16 @@ final class LiveDictationDelivery {
         return Range(range, in: value)
     }
 
-    static func begin(target: TextDelivery.Target?, shortcut: VoiceShortcut) -> LiveDictationDelivery? {
+    static func begin(target: TextDelivery.Target?, shortcut: VoiceShortcut, context: InsertionBoundary.Context = .init()) -> LiveDictationDelivery? {
         guard let target, target.opaqueEditor == nil, target.element != nil else { return nil }
         return LiveDictationDelivery(initial: .init(value: target.value, selection: target.selection),
-            destinationName: target.app.localizedName ?? "your app", system: .live(target: target, shortcut: shortcut))
+            destinationName: target.app.localizedName ?? "your app", system: .live(target: target, shortcut: shortcut), context: context)
+    }
+    /// Dictated words fitted to the text around the owned span; cancel never uses it.
+    private func fitted(_ text: String) -> String {
+        var fit = InsertionBoundary.fit(before: boundary.before, after: boundary.after, dictated: text, context: boundary.context)
+        if let fitPrefix { fit.prefix = fitPrefix } else { fitPrefix = fit.prefix }
+        return fit.text
     }
 
     func invalidate() {
@@ -80,13 +91,13 @@ final class LiveDictationDelivery {
     func preview(_ text: String) {
         guard !text.isEmpty, text != insertedText, system.now() - lastUpdate >= Self.updateInterval else { return }
         lastUpdate = system.now()
-        _ = replace(text)
+        _ = replace(fitted(text))
     }
 
     /// The caller commits History first. This result replaces final paste even if the
     /// field changed: a partial live insertion must never cause a duplicate full paste.
     func finish(_ text: String, restoreClipboard: Bool) -> TextDelivery.Outcome {
-        let success = replace(text)
+        let success = replace(fitted(text))
         end()
         // Live AX writes never use the clipboard. Preserve it by doing nothing when
         // requested; otherwise keep the final words copied, as ordinary paste does.

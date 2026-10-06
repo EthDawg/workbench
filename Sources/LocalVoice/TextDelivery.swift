@@ -251,7 +251,7 @@ final class TextDelivery {
 
     static func deliver(_ text: String, target: Target?, mode: DeliveryMode, restoreClipboard: Bool,
                         validateTarget: (() -> Bool)? = nil, expectedValue: String? = nil, expectedSelection: NSRange? = nil,
-                        system: System? = nil) async -> Outcome {
+                        fit: InsertionBoundary.Context? = nil, system: System? = nil) async -> Outcome {
         let system = system ?? .live
         defer { target?.opaqueEditor?.end() }
         let pasteboard = system.pasteboard
@@ -273,7 +273,16 @@ final class TextDelivery {
             } ?? []
         } else { previous = [] }
         let priorSnapshotIsStable = pasteboard.changeCount == priorCount
-        guard let ownedChange = copy(text, to: pasteboard) else {
+        // Dictated words fit the field (#14), read now; a paste-time snapshot that
+        // differs sends them unchanged, the safe fallback for a changed field.
+        var delivered = text, fittedTo: FieldState?
+        if let fit, mayPaste, let target, target.element != nil, target.opaqueEditor == nil {
+            let state = system.readField(target)
+            if let adjusted = InsertionBoundary.fit(dictated: text, value: state.value, selection: state.selection, context: fit) {
+                delivered = adjusted.text; fittedTo = state
+            }
+        }
+        guard var ownedChange = copy(delivered, to: pasteboard) else {
             return Outcome(message: "Could not copy the transcript. It is still available in Workbench.",
                            clipboardChangeCount: nil, wasPasted: false, destinationName: destinationName, failure: .copyFailed)
         }
@@ -299,6 +308,10 @@ final class TextDelivery {
         }
         // Snapshot immediately before insertion so an unrelated user edit is not mistaken for our paste.
         let before = system.readField(target)
+        if let fittedTo, before != fittedTo {
+            guard let recopied = copy(text, to: pasteboard) else { return outcome("Could not copy the transcript. It is still available in Workbench.", failure: .copyFailed) }
+            delivered = text; ownedChange = recopied
+        }
         guard let paste = system.preparePaste(target) else {
             return outcome("Copied. " + copiedDetail(.pasteUnavailable), failure: .pasteUnavailable)
         }
@@ -332,7 +345,7 @@ final class TextDelivery {
                 return outcome("Paste was sent before cancellation. Check the destination; insertion was not confirmed or undone.", failure: .cancelled)
             }
             guard system.isEligible(target) else { break }
-            if confirms(text, before: before, after: system.readField(target),
+            if confirms(delivered, before: before, after: system.readField(target),
                         expectedValue: expectedValue, expectedSelection: expectedSelection) {
                 confirmed = true; break
             }

@@ -57,7 +57,7 @@ enum LiveDictationDeliveryChecks {
         try expect(field.state.value == "🙂 prefix hello world 🌍 suffix 👩🏽‍💻", "provisional replacement does not append duplicate words")
         try expect(field.copies.isEmpty, "preview leaves clipboard alone")
         let finished = live.finish("Hello, world! 🌍", restoreClipboard: true)
-        try expect(finished.wasPasted && field.state.value == "🙂 prefix Hello, world! 🌍 suffix 👩🏽‍💻", "final cleanup replaces owned span")
+        try expect(finished.wasPasted && field.state.value == "🙂 prefix hello, world! 🌍 suffix 👩🏽‍💻", "final cleanup replaces owned span and fits mid-sentence (#14)")
         try expect(field.copies.isEmpty && field.stops == 1, "preserved clipboard and observer teardown")
         live.preview("late")
         try expect(field.replaceCalls == 3, "late previews cannot mutate a finished field")
@@ -134,6 +134,31 @@ enum LiveDictationDeliveryChecks {
         _ = rateOwner.finish("two", restoreClipboard: true)
         try expect(limited.replaceCalls == 2 && limited.state.value == "prefix two suffix", "final text bypasses rate limit")
 
+        // Dictated words fit the owned span's boundary (#14): the first partial sets
+        // the prefix, every later write keeps it, and cancel restores the original.
+        let joined = Field("Please bringtomorrow", NSRange(location: 12, length: 0)); let joinedOwner = joined.owner()!
+        joinedOwner.preview("the")
+        try expect(joined.state.value == "Please bring the tomorrow", "the first partial gains the spaces the boundary needs")
+        joined.next(); joinedOwner.preview("The blue")
+        try expect(joined.state.value == "Please bring the blue tomorrow", "later partials keep the prefix and lose the spurious capital")
+        let fitted = joinedOwner.finish("The blue folder.", restoreClipboard: true)
+        try expect(fitted.wasPasted && joined.state.value == "Please bring the blue folder tomorrow", "final cleanup fits the same span, dropping a mid-sentence full stop")
+        let fittedCancel = Field("Please bringtomorrow", NSRange(location: 12, length: 0)); let fittedCancelOwner = fittedCancel.owner()!
+        fittedCancelOwner.preview("the blue")
+        try expect(fittedCancel.state.value == "Please bring the blue tomorrow" && fittedCancelOwner.cancel() == nil
+                   && fittedCancel.state == .init(value: "Please bringtomorrow", selection: NSRange(location: 12, length: 0)),
+                   "cancel restores the field without the fitted spaces")
+        let sentence = Field("Done.", NSRange(location: 5, length: 0)); let sentenceOwner = sentence.owner()!
+        sentenceOwner.preview("next"); sentence.next()
+        try expect(sentence.state.value == "Done. Next", "a sentence start after a full stop gains a space and a capital")
+        _ = sentenceOwner.finish("Next step.", restoreClipboard: true)
+        try expect(sentence.state.value == "Done. Next step.", "the final text keeps the established prefix")
+        let named = Field("I spoke to  yesterday", NSRange(location: 11, length: 0))
+        let namedOwner = LiveDictationDelivery(initial: named.state, destinationName: "Fixture", system: named.system,
+                                               context: .init(dictionaryTerms: ["Mark"]))!
+        namedOwner.preview("Mark")
+        try expect(named.state.value == "I spoke to Mark yesterday", "a dictionary name keeps its capital mid-sentence")
+
         // Native receiver semantics with a synthetic, unshown view. This exercises
         // actual NSTextView selection/replacement, not remote AX IPC acceptance.
         let native = NSTextView(frame: NSRect(x: 0, y: 0, width: 300, height: 100))
@@ -147,6 +172,6 @@ enum LiveDictationDeliveryChecks {
         nativeOwner.preview("two words")
         try expect(native.string == "Before two words After", "native text view receives only the owned span")
         try expect(nativeOwner.cancel() == nil && nativeState() == nativeOriginal, "native receiver restores emoji and selection")
-        print("Live dictation field checks passed (\(count)): owned spans, UTF16, cleanup, cancellation, focus/input invalidation, uncertain writes, clipboard and native NSTextView. No external fields or personal clipboard used.")
+        print("Live dictation field checks passed (\(count)): owned spans, UTF16, cleanup, boundary fit, cancellation, focus/input invalidation, uncertain writes, clipboard and native NSTextView. No external fields or personal clipboard used.")
     }
 }

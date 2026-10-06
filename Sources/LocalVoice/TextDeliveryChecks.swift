@@ -55,9 +55,10 @@ enum TextDeliveryChecks {
         }
         init(_ board: NSPasteboard) { self.board = board }
         func deliver(_ text: String = "spoken words", restore: Bool = true,
-                     expectedValue: String? = nil, expectedSelection: NSRange? = nil) async -> TextDelivery.Outcome {
+                     expectedValue: String? = nil, expectedSelection: NSRange? = nil,
+                     fit: InsertionBoundary.Context? = nil, system: TextDelivery.System? = nil) async -> TextDelivery.Outcome {
             await TextDelivery.deliver(text, target: target, mode: .paste, restoreClipboard: restore,
-                                       expectedValue: expectedValue, expectedSelection: expectedSelection, system: system)
+                                       expectedValue: expectedValue, expectedSelection: expectedSelection, fit: fit, system: system ?? self.system)
         }
     }
 
@@ -374,6 +375,39 @@ enum TextDeliveryChecks {
         try check(!TextDelivery.confirms("words", before: unchangedText, after: unchangedText)
                   && TextDelivery.confirms("words", before: unchangedText, after: .init(value: "words", selection: NSRange(location: 5, length: 0))),
                   "replacing identical selected text needs the resulting caret to confirm")
+        // Dictated words fit the field (#14): the pasted text carries the boundary's
+        // spaces and case; the saved transcript is the caller's and is untouched.
+        let joined = DeliveryFixture(board)
+        joined.state = .init(value: "Please bringtomorrow", selection: NSRange(location: 12, length: 0))
+        joined.duringConfirmation = { joined.state = .init(value: "Please bring the blue folder tomorrow", selection: NSRange(location: 29, length: 0)) }
+        let fittedPaste = await joined.deliver("The blue folder", fit: .init())
+        try check(fittedPaste.wasPasted && joined.posted == 1 && joined.reads == 3,
+                  "a fitted paste reads the field once more and confirms the fitted text")
+        let unfitted = DeliveryFixture(board)
+        unfitted.state = joined.state
+        _ = await unfitted.deliver("The blue folder")
+        try check(board.string(forType: .string) == "The blue folder", "without a boundary context the words are copied as dictated")
+        let copyFit = DeliveryFixture(board)
+        copyFit.state = .init(value: "Please bringtomorrow", selection: NSRange(location: 12, length: 0))
+        _ = await copyFit.deliver("The blue folder", restore: false, fit: .init())
+        try check(board.string(forType: .string) == " the blue folder ", "the fitted words are what reaches the clipboard for pasting")
+        let drifted = DeliveryFixture(board)
+        drifted.state = .init(value: "Please bringtomorrow", selection: NSRange(location: 12, length: 0))
+        var driftingSystem = drifted.system
+        driftingSystem.readField = { _ in
+            drifted.reads += 1
+            if drifted.reads == 2 { drifted.state = .init(value: "Please bring tomorrow", selection: NSRange(location: 13, length: 0)) }
+            return drifted.state
+        }
+        drifted.duringConfirmation = { drifted.state = .init(value: "Please bring The blue foldertomorrow", selection: NSRange(location: 28, length: 0)) }
+        let driftedPaste = await drifted.deliver("The blue folder", restore: false, fit: .init(), system: driftingSystem)
+        try check(driftedPaste.wasPasted && drifted.posted == 1 && board.string(forType: .string) == "The blue folder",
+                  "a field that changed before insertion receives the dictated words unchanged")
+        let unreadableFit = DeliveryFixture(board)
+        unreadableFit.state = .init(value: nil, selection: nil)
+        let unreadablePaste = await unreadableFit.deliver("The blue folder", fit: .init())
+        try check(unreadablePaste.failure == .pasteUnconfirmed && board.string(forType: .string) == "The blue folder",
+                  "an unreadable field value leaves the dictated words as they are")
         let prompt = DeliveryFixture(board)
         prompt.duringConfirmation = {
             prompt.state.value = "before spoken words"
