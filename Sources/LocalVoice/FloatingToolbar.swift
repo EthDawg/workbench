@@ -173,7 +173,7 @@ struct FloatingToolbar: View {
     }
 
     /// The chosen tool's one accessory (#134 part B): Snap & Talk's Review once a session is open,
-    /// Draw's Tools, Present's Prompts, and Persona's picker, whose choices are the cards and the
+    /// Draw's Tools and Persona's picker, whose choices are the cards and the
     /// live camera, so the camera is one click from the revealed pill.
     func accessory(_ live: ToolbarLiveState) -> ToolbarAccessory? {
         if live.mode == .persona { return stage.personaPicker == nil ? nil : .personaPicker }
@@ -311,12 +311,10 @@ struct FloatingToolbar: View {
         }, perform: { _ in capture(mode, kind) })
     }
 
-    /// The accessory that opens a place or a panel: Review opens the session's review, and Prompts
-    /// the one Saved Prompts picker. Tools and Persona selection open their menus instead.
+    /// Review opens the session's review. Tools and Persona selection open their menus instead.
     func accessoryPanel(_ accessory: ToolbarAccessory?) -> ((NSView) -> Void)? {
         switch accessory {
         case .review?: return { _ in model.onShowEditor?("readback") }
-        case .prompts?: return { button in openPrompts(anchor: button, destination: controls.promptDestination?()) }
         case .tools?, .personaPicker?, nil: return nil
         }
     }
@@ -325,18 +323,8 @@ struct FloatingToolbar: View {
         switch accessory {
         case .tools?: return stage.makeAnnotationMenu(includeSettings: false)
         case .personaPicker?: return stage.makePersonaPickerMenu()
-        case .review?, .prompts?, nil: return NSMenu()
+        case .review?, nil: return NSMenu()
         }
-    }
-
-    /// One Saved Prompts picker for the pill and workspace (#159). It
-    /// freezes the field that was in front when it was asked for.
-    private func openPrompts(anchor: NSView? = nil, frame: NSRect? = nil, destination: TextDelivery.Target?) {
-        let context = PromptPickerController.Context(resources: model.library.resources, delivery: promptInsertion,
-            receipts: model.clipboardReceipt, destination: destination, trusted: AXIsProcessTrusted(),
-            controls: controls, openLibrary: { model.showLibrary() })
-        if let anchor { PromptPickerController.shared.show(from: anchor, context: context) }
-        else if let frame { PromptPickerController.shared.show(anchor: frame, context: context) }
     }
 
     /// Each operation goes to the owner that already does it. The toolbar never

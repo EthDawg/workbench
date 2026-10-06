@@ -184,7 +184,7 @@ final class PersonaShownTests {
         XCTAssertFalse(f.library.shownCardHasNewerLook)
         XCTAssertEqual(f.library.overlayWidth, 0.18, accuracy: 0.0001); XCTAssertTrue(f.library.overlayLocked)
         // A saved shape is a newer look too, and Update adopts it over a live one.
-        f.library.setLiveShape(.original, for: .card(copy))
+        f.library.setLiveShape(.original, for: .card(copy, generation: f.library.liveControlsGeneration))
         XCTAssertTrue(f.library.setShape(.circle, for: f.a.id))
         XCTAssertTrue(f.library.shownCardHasNewerLook)
         try f.library.updateShownCard().get()

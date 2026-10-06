@@ -79,7 +79,7 @@ Give each worker a brief with the outcome, the scope (files and surfaces), the a
 
 Then run an independent adversarial reviewer on each branch with the diff, the brief and the contract, asking for failures with reproduction steps rather than opinions, and a fix pass that answers every finding. Read the reviewer's findings yourself before accepting the fix.
 
-The harness rule: the Python harnesses in `scripts/` compile production Swift from fixed lists of files and members ([scripts/test-live-dictation.py](../scripts/test-live-dictation.py), [scripts/test-capture-persistence.py](../scripts/test-capture-persistence.py), [scripts/test-reading-playback.py](../scripts/test-reading-playback.py), [scripts/test-read-selection-service.py](../scripts/test-read-selection-service.py)). A new file, a new member or a renamed member in `Sources/LocalVoice/AppModel.swift`, the delivery code or the Read code fails CI's Harnesses and StageKit job until those lists are taught about it. Before pushing any such change:
+The harness rule: the Python harnesses in `scripts/` compile production Swift from fixed lists of files and members ([scripts/test-live-dictation.py](../scripts/test-live-dictation.py), [scripts/test-capture-persistence.py](../scripts/test-capture-persistence.py), [scripts/test-read-retirement.py](../scripts/test-read-retirement.py)). A new file, a new member or a renamed member in `Sources/LocalVoice/AppModel.swift`, the delivery code or retained recovery code fails CI's Harnesses and StageKit job until those lists are taught about it. Before pushing any such change:
 
 ```sh
 bash scripts/test.sh harnesses

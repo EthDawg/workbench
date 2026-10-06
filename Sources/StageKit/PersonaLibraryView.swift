@@ -42,6 +42,7 @@ struct PersonaLibraryView: View {
     @ObservedObject var library: PersonaLibrary
     var onChoose: ((SavedPersona) -> Void)? = nil
     var mode: PersonaLibraryMode = .sheet
+    var editProfile: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var renaming: UUID?
     @State private var name = ""
@@ -100,6 +101,10 @@ struct PersonaLibraryView: View {
                 Text(preparingPresentation ? "Arrange overlays" : onChoose != nil ? "Choose persona" : mode == .workspace ? "Persona" : "Personas")
                     .font(mode == .workspace && !preparingPresentation ? .title.weight(.semibold) : .title2.bold()).accessibilityAddTraits(.isHeader)
                 Spacer()
+                if !preparingPresentation, mode == .workspace, let editProfile {
+                    Button("Me…", action: editProfile).help("Edit your photo and Me persona")
+                        .accessibilityIdentifier("persona.profile")
+                }
                 if !preparingPresentation {
                     Menu {
                         Button("Choose a starter portrait…") { choosingStarter = true }
