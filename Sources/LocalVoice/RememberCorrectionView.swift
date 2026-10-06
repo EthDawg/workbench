@@ -84,7 +84,7 @@ struct RememberCorrectionView: View {
                 }
             }
             if let message = saveError ?? validation {
-                Text(message).font(.callout).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                WorkbenchNote(message)
             }
             Text("The original and earlier captures stay unchanged. This won’t paste into another app.")
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)

@@ -80,10 +80,9 @@ struct ReadbackOrderingView: View {
                 Text("\(order.count) sections").font(.caption).foregroundStyle(.secondary)
             }
             if !sessionUnchanged {
-                Text("The session changed. Cancel and reopen Reorder sections to use its latest order.")
-                    .font(.callout).foregroundStyle(.orange)
+                WorkbenchNote("The session changed. Cancel and reopen Reorder sections to use its latest order.")
             } else if let error {
-                Text(error).font(.callout).foregroundStyle(.orange)
+                WorkbenchNote(error)
             } else {
                 Text("Your screenshots and narration stay together. Nothing changes until you save.")
                     .font(.caption).foregroundStyle(.secondary)
