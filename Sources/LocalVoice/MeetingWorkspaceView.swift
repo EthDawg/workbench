@@ -80,7 +80,7 @@ struct MeetingWorkspaceView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(showsCompletedResult ? "Transcript saved" : model.isRecording ? model.voiceSession.recordingTitle : model.isProcessing ? "Finishing transcript" : model.isStarting ? "Starting recording" : model.admission.title)
                                 .font(.title3.weight(.semibold))
-                            Text(showsCompletedResult ? "Copy the complete transcript to use it in your next task." : model.isRecording ? time(model.elapsed) : model.isProcessing ? "Your original audio is kept while this finishes." : "Start once. Follow the words as the conversation happens.")
+                            Text(showsCompletedResult ? "Copy the complete transcript to use it in your next task." : model.isRecording ? time(model.elapsed) : model.isProcessing ? "Finishing the selected recording checkpoint." : "Start once. Follow the words as the conversation happens.")
                                 .font(.callout).foregroundStyle(.secondary).monospacedDigit()
                         }
                         Spacer()
@@ -138,7 +138,7 @@ struct MeetingWorkspaceView: View {
                         }.padding(12).background(Workbench.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
                             .accessibilityIdentifier("meeting.auto-finish")
                     }
-                    if model.isBusy || model.completedTranscriptID != nil {
+                    if (model.isBusy && (!model.isProcessing || !model.voiceSession.segments.isEmpty)) || model.completedTranscriptID != nil {
                         Divider()
                         LiveVoiceTranscriptView(snapshot: transcriptSnapshot, conversation: true,
                                                 completedText: model.completedTranscriptID != nil ? model.completedTranscriptText : nil)
@@ -232,7 +232,8 @@ struct MeetingWorkspaceView: View {
 
     private var transcriptSnapshot: LiveVoiceSnapshot {
         var value = model.voiceSession
-        if model.completedTranscriptID != nil { value.phase = .completed }
+        if model.completedTranscriptID != nil { value.phase = .completed; value.message = "Saved in History." }
+        else if model.isProcessing { value.message = "Finishing the selected recording checkpoint." }
         return value
     }
 

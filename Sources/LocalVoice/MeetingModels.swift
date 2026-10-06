@@ -224,8 +224,12 @@ struct MeetingManifest: Codable, Equatable, Sendable {
     /// Recognised to the end with no words, or too short to hold any. Its audio stays on this
     /// Mac until the person shows or removes it; nothing offers to retry it.
     var isSettledWithoutSpeech: Bool {
-        state == .recognized && recognizedText.isEmpty && hasValidTimeline
-            && (isFullyRecognized || (timelineSeconds < MeetingSegmentPlan.minimumSegmentSeconds && segments.isEmpty))
+        guard recognizedText.isEmpty, hasValidTimeline else { return false }
+        // No recognition was possible. Keep the ordinary stopped shape readable
+        // by older binaries, while this reader avoids offering pointless retry.
+        if [.stopped, .recognized].contains(state), timelineSeconds < MeetingSegmentPlan.minimumSegmentSeconds,
+           segments.isEmpty { return true }
+        return state == .recognized && isFullyRecognized
     }
 }
 

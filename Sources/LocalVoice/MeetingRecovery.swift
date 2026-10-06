@@ -157,14 +157,17 @@ struct MeetingProcessor {
         var notes: [String]
     }
 
-    enum Intent { case recognize, commitOnly(MeetingRecoveryCheckpoint) }
+    enum Intent { case recognize(MeetingRecoveryCheckpoint?), commitOnly(MeetingRecoveryCheckpoint) }
 
-    func run(intent: Intent = .recognize) async throws -> Outcome {
+    func run(intent: Intent = .recognize(nil)) async throws -> Outcome {
         let session = session
         let entry = try await MeetingFileWork.run { try MeetingRecovery.inspect(session: session) }
         try check()
         guard let current = entry.checkpoint else { throw MeetingProblem.checkpoint("The saved checkpoint could not be reviewed. Its files were kept.") }
         var manifest = current.manifest
+        if case .recognize(let selected?) = intent, !selected.matches(current) {
+            throw MeetingProblem.checkpoint("The selected recording checkpoint changed. Review it again; no recognition or save was started.")
+        }
         if case .commitOnly(let selected) = intent {
             guard selected.matches(current), current.text != nil else {
                 throw MeetingProblem.checkpoint("The selected transcript checkpoint changed or is incomplete. Review the recording again; no recognition or save was started.")
@@ -206,7 +209,7 @@ struct MeetingProcessor {
                 // Nothing long enough to recognise is settled like silence, so it is never
                 // offered for retry again. Its audio stays until the person removes it.
                 var next = manifest
-                next.state = .recognized; next.failure = "This recording was too short to transcribe. Its original audio was kept."
+                next.state = .stopped; next.failure = "This recording was too short to transcribe. Its original audio was kept."
                 try await persist(next, replacing: manifest)
                 return Outcome(manifest: next, committed: false, notes: notes(next))
             }

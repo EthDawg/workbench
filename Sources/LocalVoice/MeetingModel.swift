@@ -90,6 +90,7 @@ final class MeetingModel: ObservableObject {
     private let transcribe: (URL) async throws -> String
     private let microphonePermission: () async -> Bool
     private let microphoneStatus: () -> AVAuthorizationStatus
+    private let readSpeechSnapshot: (() async -> RecognitionSnapshot)?
     private let captureFactory: () -> MeetingCapture
     private let startupNoticeDelayNanoseconds: UInt64
     private var generation = UUID()
@@ -111,7 +112,8 @@ final class MeetingModel: ObservableObject {
         self.init(directory: directory, defaults: defaults, processSource: MeetingSystemProcessSource(),
                   transcribe: { try await engine.transcribe($0) },
                   microphonePermission: Self.requestMicrophone, captureFactory: { MeetingSystemCapture() },
-                  microphoneStatus: { AVCaptureDevice.authorizationStatus(for: .audio) })
+                  microphoneStatus: { AVCaptureDevice.authorizationStatus(for: .audio) },
+                  readSpeechSnapshot: { await engine.snapshot() })
         liveEngine = engine
         host = MeetingHostAdmission()
         refreshAdmission()
@@ -124,11 +126,13 @@ final class MeetingModel: ObservableObject {
          microphonePermission: @escaping () async -> Bool,
          captureFactory: @escaping () -> MeetingCapture,
          startupNoticeDelayNanoseconds: UInt64 = 10_000_000_000,
-         microphoneStatus: @escaping () -> AVAuthorizationStatus = { .authorized }) {
+         microphoneStatus: @escaping () -> AVAuthorizationStatus = { .authorized },
+         readSpeechSnapshot: (() async -> RecognitionSnapshot)? = nil) {
         self.directory = directory; self.defaults = defaults
         self.detector = MeetingDetector(source: processSource)
         self.transcribe = transcribe; self.microphonePermission = microphonePermission
         self.microphoneStatus = microphoneStatus
+        self.readSpeechSnapshot = readSpeechSnapshot
         self.captureFactory = captureFactory
         self.startupNoticeDelayNanoseconds = startupNoticeDelayNanoseconds
         detectionEnabled = defaults.bool(forKey: Self.detectionKey)
@@ -296,8 +300,8 @@ final class MeetingModel: ObservableObject {
                 }
             }
             try check(token)
-            if let engine = liveEngine {
-                let current = await engine.snapshot()
+            if let readSpeechSnapshot {
+                let current = await readSpeechSnapshot()
                 try check(token)
                 guard current.canTranscribe else { throw MeetingProblem.speech(current.line) }
                 host.recognition = current
@@ -560,14 +564,14 @@ final class MeetingModel: ObservableObject {
                 if checkpoint.manifest.tracks.isEmpty { throw MeetingProblem.noSamples }
                 throw MeetingProblem.checkpoint("Original audio is missing and this transcript is incomplete. Its remaining checkpoint was kept; the past recording cannot be recaptured.")
             }
-            if let engine = liveEngine {
-                let current = await engine.snapshot(); try check(token)
+            if let readSpeechSnapshot {
+                let current = await readSpeechSnapshot(); try check(token)
                 guard current.canTranscribe else { throw MeetingProblem.speech(current.line) }
                 host.recognition = current
             }
             refreshAdmission()
             if let issue = admission.recognitionProblem { throw issue }
-            intent = .recognize
+            intent = .recognize(checkpoint)
         }
         processingSessionID = UUID(uuidString: session.lastPathComponent)
         defer { processingSessionID = nil }
@@ -677,7 +681,9 @@ final class MeetingModel: ObservableObject {
     /// It cannot request permission or open a capture.
     func refreshDetection() {
         guard detectionEnabled, !shuttingDown else { offer = nil; return }
-        detector.isSuppressed = isBusy || mayStart?() != nil
+        refreshAdmission()
+        detector.isSuppressed = isBusy || host.closing || !host.recognition.canTranscribe
+            || host.captureProblem != nil || mayStart?() != nil
         offer = detector.evaluate()
         if let issue = detector.lastError, !isBusy { error = issue }
     }

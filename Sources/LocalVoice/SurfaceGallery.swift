@@ -1697,6 +1697,26 @@ private struct HistoryNativeAcceptanceView: View {
         guard recovery.recoveries.first?.canSaveTranscript == true, !recovery.admission.canStart,
               requests == 0, captures == 0, recognitions == 0 else { throw VoiceError.message("Saved text inherited capture setup requirements.") }
         try shot("complete-text", "Complete text can be saved despite missing originals and model")
+        var savingRendered = false, saveFinished = false
+        recovery.saveTranscript = { [weak model] item, purpose in
+            guard let model else { throw CancellationError() }
+            guard recovery.isProcessing, requests == 0, captures == 0, recognitions == 0 else {
+                throw VoiceError.message("Complete-text save crossed a capture or recognition boundary.")
+            }
+            try shot("saving-without-audio", "Saving complete text without original audio")
+            savingRendered = true
+            try model.retainMeetingTranscript(item, purpose: purpose)
+        }
+        recovery.loadSavedTranscript = { [weak model] id in try model?.savedMeetingTranscript(id) }
+        let selected = recovery.recoveries[0]
+        Task { await recovery.retry(selected); saveFinished = true }
+        try wait("saving complete text without originals") { saveFinished }
+        guard savingRendered, recovery.completedTranscriptID == transcript.id, !recovery.isBusy,
+              recovery.pendingTranscriptNotes.contains(where: { $0.contains("Original audio is missing") }),
+              requests == 0, captures == 0, recognitions == 0 else {
+            throw VoiceError.message("Missing-original completion lost its truthful note or required capture setup.")
+        }
+        try shot("saved-without-audio", "Saved text with playback and retranscription unavailable")
         let completed = try renderMeetingReview(to: output)
         shots.append(completed.meeting)
         print("MEETINGS_PRODUCTION_OWNER_CHECKS_OK: passive admission; explicit alternative; complete-text save; same-UUID durable History preservation")

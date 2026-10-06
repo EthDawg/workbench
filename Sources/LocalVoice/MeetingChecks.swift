@@ -861,6 +861,19 @@ enum MeetingChecks {
         let prefixSession = try MeetingStore.create(root: root, manifest: prefix)
         var calls = 0, saves = 0
         let refuseASR: (URL) async throws -> String = { _ in calls += 1; throw MeetingError.message("Recognition must not run") }
+        let short = manifest(), shortSession = try MeetingStore.create(root: root, manifest: short)
+        let shortTrack = try audio(source: .remote, seconds: 0.2, rate: 16_000, value: 0.2, offset: 0, session: shortSession)
+        var shortStopped = short; shortStopped.tracks = [shortTrack]; shortStopped.seconds = 0.2
+        try MeetingStore.save(shortStopped, at: shortSession, replacing: short)
+        let shortOriginal = try Data(contentsOf: shortSession.appendingPathComponent(shortTrack.file))
+        let shortResult = try await MeetingProcessor(session: shortSession, transcribe: refuseASR, commit: { _, _, _ in saves += 1 }).run()
+        let shortSaved = try MeetingStore.load(from: shortSession)
+        try expect(!shortResult.committed && shortSaved.state == .stopped && shortSaved.formatVersion == 1
+                   && shortSaved.segments.isEmpty && shortSaved.liveText == nil && shortSaved.isSettledWithoutSpeech && !shortSaved.needsRecovery,
+                   "subminimum audio settles as an ordinary stopped record without invented recognized segments")
+        try expect(shortSaved.id == short.id && shortSaved.tracks == shortStopped.tracks && shortSaved.seconds == shortStopped.seconds
+                   && calls == 0 && saves == 0 && (try Data(contentsOf: shortSession.appendingPathComponent(shortTrack.file))) == shortOriginal,
+                   "too-short settlement preserves originals and identity without recognition or History commit")
         do {
             _ = try await MeetingProcessor(session: prefixSession, transcribe: refuseASR, commit: { _, _, _ in saves += 1 }).run()
             throw MeetingError.message("A prefix was accepted")
@@ -1004,6 +1017,70 @@ enum MeetingChecks {
         await audioModel.retry(try MeetingRecovery.inspect(session: pendingSession))
         try expect(audioModel.completedTranscriptID == pending.id && recognized == 1 && permissionCalls == 0 && captureCalls == 0,
                    "saved audio recognition needs no current app or microphone permission")
+
+        // Hold the real readiness boundary after MeetingModel reviewed the
+        // selected bytes but before MeetingProcessor takes ownership of them.
+        var raced: [String] = []
+        for completeAfterReview in [false, true] {
+            var before = manifest()
+            let session = try MeetingStore.create(root: root, manifest: before)
+            let track = try audio(source: .remote, seconds: 1, rate: 16_000, value: 0.2, offset: 0, session: session)
+            let empty = before
+            before.tracks = [track]; before.seconds = 1
+            try MeetingStore.save(before, at: session, replacing: empty)
+            let selected = try MeetingRecovery.inspect(session: session)
+            let gate = Gate<RecognitionSnapshot>()
+            var asr = 0, commits = 0
+            let held = MeetingModel(directory: root, defaults: defaults, processSource: ProcessFixture(),
+                transcribe: { _ in asr += 1; return "Synthetic race result" },
+                microphonePermission: { permissionCalls += 1; return false }, captureFactory: { captureCalls += 1; return CaptureFixture() },
+                readSpeechSnapshot: { await gate.wait() })
+            held.saveTranscript = { _, _ in commits += 1 }
+            let retry = Task { await held.retry(selected) }
+            await waitUntil { gate.isWaiting }
+            try expect(gate.isWaiting && asr == 0 && commits == 0, "saved-audio retry reaches the held readiness boundary before ASR or commit")
+            var replacement = try MeetingStore.load(from: session)
+            let previous = replacement
+            replacement.gaps.append("Changed after selection")
+            if completeAfterReview {
+                replacement.state = .recognized
+                replacement.segments = [.init(index: 0, file: MeetingSegmentPlan.filename(index: 0), startSeconds: 0,
+                    seconds: 1, bytes: 32_000, text: "A complete replacement was not selected")]
+            }
+            try MeetingStore.save(replacement, at: session, replacing: previous)
+            let bytes = try Data(contentsOf: session.appendingPathComponent(MeetingStore.manifestName))
+            gate.resume(.init(admission: .localReady)); await retry.value
+            let afterBytes = try Data(contentsOf: session.appendingPathComponent(MeetingStore.manifestName))
+            if asr != 0 || commits != 0 || held.completedTranscriptID != nil || held.problem == nil
+                || afterBytes != bytes {
+                raced.append("\(completeAfterReview ? "incomplete-to-complete" : "changed-incomplete"): ASR=\(asr), commits=\(commits)")
+            }
+            await held.prepareForShutdown()
+        }
+        try expect(raced.isEmpty, "held selected-checkpoint boundary rejects both replacements without ASR/commit: " + raced.joined(separator: "; "))
+
+        // Match production wiring: main supplies hostAdmission, not mayStart.
+        let pollingSource = ProcessFixture()
+        pollingSource.values = [.init(pid: 843, bundleID: "us.zoom.xos", isRunningInput: true, isRunningOutput: true)]
+        var host = MeetingHostAdmission()
+        let polling = MeetingModel(directory: root.appendingPathComponent("polling"), defaults: defaults, processSource: pollingSource,
+            transcribe: refuseASR, microphonePermission: { permissionCalls += 1; return false }, captureFactory: { captureCalls += 1; return CaptureFixture() })
+        polling.hostAdmission = { host }; polling.detectionEnabled = true
+        for _ in 0..<4 { polling.refreshDetection() }
+        try expect(pollingSource.calls == 0 && polling.offer == nil, "production host admission suppresses metadata polls while speech is unavailable")
+        host.recognition = .init(admission: .localReady)
+        for busy in ["Dictate is active", "Snap & Talk is active"] {
+            host.captureProblem = .busy(busy)
+            for _ in 0..<4 { polling.refreshDetection() }
+            try expect(pollingSource.calls == 0 && polling.offer == nil, "production host admission suppresses polls during " + busy)
+        }
+        host.captureProblem = nil
+        for _ in 0..<3 { polling.refreshDetection() }
+        try expect(polling.offer?.id == 843 && pollingSource.calls == 3, "ready idle host resumes only the passive confirmed offer")
+        host.closing = true; polling.refreshDetection()
+        try expect(pollingSource.calls == 3 && polling.offer == nil && permissionCalls == 0 && captureCalls == 0,
+                   "host closure clears an existing offer without another poll or capture")
+        polling.detectionEnabled = false; await polling.prepareForShutdown()
 
         var microphone = AVAuthorizationStatus.notDetermined
         let permission = Gate<Bool>()
