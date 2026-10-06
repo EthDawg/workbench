@@ -58,7 +58,7 @@ The native implementation owns the sender; these are the service-facing rules it
 - Then `{"type":"attachment","length":N,"filename":"context.json"|"screenshot.png"|"voice.wav","content_type":…,"attachment_type":"event.attachment"}` items, all in the same envelope (separate envelopes are disallowed since protocol 1.4.0).
 - **Sent** means HTTP 200 and no `X-Sentry-Rate-Limits` entry covering `feedback`, `attachment` or all categories ([rate limiting](https://develop.sentry.dev/sdk/foundations/transport/rate-limiting/)); the header can appear on a 200. `429` and a covering rate-limit entry: keep the outbox entry and wait out `Retry-After`. `413`: the report exceeded a size limit; keep local evidence and offer Save a copy. Other `4xx`: do not loop. Network failure and `5xx`: retry the identical bytes and event ID with backoff.
 - Sentry deduplicates a repeated event ID only through a best-effort one-hour cache. Within it, a resend's event is dropped but its attachments are stored again as identical copies (the verifier accepts them and hashes one copy per name); after it, a resend creates a second feedback issue for the same event. Retry the same event ID only until Sentry answers 200; after the verifier's `not_found`, **Send Again** uses a new event ID.
-- Do not put the reply address in `contexts.feedback.contact_email` unless one-click reply outweighs the cost: Sentry copies it into the user context and a searchable `user.email` tag. In `context.json` it reaches the maintainer either way.
+- **Decided 7 October 2026 (lead): the reply address goes in `contexts.feedback.contact_email`** as well as `context.json`, so the maintainer can reply in one click from the private project. Sentry also copies it into the user context and a searchable `user.email` tag inside that private project; the privacy text says "If you add your email, the team sees it with your report so they can reply." It never enters other tags, URLs or operational logs.
 
 ## Evidence schema and boundaries
 
@@ -202,39 +202,43 @@ There is no user, IP, server name, request, breadcrumb or log field. A report wi
 
 | Response | Receipt and next step |
 | --- | --- |
-| 2xx with no `X-Sentry-Rate-Limits` entry for `feedback`, `attachment` or all categories | **Sent · short ID**; never sent again |
-| 2xx naming those categories, or 429 | **Sending…**; waits as long as `X-Sentry-Rate-Limits` or `Retry-After` says, or 60 s |
-| 408 or 5xx | **Sending…**; jittered backoff |
-| Network failure or lost response | **Waiting for connection**; same bytes and event ID with jittered backoff, sent at once when the network returns |
+| 2xx with no `X-Sentry-Rate-Limits` entry for `feedback` or all categories | **Sent · short ID**; never sent again under that event ID. A limit on `attachment` alone still counts as Sent, and the verifier decides whether the files arrived. |
+| 2xx naming `feedback` or all categories, or 429 | **Sending…**; Sentry kept nothing, so it waits as long as `X-Sentry-Rate-Limits` or `Retry-After` says (60 s by default) and sends again |
+| A failure before any connection (no network, DNS, host unreachable) | **Waiting for connection**; the same bytes and event ID go by themselves, at once when the network returns, however long that takes |
+| A lost reply, a time-out, 408 or 5xx | **Sending…** with backoff; it may have arrived. More than 55 minutes after the first such attempt, past Sentry's one-hour duplicate filter, it is not sent again by itself: **Couldn't confirm delivery · Send again** (a new event ID) |
 | 400, 401, 403, 404, 413 or TLS failure | **Couldn't deliver**; Retry is the person's choice. A 413 offers only Save a copy and Remove. |
 
-Backoff starts at 5 seconds, doubles to 15 minutes, and jitters over the upper half of each step. `delivery.json` holds the state and next attempt time, so delivery resumes after a relaunch.
+Backoff starts at 5 seconds, doubles to 15 minutes, and jitters over the upper half of each step. Uploads may take 30 minutes (`timeoutIntervalForResource`). `delivery.json` holds the state, the next attempt time and the first possible arrival, so delivery resumes after a relaunch. Send report is ⌘Return; Return in the email field never sends.
 
-The verifier receives `POST {event_id, report_id, attachments:[{name,size,sha256}], elapsed_seconds}` at the configured URL. That is the full `/api/v1/verify` endpoint, or an origin that path is added to. `elapsed_seconds` counts from this Mac's receipt of Sentry's 200 for that event ID, by this Mac's own clock at both ends, and is 0 if the clock moved backwards. Report IDs are lowercase everywhere. The first check comes 15 seconds after Sent, then backs off for about 16 minutes:
+The verifier receives `POST {event_id, report_id, attachments:[{name,size,sha256}], elapsed_seconds}` at the configured URL. That is the full `/api/v1/verify` endpoint, or an origin that path is added to. The file list is saved in `delivery.json` at freeze and on Send again, so checking never depends on the local envelope; an empty list is this Mac's error and stops checking without asking. `elapsed_seconds` counts from this Mac's receipt of Sentry's 200 for that event ID, by this Mac's own clock at both ends, and is 0 if the clock moved backwards. Report IDs are lowercase everywhere. The first check comes 15 seconds after Sent, then backs off to at most 5 minutes apart for about 16 minutes:
 
 - **received** makes the receipt **Received · short ID**. The envelope is deleted and the receipt kept.
 - **mismatch** or **not_found** is the verifier's finding, because it answers pending while Sentry may still be storing the event. It becomes **Couldn't confirm delivery · Send again**. Send again is only the person's choice: a new event ID for the same report ID and `context.json`, keeping the earlier IDs.
-- **pending**, any other status (honouring `Retry-After`), a non-JSON answer or no answer leaves **Sent**, which is never downgraded. If the window ends without an answer, the next launch checks once more.
+- **pending**, any other status (honouring `Retry-After`), a non-JSON answer or no answer leaves **Sent**, which is never downgraded. Only an HTTP answer counts against the window, so a lost network never ends checking; a restored connection checks at once. When an answer arrives after the window, the next launch checks once more, and a network failure does not use that check up.
 
-An event ID is sent again only after a network failure or a lost response before any 200, never after a 200.
+An event ID is sent again only after a failure before any 200, never after a 200.
 
 ### Outbox
 
 `Application Support/Workbench[ Preview]/Reports/` holds `draft/` and `outbox/<report id>/` (`report.envelope`, `delivery.json`), plus `staging/`. Folders are 0700 and files 0600. Every write goes to a temporary file, is flushed with `F_FULLFSYNC` and is renamed into place. A report is frozen in staging and moved into the outbox in one rename before any network.
 
-The outbox holds at most 20 reports with evidence and 100 MiB including staging, reserved before Send. Delivered reports' local copies are dropped oldest first to make room; unsent reports never are. The disk must keep 8 MiB of headroom. A refusal keeps the draft and offers Save a copy.
+The outbox holds at most 20 reports with evidence and 100 MiB including staging, reserved before Send. Only settled reports' local copies are dropped to make room, oldest first: Received, or Sent with checking finished. Unsent reports and reports still being checked never are. The disk must keep 8 MiB of headroom. A refusal keeps the draft and offers Save a copy.
 
-A sent report's local copy is kept 30 days, the team's retention, so Save a copy still works. Receipts last 90 days, up to the newest 50. **v2 keeps nothing in Keychain**: there is no per-report capability, which supersedes "scoped receipt tokens in Keychain" in the outbox paragraph above.
+A settled report's local copy is kept 30 days so Save a copy still works; the team keeps reports for up to 90 days (a Business trial until 20 October, then 30 days on the Developer plan). Receipts last 90 days, up to the newest 50. **v2 keeps nothing in Keychain**: there is no per-report capability, which supersedes "scoped receipt tokens in Keychain" in the outbox paragraph above.
 
-Remove from this Mac deletes the folder, and a reply still in flight cannot bring it back. The dialog explains that the team keeps a delivered report for 30 days and that a new report quoting its number asks for earlier deletion. Save a copy makes a new folder `Workbench report <short id>` with `context.json`, `screenshot.png` and `voice.wav`. It never writes into an existing folder.
+Remove from this Mac deletes the folder, and a reply still in flight cannot bring it back. The dialog explains that the team keeps a delivered report for up to 90 days and that a new report quoting its number asks for earlier deletion. Save a copy makes a new folder `Workbench report <short id>` with `context.json`, `screenshot.png` and `voice.wav`. It never writes into an existing folder.
 
 ### Evidence and lifecycle
 
 **Text.** Text over the limit is kept, as Sentry's form guidance asks, and Send waits with a reason. The counter appears from 1,844 code points. Blank means whitespace by either ECMAScript `\s` or Python `isspace`. Email uses the ajv-formats expression, at most 254 ASCII bytes.
 
-**Screenshot.** Region capture uses its own `SnapCapture` and hides only the composer. Snap and Snap & Talk refuse to capture while the composer captures, and the composer refuses while they do. **Choose image…** is the fallback for a PNG or JPEG of at most 25 MB and 40 MP. Every image is re-encoded upright as a PNG without metadata, and scaled down to 8 MiB and 16,384 px if needed. Its scale comes from the display under the pointer.
+**Facts at Send.** Send and Save a copy use the running build and the current permission, recognition and active-tool facts; the origin's surface and problem code stay as recorded when the composer opened.
 
-**Voice note.** It records mono 16 kHz 16-bit with AVAudioRecorder, stops at 60 seconds and is rewritten as a WAV with a 44-byte header and no other chunks. Dictate, Meetings and Snap & Talk share microphone admission with it in both directions. A refused microphone offers **Microphone Settings…**. **Transcribe** appears only when the selected engine is already ready and idle, and **Add to description** appends without replacing typed words.
+**Email.** The reply address goes in `context.json` and `contexts.feedback.contact_email` (the lead's one-click-reply decision); the composer and privacy page say "If you add your email, the team sees it with your report so they can reply."
+
+**Screenshot.** Add screenshot first checks Screen Recording with `CGPreflightScreenCaptureAccess()`; when it is off, the composer explains and offers **Choose image…** and **Open System Settings…**, never prompting mid-report and never capturing (macOS would return only the desktop picture). Region capture uses its own `SnapCapture` and hides only the composer. Snap and Snap & Talk refuse to capture while the composer captures, and the composer refuses while they do. **Choose image…** is the fallback for a PNG or JPEG of at most 25 MB and 40 MP. Every image is re-encoded upright as a PNG without metadata, and scaled down to 8 MiB and 16,384 px if needed. Its scale comes from the display under the pointer.
+
+**Voice note.** It records mono 16 kHz 16-bit with AVAudioRecorder, stops at 60 seconds and is rewritten as a WAV with a 44-byte header and no other chunks. Dictate, Meetings and Snap & Talk ask one rule (`BugReportAdmission`) while it records or transcribes, and it asks theirs. A refused microphone offers **Microphone Settings…**. **Transcribe** appears only when the selected engine is already ready and idle, and **Add to description** appends without replacing typed words.
 
 **Quit and updates.** Quit stops and keeps a recording, cancels a capture and saves the draft. Delivery never holds Quit or an update. Capturing and recording count as busy for the update restart.
 
