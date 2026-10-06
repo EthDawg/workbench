@@ -120,11 +120,26 @@ enum ReadbackChecks {
         try check(copiesMatch && manifest.skillPack == .neutral, "new session defaults to the complete, exact neutral payload")
         let readme = try String(contentsOf: root.appendingPathComponent("README.md"), encoding: .utf8)
         try check(readme.contains("complete edited narration verbatim") && readme.contains("does not upload or submit"), "portable README explains slide copy and local handoff")
+        try check(manifest.skillPack?.version == "1.1.0" && skill.contains("Neutral skill version 1.1.0"), "new neutral payload and immutable receipt identify the contained contract version")
+        try check(skill.contains("Look only for `template.pptx` inside this session folder") && !skill.contains("then in the parent folder")
+            && skill.contains("ask the user whether") && skill.contains("make the plain deck"), "template is in-session, optional and deliberately chosen")
+        try check(skill.contains("Create `outputs/` inside this session") && skill.contains("Never overwrite an existing file")
+            && !skill.contains("Write a new `.pptx` beside this folder") && readme.contains("under outputs/ in this folder"), "skill and README agree on a contained unique output without overwriting")
+        try check(skill.contains("notes verbatim, unmodified") && skill.contains("manifest SHA-256") && skill.contains("render and inspect")
+            && skill.contains("exact output path") && skill.contains("identify it as unverified"), "deck review retains exact narration, input identity, rendered verification and honest file return")
         let handoffRoot = root.appendingPathComponent("Folder with spaces", isDirectory: true)
         for target in ReadbackHandoffTarget.allCases {
             let prompt = target.prompt(for: handoffRoot)
             try check(prompt.contains("SKILL.md") && prompt.contains("session.json") && prompt.contains(handoffRoot.path), "\(target.title) handoff identifies the portable session")
             try check(prompt.contains("Keep the original session") && prompt.contains("Keep the work local"), "\(target.title) handoff preserves originals and external-service consent")
+            let current = target.prompt(for: handoffRoot, brief: .snapTalkDeck(pack: manifest.skillPack))
+            try check(current.contains("Follow this session's `SKILL.md` for template choice, output destination and verification")
+                && !current.contains("`outputs/`") && current.contains("grants no upload permission"), "\(target.title) new neutral copied instructions defer output details to the actual frozen or customised skill")
+            for pack in [nil, ReadbackSkillPackReference(id: "workbench-neutral", version: "1.0.0", name: "Neutral"),
+                         ReadbackSkillPackReference(id: "private-custom", version: "1.1.0", name: "Private")] {
+                try check(target.prompt(for: handoffRoot, brief: .snapTalkDeck(pack: pack)) == prompt,
+                          "\(target.title) legacy and custom handoff prompts retain their existing contract")
+            }
         }
         passed += try runHandoffApplicationChecks()
         try check(manifest.formatVersion == 1 && manifest.title == "Synthetic review" && manifest.sections.isEmpty, "new manifest is versioned and empty")
@@ -353,6 +368,7 @@ enum ReadbackChecks {
         try check(model.sessionURL == nil && !model.isRecording && !model.blocksDictation, "session change leaves no hidden recorder or capture reservation")
         print("READBACK_ADMISSION_CHECKS_OK: \(passed) checks")
         try await ReadbackCaptureChoiceChecks.run()
+        try await ReadbackCaptureAccessChecks.run()
     }
 
     @MainActor

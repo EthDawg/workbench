@@ -136,6 +136,7 @@ struct ReadbackView: View {
                 catch { break }
             }
         }
+        .onDisappear { model.cancelCaptureAccess() }
     }
 
     // Native file panels and navigation start after the current sheet has closed.
@@ -283,7 +284,7 @@ struct ReadbackView: View {
         }
         if !model.isRecording && !model.isCapturing && model.currentSessionProblem == nil && !model.permissionsReady {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Label(model.permissionsProblem ?? "Review capture access.",
+                Label(model.captureAccessMessage ?? "Review capture access.",
                       systemImage: "lock").font(.callout).foregroundStyle(.secondary)
                 Spacer(minLength: 8)
                 Button("Open System Settings…") {
@@ -292,6 +293,7 @@ struct ReadbackView: View {
                 Button("Check access") { Task { await model.preflightPermissions() } }
                 if !model.screenPermissionGranted || model.microphonePermission == .notDetermined {
                     Button("Request capture access") { Task { await model.requestCaptureAccess() } }
+                        .disabled(model.isRequestingCaptureAccess)
                 }
             }.padding(.horizontal, 24).padding(.bottom, 12)
             if model.suggestsReopenForScreenAccess && !model.screenPermissionGranted {
@@ -523,6 +525,7 @@ struct ReadbackView: View {
                 Button("Check access") { Task { await model.preflightPermissions() } }
                 if !model.screenPermissionGranted || model.microphonePermission == .notDetermined {
                     Button("Request capture access") { Task { await model.requestCaptureAccess() } }
+                        .disabled(model.isRequestingCaptureAccess)
                 }
             }
             Divider()

@@ -135,6 +135,8 @@ Both edition bundles omit the retired selected-text Service. Incoming archive/up
 
 `ReadbackView` keeps capture and Stop above independently scrolling thumbnails and one selected section. `ReadbackModel.reviewedSectionID` owns review selection; manifest publication reconciles removed IDs without following background work. Sessions, settings, ordering and Recently Deleted use separate sheets. `transcriptDrafts` receives an edit before either save; `transcriptSaveFailures` retains it through failed reads/writes and subsequent publication. Retry and confirmed discard resolve the pending edit; close, session changes, handoff and normal termination wait for resolution.
 
+`ReadbackModel` also owns the explicit capture-access request slot and visit generation. The uninterruptible macOS request retains its slot until completion, suppressing duplicate requests; close, replacement, page departure, shutdown and newer passive access checks invalidate its feedback. The transient pending message is derived separately from permission problems stored as notices, so a rejected completion cannot leave a stale waiting instruction or overwrite unrelated feedback. The microphone request boundary is injected only for synthetic held-reply checks. Permission completion never captures or starts recognition. Neutral skill 1.1.0 defines an in-session optional template and unique `outputs/` deck. Its new-session README describes those defaults; the copied brief defers template/output details to the actual session skill, explicitly preserving customisations over README guidance. The receipt records provenance, not verification of unchanged skill bytes; no migration, new manifest field, runner or output-import store is added.
+
 
 ## Snap & Talk skill packs
 

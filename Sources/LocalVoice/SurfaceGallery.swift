@@ -519,6 +519,12 @@ private struct HistoryNativeAcceptanceView: View {
     }
 
     func render(to output: URL) throws -> SurfaceGallery.Pass {
+        if ProcessInfo.processInfo.environment["WORKBENCH_SNAPTALK_GALLERY_ONLY"] == "1" {
+            return SurfaceGallery.Pass(theme: theme, panels: [], toolbar: [], host: [], pickers: [], pickerHost: [],
+                pages: [.init(route: "readback", title: "Snap & Talk", fallsThrough: false,
+                    shots: try renderSnapTalkStates(to: output, states: ["review", "access-off", "access-pending", "settings"]))],
+                entries: [], menus: [], placement: [])
+        }
         if ProcessInfo.processInfo.environment["WORKBENCH_MEETINGS_GALLERY_ONLY"] == "1" { return try renderMeetingsRecovery(to: output) }
         if ProcessInfo.processInfo.environment["WORKBENCH_SPEECH_GALLERY_ONLY"] == "1" { return try renderFirstSpeech(to: output) }
         if ProcessInfo.processInfo.environment["WORKBENCH_PACKS_GALLERY_ONLY"] == "1" { return try renderPacks(to: output) }
@@ -2379,9 +2385,9 @@ private struct HistoryNativeAcceptanceView: View {
 
     /// Valid portable media and a long session exercise the real review layout. No device,
     /// live data or provider runs. Recording is a presentation-only override in the same view.
-    func renderSnapTalkStates(to output: URL) throws -> [SurfaceGallery.Shot] {
+    func renderSnapTalkStates(to output: URL, states: [String] = ["review", "processing", "recovery", "unavailable", "unsaved", "recording", "settings", "sessions", "deleted", "narration", "narration-not-ready", "access-off", "access-pending"]) throws -> [SurfaceGallery.Shot] {
         var shots: [SurfaceGallery.Shot] = []
-        for state in ["review", "processing", "recovery", "unavailable", "unsaved", "recording", "settings", "sessions", "deleted", "narration", "narration-not-ready"] {
+        for state in states {
             let base = home.appendingPathComponent("SnapTalk gallery \(theme) \(state)")
             let root = try Self.makeSession(in: base, count: 39)
             var manifest = try ReadbackStore.load(from: root)
@@ -2403,11 +2409,20 @@ private struct HistoryNativeAcceptanceView: View {
             try ReadbackStore.save(manifest, at: root)
             let defaults = try SurfaceGallery.isolatedDefaults("SnapTalk \(state)", home: home)
             defaults.set([root.path], forKey: "readback.recentSessionPaths.v1")
+            let lacksAccess = state.hasPrefix("access-")
+            var permissionReply: CheckedContinuation<Bool, Never>?
             let session = ReadbackModel(engine: model.engine, defaults: defaults,
                 captureDisplay: { throw ReadbackError.message("The gallery never captures the screen.") },
                 transcribeAudio: { _ in try await Task.sleep(nanoseconds: 3_600_000_000_000); throw CancellationError() },
-                screenAccess: .fixed(true), microphoneAccess: { .authorized })
-            defer { session.shutdown() }
+                screenAccess: .fixed(!lacksAccess), microphoneAccess: { lacksAccess ? .notDetermined : .authorized },
+                requestMicrophoneAccess: { await withCheckedContinuation { permissionReply = $0 } })
+            defer { session.shutdown(); permissionReply?.resume(returning: false) }
+            if state == "access-pending" {
+                Task { await session.requestCaptureAccess() }
+                let deadline = Date().addingTimeInterval(2)
+                while permissionReply == nil && Date() < deadline { RunLoop.current.run(until: Date().addingTimeInterval(0.01)) }
+                guard session.isRequestingCaptureAccess else { throw VoiceError.message("Synthetic permission request did not become pending.") }
+            }
             if state == "deleted", let id = session.activeSections.last?.id { session.deleteSection(id) }
             let id = session.activeSections[state == "review" ? 24 : 0].id
             session.reviewSection(id)

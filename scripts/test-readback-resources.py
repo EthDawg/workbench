@@ -56,7 +56,9 @@ __STORE__
                   reopened.skillPack == .neutral,
                   fm.fileExists(atPath: destination.appendingPathComponent("README.md").path) else { fatalError("Invalid created session") }
             let neutralSkill = try String(contentsOf: destination.appendingPathComponent("SKILL.md"), encoding: .utf8)
-            guard neutralSkill.contains("template.pptx"), !fm.fileExists(atPath: destination.appendingPathComponent("brand").path) else {
+            guard neutralSkill.contains("template.pptx"), neutralSkill.contains("Neutral skill version 1.1.0"),
+                  neutralSkill.contains("Create `outputs/` inside this session"), reopened.skillPack?.version == "1.1.0",
+                  !fm.fileExists(atPath: destination.appendingPathComponent("brand").path) else {
                 fatalError("Neutral default changed")
             }
             try Data("User custom skill".utf8).write(to: destination.appendingPathComponent("SKILL.md"))
