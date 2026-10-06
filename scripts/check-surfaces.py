@@ -128,7 +128,7 @@ ENTRY_POINTS = [
     ('StageKit/Persona.swift', 'PersonaLibrary.makeToolbarPickerMenu', 'floating toolbar Persona picker', 'controls'),
     ('StageKit/DemoPresentation.swift', 'LiveSettings', 'Present live window', 'controls'),
     # Position… in that menu opens the toolbar's placement control (#163).
-    ('LocalVoice/ToolbarPositionControl.swift', 'ToolbarPositionControl', 'floating toolbar position control', 'controls'),
+    ('StageKit/FloatingPositionControl.swift', 'FloatingPositionControl', 'floating position control', 'controls'),
     # The same window's live controls: the no-speech cue, and a result's own controls, which the
     # toolbar reveals in place of its row (#134 T4). Recording, narration and reading are the row's.
     ('LocalVoice/FloatingToolbar.swift', 'WorkbenchFloatingContent', 'floating toolbar live controls', 'page'),

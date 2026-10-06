@@ -368,7 +368,11 @@ toolbar there, and Escape closes. The control takes the keyboard without making
 Workbench the active app. Opened from the toolbar's keyboard focus, a choice,
 Reset or Escape gives the keyboard back to the toolbar, so a second Escape returns
 to the field it came from; opened by pointer, it takes the keyboard nowhere. A
-drag or a menu on the toolbar closes it.
+drag or a menu on the toolbar closes it. The control is StageKit's
+`FloatingPositionControl`, and the Timer's Position… (its menu, the panel's Timer
+Options, Home's current work and the timer window) opens the same eight docks beside
+the timer window, or at the pointer before that window first opens, with no Reset
+position because the Timer has none (#134 Fit rule 1).
 
 The choice persists through `CapturePanelController`: a named dock or a free
 position in `capturePanelLauncher.v1`. An edge attachment adds `edge`, `fraction`

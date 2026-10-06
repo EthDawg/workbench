@@ -78,6 +78,8 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
     private var previousApplication: NSRunningApplication?
     private var palette: NSPanel?
     private var timerWindow: NSPanel?
+    /// Position…: the Timer's placement control, the one the floating toolbar uses (#134 Fit rule 1).
+    let timerPositionPanel = FloatingPositionPanel()
     private var adjustingTimerFrame = false
     private var timerLiveResizing = false
     private var timerMoveSettlement: Timer?
@@ -176,6 +178,7 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         palette?.orderOut(nil); timerWindow?.orderOut(nil); mainWindow?.orderOut(nil)
         quickPopover?.contentViewController = nil; quickPopover = nil
         palette?.contentView = nil; palette = nil
+        timerPositionPanel.close()
         timerWindow?.contentView = nil; timerWindow = nil; timerShown = false
         mainWindow?.contentView = nil; mainWindow = nil
         if let statusItem { NSStatusBar.system.removeStatusItem(statusItem) }
@@ -638,7 +641,7 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
     }
     func windowWillClose(_ notification: Notification) {
         if let window = notification.object as? NSWindow, window === mainWindow { finishRecording() }
-        if let window = notification.object as? NSWindow, window === timerWindow { timerShown = false }
+        if let window = notification.object as? NSWindow, window === timerWindow { timerPositionPanel.close(); timerShown = false }
     }
     private func refreshPalette() {
         let shouldShow = !embedded && !boardExportInProgress && isDrawing && (!boards.isEmpty ? settings.value.boardPalette != .hide : settings.value.showDrawingPalette)
@@ -716,7 +719,7 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         countdown.reset(seconds: settings.value.timerMinutes * 60); timerFinished = false
         countdownTimer?.invalidate(); countdownTimer = nil; updateCountdown()
     }
-    func hideTimer() { timerWindow?.orderOut(nil); timerShown = false }
+    func hideTimer() { timerPositionPanel.close(); timerWindow?.orderOut(nil); timerShown = false }
     /// Show timer: the window of a started countdown, which keeps running meanwhile.
     func revealTimer() { guard timerSessionStarted else { return }; showTimer() }
     /// Position is a Timer option, so it is kept even before the window first opens:
@@ -727,6 +730,33 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         timerPlacementAnchor = timerPlacement.value.position.anchor
         timerPlacementNotice = timerPlacement.notice
         restoreTimerPosition(fallbackID: display.id)
+    }
+    /// Position…: the compact eight-dock control the floating toolbar uses, beside the timer's
+    /// window, or at the pointer before the window first opens, since Position applies then
+    /// too. Arrow keys move between docks, Return or Space applies and Escape closes; a click
+    /// elsewhere closes it. The timer has no Reset position, so none is offered.
+    func showTimerPositionControl() {
+        let shownWindow = timerShown ? timerWindow : nil
+        let pointer = NSEvent.mouseLocation
+        let display = timerDisplay(containing: shownWindow?.frame ?? NSRect(origin: pointer, size: NSSize(width: 1, height: 1)))
+        let visible = display?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
+        timerPositionPanel.show(title: "Timer position", level: shownWindow?.level ?? .floating, current: timerPlacementAnchor,
+                                hint: "Or drag the timer window anywhere.", accessibilityLabel: "Timer position",
+                                choose: { [weak self] anchor in self?.setTimerPosition(anchor) }, reset: nil) { size in
+            Self.timerPositionFrame(size: size, beside: shownWindow?.frame, pointer: pointer, visible: visible)
+        }
+    }
+    /// Above a timer window in the lower half of its display, otherwise below it; with no window
+    /// shown, under the pointer that chose Position…. Kept on the usable screen either way.
+    static func timerPositionFrame(size: NSSize, beside window: NSRect?, pointer: NSPoint, visible: NSRect) -> NSRect {
+        let origin: NSPoint
+        if let window {
+            let y = window.midY < visible.midY ? window.maxY + 8 : window.minY - 8 - size.height
+            origin = NSPoint(x: window.minX, y: y)
+        } else {
+            origin = NSPoint(x: pointer.x - 12, y: pointer.y + 12 - size.height)
+        }
+        return FloatingControlGeometry.clamp(NSRect(origin: origin, size: size), to: visible, inset: 0)
     }
     private func ensureCountdownTimer() {
         guard countdownTimer == nil else { return }
@@ -799,6 +829,8 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
     func windowDidMove(_ notification: Notification) {
         guard let window = notification.object as? NSWindow, window === timerWindow else { return }
         guard !adjustingTimerFrame, !timerLiveResizing, timerMoveSettlement == nil else { return }
+        // A drag is the other way to place the timer: Position… closes, as it does on the toolbar.
+        timerPositionPanel.close()
         // didMove also arrives during a drag. Wait for release before persisting
         // and snapping, so the panel does not fight the user's pointer.
         let settlement = Timer(timeInterval: 0.03, repeats: true) { [weak self] timer in

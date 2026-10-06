@@ -405,6 +405,7 @@ enum SurfaceGallery {
         panels += try renderFloatingStates(to: output)
         let (hostShots, host) = try renderToolbarHost(to: output)
         let toolbar = hostShots + [try renderChooser(to: output), try renderPositionControl(to: output)]
+        panels += try renderTimerSurfaces(to: output)
         let placement = try checkToolbarPlacement()
         let pickers = try renderPickerStates(to: output)
         let (pickerShots, pickerHost) = try checkPickerHost(to: output)
@@ -1316,6 +1317,7 @@ enum SurfaceGallery {
         if let index = pass.pages.firstIndex(where: { $0.route == "meeting" }) { pass.pages[index].shots += [completed.meeting, try renderMeetingKept(to: output)] }
         if let index = pass.pages.firstIndex(where: { $0.route == "history" }) { pass.pages[index].shots.append(completed.history) }
         if let index = pass.pages.firstIndex(where: { $0.route == "readback" }) { pass.pages[index].shots += try renderSnapTalkStates(to: output) }
+        pass.panels += try renderTimerSurfaces(to: output)
         pass.checks += dictate.checks + completed.checks
         pass.menus = menus()
         pass.entries = entries() + menuEntries
@@ -2263,6 +2265,33 @@ enum SurfaceGallery {
         settle(view)
         return try save(try snapshot(view), id: "position-control", title: "Position…",
                         detail: "The eight docks with bottom centre current and selected, and Reset position.", file: "toolbar-position-control-\(theme).png", to: output)
+    }
+
+    // MARK: Timer
+
+    /// The Timer's window with its hover controls shown, and Position… as the Timer opens it: the
+    /// toolbar's eight-dock control without Reset position (#134 Fit rule 1). The countdown is
+    /// idle and synthetic; nothing starts, and no timer window opens on screen.
+    func renderTimerSurfaces(to output: URL) throws -> [SurfaceGallery.Shot] {
+        var shots: [SurfaceGallery.Shot] = []
+        let window = NSHostingView(rootView: stage.timerWindowPreview)
+        let timer = offscreenWindow(size: NSSize(width: 570, height: 330), styleMask: [.titled, .closable, .resizable])
+        timer.contentView = window
+        defer { timer.contentView = nil; timer.close() }
+        settle(window)
+        shots.append(try save(try snapshot(window), id: "timer-window", title: "Timer window",
+                              detail: "The window's own controls: the next step, Reset, Position… and Hide. Position… opens the toolbar's compact control.",
+                              file: "timer-window-\(theme).png", to: output))
+        let control = NSHostingView(rootView: stage.timerPositionControlPreview)
+        let host = offscreenWindow(size: control.fittingSize, styleMask: [.borderless])
+        host.isOpaque = false; host.backgroundColor = .clear
+        host.contentView = control
+        defer { host.contentView = nil; host.close() }
+        settle(control)
+        shots.append(try save(try snapshot(control), id: "timer-position-control", title: "Timer · Position…",
+                              detail: "The eight docks the floating toolbar's Position… has, from the Timer menu, the panel's Timer Options, Home and the timer window; no Reset position, since the Timer has none.",
+                              file: "timer-position-control-\(theme).png", to: output))
+        return shots
     }
 
     /// Free placement through the production host (#163, #134), with its panel invisible. Every
