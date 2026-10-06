@@ -578,14 +578,34 @@ enum SubscriptionCLIChecks {
         let blocked = await SubscriptionCLI.discover(.claude, candidates: [claudePath], probe: unreadable)
         try check(!blocked.ready && blocked.detail.contains("could not check"), "an unusable status probe reports honestly")
 
-        let absent = await SubscriptionCLI.discover(.claude, candidates: [claudePath], probe: { _, _ in nil })
+        let absent = await SubscriptionCLI.discover(.claude, candidates: [], probe: { _, _ in nil })
         try check(!absent.ready && absent.executable == nil && absent.detail.contains("No installed"), "nothing installed is reported as nothing installed")
+
+        try check(absent.problem == .missing && stale.problem == .unsupported && needsSignIn.problem == .signIn
+                  && blocked.problem == .unverified, "known discovery states remain distinct")
+        for failedProbe in [nil, SubscriptionCLI.Probe(status: 1, standardOutput: "", standardError: "denied"),
+                            SubscriptionCLI.Probe(status: 0, standardOutput: "unexpected version output", standardError: "")] {
+            let unverified = await SubscriptionCLI.discover(.claude, candidates: [claudePath], probe: { _, _ in failedProbe })
+            try check(!unverified.ready && unverified.executable == claudePath && unverified.problem == .unverified
+                      && !unverified.detail.contains("No installed"), "a found but failed version probe stays unverified, not missing")
+        }
 
         // Input refusals. None of these reach a process launch.
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("SubscriptionCLIAdapter-" + UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: directory.appendingPathComponent("inputs"), withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
+        let missingCandidate = directory.appendingPathComponent("absent-cli")
+        try check(!SubscriptionCLI.candidateMayExist(missingCandidate), "a definitely absent CLI path can be called missing")
+        let brokenCandidate = directory.appendingPathComponent("broken-cli")
+        try FileManager.default.createSymbolicLink(at: brokenCandidate, withDestinationURL: missingCandidate)
+        try check(SubscriptionCLI.candidateMayExist(brokenCandidate), "a dangling installed wrapper stays unverified")
+        let deniedDirectory = directory.appendingPathComponent("denied")
+        try FileManager.default.createDirectory(at: deniedDirectory, withIntermediateDirectories: false)
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: deniedDirectory.path)
+        let unknownBehindDenial = SubscriptionCLI.candidateMayExist(deniedDirectory.appendingPathComponent("candidate"))
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: deniedDirectory.path)
+        try check(unknownBehindDenial, "a denied candidate location is not evidence of absence")
         let image = directory.appendingPathComponent("inputs/screen.png")
         try Data("synthetic-image-bytes".utf8).write(to: image)
         let outside = FileManager.default.temporaryDirectory.appendingPathComponent("outside-" + UUID().uuidString + ".png")
