@@ -24,10 +24,13 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import http.client
 import io
 import json
 import os
 import re
+import shutil
+import socket
 import struct
 import sys
 import time
@@ -43,6 +46,8 @@ from pathlib import Path
 ALLOWED = {"context.json": 32 * 1024, "screenshot.png": 8 * 1024 * 1024, "voice.wav": 4 * 1024 * 1024}
 UUID_V4 = re.compile(r"^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$")
 HEX_ID = re.compile(r"^[a-f0-9]{32}$")
+DIGITS = re.compile(r"[0-9]{1,20}")
+UUID_V4_ANY_CASE = re.compile(UUID_V4.pattern, re.IGNORECASE)
 SLUG = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 TIMEOUT = 30
 MAX_JSON = 4 * 1024 * 1024
@@ -52,6 +57,16 @@ MAX_REDIRECTS = 3
 
 class Failure(Exception):
     """A problem that stops the command; the message is safe to print."""
+
+
+# Errors raised while reading a response after the connection opened: truncated bodies,
+# resets and read timeouts. They become a Failure, never a traceback.
+NETWORK_ERRORS = (http.client.HTTPException, socket.timeout, OSError)
+
+
+def ascii_digits(value: object) -> bool:
+    """Only 0-9; str.isdigit() also accepts other scripts' digits and superscripts."""
+    return isinstance(value, str) and DIGITS.fullmatch(value) is not None
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -117,7 +132,10 @@ class Sentry:
                               "from a member allowed to download attachments.")
             if status != 200:
                 raise Failure(f"Sentry answered {status}; try again later.")
-            body = response.read(MAX_JSON + 1)
+            try:
+                body = response.read(MAX_JSON + 1)
+            except NETWORK_ERRORS as error:
+                raise Failure(f"Sentry's response was interrupted ({type(error).__name__}); try again.") from None
             if len(body) > MAX_JSON:
                 raise Failure("Sentry's response was unexpectedly large.")
             try:
@@ -131,7 +149,14 @@ class Sentry:
             status = response.status if hasattr(response, "status") else response.code
             if status != 200:
                 raise Failure(f"Sentry answered {status} for an attachment download.")
-            data = response.read(limit + 1)
+            declared = response.headers.get("Content-Length")
+            try:
+                data = response.read(limit + 1)
+            except NETWORK_ERRORS as error:
+                raise Failure(f"An attachment download was interrupted ({type(error).__name__}); try again.") from None
+        # urllib returns a short read silently when the connection drops mid-body.
+        if ascii_digits(declared) and len(data) < int(declared) and len(data) <= limit:
+            raise Failure("An attachment download was interrupted; try again.")
         if len(data) > limit:
             raise Failure("An attachment is larger than the report allows; not saved.")
         return data
@@ -143,7 +168,7 @@ class Sentry:
 
     def events_for_report(self, report_id: str, period: str) -> list[str]:
         project, _ = self.json(self.url(self.project_path("")))
-        if not isinstance(project, dict) or not str(project.get("id", "")).isdigit():
+        if not isinstance(project, dict) or not ascii_digits(str(project.get("id", ""))):
             raise Failure("Could not read the Sentry project; check SENTRY_ORG and SENTRY_PROJECT.")
         query = {"project": str(project["id"]), "statsPeriod": period, "limit": "25",
                  "query": f"issue.category:feedback report_id:{report_id}"}
@@ -151,7 +176,7 @@ class Sentry:
         found: list[str] = []
         for issue in issues or []:
             issue_id = str(issue.get("id", "")) if isinstance(issue, dict) else ""
-            if not issue_id.isdigit():
+            if not ascii_digits(issue_id):
                 continue
             event, _ = self.json(self.url(f"/api/0/organizations/{self.org}/issues/{issue_id}/events/latest/"))
             event_id = str((event or {}).get("eventID") or (event or {}).get("id") or "").replace("-", "").lower()
@@ -231,8 +256,9 @@ def fetch(sentry: Sentry, identifier: str, directory: Path, period: str, out=sys
     if not isinstance(feedback, dict):
         raise Failure("That event is not a feedback report.")
     report_id = tag(event, "report_id")
-    if not isinstance(report_id, str) or not UUID_V4.match(report_id):
+    if not isinstance(report_id, str) or not UUID_V4_ANY_CASE.match(report_id):
         raise Failure("That feedback event has no valid report_id tag.")
+    report_id = report_id.lower()
 
     listed = sentry.attachments(event_id)
     target = directory / f"workbench-report-{report_id}"
@@ -241,32 +267,42 @@ def fetch(sentry: Sentry, identifier: str, directory: Path, period: str, out=sys
         os.mkdir(target, 0o700)
     except FileExistsError:
         raise Failure(f"{target} already exists; choose another folder.") from None
+    try:
+        return _fetch_into(sentry, event_id, event, feedback, report_id, listed, target, out)
+    except BaseException:
+        # Leave no partial packet behind: a folder either verified or reported problems.
+        shutil.rmtree(target, ignore_errors=True)
+        raise
 
+
+def _fetch_into(sentry: Sentry, event_id: str, event: dict, feedback: dict, report_id: str,
+                listed: list[dict], target: Path, out) -> int:
     problems: list[str] = []
-    saved: dict[str, bytes] = {}
+    copies: dict[str, list[dict]] = {}
     for item in listed:
-        name, size, attachment_id = item.get("name"), item.get("size"), str(item.get("id", ""))
-        if name not in ALLOWED or not attachment_id.isdigit():
+        name, attachment_id = item.get("name"), str(item.get("id", ""))
+        if name not in ALLOWED or not ascii_digits(attachment_id):
             problems.append(f"unexpected attachment on the event: {name!r} (not saved)")
             continue
-        data = sentry.download(sentry.url(sentry.project_path(f"events/{event_id}/attachments/{attachment_id}/"),
+        copies.setdefault(name, []).append(item)
+
+    def first_copy(name: str) -> bytes | None:
+        """Download one copy per name (the lowest ID), as the verifier hashes one copy."""
+        entries = sorted(copies.get(name, []), key=lambda entry: int(entry["id"]))
+        if not entries:
+            return None
+        data = sentry.download(sentry.url(sentry.project_path(f"events/{event_id}/attachments/{entries[0]['id']}/"),
                                           {"download": "1"}), ALLOWED[name])
-        if size != len(data):
-            problems.append(f"{name}: Sentry listed {size} bytes but served {len(data)}")
-        if name in saved:
-            if saved[name] != data:
-                problems.append(f"{name}: duplicate copies differ")
-            continue
-        saved[name] = data
+        listed_size = entries[0].get("size")
+        if isinstance(listed_size, int) and len(data) < listed_size:
+            # A short body is an interrupted transfer, not evidence that the stored bytes differ.
+            raise Failure(f"{name} downloaded short of its listed size; the transfer was interrupted, try again.")
+        if listed_size != len(data):
+            problems.append(f"{name}: Sentry listed {listed_size} bytes but served {len(data)}")
         write_private(target / name, data)
+        return data
 
-    message = feedback.get("message") if isinstance(feedback.get("message"), str) else ""
-    write_private(target / "feedback-message.txt", (message + "\n").encode("utf-8"))
-    summary = {key: event.get(key) for key in ("eventID", "groupID", "dateCreated", "dateReceived", "platform")}
-    summary["tags"] = event.get("tags")
-    write_private(target / "event.json", (json.dumps(summary, indent=2, sort_keys=True) + "\n").encode("utf-8"))
-
-    context = saved.get("context.json")
+    context = first_copy("context.json")
     descriptors: dict[str, dict] = {}
     if context is None:
         problems.append("context.json is missing from the event")
@@ -275,10 +311,30 @@ def fetch(sentry: Sentry, identifier: str, directory: Path, period: str, out=sys
             manifest = strict_json(context)
             for descriptor in manifest.get("attachments", []):
                 descriptors[descriptor["name"]] = descriptor
-            if manifest.get("report_id") != report_id:
+            if str(manifest.get("report_id", "")).lower() != report_id:
                 problems.append("context.json report_id does not match the event's report_id tag")
         except (ValueError, KeyError, TypeError, AttributeError):
             problems.append("context.json is not a valid report manifest")
+        if any(entry.get("size") != len(context) for entry in copies.get("context.json", [])):
+            problems.append("context.json: a duplicate copy has a different size")
+
+    saved: dict[str, bytes] = {}
+    for name in ("screenshot.png", "voice.wav"):
+        if name not in copies:
+            continue
+        want = descriptors.get(name, {}).get("bytes")
+        if want is not None and any(entry.get("size") != want for entry in copies[name]):
+            problems.append(f"{name}: a listed copy's size differs from context.json")
+        data = first_copy(name)
+        if data is not None:
+            saved[name] = data
+
+    message = feedback.get("message") if isinstance(feedback.get("message"), str) else ""
+    write_private(target / "feedback-message.txt", (message + "\n").encode("utf-8"))
+    summary = {key: event.get(key) for key in ("eventID", "groupID", "dateCreated", "dateReceived", "platform")}
+    summary["tags"] = event.get("tags")
+    write_private(target / "event.json", (json.dumps(summary, indent=2, sort_keys=True) + "\n").encode("utf-8"))
+
     for name, descriptor in descriptors.items():
         data = saved.get(name)
         if data is None:
@@ -290,7 +346,7 @@ def fetch(sentry: Sentry, identifier: str, directory: Path, period: str, out=sys
         else:
             print(f"{name}: {len(data)} bytes, SHA-256 matches context.json", file=out)
     for name in saved:
-        if name != "context.json" and name not in descriptors:
+        if name not in descriptors:
             problems.append(f"{name}: on the event but not described in context.json")
 
     print(f"Saved to {target}", file=out)
@@ -361,7 +417,7 @@ def envelope(dsn: str, event_id: str, report_id: str, files: dict[str, bytes], n
 def ingest_url(dsn: str) -> tuple[str, str]:
     parts = urllib.parse.urlsplit(dsn)
     project = parts.path.strip("/")
-    if parts.scheme != "https" or not parts.username or not project.isdigit() or not parts.hostname:
+    if parts.scheme != "https" or not parts.username or not ascii_digits(project) or not parts.hostname:
         raise Failure("SENTRY_DSN must look like https://<key>@<host>/<project_id>.")
     port = f":{parts.port}" if parts.port else ""
     return f"https://{parts.hostname}{port}/api/{project}/envelope/", parts.username
@@ -396,15 +452,16 @@ def smoke(verifier: str, dsn: str, out=sys.stdout, poll_seconds: float = 5, time
     blocked = blocked_categories(limits) & {"<all>", "feedback", "attachment", "attachment_item"}
     if status != 200 or blocked:
         raise Failure(f"Sentry ingest did not accept the report (status {status}, limited {sorted(blocked)}).")
-    sent_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    accepted = time.monotonic()
     print(f"Sent synthetic report {report_id} as event {event_id}", file=out)
-    check = json.dumps({
-        "event_id": event_id, "report_id": report_id, "sent_at": sent_at,
-        "attachments": [{"name": name, "size": len(data), "sha256": hashlib.sha256(data).hexdigest()}
-                        for name, data in files.items()],
-    }).encode()
-    deadline = time.monotonic() + timeout_seconds
+    attachments = [{"name": name, "size": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+                   for name, data in files.items()]
+    deadline = accepted + timeout_seconds
     while True:
+        # Seconds since Sentry's 200, measured on this machine's monotonic clock.
+        check = json.dumps({"event_id": event_id, "report_id": report_id,
+                            "elapsed_seconds": int(time.monotonic() - accepted),
+                            "attachments": attachments}).encode()
         verify = urllib.request.Request(verifier, data=check, method="POST",
                                         headers={"Content-Type": "application/json"})
         try:
@@ -412,7 +469,8 @@ def smoke(verifier: str, dsn: str, out=sys.stdout, poll_seconds: float = 5, time
                 state = json.loads(response.read(4096)).get("state")
         except urllib.error.HTTPError as error:
             state = f"http {error.code}"
-        except (urllib.error.URLError, OSError, ValueError) as error:
+        except (urllib.error.URLError, ValueError, AttributeError, *NETWORK_ERRORS) as error:
+            # Any non-200 or non-JSON answer (including Vercel's own errors) means try later.
             state = f"unreachable ({type(error).__name__})"
         print(f"verifier: {state}", file=out)
         if state == "received":
@@ -442,6 +500,9 @@ def main(argv: list[str] | None = None, env: dict[str, str] | None = None, out=s
         return fetch(sentry, args.identifier, Path(args.directory), args.period, out)
     except Failure as failure:
         print(f"error: {failure}", file=sys.stderr)
+        return 1
+    except NETWORK_ERRORS as error:
+        print(f"error: the connection to Sentry failed ({type(error).__name__}); try again.", file=sys.stderr)
         return 1
 
 

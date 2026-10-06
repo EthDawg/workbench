@@ -9,6 +9,7 @@ import os
 import sys
 import tempfile
 import threading
+import time
 import unittest
 import uuid
 from contextlib import redirect_stderr
@@ -30,6 +31,7 @@ class FakeSentry:
         self.attachments: dict[str, list[dict]] = {}
         self.seen: list[tuple[str, str, str | None]] = []
         self.page_size = 100
+        self.storage_mode = "ok"  # or "truncated" / "slow"
         self.api = self._serve("api")
         self.storage = self._serve("storage")
 
@@ -43,12 +45,18 @@ class FakeSentry:
             def do_GET(self):
                 fake.seen.append((role, self.path, self.headers.get("Authorization")))
                 status, headers, body = fake.route(role, self.path, self.headers.get("Authorization"))
+                if role == "storage" and fake.storage_mode == "slow":
+                    time.sleep(1.0)
                 self.send_response(status)
                 for key, value in headers.items():
                     self.send_header(key, value)
+                truncated = role == "storage" and fake.storage_mode == "truncated"
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
-                self.wfile.write(body)
+                # A dropped connection: the declared length is never delivered.
+                self.wfile.write(body[:-50] if truncated else body)
+                if truncated:
+                    self.close_connection = True
 
         server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -112,7 +120,8 @@ class FakeSentry:
     def _json(body, headers=None):
         return 200, {"Content-Type": "application/json", **(headers or {})}, json.dumps(body).encode()
 
-    def add_report(self, *, tamper: bool = False, extra: str | None = None):
+    def add_report(self, *, tamper: bool = False, extra: str | None = None, copies: int = 1,
+                   upper_tag: bool = False):
         report_id = str(uuid.uuid4())
         event_id = uuid.uuid4().hex
         png, wav = os.urandom(5000), os.urandom(3000)
@@ -127,10 +136,11 @@ class FakeSentry:
         files = [("context.json", json.dumps(manifest).encode()), ("screenshot.png", png), ("voice.wav", wav)]
         if extra:
             files.append((extra, b"surprise"))
+        tag_value = report_id.upper() if upper_tag else report_id
         self.events[event_id] = {"eventID": event_id, "contexts": {"feedback": {"message": "The Snap window vanished"}},
-                                 "tags": [{"key": "report_id", "value": report_id}]}
-        self.attachments[event_id] = [{"id": str(abs(hash((event_id, name))) % 10**9), "name": name, "bytes": data}
-                                      for name, data in files]
+                                 "tags": [{"key": "report_id", "value": tag_value}]}
+        self.attachments[event_id] = [{"id": str(abs(hash((event_id, name, copy))) % 10**9), "name": name, "bytes": data}
+                                      for copy in range(copies) for name, data in files]
         return report_id, event_id
 
 
@@ -188,6 +198,50 @@ class FetchTests(unittest.TestCase):
         self.assertIn("unexpected attachment", out)
         self.assertFalse((Path(self.temp.name) / "escape.sh").exists())
         self.assertFalse((Path(self.temp.name) / f"workbench-report-{report_id}" / "escape.sh").exists())
+
+    def test_one_copy_per_name_is_downloaded(self):
+        report_id, event_id = self.fake.add_report(copies=4, upper_tag=True)
+        code, out, err = self.run_fetch(event_id)
+        self.assertEqual(code, 0, out + err)
+        self.assertEqual(len([1 for role, _, _ in self.fake.seen if role == "storage"]), 3)
+        self.assertTrue((Path(self.temp.name) / f"workbench-report-{report_id}").is_dir())
+
+    def test_duplicate_with_different_listed_size_is_a_problem(self):
+        _, event_id = self.fake.add_report(copies=2)
+        self.fake.attachments[event_id][-1]["bytes"] += b"x"
+        code, out, _ = self.run_fetch(event_id)
+        self.assertEqual(code, 2)
+        self.assertIn("a listed copy's size differs", out)
+
+    def test_non_ascii_digit_ids_are_not_downloaded(self):
+        _, event_id = self.fake.add_report()
+        self.fake.attachments[event_id].append({"id": "\u0661\u0662", "name": "voice.wav", "bytes": b"x"})
+        code, out, _ = self.run_fetch(event_id)
+        self.assertEqual(code, 2)
+        self.assertIn("unexpected attachment", out)
+        self.assertFalse(any("\u0661" in path for _, path, _ in self.fake.seen))
+
+    def test_interrupted_download_is_an_error_and_leaves_no_folder(self):
+        report_id, event_id = self.fake.add_report()
+        self.fake.storage_mode = "truncated"
+        code, out, err = self.run_fetch(event_id)
+        self.assertEqual(code, 1, out + err)
+        self.assertTrue(err.startswith("error: "), err)
+        self.assertNotIn("Traceback", err)
+        self.assertFalse((Path(self.temp.name) / f"workbench-report-{report_id}").exists())
+
+    def test_read_timeout_is_an_error_and_leaves_no_folder(self):
+        report_id, event_id = self.fake.add_report()
+        self.fake.storage_mode = "slow"
+        original = report_ops.TIMEOUT
+        report_ops.TIMEOUT = 0.3
+        try:
+            code, out, err = self.run_fetch(event_id)
+        finally:
+            report_ops.TIMEOUT = original
+        self.assertEqual(code, 1, out + err)
+        self.assertTrue(err.startswith("error: "), err)
+        self.assertFalse((Path(self.temp.name) / f"workbench-report-{report_id}").exists())
 
     def test_refuses_existing_folder_and_missing_token(self):
         report_id, event_id = self.fake.add_report()
@@ -277,7 +331,9 @@ class SmokeTests(unittest.TestCase):
         self.assertEqual(manifest["report_id"], event["tags"]["report_id"])
         check = self.checks[0]
         self.assertEqual(check["event_id"], event["event_id"])
-        self.assertIn("sent_at", check)
+        self.assertNotIn("sent_at", check)
+        self.assertIsInstance(check["elapsed_seconds"], int)
+        self.assertTrue(0 <= check["elapsed_seconds"] < 5)
         self.assertEqual({a["name"]: a["sha256"] for a in check["attachments"]},
                          {name: hashlib.sha256(data).hexdigest() for name, data in attachments.items()})
         self.assertEqual(len(self.checks), 3)
