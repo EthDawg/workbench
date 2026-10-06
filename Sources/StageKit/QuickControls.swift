@@ -56,7 +56,7 @@ struct QuickControlsView: View {
             Divider()
             Button { app.showDemoScenes() } label: {
                 HStack {
-                    Label("Demo scenes", systemImage: "iphone.and.landscape")
+                    Label("Demo scenes", systemImage: "iphone.landscape")
                     Spacer()
                     Text(settings.value.shortcut(for: .scenes).label).foregroundStyle(.secondary)
                 }

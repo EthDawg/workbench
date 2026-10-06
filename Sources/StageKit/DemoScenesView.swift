@@ -48,14 +48,19 @@ struct DemoScenesView: View {
             VStack(alignment: .leading, spacing: 14) {
                 VStack(alignment: .leading, spacing: 6) {
                     // Workbench's page title above names Present; this column is its scenes (#134).
-                    Label("Scenes", systemImage: "iphone.and.landscape").font(.body.weight(.semibold)).accessibilityAddTraits(.isHeader)
+                    Label("Scenes", systemImage: "iphone.landscape").font(.body.weight(.semibold)).accessibilityAddTraits(.isHeader)
                     Text("The clean background your phone appears in.").font(.callout).foregroundStyle(.secondary)
                 }
-                TextField("Find a customer or scene", text: $model.query).textFieldStyle(.roundedBorder)
-                    .accessibilityLabel("Find a scene")
+                // Search and the list's hint only mean something once there is a scene.
+                if !model.scenes.isEmpty {
+                    TextField("Search scenes", text: $model.query).textFieldStyle(.roundedBorder)
+                        .accessibilityLabel("Find a scene")
+                }
                 SceneList(model: model) { scenes in removalRequest = SceneRemovalRequest(scenes: scenes) }
-                Text(model.query.isEmpty ? "Double-click to rename · Drag to reorder" : "Clear search to reorder scenes")
-                    .font(.caption).foregroundStyle(.secondary)
+                if !model.scenes.isEmpty {
+                    Text(model.query.isEmpty ? "Double-click to rename · Drag to reorder" : "Clear search to reorder scenes")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 Menu {
                     Button("Choose a starter…") { choosingStarter = true }
                     Button("Choose a backdrop…") { model.importImage() }
@@ -178,7 +183,7 @@ struct DemoScenesView: View {
                     }.frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     VStack(spacing: 14) {
-                        Image(systemName: "iphone.and.landscape").font(.system(size: 48)).foregroundStyle(Workbench.accent)
+                        Image(systemName: "iphone.landscape").font(.system(size: 48)).foregroundStyle(Workbench.accent)
                         Text("Your phone, on a clean stage").font(.title2.weight(.semibold))
                         Text("Choose a backdrop, add your logo, plug in your phone and press Present.\nYour setup is saved for next time.")
                             .multilineTextAlignment(.center).foregroundStyle(.secondary)
@@ -194,6 +199,8 @@ struct DemoScenesView: View {
                         Spacer()
                         Button { model.notice = nil } label: { Image(systemName: "xmark") }.buttonStyle(.plain).accessibilityLabel("Dismiss notice")
                     }.font(.caption).padding(10).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 8))
+                        // On macOS 26 the surface matches the window, so a hairline draws the card.
+                        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1))
                 }
                 #if !APP_STORE
                 if model.hasDesktopSnapshot {

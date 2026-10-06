@@ -587,7 +587,7 @@ struct PhotoBackdropChooser: View {
                         }
                     }
                     if model.storageBlocked {
-                        ContentUnavailableView("Saved scenes need attention", systemImage: "exclamationmark.folder",
+                        ContentUnavailableView("Saved scenes need attention", systemImage: "folder.badge.questionmark",
                             description: Text("The scene library could not be read. Its original files are preserved. You can still save a separate copy of this photo."))
                     } else if model.scenes.isEmpty && preparedImage != nil {
                         Label("Your image stays unchanged. Creating a scene saves an independent copy.", systemImage: "photo.on.rectangle")

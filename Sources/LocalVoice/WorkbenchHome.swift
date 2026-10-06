@@ -201,7 +201,7 @@ struct WorkbenchHome: View {
                     openModels: { model.page = "models" },
                     prepareFollowUp: { id in handoffReview = HandoffReviewRequest(task: MeetingFollowUp.task, transcriptID: id) })
                 case "annotate": titled("annotate", summary: "Draw attention to what matters, right over your live demo.") { stage.controlsView }
-                case "present": titled("present", summary: "Your phone on a clean stage, for calls and demos.", divided: true) { PresentWorkspaceView(model: model, stage: stage) }
+                case "present": titled("present", summary: "Your phone on a clean stage, for calls and demos.") { PresentWorkspaceView(model: model, stage: stage) }
                 case "personas": stage.personasView(editProfile: { keyboard.stopInteraction(); showingProfile = true })
                 case _ where Self.destination(model.page).page == "library": library
                 case _ where Self.destination(model.page).page == "settings": settings

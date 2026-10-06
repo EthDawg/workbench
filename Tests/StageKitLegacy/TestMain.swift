@@ -645,6 +645,7 @@ struct TestRunner {
             ("phone capture: the page's preview outlives a brief cover", phoneCapture.testThePagesPreviewOutlivesABriefCover),
             ("phone capture: an unchanged answer is not republished", phoneCapture.testAnUnchangedAnswerIsNotRepublished),
             ("phone capture: the stage is wired before the page", phoneCapture.testTheStageIsWiredBeforeThePagesPreview),
+            ("every SF Symbol StageKit names exists", SymbolTests().testEverySymbolStageKitNamesExists),
             ("persona sessions: empty return and visible feedback", personaSessions.testEmptySetCanBeRevisitedAndLiveFailuresStayVisible),
             ("persona sessions: opt-in archive migration", personaSessions.testOptInMigrationBacksUpExactArchiveAndPreservesLegacyPlacement),
             ("persona sessions: independent placed copies", personaSessions.testTwoInstancesOwnIndependentGeometryVisibilityLockAndOrder),
