@@ -55,6 +55,9 @@ Sources: [iPhone dictation](https://support.apple.com/en-gb/guide/iphone/iph2c06
 - Each workspace puts content and its main transport first. Dictate settings holds delivery, text style, activation and dictionary. Voice & pace holds Read’s provider/voice controls. The source and online destination remain visible before recording or sending text.
 - Meetings proceeds from source and optional microphone to explicit Start, Stop & transcribe, then Review transcript in History. Microphone only is a valid complete source choice. Failed/cancelled processing retains recovery; a deleted result cannot leave a success link behind.
 - History owns completed results and handoff receipts. Library owns reusable prompts, skills, scenes, personas and imported resources. No duplicate result store is introduced.
+- A saved transcript opens in a complete read-only History review with Current text and Original wording. Home and Meetings use the same exact-record review. Copy current text is explicit; export follows the visible wording. More → Open in Dictate keeps its existing replacement decision.
+- History searches completed answer text, including earlier tasks grouped under a review. Read result exposes Copy result and Read aloud for the wording shown. Read aloud preserves an existing reading behind Keep current / Replace reading and waits for Listen. External result edits refresh on activation; unreadable output cannot be copied or imported. Passive reloads leave typing and independent work available, reject stale completion and preserve selection.
+
 - Closing a settings sheet or switching pages preserves drafts, active operations, prepared overlays and session identity. Primary actions never masquerade as navigation.
 
 The [interactive studies](experience/index.html) make named synthetic scenarios reproducible. Actual source renders and installed Preview checks are recorded separately.

@@ -1,11 +1,11 @@
 [
   {
-    "id": "LocalVoice.CaptureHistoryView.TranscriptHistoryRow.Button.open",
+    "id": "LocalVoice.CaptureHistoryView.TranscriptHistoryRow.Button.open-in-dictate",
     "surface": "history page",
-    "label": "Open",
+    "label": "Open in Dictate",
     "kind": "action",
     "belongsTo": "dictate",
-    "note": "Existing door, moved with the transcript row into History: opens the transcript on the Dictate page (Option of dictate; #134, #137)."
+    "note": "Quality (#137): the existing draft-replacement door is explicitly named and lives in More. Review transcript opens the full saved result inside History without replacing a draft."
   },
   {
     "id": "LocalVoice.CaptureHistoryView.TranscriptHistoryRow.Button.read-aloud",
@@ -312,6 +312,23 @@
     "kind": "action",
     "belongsTo": "history",
     "note": "Existing control moved from the Handoffs page onto History's task card: reviews an assistant's suggested details for the task's transcript over History. The host presents the review, so the doors check counts it (#137)."
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.HandoffResultPreview.Button.copy-result",
+    "surface": "history page",
+    "label": "Copy result",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Quality (#137): copies the exact reviewed result with the shared clipboard receipt, whose Review returns to this task. No paste or original edit."
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.HandoffResultPreview.Button.read-aloud",
+    "surface": "history page",
+    "label": "Read aloud",
+    "kind": "option",
+    "belongsTo": "read",
+    "aliasOf": "LocalVoice.CaptureHistoryView.TranscriptHistoryRow.Button.read-aloud",
+    "note": "Option of Read (#137): opens the exact reviewed assistant result through the existing reading import decision, preserving a different draft until Replace reading or Keep current. Playback never starts automatically."
   },
   {
     "id": "LocalVoice.HistorySelectionControls.HistorySelectionControls.Button.hand-off",

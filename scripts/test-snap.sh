@@ -30,5 +30,6 @@ swiftc -swift-version 5 -module-cache-path "$CHECK_DIR/ModuleCache" \
   "$PROJECT_DIR/Sources/LocalVoice/ReadbackResources.swift" \
   "$CHECK_DIR/ReadbackStore.swift" \
   "$PROJECT_DIR/Tests/SnapChecks/AppShellStubs.swift" \
+  "$PROJECT_DIR/Tests/SnapChecks/SnapRefreshChecks.swift" \
   "$PROJECT_DIR/Tests/SnapChecks/main.swift" -o "$CHECK_DIR/snap-checks"
 "$CHECK_DIR/snap-checks"

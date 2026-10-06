@@ -72,7 +72,7 @@ struct SnapWorkspaceView: View {
             if !model.problems.isEmpty {
                 DisclosureGroup("\(model.problems.count) Snap record\(model.problems.count == 1 ? " needs" : "s need") attention") {
                     ForEach(model.problems, id: \.self) { Text($0).font(.caption).textSelection(.enabled) }
-                    Button("Reload history") { model.refresh() }
+                    Button("Reload history") { model.requestRefresh() }
                 }.foregroundStyle(.orange)
             }
             if let notice = model.notice { Text(notice).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
@@ -113,8 +113,8 @@ struct SnapWorkspaceView: View {
                 SnapOrganizationView(model: model, selectedIDs: selectedIDs, savedSelectionID: savedSelectionID,
                     onHandOff: onOrganiseHandOff, onExclude: { ids in selectedIDs.subtract(ids) })
             }
-            .onAppear { model.refresh() }
-            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in model.refresh() }
+            .onAppear { model.requestRefresh() }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in model.requestRefresh() }
     }
 
     /// Region, Window and Screen need Screen Recording (#112). Everything already

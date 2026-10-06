@@ -67,6 +67,14 @@ Several Python checks in `scripts/` compile exact members of `AppModel.swift` an
 
 CI also keeps a `surface-gallery` artifact: `LocalVoice --render-surfaces DIR` draws the menu-bar panel in fixed states and the top of every Home page at the default and minimum window sizes, in light and dark, with an `index.html` listing each entry and where it leads. It uses synthetic data in a temporary home and never reads saved work, preferences or Keychain. It flags an entry whose route has no page and a page no entry opens. When you add a button or key that opens a page, add it to the catalogue in `Sources/LocalVoice/SurfaceGallery.swift`; the app menus are read from the menu bar itself. `scripts/check-surfaces.py` also fails an app menu item that opens a page under a name other than the page's own.
 
+For native History acceptance with synthetic content, quit both editions and run the installed signed Preview through the existing gallery's isolated home and preferences:
+
+```sh
+python3 scripts/history-acceptance.py --app "$HOME/Applications/Workbench Preview.app" --output .build/history-native-acceptance
+```
+
+Use a new output folder each time. This opens the production History and reading-replacement views with a long transcript, an assistant result and an inspector for unrelated drafts. The complete app shell and its device, credential and system-setting controls are excluded. No live saved data is replaced, no provider process runs and no new app identity is created. Use Copy build details in its app menu. `history-acceptance.json` names the synthetic result file for edit/removal checks; the fixture stays after quitting. This verifies these native views and actions, not live microphone, provider, global-shortcut or receiver behavior.
+
 ## Paused mobile development reference
 
 Mobile development and distribution are paused. These commands remain for maintaining historical work; they are not an invitation to extend the mobile release.

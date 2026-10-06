@@ -1321,7 +1321,8 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         catch { fail(error.localizedDescription) }
         return nil
     }
-    func exportCapture(_ item: Transcript, version: TranscriptExportVersion) {
+    /// Nil is a cancelled Save panel; the review can acknowledge only an actual result.
+    @discardableResult func exportCapture(_ item: Transcript, version: TranscriptExportVersion) -> Bool? {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.plainText]
         panel.nameFieldStringValue = TranscriptExport.defaultFilename
@@ -1329,13 +1330,15 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         panel.message = version == .original
             ? "Save the original recognised wording as a UTF-8 text file."
             : "Save the cleaned transcript as a UTF-8 text file."
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard panel.runModal() == .OK, let url = panel.url else { return nil }
         do {
             try TranscriptExport.write(item, version: version, to: url)
             attention = nil
             status = "\(version.rawValue) saved to \(url.lastPathComponent)."
+            return true
         } catch {
             report("Could not save this transcript. \(error.localizedDescription)", on: .history)
+            return false
         }
     }
 

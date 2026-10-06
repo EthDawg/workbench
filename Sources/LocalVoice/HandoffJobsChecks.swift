@@ -633,7 +633,7 @@ enum HandoffJobsChecks {
         let resultURL = doors.folder(madeFrom).appendingPathComponent("result.md")
         try HandoffJobStore.write(Data([0xFF, 0xFE, 0xFD]), to: resultURL)
         await doors.loadTaskFiles([madeFrom])
-        try check(doors.files(madeFrom)?.resultReadable == true && doors.result(madeFrom) == nil, "a result that is not UTF-8 text is not shown as text")
+        try check(doors.files(madeFrom)?.resultReadable == false && doors.result(madeFrom) == nil, "a result that is not UTF-8 text is not shown as text")
         doors.showResult(madeFrom)
         try check(doors.error?.hasPrefix("This task’s result can’t be opened") == true, "Open result reports a result that is not text instead of doing nothing")
         doors.error = nil
@@ -652,6 +652,7 @@ enum HandoffJobsChecks {
         try check(doors.inputImageURL(madeFrom, path: frozenImage) == nil && doors.files(madeFrom)?.inputs.items[1].images == [frozenImage]
                   && doors.files(madeFrom)?.imageBytes == nil && doors.files(madeFrom)?.imageURLs.isEmpty == true,
                   "a missing frozen image is unavailable while its input stays listed")
+        passed += try await HistoryResultReuseChecks.run(root: root.appendingPathComponent("Result reuse"))
         return ["HANDOFF_JOBS_CHECKS_OK: \(passed) checks"]
     }
 }
