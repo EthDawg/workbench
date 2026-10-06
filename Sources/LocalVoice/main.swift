@@ -5,6 +5,7 @@ import AVFoundation
 import Combine
 import StageKit
 import ToolbarCore
+import PresenterKit
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
@@ -226,19 +227,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             guard let self else { return false }
             return self.model.phase == .idle && !self.stage.isDrawing && !self.shortcutsSuspended && !self.readback.isRecording && !self.readback.isCapturing
         }
-        presenterPanel = PresenterPanelController(model: model.presenter, setup: { [weak self] in self?.navigate("library") })
-        model.onShowPresenter = { [weak self] in self?.showPresenter() }
-        model.presenter.mayActivate = { [weak self] in
-            guard let self else { return false }
-            return self.model.phase == .idle && !self.shortcutsSuspended && !self.readback.isRecording && !self.readback.isCapturing
-        }
-        model.library.switchBrowser = { [weak self] id in
-            self?.model.presenter.activate(id) { [weak self] reply in
-                if reply.ok != true { self?.showPresenter() }
+        if BrowserIntegration.isAvailable {
+            presenterPanel = PresenterPanelController(model: model.presenter, setup: { [weak self] in self?.navigate("library") })
+            model.onShowPresenter = { [weak self] in self?.showPresenter() }
+            model.presenter.mayActivate = { [weak self] in
+                guard let self else { return false }
+                return self.model.phase == .idle && !self.shortcutsSuspended && !self.readback.isRecording && !self.readback.isCapturing
             }
-        }
-        model.presenter.onSwitch = { [weak self] in
-            self?.stage.escape(); self?.presenterPanel.hide(); self?.closeControls(); self?.window.orderOut(nil)
+            model.library.switchBrowser = { [weak self] id in
+                self?.model.presenter.activate(id) { [weak self] reply in
+                    if reply.ok != true { self?.showPresenter() }
+                }
+            }
+            model.presenter.onSwitch = { [weak self] in
+                self?.stage.escape(); self?.presenterPanel.hide(); self?.closeControls(); self?.window.orderOut(nil)
+            }
         }
         popover = NSPopover(); popover.behavior = .transient; popover.animates = false; popover.delegate = self
         // These are the panel's doors: each starts its capability. Ending,
@@ -286,10 +289,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         model.onResetPanel = { [weak self] in self?.capturePanel.position(reset: true) }
         hotkeys.onKey = { [weak self] id, down, time in
-            guard let self else { return }
+            guard let self, VoicePreferences.shortcutIDs.contains(id) else { return }
             if id == 1 { self.model.shortcutChanged(down: down, at: time) }
             else if down, id == 3 { self.model.showLibrary() }
-            else if down, id == 4 { self.showPresenter() }
             else if down, id == 6 {
                 if self.model.rendering { self.model.cancelReading() }
                 else if self.model.playing || self.model.paused { self.model.listen() }
@@ -312,7 +314,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                     self.navigate("readback")
                 } else { Task { await self.readback.toggleCapture() } }
             }
-            else if down { self.toggleControls() }
+            else if down, id == 2 { self.toggleControls() }
         }
         readback.onStateChange = { [weak self] in
             guard let self else { return }
@@ -448,7 +450,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         menu.addItem(withTitle: Self.floatingToolbarTitle(visible: model.floatingToolbarVisible), action: #selector(toggleFloatingToolbar), keyEquivalent: "")
         menu.addItem(withTitle: "Focus floating toolbar", action: #selector(focusFloatingToolbar), keyEquivalent: "")
         menu.addItem(withTitle: "Restore menu-bar icon", action: #selector(restoreMenuBarIcon), keyEquivalent: "")
-        menu.addItem(withTitle: "Switch to…", action: #selector(showPresenter), keyEquivalent: "")
         menu.addItem(.separator())
         // Every sidebar page, in the sidebar's order and by its name, so the Window menu's doors never
         // differ from the window's own list (#134).
@@ -629,7 +630,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     @objc func copyBuildDetails() { WorkbenchUpdates.shared.copyDetails() }
     @objc func showSettings() { model.page = "settings"; showWindow() }
     @objc func showPresenter() {
-        guard model.phase == .idle, !shortcutsSuspended else { return }
+        guard BrowserIntegration.isAvailable, model.phase == .idle, !shortcutsSuspended else { return }
         stage.escape(); closeControls(); presenterPanel.show()
     }
     @objc func showWindow() { closeControls(); if window.isMiniaturized { window.deminiaturize(nil) }; window.makeKeyAndOrderFront(nil); statusItem?.isVisible = true; NSApp.activate(ignoringOtherApps: true) }
@@ -682,6 +683,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
     /// The voice catalogue's titles, one per id in `VoicePreferences.shortcutIDs`.
     static let voiceShortcutCatalogue: [(UInt32, String)] = [(1, "Dictate"), (2, "Quick controls"), (3, "Library"), (4, "Switch to"), (5, "Snap & Talk"), (6, "Read"), (7, "Present"), (8, "Snap")]
+        .filter { VoicePreferences.shortcutIDs.contains($0.0) }
     func voiceShortcutEntries() -> [ShortcutEntry] {
         Self.voiceShortcutCatalogue.map { id, title in
             ShortcutEntry(id: "voice.\(id)", title: title, shortcut: model.preferences.shortcut(id), error: model.shortcutFailures[id])
@@ -915,13 +917,7 @@ func runCLI(_ args: [String]) async -> Int32 {
     } catch { fputs("Local Voice: \(error.localizedDescription)\n", stderr); return 1 }
 }
 
-if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--presenter-fixture", CommandLine.arguments[2].hasPrefix("/tmp/wb-presenter-fixture-") {
-    MainActor.assumeIsolated {
-        let app = NSApplication.shared; app.setActivationPolicy(.regular)
-        let delegate = PresenterFixtureDelegate(root: URL(fileURLWithPath: CommandLine.arguments[2]))
-        app.delegate = delegate; app.run()
-    }
-} else if CommandLine.arguments.count > 1, CommandLine.arguments[1] == SurfaceGallery.passFlag {
+if CommandLine.arguments.count > 1, CommandLine.arguments[1] == SurfaceGallery.passFlag {
     // An isolated pass started by --render-surfaces. It waits on the main run loop for SwiftUI,
     // so it runs here rather than inside a main-queue job.
     MainActor.assumeIsolated { exit(SurfaceGallery.runPass(Array(CommandLine.arguments.dropFirst(2)))) }

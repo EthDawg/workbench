@@ -14,6 +14,7 @@ enum DemoLibraryReturnPolicy {
 struct DemoLibraryView: View {
     @ObservedObject var library: DemoLibraryModel
     @ObservedObject var model: AppModel
+    var browserDefaults: UserDefaults = .standard
     var onUseImageInPresent: ((DemoLibraryImageSnapshot) -> Void)? = nil
     var onUseImageInPersona: ((DemoLibraryImageSnapshot) -> Void)? = nil
     @FocusState private var searching: Bool
@@ -23,9 +24,12 @@ struct DemoLibraryView: View {
     /// From iPhone beside it.
     var body: some View { resources }
 
+    private var savedBrowserSettings: SavedBrowserSettings {
+        SavedBrowserSettings(resources: library.resources, defaults: browserDefaults)
+    }
+
     private var resources: some View {
         VStack(alignment: .leading, spacing: 16) {
-            ChromeConnectionView(presenter: model.presenter)
             HStack(alignment: .firstTextBaseline) {
                 // Library's title and switcher name this section, so it opens on its summary (#134).
                 Text("Find a prompt, video, deck, or demo link by product or persona.").foregroundStyle(.secondary)
@@ -90,6 +94,12 @@ struct DemoLibraryView: View {
                 Menu {
                     Button("Import library…") { library.importLibrary() }.disabled(library.savingDisabled || library.draft != nil || library.importReview != nil)
                     Button("Export library…") { library.exportLibrary() }.disabled(library.resources.isEmpty)
+                    if savedBrowserSettings.hasSavedSettings {
+                        Divider()
+                        Text("Browser switching is paused")
+                        if let summary = savedBrowserSettings.shortcutSummary { Text(summary) }
+                        Button("Export saved browser settings…") { library.exportSavedBrowserSettings(savedBrowserSettings) }
+                    }
                 } label: { Label("More", systemImage: "ellipsis.circle") }.fixedSize().font(.caption)
                     .accessibilityLabel("More library actions")
             }
@@ -199,8 +209,11 @@ struct DemoLibraryView: View {
             } else {
                 if let target = item.browserTarget {
                     Label("Chrome · \(target.profileName)", systemImage: "arrow.up.forward.app").font(.caption).foregroundStyle(.secondary)
-                    Button("Use default browser instead") { var copy = item; copy.browserTarget = nil; _ = library.save(copy) }
-                        .font(.caption).disabled(library.savingDisabled)
+                    Text("Browser switching is paused. The saved profile is kept; opening this link uses your default browser and may use a different profile.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    if let summary = savedBrowserSettings.shortcutSummary {
+                        Text(summary).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                    }
                 }
                 ScrollView { Text(item.content).font(.system(size: 13)).lineSpacing(4).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
                     .frame(maxHeight: .infinity)

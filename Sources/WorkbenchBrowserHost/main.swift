@@ -6,6 +6,7 @@ import PresenterKit
 // Chrome owns launching/stopping this process. Never print URLs or payloads.
 signal(SIGPIPE, SIG_IGN)
 guard PresenterWire.acceptsExtensionOrigin(CommandLine.arguments.dropFirst().first) else { exit(1) }
+guard BrowserIntegration.isAvailable else { exit(1) }
 do {
     let preview = Bundle.main.bundleIdentifier?.hasSuffix(".preview") == true
     let fd = try PresenterSocket.connect(to: PresenterSocket.path(preview: preview))

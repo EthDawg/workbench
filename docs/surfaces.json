@@ -678,15 +678,6 @@
     "aliasOf": "present"
   },
   {
-    "id": "LocalVoice.PresentWorkspaceView.PresentWorkspaceView.Button.switch-to-browser-tab",
-    "surface": "Present workspace",
-    "label": "Switch to Browser Tab…",
-    "kind": "action",
-    "belongsTo": "present",
-    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
-    "aliasOf": "present"
-  },
-  {
     "id": "LocalVoice.PromptPicker.PromptPickerView.Button.open-library",
     "surface": "Saved Prompts picker",
     "label": "Open Library…",
@@ -1524,7 +1515,7 @@
     "page": "library",
     "kind": "option",
     "belongsTo": "library",
-    "note": "Quality: Library opens on Resources, the saved prompts, links and files it showed before its fold, now named by its switcher (#134)."
+    "note": "Quality: Library opens on Resources, the saved prompts, links and files it showed before its fold, now named by its switcher (#134). Browser switching is paused (#283); the within-page More menu conditionally exports saved browser settings and labels the saved shortcut inactive. It cannot import, enable or start browser integration."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.section.models",
@@ -2301,13 +2292,6 @@
     "belongsTo": "app"
   },
   {
-    "id": "LocalVoice.main.AppDelegate.addItem.switch-to",
-    "surface": "app menu bar",
-    "label": "Switch to…",
-    "kind": "action",
-    "belongsTo": "present"
-  },
-  {
     "id": "LocalVoice.main.AppDelegate.addItem.undo",
     "surface": "app menu bar",
     "label": "Undo",
@@ -2407,7 +2391,7 @@
     "page": "present",
     "kind": "action",
     "belongsTo": "present",
-    "note": "Quality: Window lists every sidebar page in the sidebar's order, named by the page record (#134; 1 Oct). Switch to… stays the presenter's own door."
+    "note": "Quality: Window lists every sidebar page in the sidebar's order, named by the page record (#134; 1 Oct). Browser switching is paused under #283."
   },
   {
     "id": "LocalVoice.main.AppDelegate.page-item.readback",

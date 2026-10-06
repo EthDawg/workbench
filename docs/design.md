@@ -259,8 +259,14 @@ chooser’s footer opens the selected workspace and does not follow hover.
 `StageKitController.PersonaCycle` reads the frozen live deck or prepared sets.
 `PersonaLiveSettings` binds the active generation and selected live copy, while
 `DemoPresentation.LiveSettings` belongs to the running presenter, independently of
-saved-scene selection. `PresentWorkspaceView` reuses the existing prompt picker
-and browser-switch owner. `ToolbarSettingsView` observes `CaptureHUDControls` and
+saved-scene selection. `PresentWorkspaceView` reuses the existing prompt picker.
+Browser switching is paused by `BrowserIntegration.isAvailable` in `PresenterKit`:
+the app and native host refuse runtime admission, the active shortcut list excludes
+stored id 4, and Library opens bound links normally without clearing their metadata.
+`SavedBrowserSettings` reads only the raw saved browser fields for Library's conditional
+recovery export. It does not load/migrate preferences or participate in portable Library import.
+Only the retained protocol check can start a disposable socket; the former interactive
+presenter fixture is no longer a launch route. `ToolbarSettingsView` observes `CaptureHUDControls` and
 its existing reducer for Keep open and placement; no parallel setting is stored.
 The actual layout and routing rules are in [the toolbar contract](floating-toolbar.md).
 

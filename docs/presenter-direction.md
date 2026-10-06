@@ -1,6 +1,6 @@
 # Presenter direction: return to the right place
 
-> **Paused — 24 September 2026.** Chrome extension development and distribution work are paused until the Mac experience meets the release quality bar. The adapter source, setup procedure and historical evidence remain available for reference; they are not an active Chrome release or testing invitation. This pause does not remove the Mac Library, persona overlays or [connected-phone presentation guidance](phone-presenting.md).
+> **Pause enforced in source — 6 October 2026, Foundation G (#283).** The Mac app and native host reject browser startup and commands, including saved enabled state. Switch to, its active shortcuts and Chrome setup are removed. Library keeps URLs/profile metadata and offers Copy link or explicit Open in default browser without changing the binding. Library → More conditionally exposes the inactive saved shortcut and Export saved browser settings… for old connection, bound-link or custom-shortcut state; its readable JSON cannot import or enable browser switching. Existing browser profiles, extensions and preference values are retained. New Mac bundles omit extension installation/store material. See [verification](verification/2026-10-06-browser-pause/README.md) for source checks and remaining installed acceptance. The following design, setup and release evidence is historical; it is not a resumption invitation.
 
 The selected increment is **Switch to**: save a named demo tab in its Chrome profile, then return to it from the browser or Workbench’s native picker. “Manager” should bring forward the prepared Manager tab while the presenter moves between browser, slides, a native app and a mirrored phone. Workbench activates the destination; it does not certify the signed-in account or control the phone.
 
@@ -29,7 +29,7 @@ Frequency/pain, improvement over today and live-demo reliability carry the most 
 
 Native application activation and exact-window selection differ: [NSWorkspace](https://developer.apple.com/documentation/AppKit/NSWorkspace) opens apps, while arbitrary exact-window targeting needs [Accessibility actions](https://developer.apple.com/documentation/applicationservices/1462091-axuielementperformaction) and new failure/permission handling. Chrome’s own [tabs](https://developer.chrome.com/docs/extensions/reference/api/tabs) and [windows](https://developer.chrome.com/docs/extensions/reference/api/windows) APIs provide better evidence for this first target. The user can invoke Switch to while an emulator or mirrored phone is in front; restoring their internal state is separate. [Android snapshots](https://developer.android.com/studio/run/emulator-snapshots) and [iPhone Mirroring](https://support.apple.com/guide/personal-safety/manage-iphone-mirroring-on-your-iphone-or-mac-ips70daa1bcf/1.0/web/1.0) retain their own lifecycle limits.
 
-## Use it
+## Historical use before the pause
 
 1. In the built Mac app, open **Library → Chrome destinations → Enable Chrome connection**. This registers the bundled host for the current user and selected Workbench edition.
 2. Choose **Show Chrome extension**. In each participating Chrome profile, open `chrome://extensions`, enable Developer mode and **Load unpacked** with that folder. Pin Workbench if desired. This local distribution is not a Chrome Web Store release.

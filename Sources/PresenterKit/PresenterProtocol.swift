@@ -1,5 +1,12 @@
 import Foundation
 
+/// Foundation G pauses the product, independently of any saved connection preference.
+/// Retained protocol/source compatibility is not permission to resume browser switching.
+public enum BrowserIntegration {
+    public static let isAvailable = false
+    public static let pausedMessage = "Browser switching is paused. Copy the saved link or open it in your default browser."
+}
+
 /// A machine-local attachment to an existing saved resource. Never exported.
 public struct BrowserTarget: Codable, Equatable, Sendable {
     public var profileID: UUID
@@ -125,7 +132,7 @@ public enum PresenterError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .invalidMessage: "The Chrome connection sent an unsupported message. Update Workbench and its extension."
-        case .unavailable: "Open Workbench and enable Chrome connection in Library, then Retry."
+        case .unavailable: BrowserIntegration.pausedMessage
         case .unsafePath: "Workbench could not create its private Chrome connection. Restart Workbench or choose Retry."
         case .disconnected: "The Chrome connection closed. Open that profile and choose Retry."
         }
