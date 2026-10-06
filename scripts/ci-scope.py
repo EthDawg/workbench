@@ -56,8 +56,9 @@ def native_required(base, head, event="pull_request", labels=(), queue_verified=
     pull_request: not by default. The merge queue tests every group with current
     main before it lands, so a push run would test the same code twice on the five
     shared macOS runners. The label ci:native asks for a native run on the PR itself.
-    merge_group: native unless the group's complete diff is documentation or site
-    content that the always-run Site job validates.
+    merge_group: native unless the group's complete diff is documentation, site
+    content or the report verifier, which the always-run Site and Report check jobs
+    validate.
     push: reuse a verified successful queue run for this exact commit; otherwise
     classify the diff, including administrator bypasses and rewrites.
     workflow_dispatch and unknown events: native, always.
@@ -77,12 +78,14 @@ def native_required(base, head, event="pull_request", labels=(), queue_verified=
         ]).split(b"\0")[:-1]
     except subprocess.CalledProcessError:
         return True
-    # These paths are documentation or are validated by the always-run Site job.
-    # Do not exempt Markdown globally: Resources and BrowserExtension are packaged.
+    # These paths are documentation or are validated by the always-run Site and
+    # Report check jobs. Do not exempt Markdown globally: Resources and
+    # BrowserExtension are packaged.
     exact = {b"AGENTS.md", b"README.md", b"CONTRIBUTING.md", b"SECURITY.md",
              b"CODE_OF_CONDUCT.md", b"LICENSE", b"docs/surfaces.json"}
+    prefixes = (b"site/", b"services/report-check/")
     return not changed or any(
-        path not in exact and not path.startswith(b"site/")
+        path not in exact and not path.startswith(prefixes)
         and not (path.startswith(b"docs/") and path.endswith(b".md"))
         for path in changed
     )

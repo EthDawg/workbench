@@ -18,6 +18,8 @@ The brief's dated decisions supersede older proposals for the same work, includi
 
 The brief defines the Home/page hierarchy, explicit retirement exceptions and artifact-bound journey acceptance. It leaves layout and code factoring flexible within those outcomes. [Issue #7](https://github.com/Ship-Work/workbench/issues/7) remains the programme gate; [#276](https://github.com/Ship-Work/workbench/issues/276) retains Present implementation ownership. Update the owning capability contract as a change lands. A surface-registry update or fixture render alone cannot close native acceptance.
 
+The [Report a problem build brief](bug-reporting.md) is the decided support-quality exception: one Help/error-recovery action, a private recoverable outbox and automatic intake for reviewed reports from ordinary production users. It adds no top-level tool or captured-work library. [Issue #296](https://github.com/Ship-Work/workbench/issues/296) owns implementation; provider, installed and release acceptance remain outstanding. The brief does not change current privacy promises or claim an available Send action.
+
 ### Value before scope
 
 Build upward from dependable foundations: preserved work and truthful lifecycle; useful individual tools; complete connected jobs; easy reuse; then optional delight. A higher layer may not conceal an unfinished lower layer. Delight usually comes from fewer steps, good defaults and graceful recovery; decoration must earn its maintenance cost after those work.
