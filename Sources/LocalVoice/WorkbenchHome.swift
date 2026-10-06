@@ -199,7 +199,6 @@ struct WorkbenchHome: View {
                     openHistory: { id in model.openHistory(id.map { HistoryDoor(transcript: $0) } ?? HistoryDoor(filter: .transcripts)) },
                     copyTranscript: model.copyMeetingTranscript,
                     openModels: { model.page = "models" },
-                    openMicrophoneSettings: model.openMicrophoneSettings,
                     prepareFollowUp: { id in handoffReview = HandoffReviewRequest(task: MeetingFollowUp.task, transcriptID: id) })
                 case "annotate": titled("annotate", summary: "Draw attention to what matters, right over your live demo.") { stage.controlsView }
                 case "present": titled("present", summary: "Show a device in a saved scene, with your backdrop and branding.", divided: true) { PresentWorkspaceView(model: model, stage: stage) }

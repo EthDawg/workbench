@@ -229,7 +229,7 @@ final class AppModel: NSObject, ObservableObject {
             Task { await engine.observe { state in Task { @MainActor in sink.model?.acceptRecognition(state) } } }
         }
         photoHandoffActivation = NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
-            .sink { [weak self] _ in self?.refreshPhotoHandoffIfEnabled(); self?.refreshMicrophoneAuthorization() }
+            .sink { [weak self] _ in self?.refreshPhotoHandoffIfEnabled(); self?.refreshMicrophoneAuthorization(); self?.meetings.refreshAdmission() }
         refreshPhotoHandoffIfEnabled()
         var savedUndelivered: UnresolvedDelivery?
         var loadedDraftRevision = draftRevision
@@ -1145,6 +1145,9 @@ final class AppModel: NSObject, ObservableObject {
     }
     func retainMeetingTranscript(_ capture: Transcript, purpose: String) throws {
         guard loaded else { throw VoiceError.message("The transcript library is not ready.") }
+        // A failed final meeting-journal write can follow a successful History
+        // commit. That retry may not replace later edits or their saved metadata.
+        if try savedMeetingTranscript(capture.id) != nil { return }
         let next = TranscriptHistory.adding(capture, to: history)
         // Save metadata first: if history saving fails the meeting's durable
         // journal retains this same UUID for a safe retry.
@@ -1157,6 +1160,11 @@ final class AppModel: NSObject, ObservableObject {
         history = next
         status = "Meeting saved in History."
         onPhaseChange?()
+    }
+    func savedMeetingTranscript(_ id: UUID) throws -> (transcript: Transcript, notes: [String])? {
+        guard let saved = try store.load().history.first(where: { $0.id == id }) else { return nil }
+        let metadata = try historyLibrary.store.load().transcripts.first { $0.id == id }?.metadata
+        return (saved, metadata?.captureNotes ?? [])
     }
     func selectedHandoffSources(references: Set<WorkbenchItemReference>? = nil) throws -> [HandoffSourceSnapshot] {
         try Self.handoffSources(selected: references ?? historyLibrary.selected, history: history,

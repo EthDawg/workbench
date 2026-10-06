@@ -457,6 +457,14 @@
     "note": "Quality: was Cancel, which kept the audio. Stop processing is the page's own word for the same action (1 Oct)."
   },
   {
+    "id": "LocalVoice.MeetingWorkspaceView.MeetingWorkspaceView.Button.audio-recording-settings",
+    "surface": "meeting page",
+    "label": "Audio Recording Settings…",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Contextual recovery only for the documented Core Audio permission refusal. The existing Meetings owner checks the Settings-open result; arbitrary OSStatus errors do not infer permission denial."
+  },
+  {
     "id": "LocalVoice.MeetingWorkspaceView.MeetingWorkspaceView.Button.copy-transcript",
     "surface": "meeting page",
     "label": "Copy transcript",

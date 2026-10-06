@@ -58,8 +58,6 @@ struct MeetingWorkspaceView: View {
     var copyTranscript: (UUID) -> String? = { _ in "The transcript library is unavailable. Nothing was copied." }
     /// Where the speech engine is chosen and downloaded: Settings › Models.
     var openModels: () -> Void = {}
-    /// The door to the microphone's System Settings pane, from the host.
-    var openMicrophoneSettings: () -> Void = {}
     var prepareFollowUp: (UUID) -> Void = { _ in }
     @State private var showingOptions = false
     @State private var showingSources = false
@@ -80,7 +78,7 @@ struct MeetingWorkspaceView: View {
                             .font(.system(size: 26)).foregroundStyle(model.isRecording && model.voiceSession.phase != .paused ? .red : Workbench.accent)
                             .frame(width: 48, height: 48).accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(showsCompletedResult ? "Transcript saved" : model.isRecording ? model.voiceSession.recordingTitle : model.isProcessing ? "Finishing transcript" : model.isStarting ? "Starting recording" : "Ready to record")
+                            Text(showsCompletedResult ? "Transcript saved" : model.isRecording ? model.voiceSession.recordingTitle : model.isProcessing ? "Finishing transcript" : model.isStarting ? "Starting recording" : model.admission.title)
                                 .font(.title3.weight(.semibold))
                             Text(showsCompletedResult ? "Copy the complete transcript to use it in your next task." : model.isRecording ? time(model.elapsed) : model.isProcessing ? "Your original audio is kept while this finishes." : "Start once. Follow the words as the conversation happens.")
                                 .font(.callout).foregroundStyle(.secondary).monospacedDigit()
@@ -157,19 +155,34 @@ struct MeetingWorkspaceView: View {
                 }.padding(22).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 16))
                     .accessibilityIdentifier("meeting.recording")
 
-                if let error = model.error {
+                if let problem = model.problem ?? (model.isBusy ? nil : model.admission.captureProblem) {
                     HStack(alignment: .top, spacing: 10) {
                         Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange).accessibilityHidden(true)
-                        Text(error).font(.callout).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                        Text(problem.message).font(.callout).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                         Spacer()
-                        // Only beside the microphone refusal itself: the Mac's microphone setting
-                        // says nothing about which problem this is.
-                        if error == MeetingModel.microphoneRefused {
-                            Button("Microphone Settings…", action: openMicrophoneSettings).controlSize(.small)
-                                .help("Open Privacy & Security › Microphone in System Settings")
+                        VStack(alignment: .trailing, spacing: 8) {
+                            if problem.opensMicrophoneSettings {
+                                Button("Microphone Settings…", action: model.openMicrophoneSettings).controlSize(.small)
+                                    .help("Open Privacy & Security › Microphone in System Settings")
+                            }
+                            if problem.opensAudioSettings {
+                                Button("Audio Recording Settings…", action: model.openAudioRecordingSettings).controlSize(.small)
+                            }
+                            if [.microphoneDenied, .microphoneRestricted, .microphoneUnconfirmed].contains(problem), model.canUseAppAudioOnly {
+                                Button("Use app audio only", action: model.useAppAudioOnly).controlSize(.small).disabled(model.isBusy)
+                            }
+                            if model.selectedAppID != nil {
+                                switch problem {
+                                case .appAudioUnavailable, .appAudioPermission, .appAudioUnknown, .sourceProbe, .sourceDisappeared:
+                                    Button("Use microphone only", action: model.useMicrophoneOnly).controlSize(.small).disabled(model.isBusy)
+                                default: EmptyView()
+                                }
+                            }
                         }
-                        Button { model.dismissError() } label: { Image(systemName: "xmark") }
-                            .buttonStyle(.plain).accessibilityLabel("Dismiss meeting problem")
+                        if model.problem != nil {
+                            Button { model.dismissError() } label: { Image(systemName: "xmark") }
+                                .buttonStyle(.plain).accessibilityLabel("Dismiss meeting problem")
+                        }
                     }.padding(14).background(Color.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
                 }
                 if !model.isBusy, let kept = model.keptWithoutSpeech {
@@ -210,6 +223,7 @@ struct MeetingWorkspaceView: View {
             }.padding(Workbench.pagePadding).frame(maxWidth: 960, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
         }.onAppear { if !model.isBusy { model.refreshApps() } }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in model.refreshAdmission() }
             .onChange(of: model.completedTranscriptID) { value in
                 copyFeedback.finish(nil)
                 if value != nil { showingNewRecording = false }
@@ -267,10 +281,18 @@ struct MeetingWorkspaceView: View {
                         Text(Self.title(entry)).font(.callout.weight(.medium))
                         Text(entry.manifest.map(Self.detail) ?? entry.problem ?? "This recording could not be read.")
                             .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        if entry.canSaveTranscript {
+                            Text("Complete text is ready to save; no model or microphone is needed.").font(.caption).foregroundStyle(.secondary)
+                        }
+                        if entry.checkpoint?.originalsAvailable == false {
+                            Text(entry.canSaveTranscript ? "Original audio is missing; playback and retranscription are unavailable." : "Original audio is missing. The incomplete checkpoint is kept for review.")
+                                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                     Spacer()
                     if entry.isReadable {
-                        Button("Transcribe") { Task { await model.retry(entry) } }.disabled(model.isBusy)
+                        Button(entry.canSaveTranscript ? "Save transcript" : "Transcribe") { Task { await model.retry(entry) } }
+                            .disabled(model.isBusy || (!entry.canSaveTranscript && (model.admission.recognitionProblem != nil || entry.checkpoint?.originalsAvailable == false)))
                     }
                     Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([entry.session]) }
                     Button("Move to Trash") { Task { await model.moveRecordingToTrash(entry.session) } }.disabled(model.isBusy)
@@ -313,7 +335,7 @@ struct MeetingWorkspaceView: View {
                     else { await model.start() }
                 }
             } label: { Label("Start recording", systemImage: "record.circle") }
-                .buttonStyle(.borderedProminent).disabled(!model.includeMicrophone && model.selectedAppID == nil && model.offer == nil)
+                .buttonStyle(.borderedProminent).disabled(!model.admission.canStart)
                 .accessibilityIdentifier("meeting.start")
         }
     }

@@ -1,12 +1,26 @@
 import AVFoundation
+import CryptoKit
 import Foundation
 
-struct MeetingRecoveryEntry: Identifiable {
+struct MeetingRecoveryEntry: Identifiable, Sendable {
     var session: URL
     var manifest: MeetingManifest?
     var problem: String?
+    var checkpoint: MeetingRecoveryCheckpoint?
     var id: String { session.lastPathComponent }
     var isReadable: Bool { manifest != nil }
+    var canSaveTranscript: Bool { checkpoint?.text != nil }
+}
+
+/// A reviewed snapshot of existing journal bytes, not another persistent store.
+struct MeetingRecoveryCheckpoint: Sendable {
+    var manifest: MeetingManifest
+    var manifestDigest: Data
+    var liveDigest: Data?
+    var text: String?
+    var conversation: String?
+    var originalsAvailable: Bool
+    func matches(_ other: Self) -> Bool { manifestDigest == other.manifestDigest && liveDigest == other.liveDigest }
 }
 
 enum MeetingRecovery {
@@ -14,12 +28,48 @@ enum MeetingRecovery {
     static func scan(root: URL) -> [MeetingRecoveryEntry] {
         MeetingStore.sessions(in: root).compactMap { session in
             do {
-                let manifest = try MeetingStore.load(from: session)
-                guard manifest.needsRecovery else { return nil }
-                return MeetingRecoveryEntry(session: session, manifest: manifest)
+                let entry = try inspect(session: session)
+                guard entry.manifest?.needsRecovery == true else { return nil }
+                return entry
             } catch {
                 return MeetingRecoveryEntry(session: session, manifest: nil, problem: error.localizedDescription)
             }
+        }
+    }
+
+    static func inspect(session: URL) throws -> MeetingRecoveryEntry {
+        let saved = try MeetingStore.loadCheckpoint(from: session), manifest = saved.manifest
+        var checkpoint = MeetingRecoveryCheckpoint(manifest: manifest, manifestDigest: Data(SHA256.hash(data: saved.bytes)),
+            text: manifest.isFullyRecognized ? manifest.recognizedText : nil, originalsAvailable: !manifest.tracks.isEmpty)
+        for track in manifest.tracks {
+            let url = try MeetingStore.safeURL(session: session, relative: track.file)
+            if (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) != true { checkpoint.originalsAvailable = false }
+        }
+        // An interrupted capture may have durable tracks before its manifest
+        // records them. The existing processor still owns rebuilding timing.
+        if manifest.tracks.isEmpty {
+            checkpoint.originalsAvailable = try [MeetingTrackSource.local, .remote].contains { source in
+                let url = try MeetingStore.safeURL(session: session, relative: "tracks/\(source.rawValue).caf")
+                return (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
+            }
+        }
+        let liveURL = try MeetingStore.safeURL(session: session, relative: "live-transcript.json")
+        if let live = try? LiveVoiceJournal.load(from: liveURL, sessionID: manifest.id),
+           let bytes = try? Data(contentsOf: liveURL), bytes.count <= 16 * 1024 * 1024,
+           (try? JSONDecoder().decode(LiveVoiceCheckpoint.self, from: bytes)) == live {
+            checkpoint.liveDigest = Data(SHA256.hash(data: bytes))
+            if complete(live, for: manifest) {
+                checkpoint.text = live.text
+                if manifest.includesMicrophone && manifest.includesRemote { checkpoint.conversation = live.conversation }
+            }
+        }
+        return MeetingRecoveryEntry(session: session, manifest: manifest, checkpoint: checkpoint)
+    }
+
+    static func complete(_ live: LiveVoiceCheckpoint, for manifest: MeetingManifest) -> Bool {
+        manifest.hasValidTimeline && live.complete && manifest.tracks.allSatisfy { track in
+            let source: LiveVoiceSource = track.source == .local ? .microphone : .app
+            return abs((live.completedThrough[source.rawValue] ?? -1) - (track.startSeconds + track.seconds)) < 0.001
         }
     }
 
@@ -107,46 +157,46 @@ struct MeetingProcessor {
         var notes: [String]
     }
 
-    func run() async throws -> Outcome {
+    enum Intent { case recognize, commitOnly(MeetingRecoveryCheckpoint) }
+
+    func run(intent: Intent = .recognize) async throws -> Outcome {
         let session = session
-        var manifest = try await MeetingFileWork.run { try MeetingStore.load(from: session) }
+        let entry = try await MeetingFileWork.run { try MeetingRecovery.inspect(session: session) }
         try check()
+        guard let current = entry.checkpoint else { throw MeetingProblem.checkpoint("The saved checkpoint could not be reviewed. Its files were kept.") }
+        var manifest = current.manifest
+        if case .commitOnly(let selected) = intent {
+            guard selected.matches(current), current.text != nil else {
+                throw MeetingProblem.checkpoint("The selected transcript checkpoint changed or is incomplete. Review the recording again; no recognition or save was started.")
+            }
+            return try await commitCheckpoint(current)
+        }
         if manifest.state == .committed {
             return Outcome(manifest: manifest, committed: true, notes: notes(manifest))
         }
+        if current.text != nil { return try await commitCheckpoint(current) }
         if manifest.state == .recording || manifest.tracks.isEmpty {
             let previous = manifest
             manifest = try await MeetingFileWork.run { try MeetingRecovery.rebuildTracks(session: session, manifest: previous) }
             try check()
         }
         guard manifest.seconds > 0, !manifest.tracks.isEmpty else {
-            throw MeetingError.message("No readable audio was recorded. Nothing was added to History; the session folder was kept.")
+            throw MeetingProblem.noSamples
+        }
+        guard manifest.hasValidTimeline else {
+            throw MeetingProblem.checkpoint("The recording duration does not match its full source timeline or exceeds two hours. Its files were kept; no partial transcript was saved.")
         }
         // Completed live checkpoints avoid replaying a whole meeting at Stop. An incomplete,
         // stale or damaged checkpoint can never replace recognition of the saved originals.
         let liveURL = try MeetingStore.safeURL(session: session, relative: "live-transcript.json")
-        if let live = try? LiveVoiceJournal.load(from: liveURL, sessionID: manifest.id), live.complete,
-           manifest.tracks.allSatisfy({ track in
-               let source: LiveVoiceSource = track.source == .local ? .microphone : .app
-               return abs((live.completedThrough[source.rawValue] ?? -1) - (track.startSeconds + track.seconds)) < 0.25
-           }) {
-            let text = live.text
-            if text.isEmpty {
-                var next = manifest; next.state = .recognized; next.formatVersion = 2; next.liveText = ""
-                next.failure = "No speech was recognised. Original audio was kept in the Meetings folder."
-                try await persist(next, replacing: manifest)
-                return Outcome(manifest: next, committed: false, notes: notes(next))
-            }
-            let hasBoth = manifest.includesMicrophone && manifest.includesRemote
-            let conversation = live.conversation
-            let transcript = Transcript(id: manifest.id, date: manifest.createdAt,
-                text: hasBoth && !conversation.isEmpty ? conversation : text, seconds: manifest.seconds,
-                rawText: text, cleanupMethod: hasBoth ? Self.speakersMethod : nil)
+        if let live = try? LiveVoiceJournal.load(from: liveURL, sessionID: manifest.id), MeetingRecovery.complete(live, for: manifest) {
+            let refreshed = try await MeetingFileWork.run { try MeetingRecovery.inspect(session: session) }
             try check()
-            try await commit(transcript, manifest.purpose, notes(manifest))
-            var next = manifest; next.state = .committed; next.failure = nil; next.formatVersion = 2; next.liveText = text
-            try await persist(next, replacing: manifest, allowCancelled: true)
-            return Outcome(manifest: next, committed: true, notes: notes(next))
+            guard let complete = refreshed.checkpoint, complete.text != nil else { throw MeetingProblem.checkpoint("The live transcript changed during review. Its files were kept.") }
+            return try await commitCheckpoint(complete)
+        }
+        if !manifest.segments.isEmpty, !manifest.hasCompleteSegmentPlan {
+            throw MeetingProblem.checkpoint("The saved recognition segments do not cover the complete recording. Its files were kept; a partial transcript was not saved.")
         }
         if manifest.segments.isEmpty {
             let tracks = manifest.tracks
@@ -189,6 +239,7 @@ struct MeetingProcessor {
             manifest = next
         }
         try check()
+        guard manifest.isFullyRecognized else { throw MeetingProblem.checkpoint("The complete recording has not been recognized. Its checkpoint was kept.") }
         if manifest.isFullyRecognized, manifest.state != .recognized {
             var next = manifest; next.state = .recognized
             try await persist(next, replacing: manifest); manifest = next
@@ -206,7 +257,7 @@ struct MeetingProcessor {
         let transcript = Transcript(id: manifest.id, date: manifest.createdAt, text: conversation ?? text,
                                     seconds: manifest.seconds, rawText: text,
                                     cleanupMethod: conversation == nil ? nil : Self.speakersMethod)
-        try await commit(transcript, manifest.purpose, notes(manifest))
+        try await commitTranscript(transcript, purpose: manifest.purpose, notes: notes(manifest))
         // History has now committed. Complete the journal even if cancellation
         // arrived at that boundary; no delivery/paste follows this commit.
         var next = manifest; next.state = .committed; next.failure = nil
@@ -214,7 +265,44 @@ struct MeetingProcessor {
         return Outcome(manifest: next, committed: true, notes: notes(next))
     }
 
+    /// This intent deliberately has no call to mixing, recognition or optional
+    /// speaker separation. Missing originals cannot invalidate proven saved text.
+    private func commitCheckpoint(_ checkpoint: MeetingRecoveryCheckpoint) async throws -> Outcome {
+        try check()
+        guard let text = checkpoint.text else { throw MeetingProblem.checkpoint("The transcript is incomplete. Its checkpoint was kept.") }
+        var manifest = checkpoint.manifest
+        var next = manifest
+        next.state = .recognized
+        if checkpoint.liveDigest != nil, !manifest.isFullyRecognized {
+            next.formatVersion = 2; next.liveText = text
+        }
+        if next != manifest { try await persist(next, replacing: manifest); manifest = next }
+        var details = notes(manifest)
+        if !checkpoint.originalsAvailable { details.append("Original audio is missing. This saved text remains available; playback and retranscription are unavailable.") }
+        if text.isEmpty {
+            next = manifest
+            next.failure = checkpoint.originalsAvailable ? "No speech was recognised. Original audio was kept in the Meetings folder." : "No speech was recognised. Original audio is unavailable."
+            try await persist(next, replacing: manifest)
+            return Outcome(manifest: next, committed: false, notes: details)
+        }
+        let conversation = checkpoint.conversation.flatMap { $0.isEmpty ? nil : $0 }
+        let transcript = Transcript(id: manifest.id, date: manifest.createdAt, text: conversation ?? text,
+            seconds: manifest.seconds, rawText: text, cleanupMethod: conversation == nil ? nil : Self.speakersMethod)
+        try check()
+        try await commitTranscript(transcript, purpose: manifest.purpose, notes: details)
+        next = manifest; next.state = .committed; next.failure = nil
+        try await persist(next, replacing: manifest, allowCancelled: true)
+        return Outcome(manifest: next, committed: true, notes: details)
+    }
+
     static let speakersMethod = "You and Others separated on this Mac"
+
+    private func commitTranscript(_ transcript: Transcript, purpose: String, notes: [String]) async throws {
+        do { try await commit(transcript, purpose, notes) }
+        catch is CancellationError { throw CancellationError() }
+        catch let problem as MeetingProblem { throw problem }
+        catch { throw MeetingProblem.save(error.localizedDescription) }
+    }
 
     /// With both the microphone and an app's audio, label who spoke. Nil keeps
     /// the mixed transcript: one track, no usable speech, a recogniser failure
@@ -254,10 +342,12 @@ struct MeetingProcessor {
         let session = session, writer = writeManifest
         // A journal write is atomic and short; it must finish even if its
         // calling task is cancelled after recognition/history committed.
-        try await Task.detached(priority: .utility) {
-            if let writer { try writer(next, previous) }
-            else { try MeetingStore.save(next, at: session, replacing: previous) }
-        }.value
+        do {
+            try await Task.detached(priority: .utility) {
+                if let writer { try writer(next, previous) }
+                else { try MeetingStore.save(next, at: session, replacing: previous) }
+            }.value
+        } catch { throw MeetingProblem.save(error.localizedDescription) }
         if !allowCancelled { try check() }
     }
 }
