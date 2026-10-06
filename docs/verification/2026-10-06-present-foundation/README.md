@@ -37,7 +37,7 @@ Branch `claude/present-foundation` from `main` 7989426b41f84afaf8e38bf57ae4b2a68
 - `bash scripts/test-stage.sh --ci` equivalent (the same compile and `--ci` run): **280 tests · 5925 assertions · 0 failures** with the two exclusive-shortcut checks skipped while the installed Workbench Preview held ⌥D–⌥R. A later run on the same sources failed one unrelated assertion, `TimerTransportTests` "The control takes the keyboard", while another worktree's `--render-surfaces` pass was taking key windows on this Mac; the rerun with nothing else rendering is recorded in the PR.
 - `--persona-workspace-only` with `WORKBENCH_LAYOUT_EVIDENCE`: 6 tests · 262 assertions · 0 failures, which also holds `DemoScenesLayout.previewSize` to half the editor height.
 - `LocalVoice --render-surfaces`: **SURFACE_GALLERY_OK: 332 renders, 162 entries, 0 flags** on the window side's binary (two runs, Present PNGs byte-identical). `python3 scripts/check-surfaces.py`: **Surface registry OK: 558 entries** (two Present menu entries classified, ten removed doors dropped; a sidebar entry re-sorted). `bash scripts/test.sh harnesses`: exit 0.
-- The full `bash scripts/test.sh` and the scratch Preview's check modes run on the integrated branch; their counts are in the PR.
+- `bash scripts/test.sh` on the integrated branch (main ac82c2a merged in): `harnesses`, `package-tests` and `checks` exit 0, and `stage` reports **281 tests · 5933 assertions · 0 failures** with the two exclusive-shortcut checks skipped while the installed Workbench Preview held ⌥D–⌥R.
 
 ## Not verified here
 
