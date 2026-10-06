@@ -1,7 +1,7 @@
 /// Which waiting result the pointer's reveal may show over input-consuming work (#220, #222).
 ///
 /// The result that was pending when that work began is held back while the work lasts, so the
-/// work's own row stays under the pointer: a click answering the mark reaches Pause reading, not
+/// work's own row stays under the pointer: a click answering the mark reaches Stop reading, not
 /// an old Retry. A result that arrives during the work is revealed as any new result is (#134 T4),
 /// and the chosen tool's own sessions hold nothing back. The host observes each change of what
 /// is live and pending, and reports when the held result's own slot is set again, to a new

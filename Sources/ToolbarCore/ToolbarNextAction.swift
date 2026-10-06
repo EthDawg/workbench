@@ -75,8 +75,10 @@ public enum ToolbarOperation: Hashable, Sendable {
     case stopInserting, cancelDictationRequest, stopDictation
     case finishNarration, finishDrawing
     case pauseReading, resumeReading, cancelReading
-    /// Never the toolbar's label (reading pauses there); the panel's Read row
-    /// stops instead, and dispatches through the same owner switch.
+    /// Read's own ending, on the pill and the panel's Read row alike: Read's one
+    /// start stops a reading that plays or is paused, as the Read key does, so
+    /// the label follows that state (Read / Stop reading). Pause and Resume stay
+    /// in the chooser's Read row and on the Read page.
     case stopReading
     case hidePersona, pauseOverlays, resumeOverlays
     case cancelPersonaCamera, hidePersonaCamera, showPersonaCamera, retryPersonaCamera
@@ -119,11 +121,12 @@ public enum ToolbarOperation: Hashable, Sendable {
 
     /// The capability whose assigned key performs exactly this operation, or
     /// nil when no key does: Present's key does not stop an insertion, Dictate's
-    /// key does not stop a meeting transcription, and Persona's key refuses to
-    /// pause or resume a prepared set. Only these earn a key in the hint.
+    /// key does not stop a meeting transcription, Persona's key refuses to
+    /// pause or resume a prepared set, and Read's key stops rather than pauses.
+    /// Only these earn a key in the hint.
     public var keyMode: ToolbarMode? {
         switch self {
-        case .stopInserting, .stopMeetingTranscription, .pauseOverlays, .resumeOverlays, .stopReading, .wait: return nil
+        case .stopInserting, .stopMeetingTranscription, .pauseOverlays, .resumeOverlays, .pauseReading, .resumeReading, .wait: return nil
         default: return mode
         }
     }
@@ -204,10 +207,13 @@ public struct ToolbarNextAction: Equatable, Sendable {
         if live.drawing { return .finishDrawing }
         switch live.reading {
         case .preparing: return .cancelReading
-        case .playing: return .pauseReading
+        // Playback is heard whatever the tool, so its ending leads everywhere. It stops, as the
+        // panel's Read row and the Read key do: Read's one start reads Read or Stop reading, and the
+        // chooser's Read row keeps Pause reading (Fit rule 6).
+        case .playing: return .stopReading
         // A paused reading consumes nothing and has no timeout: it leads only in Read, so it
         // never hides another tool's start, such as Snap's sources. The chooser's Read row resumes it.
-        case .paused where live.mode == .read: return .resumeReading
+        case .paused where live.mode == .read: return .stopReading
         case .paused, .idle: break
         }
         // From here the label belongs to the selected mode alone.

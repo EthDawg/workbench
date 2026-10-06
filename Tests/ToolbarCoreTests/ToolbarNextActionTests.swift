@@ -10,9 +10,11 @@ final class ToolbarNextActionTests: XCTestCase {
         XCTAssertEqual(recording.title, "Finish dictation")
         XCTAssertEqual(recording.symbol, "stop.fill")
         let playing = ToolbarNextAction.resolve(ToolbarLiveState(mode: .dictate, reading: .playing))
-        XCTAssertEqual(playing.symbol, "pause.fill")
+        XCTAssertEqual(playing.symbol, "stop.fill", "Read's one ending stops; Pause keeps its glyph in the chooser's Read row")
+        XCTAssertEqual(ToolbarOperation.pauseReading.symbol, "pause.fill")
         let paused = ToolbarNextAction.resolve(ToolbarLiveState(mode: .read, reading: .paused))
-        XCTAssertEqual(paused.symbol, "play.fill")
+        XCTAssertEqual(paused.symbol, "stop.fill")
+        XCTAssertEqual(ToolbarOperation.resumeReading.symbol, "play.fill")
         let waiting = ToolbarNextAction.resolve(ToolbarLiveState(mode: .dictate, dictation: .processing))
         XCTAssertEqual(waiting.symbol, "hourglass")
         XCTAssertFalse(waiting.isEnabled)
@@ -27,9 +29,10 @@ final class ToolbarNextActionTests: XCTestCase {
             XCTAssertNotEqual(paused.operation, .resumeReading, "\(mode)")
         }
         XCTAssertEqual(ToolbarNextAction.resolve(ToolbarLiveState(mode: .snap, reading: .paused, mayStart: true)).operation, .start(.snap))
-        XCTAssertEqual(ToolbarNextAction.resolve(ToolbarLiveState(mode: .read, reading: .paused)).operation, .resumeReading)
-        XCTAssertEqual(ToolbarNextAction.resolve(ToolbarLiveState(mode: .present, reading: .playing)).operation, .pauseReading,
-                       "playback is still heard, so Pause leads everywhere")
+        XCTAssertEqual(ToolbarNextAction.resolve(ToolbarLiveState(mode: .read, reading: .paused)).operation, .stopReading,
+                       "Read's one start stops a paused reading too; Resume reading stays in the chooser's Read row")
+        XCTAssertEqual(ToolbarNextAction.resolve(ToolbarLiveState(mode: .present, reading: .playing)).operation, .stopReading,
+                       "playback is still heard, so Stop reading leads everywhere")
         for state in [ToolbarLiveState.Dictation.processing, .cancelling, .waitingForDrawing] {
             for mode in ToolbarMode.allCases where mode != .dictate {
                 let action = ToolbarNextAction.resolve(ToolbarLiveState(mode: mode, dictation: state, mayStart: true))
@@ -104,9 +107,9 @@ final class ToolbarNextActionTests: XCTestCase {
             case .finishNarration: ok = live.narrating
             case .finishDrawing: ok = live.drawing
             case .cancelReading: ok = live.reading == .preparing
-            case .pauseReading: ok = live.reading == .playing
-            case .resumeReading: ok = live.reading == .paused && live.mode == .read
-            case .stopReading: ok = false
+            // Pause and Resume are the chooser's Read row's, never the pill's primary.
+            case .pauseReading, .resumeReading: ok = false
+            case .stopReading: ok = live.reading == .playing || live.reading == .paused && live.mode == .read
             case .pauseOverlays: ok = live.persona == .session && live.mode == .persona
             case .resumeOverlays: ok = live.persona == .sessionHidden && live.mode == .persona
             case .hidePersona: ok = live.persona == .shown && live.mode == .persona
@@ -258,7 +261,7 @@ final class ToolbarNextActionTests: XCTestCase {
         next.narrating = false
         XCTAssertEqual(ToolbarNextAction.resolve(next).title, "Stop drawing")
         next.drawing = false
-        XCTAssertEqual(ToolbarNextAction.resolve(next).title, "Pause reading")
+        XCTAssertEqual(ToolbarNextAction.resolve(next).title, "Stop reading")
         next.reading = .idle
         XCTAssertEqual(ToolbarNextAction.resolve(next).title, "Finish meeting", "Dictate owns the meeting")
         next.meetingRecording = false
@@ -294,7 +297,9 @@ final class ToolbarNextActionTests: XCTestCase {
         XCTAssertNil(ToolbarOperation.pauseOverlays.keyMode, "the persona key refuses to pause a prepared set")
         XCTAssertNil(ToolbarOperation.resumeOverlays.keyMode)
         XCTAssertNil(ToolbarOperation.wait.keyMode)
-        XCTAssertNil(ToolbarOperation.stopReading.keyMode, "the Read key pauses; it does not stop")
+        XCTAssertEqual(ToolbarOperation.stopReading.keyMode, .read, "the Read key stops a reading; it does not pause")
+        XCTAssertNil(ToolbarOperation.pauseReading.keyMode, "no key pauses or resumes")
+        XCTAssertNil(ToolbarOperation.resumeReading.keyMode)
         XCTAssertEqual(ToolbarOperation.stopReading.mode, .read)
         XCTAssertEqual(ToolbarNextAction.title(.stopReading, live: ToolbarLiveState(mode: .read)), "Stop reading")
         XCTAssertEqual(ToolbarOperation.stopDictation.keyMode, .dictate)

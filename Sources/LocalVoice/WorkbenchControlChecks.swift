@@ -56,7 +56,7 @@ enum WorkbenchControlChecks {
             live.phase = .recording
             try check(live.actionTitle(.dictate) == "Finish dictation", "Dictate names the shared Finish action while recording")
             live = WorkbenchControlState(); live.playing = true
-            try check(live.actionTitle(.read) == "Stop reading", "Read reads Stop reading while playing (pause and resume stay on the Read page)")
+            try check(live.actionTitle(.read) == "Stop reading", "Read reads Stop reading while playing, as the pill does (pause and resume stay in the chooser's Read row and on the Read page)")
             live = WorkbenchControlState(); live.snapBusy = true
             try check(live.actionTitle(.snap) == "Snap" && !live.enabled(.snap), "Snap keeps its name and disables while a Snap is busy")
             live = WorkbenchControlState(); live.narrating = true
@@ -276,6 +276,8 @@ enum WorkbenchControlChecks {
             try check(reading(.finishDrawing, .preparing) == [.cancelReading], "and Cancel while the reading is still preparing")
             try check(reading(.pauseReading, .playing) == [.stopReading] && reading(.cancelReading, .preparing).isEmpty && reading(.finishDrawing, .idle).isEmpty,
                       "the row's own reading action is not repeated there, and no reading offers nothing")
+            try check(reading(.stopReading, .playing) == [.pauseReading] && reading(.stopReading, .paused) == [.resumeReading],
+                      "with Stop reading as the pill's primary, More keeps Pause reading or Resume reading for the chooser's Read row")
         }
         // Words waiting for drawing to end lead the toolbar with Stop drawing, which delivers them;
         // Copy now is in More (#211 F5). The menu's rows stay with their own capability (#214):

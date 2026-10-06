@@ -61,22 +61,21 @@ enum ToolbarActiveWork: Equatable {
     }
 }
 
-/// Reading's commands in More (#211 F6): its own next action, Cancel while preparing, Pause
-/// reading or Resume reading, whenever another job holds the row's primary, such as drawing or
-/// a prompt insertion; and Stop reading while it plays or is paused.
+/// Reading's commands in More (#211 F6): Cancel while preparing, Pause reading or Resume
+/// reading, and Stop reading while it plays or is paused, each unless it is already the row's
+/// primary. The pill's primary is Stop reading while a reading plays, so Pause reading lives
+/// here; while another job holds the primary, such as drawing or a prompt insertion, all of
+/// reading's commands do.
 enum ToolbarReadingCommands {
     static func operations(primary: ToolbarOperation, reading: ToolbarLiveState.Reading) -> [ToolbarOperation] {
         var operations: [ToolbarOperation] = []
-        let own: ToolbarOperation?
         switch reading {
-        case .preparing: own = .cancelReading
-        case .playing: own = .pauseReading
-        case .paused: own = .resumeReading
-        case .idle: own = nil
+        case .preparing: operations = [.cancelReading]
+        case .playing: operations = [.pauseReading, .stopReading]
+        case .paused: operations = [.resumeReading, .stopReading]
+        case .idle: operations = []
         }
-        if let own, own != primary { operations.append(own) }
-        if reading == .playing || reading == .paused { operations.append(.stopReading) }
-        return operations
+        return operations.filter { $0 != primary }
     }
 }
 
