@@ -96,12 +96,12 @@ struct ReadbackHandoffBrief {
         task: "build the requested slide deck",
         preservation: "Keep the original session and any `template.pptx` unchanged.")
 
-    /// Only newly frozen neutral sessions opt into this contract. Older and
-    /// installed/custom skills keep their existing instructions and receipts.
+    /// The receipt identifies the original pack, not the current skill bytes.
+    /// A customised session skill remains authoritative without being rewritten.
     static func snapTalkDeck(pack: ReadbackSkillPackReference?) -> Self {
         var brief = snapTalkDeck
         if pack == .neutral {
-            brief.extra = "Use `template.pptx` only inside this session folder and only after I choose it. Otherwise make a plain deck. Write a uniquely named new `.pptx` under this session's `outputs/`; never replace an existing file. Follow the skill's verification and report the exact output path. If your assistant cannot access the folder or return a file, explain that limitation before starting; this prompt grants no upload permission."
+            brief.extra = "Follow this session's `SKILL.md` for template choice, output destination and verification, including any customisations; it takes precedence over README guidance. Keep existing files unchanged and report the exact new output path. If your assistant cannot access the folder or return a file, explain that limitation before starting; this prompt grants no upload permission."
         }
         return brief
     }
@@ -323,7 +323,7 @@ enum ReadbackStore {
         try writePrivate(JSONEncoder().encode(provenance), to: root.appendingPathComponent(skillPackReceiptName))
         let styleInstructions: String
         if skill.reference == .neutral {
-            styleInstructions = "The neutral skill offers an optional template.pptx only in this folder; choose whether to use it before building. Without one, make a plain deck. Keep the template unchanged. Write a uniquely named new .pptx under outputs/ in this folder, never over an existing file. The assistant reports the exact output path and verification; Workbench does not automatically import the deck."
+            styleInstructions = "The unmodified neutral skill offers an optional template.pptx only in this folder; choose whether to use it before building. Without one, make a plain deck. Keep the template unchanged. Write a uniquely named new .pptx under outputs/ in this folder, never over an existing file. If you customise SKILL.md, follow its instructions instead of this default guidance. The assistant reports the exact output path and verification; Workbench does not automatically import the deck."
         } else if skill.reference.id == ReadbackSkillPackReference.serviceNow.id {
             styleInstructions = "The included brand/, scripts/ and requirements.txt are the complete ServiceNow skill pack. No separate template or individual skill upload is needed. Workbench does not install Python dependencies or execute these helpers."
         } else {
@@ -490,11 +490,16 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     var hasPendingTranscriptions: Bool { pendingTranscriptionCount > 0 }
     var blocksDictation: Bool { isCapturing || isRecording || hasPendingTranscriptions }
     var permissionsReady: Bool { screenPermissionGranted && microphonePermission == .authorized }
-    /// What stops a new capture, in plain words, and what still works (#112).
-    var permissionsProblem: String? {
+    /// Waiting is derived for display only, never saved into a notice that
+    /// could outlive the pending OS request after this visit is invalidated.
+    var captureAccessMessage: String? {
         if isRequestingCaptureAccess {
             return "Finish the capture access request in macOS. Your sessions, screenshots and notes stay available."
         }
+        return permissionsProblem
+    }
+    /// What stops a new capture, in plain words, and what still works (#112).
+    var permissionsProblem: String? {
         if !screenPermissionGranted {
             return "Screen Recording is off for Workbench, so Snap & Talk can't capture the screen. Your sessions, screenshots and narration stay available, and you can add Snaps you already have."
         }

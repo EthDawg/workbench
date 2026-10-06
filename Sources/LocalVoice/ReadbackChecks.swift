@@ -133,8 +133,8 @@ enum ReadbackChecks {
             try check(prompt.contains("SKILL.md") && prompt.contains("session.json") && prompt.contains(handoffRoot.path), "\(target.title) handoff identifies the portable session")
             try check(prompt.contains("Keep the original session") && prompt.contains("Keep the work local"), "\(target.title) handoff preserves originals and external-service consent")
             let current = target.prompt(for: handoffRoot, brief: .snapTalkDeck(pack: manifest.skillPack))
-            try check(current.contains("under this session's `outputs/`") && current.contains("only after I choose it")
-                && current.contains("grants no upload permission"), "\(target.title) new neutral copied instructions agree with the contained skill")
+            try check(current.contains("Follow this session's `SKILL.md` for template choice, output destination and verification")
+                && !current.contains("`outputs/`") && current.contains("grants no upload permission"), "\(target.title) new neutral copied instructions defer output details to the actual frozen or customised skill")
             for pack in [nil, ReadbackSkillPackReference(id: "workbench-neutral", version: "1.0.0", name: "Neutral"),
                          ReadbackSkillPackReference(id: "private-custom", version: "1.1.0", name: "Private")] {
                 try check(target.prompt(for: handoffRoot, brief: .snapTalkDeck(pack: pack)) == prompt,

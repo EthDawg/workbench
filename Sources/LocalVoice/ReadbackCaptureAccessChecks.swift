@@ -13,7 +13,7 @@ enum ReadbackCaptureAccessChecks {
         let fm = FileManager.default
         let fixture = fm.temporaryDirectory.appendingPathComponent("Workbench-capture-access-\(UUID().uuidString)")
         defer { try? fm.removeItem(at: fixture) }
-        for scenario in ["grant", "denial", "screen-revoked", "cancel", "task-cancel", "close", "switch", "same-session-return", "shutdown", "check", "settings-return"] {
+        for scenario in ["grant", "denial", "screen-revoked", "cancel", "task-cancel", "close", "switch", "same-session-return", "shutdown", "check", "check-unchanged-notice", "settings-return"] {
             let root = fixture.appendingPathComponent(scenario)
             let domain = root.appendingPathComponent("Preferences").path
             let defaults = UserDefaults(suiteName: domain)!
@@ -42,6 +42,7 @@ enum ReadbackCaptureAccessChecks {
             guard let held = reply else { task.cancel(); throw ReadbackError.message("Permission reply was not held") }
             // Release before any assertion can throw and leak the continuation.
             let wasPending = model.isRequestingCaptureAccess
+            let pendingMessage = model.captureAccessMessage
             await model.requestCaptureAccess()
             switch scenario {
             case "cancel": model.cancelCaptureAccess()
@@ -50,12 +51,13 @@ enum ReadbackCaptureAccessChecks {
             case "switch": _ = try model.createSession(at: root.appendingPathComponent("Other"), title: "Other synthetic session")
             case "same-session-return": model.closeSession(); model.openRecent(session); await Task.yield()
             case "shutdown": model.shutdown()
-            case "check": await model.preflightPermissions()
+            case "check", "check-unchanged-notice": await model.preflightPermissions()
             case "settings-return": microphone = .restricted; model.returnedToWorkbench()
             default: break
             }
             let expectedScreen = model.screenPermissionGranted, expectedMic = model.microphonePermission
-            model.notice = "Newer visit feedback"
+            let unchangedNotice = model.notice
+            if scenario != "check-unchanged-notice" { model.notice = "Newer visit feedback" }
             microphone = scenario == "denial" ? .denied : .authorized
             if scenario == "screen-revoked" { screen = false }
             held.resume(returning: microphone == .authorized); reply = nil
@@ -67,6 +69,11 @@ enum ReadbackCaptureAccessChecks {
                 try check(model.microphonePermission == .denied && model.notice == model.permissionsProblem, "current denial retains truthful typed recovery")
             } else if scenario == "screen-revoked" {
                 try check(!model.screenPermissionGranted && !model.permissionsReady && model.notice == model.permissionsProblem, "current completion rereads screen access rather than publishing a pre-await grant")
+            } else if scenario == "check-unchanged-notice" {
+                try check(model.notice == unchangedNotice && model.notice != pendingMessage
+                    && model.captureAccessMessage != pendingMessage && model.captureAccessMessage == model.permissionsProblem
+                    && model.microphonePermission == expectedMic && model.screenPermissionGranted == expectedScreen,
+                          "Check during pending access never persists waiting wording after the rejected reply settles")
             } else {
                 try check(model.screenPermissionGranted == expectedScreen && model.microphonePermission == expectedMic && model.notice == "Newer visit feedback", "\(scenario): held old reply cannot publish into a later visit")
             }

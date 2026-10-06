@@ -45,8 +45,8 @@ enum ReadbackHandoffDeliveryChecks {
         model.handOff(to: .claude)
         try check(!model.permissionsReady && !model.isRecording && !model.isCapturing, "manual handoff remains usable with both capture permissions off")
         try check(copied.count == 2 && copied.allSatisfy { $0.contains(first.path) } && revealed.map(\.path) == [first.path, first.path], "each attempt copies and reveals its own complete session")
-        try check(copied.allSatisfy { $0.contains("under this session's `outputs/`") && $0.contains("only after I choose it") },
-                  "production handoff copies the new neutral contract for the actual session")
+        try check(copied.allSatisfy { $0.contains("Follow this session's `SKILL.md` for template choice, output destination and verification") },
+                  "production handoff names the actual session skill as the output authority")
         try check(launches.map(\.title) == [fallback.title, primary.title], "launches preserve the actual resolved app")
         callbacks[1](nil); await drain()
         try check(model.notice == primary.openedNotice, "the newer successful callback names its actual receiver")
@@ -76,6 +76,24 @@ enum ReadbackHandoffDeliveryChecks {
         model.handOff(to: .claude)
         try check(launches.count == 7 && model.notice?.contains("Open Claude") == true && model.notice?.contains("Nothing was uploaded") == true,
                   "an absent host leaves the copied prompt and an honest manual next step")
+
+        // Editing a new neutral skill does not alter its provenance receipt.
+        // Exercise the real Hand off action after that edit, not only a helper.
+        let customSkill = Data("Custom neutral 1.1 instructions\r\nUse no template. Write a uniquely named new deck under deliverables/ inside this session. Preserve every existing file.\r\n".utf8)
+        let skillURL = second.appendingPathComponent("SKILL.md")
+        try customSkill.write(to: skillURL)
+        let retainedURLs = ["session.json", "skill-pack.json", "README.md", "SKILL.md"].map { second.appendingPathComponent($0) }
+            + model.activeSections.map { second.appendingPathComponent($0.screenshot) }
+        let before = try retainedURLs.map { try Data(contentsOf: $0) }
+        model.handoffCopy = { copied.append($0); return true }
+        model.handOff(to: .codex)
+        let customPrompt = copied.last ?? ""
+        let after = try retainedURLs.map { try Data(contentsOf: $0) }
+        try check(model.manifest?.skillPack == .neutral && customPrompt.contains(second.path)
+            && customPrompt.contains("including any customisations; it takes precedence over README guidance")
+            && !customPrompt.contains("outputs/") && !customPrompt.contains("make a plain deck"),
+                  "edited neutral 1.1 with the same receipt retains skill authority without a conflicting copied output destination")
+        try check(before == after && after[3] == customSkill, "handoff preserves exact custom skill, original receipt, README, manifest and screenshot bytes")
         return passed
     }
 }

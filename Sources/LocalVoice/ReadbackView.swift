@@ -284,7 +284,7 @@ struct ReadbackView: View {
         }
         if !model.isRecording && !model.isCapturing && model.currentSessionProblem == nil && !model.permissionsReady {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Label(model.permissionsProblem ?? "Review capture access.",
+                Label(model.captureAccessMessage ?? "Review capture access.",
                       systemImage: "lock").font(.callout).foregroundStyle(.secondary)
                 Spacer(minLength: 8)
                 Button("Open System Settings…") {
