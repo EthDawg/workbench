@@ -32,7 +32,7 @@ struct WorkbenchQuickPanel: View {
     private var hasFeedback: Bool {
         editor.shortcutID != nil || receipts.receipt?.isClipboardCurrent == true || model.unresolvedDelivery != nil ||
             !context.activitySummary.isEmpty || model.error != nil || stage.notice != nil ||
-            readback.notice != nil || (model.phase == .idle && !model.ready)
+            readback.notice != nil || (model.phase == .idle && !model.ready) || model.writingModelLine != nil
     }
 
     /// The panel's width and inset (#134).
