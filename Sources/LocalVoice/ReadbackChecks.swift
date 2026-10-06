@@ -193,6 +193,14 @@ enum ReadbackChecks {
         var legacyPreferences = VoicePreferences()
         legacyPreferences.readbackShortcut = VoicePreferences.legacyReadbackShortcut
         try check(VoicePreferences.migratingLegacyDefaults(legacyPreferences).shortcut(5) == VoicePreferences.defaultReadbackShortcut, "the conflicting legacy Control-Option-R default migrates")
+        // The engine line beside Record narration (#134 follow-up): the readiness line's words while
+        // ready or preparing, the reason with Retry model once preparation stopped.
+        let readyEngine = ReadbackView.NarrationEngine(name: RecognitionConfiguration().summary, ready: true)
+        try check(readyEngine.line == "Parakeet v2 · English · on this Mac" && !readyEngine.needsAttention, "a ready engine shows the one readiness line")
+        let preparingEngine = ReadbackView.NarrationEngine(name: "Downloading Parakeet · 42%", ready: false, preparing: true)
+        try check(preparingEngine.line == "Downloading Parakeet · 42%" && !preparingEngine.needsAttention, "a preparing engine shows its progress without Retry")
+        let failedEngine = ReadbackView.NarrationEngine(name: "The speech model couldn’t be prepared", ready: false, failure: "Check your connection.")
+        try check(failedEngine.line == "The speech model couldn’t be prepared. Check your connection." && failedEngine.needsAttention, "a failed preparation names its reason and needs Retry model")
         print("READBACK_CHECKS_OK: \(passed) checks")
     }
 

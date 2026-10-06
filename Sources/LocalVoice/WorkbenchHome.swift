@@ -178,7 +178,9 @@ struct WorkbenchHome: View {
                         guard let session = readback.sessionURL else { return }
                         handoffReview = HandoffReviewRequest(task: "Prepare a clear summary and follow-up from these screenshots and their paired narration.", evidenceURL: session)
                     }, onSaveImageToLibrary: { model.library.saveCapturedImageToLibrary($0) },
-                    initialSheet: openSnapTalkSessions ? .sessions : nil)
+                    initialSheet: openSnapTalkSessions ? .sessions : nil,
+                    engine: .init(name: model.modelMessage, ready: model.ready, preparing: model.preparing, failure: model.modelFailure),
+                    onOpenModels: { model.page = "models" }, onRetryModel: { Task { await model.prepare() } })
                         .onAppear { openSnapTalkSessions = false }
                 case "snap": SnapWorkspaceView(model: snap, selectedIDs: Binding(get: {
                     Set(history.selected.filter { $0.kind == .snap }.map(\.id))
