@@ -50,7 +50,7 @@ git cherry origin/main <branch>
 git log origin/main --oneline --grep='#<issue>'
 ```
 
-`git cherry` compares patch ids: a minus means that commit's patch is already on main; a plus means it is not, and a matching subject is not proof of anything. Before calling a plus-commit superseded, show patch equivalence: `git range-diff origin/main...<branch>` against the commits that landed, or an empty `git diff <landed commit> <branch commit>` for the files it touches. A branch whose net diff against main is empty is superseded; one with a non-empty diff is unlanded work, however familiar its subjects look. A closed PR with a maintainer decision stays closed.
+`git cherry` compares patch ids: a minus means that commit's patch is already on main; a plus means it is not, and a matching subject is not proof of anything. Before calling a plus-commit superseded, show patch equivalence: `git range-diff origin/main...<branch>` against the commits that landed, or an empty `git diff <landed commit> <branch commit>` for the files it touches. A branch whose net diff against main is empty is superseded. A non-empty diff proves nothing by itself: a fully landed branch that sits behind later main commits also differs from main. Decide by patch equivalence (`git range-diff`, or `git cherry` minuses for every commit) and ancestry (`git merge-base --is-ancestor`), never by the diff alone or by subjects. A closed PR with a maintainer decision stays closed.
 
 **The backlog map.** For each open ticket, find its landing commits with the `git log --grep` above and read its last comment. Many QA tickets stay open only for native acceptance of work already on main; they are not candidates, and reopening them with new scope wastes the next lead's hour.
 
