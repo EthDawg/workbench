@@ -155,8 +155,9 @@ import ToolbarCore
                   && !restoredPreferences.enabledCombinations.contains(preferences.shortcut(6).combination),
                   "enabled legacy Read shortcut roundtrips but never registers")
         try check(VoicePreferences.shortcutIDs.contains(5) && !VoicePreferences.shortcutIDs.contains(4), "Snap & Talk remains active and browser shortcut remains paused")
-        try check(ToolbarMode(rawValue: "read") == nil && WorkbenchHome.destination("speak").page == "dictate",
-                  "old toolbar and page values cannot reopen Read")
+        try check(ToolbarMode(rawValue: "read") == nil && WorkbenchHome.destination("speak").page == "library"
+                  && WorkbenchHome.destination("speak").section == "library",
+                  "old toolbar cannot reopen Read and the old page lands on Library resources")
         try check(!AppDelegate.instancesRespond(to: NSSelectorFromString("readSelection:userData:error:"))
                   && !AppModel.instancesRespond(to: NSSelectorFromString("readSelection:userData:error:")),
                   "the old macOS Service callback has no runtime recipient")

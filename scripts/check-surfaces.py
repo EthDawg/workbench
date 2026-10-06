@@ -187,8 +187,8 @@ ENTRY_POINTS = [
     ('LocalVoice/HistorySelectionControls.swift', 'HandoffResultPreview', 'history page', 'doors'),
     ('LocalVoice/HistorySelectionControls.swift', 'HistorySelectionControls', 'history page', 'doors'),
     ('LocalVoice/HistorySelectionControls.swift', 'TranscriptMetadataEditor', 'history page', 'doors'),
-    ('LocalVoice/DemoLibraryView.swift', 'DemoLibraryView', 'library page', 'doors'),
-    ('LocalVoice/DemoLibraryView.swift', 'DemoLibraryView.readPreservationRecovery', 'library recovery', 'page'),
+    ('LocalVoice/DemoLibraryView.swift', 'DemoLibraryView', 'Library Resources', 'controls'),
+    ('LocalVoice/DemoLibraryView.swift', 'DemoResourceEditor', 'Library resource editor', 'controls'),
 ]
 # Calls that change the window's route or open a place (mode 'doors').
 # openHistory opens History with a door's starting view; openTranscript opens

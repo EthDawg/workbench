@@ -110,10 +110,10 @@ import Foundation
         try store.save(items)
         let savedBefore = try Data(contentsOf: store.url)
         var copied: [String] = [], opened: [URL] = []
-        var copySucceeds = true, openSucceeds = true
+        var copySucceeds = true, openSucceeds = true, locateRequests = 0
         let model = DemoLibraryModel(store: store, copyText: { text in
             copied.append(text); return copySucceeds ? 42 : nil
-        }, openURL: { url in opened.append(url); return openSucceeds })
+        }, openURL: { url in opened.append(url); return openSucceeds }, chooseFileURL: { locateRequests += 1; return nil })
         var count = 0
         func check(_ condition: @autoclosure () throws -> Bool, _ name: String) throws {
             guard try condition() else { throw VoiceError.message("LIBRARY_RECALL_CHECK_FAILED: " + name) }
@@ -159,7 +159,8 @@ import Foundation
                   "File recall opens the bookmarked original document")
         let openedBefore = opened.count
         model.query = "Missing document"
-        try check(!model.performPrimaryAction() && opened.count == openedBefore, "Missing files never reach the opener")
+        try check(model.performPrimaryAction() && opened.count == openedBefore && locateRequests == 1,
+                  "Missing files offer explicit Locate, and cancellation never reaches the opener")
         model.query = "Executable document"
         try check(!model.performPrimaryAction() && opened.count == openedBefore, "Return cannot launch executable files")
         try check(try Data(contentsOf: store.url) == savedBefore && Data(contentsOf: originalURL) == originalData,
@@ -270,6 +271,8 @@ def compile_fixture(directory: Path, main: str, binary: Path) -> None:
         copied.append(path)
     dependencies = directory / "FixtureDependencies.swift"
     preference_types = [
+        "enum WorkbenchHome {\n" + SwiftFile(PROJECT / "Sources/LocalVoice/WorkbenchHome.swift").type("WorkbenchHome").extract([
+            "navItems", "sections", "subpages", "destination"]) + "\n}",
         SwiftFile(PROJECT / "Sources/LocalVoice/Core.swift").extract(["AtomicPrivateFile"]),
         SwiftFile(PROJECT / "Sources/LocalVoice/VoicePreferences.swift").extract([
             "CaptureMode", "DeliveryMode", "FirstDictationGuide", "VoiceShortcut", "VoicePreferences"]),
