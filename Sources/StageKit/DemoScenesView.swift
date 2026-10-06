@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import SwiftUI
 
 /// The editor reserves room for everyday controls and its fixed action bar.
@@ -9,30 +10,37 @@ struct DemoScenesLayout {
     static func previewSize(in editor: CGSize, aspect: CGFloat) -> CGSize {
         let width = max(1, editor.width - padding * 2)
         let availableHeight = max(1, editor.height)
-        let height = min(availableHeight * 0.5, max(120, availableHeight - 420))
+        let height = min(availableHeight * 0.5, max(120, availableHeight - 330))
         let ratio = aspect.isFinite && aspect > 0 ? aspect : 16 / 9
         return CGSize(width: min(width, height * ratio), height: min(width / ratio, height))
     }
 }
 
+/// Present's page: the scene on the left, the stage as it will look on the right
+/// with the phone already in it when the Mac can see it, one Present button and the
+/// phone's status beneath. Scene adjustments fold away under the preview.
 struct DemoScenesView: View {
     @ObservedObject var model: DemoScenes
+    @ObservedObject var phoneLink: PhoneLinkMonitor
+    @ObservedObject var capture: DemoCapture
     @State private var removalRequest: SceneRemovalRequest?
     @State private var choosingStarter = false
     @State private var choosingLogo = false
     @State private var searchingLogo = false
     @State private var logoSceneID: UUID?
-    @State private var previewPaused = false
-    @State private var previewMotionState = SceneMotionState.off
-    @State private var adjustingLayout = false
+    @State private var adjustingScene = false
     @State private var adjustingPersona = false
     @State private var personaSelectionAfterPopover: UUID?
-    @State private var showingConnectionGuide = false
+    @State private var showingHelp = false
+    @State private var choosingSource = false
     @State private var pendingNativeApp: NativePresentationApp?
     @State private var resizingDevice = false
     @State private var creatingTextLogo = false
     @State private var textLogoName = "Your company"
     @State private var backdropReplacement: BackdropReplacement?
+    init(model: DemoScenes) {
+        self.model = model; phoneLink = model.phoneLink; capture = model.capture
+    }
     var body: some View {
         GeometryReader { workspace in
         HStack(spacing: 0) {
@@ -40,7 +48,7 @@ struct DemoScenesView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     // Workbench's page title above names Present; this column is its scenes (#134).
                     Label("Scenes", systemImage: "iphone.and.landscape").font(.body.weight(.semibold)).accessibilityAddTraits(.isHeader)
-                    Text("Saved backdrops and device layouts.").font(.callout).foregroundStyle(.secondary)
+                    Text("The clean background your phone appears in.").font(.callout).foregroundStyle(.secondary)
                 }
                 TextField("Find a customer or scene", text: $model.query).textFieldStyle(.roundedBorder)
                     .accessibilityLabel("Find a scene")
@@ -78,19 +86,28 @@ struct DemoScenesView: View {
                     }
                     if let image = model.image(for: scene) {
                         SceneCanvas(scene: scene, image: image, logoImage: model.logoImage(for: scene), handImage: model.handImage(for: scene), personaImage: model.personaImage(for: scene), editable: !model.isSceneReadOnly(scene),
-                                    paused: previewPaused, editing: adjustingLayout || resizingDevice,
-                                    covered: searchingLogo || choosingLogo || choosingStarter || backdropReplacement != nil || model.choosingPersonas || adjustingPersona || showingConnectionGuide,
-                                    loadAmbience: model.ambienceImages, motionChanged: { state in
-                            DispatchQueue.main.async { if model.selectedID == scene.id { previewMotionState = state } }
-                        }) { value in
+                                    editing: adjustingScene || resizingDevice,
+                                    covered: searchingLogo || choosingLogo || choosingStarter || backdropReplacement != nil || model.choosingPersonas || adjustingPersona || showingHelp || choosingSource,
+                                    capture: capture, live: capture.live, dimensions: capture.dimensions,
+                                    loadAmbience: model.ambienceImages, visibility: { model.setPageVisible($0) }) { value in
                             model.update(value) ? model.scenes.first(where: { $0.id == value.id }) : nil
                         }
                             .frame(width: DemoScenesLayout.previewSize(in: editor.size, aspect: model.screenAspect).width, height: DemoScenesLayout.previewSize(in: editor.size, aspect: model.screenAspect).height)
                             .clipShape(RoundedRectangle(cornerRadius: 10))
                             .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.primary.opacity(0.12)))
-                            .accessibilityLabel("Scene preview. Drag the phone or persona to position it; drag the background to crop it.")
+                            .overlay { if scene.showsPhone && !capture.live { phoneFrameStatus(scene: scene, in: DemoScenesLayout.previewSize(in: editor.size, aspect: model.screenAspect)) } }
+                            .accessibilityLabel(capture.live ? "Scene preview with your phone live. Drag the phone or persona to position it; drag the background to crop it."
+                                                : "Scene preview. Drag the phone or persona to position it; drag the background to crop it.")
                             .frame(maxWidth: .infinity)
-                            .onChange(of: scene.id) { _, _ in previewPaused = false; adjustingLayout = false; resizingDevice = false }
+                            .onChange(of: scene.id) { _, _ in adjustingScene = false; resizingDevice = false }
+                        if scene.showsPhone {
+                            PhoneLinkStatusRow(status: phoneLink.status,
+                                               perform: { step in model.performPhoneStep(step) { choosingSource = true } },
+                                               help: { showingHelp = true }, reconnect: { model.reconnectPhone() })
+                        } else {
+                            Text("This scene shows your backdrop without a phone. Turn on Device frame to add one.")
+                                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        }
                         HStack {
                             if model.onViewImages != nil { Button("View image") { model.viewImages(startingAt: scene.id) } }
                             Text("Drag to position · saves automatically").fixedSize(horizontal: false, vertical: true)
@@ -98,6 +115,8 @@ struct DemoScenesView: View {
                             Button("Change backdrop…") { backdropReplacement = BackdropReplacement(scene: model.selected ?? scene, root: model.root) }
                                 .disabled(model.storageBlocked)
                         }.font(.caption).foregroundStyle(.secondary)
+                        DisclosureGroup("Scene options", isExpanded: $adjustingScene) {
+                        VStack(alignment: .leading, spacing: 16) {
                         HStack(spacing: 22) {
                             Toggle("Device frame", isOn: binding(\.showsPhone)).toggleStyle(.switch)
                             VStack(alignment: .leading, spacing: 5) {
@@ -109,24 +128,6 @@ struct DemoScenesView: View {
                                 var value = scene; value.phoneHeight = ViewportGeometry.heightRange.upperBound; model.update(value)
                             }.disabled(!scene.showsPhone).help("Fill the available height while keeping the whole frame visible")
                         }
-                        #if !APP_STORE
-                        HStack(spacing: 12) {
-                            Toggle("Gentle motion", isOn: Binding(get: { scene.gentleMotion == true }, set: { enabled in
-                                var value = model.selected ?? scene; value.gentleMotion = enabled ? true : nil; model.update(value); previewPaused = false
-                            }))
-                            if scene.gentleMotion == true {
-                                Button { previewPaused.toggle() } label: {
-                                    Label(previewPaused ? "Play preview" : "Pause preview", systemImage: previewPaused ? "play.fill" : "pause.fill")
-                                }
-                                Text(previewMotionState.description).font(.caption).foregroundStyle(.secondary)
-                            } else {
-                                Text("Preview and present with motion. Exports stay still.").font(.caption).foregroundStyle(.secondary)
-                            }
-                            Spacer(minLength: 0)
-                        }
-                        #endif
-                        DisclosureGroup("Scene details", isExpanded: $adjustingLayout) {
-                        VStack(alignment: .leading, spacing: 16) {
                         logoControls(scene)
                             HStack {
                                 Text("Backdrop zoom").font(.caption).foregroundStyle(.secondary)
@@ -177,8 +178,8 @@ struct DemoScenesView: View {
                 } else {
                     VStack(spacing: 14) {
                         Image(systemName: "iphone.and.landscape").font(.system(size: 48)).foregroundStyle(Workbench.accent)
-                        Text("Set the scene for your next demo").font(.title2.weight(.semibold))
-                        Text("Choose a backdrop, add your logo, and start presenting.\nYour setup is saved for next time.")
+                        Text("Your phone, on a clean stage").font(.title2.weight(.semibold))
+                        Text("Choose a backdrop, add your logo, plug in your phone and press Present.\nYour setup is saved for next time.")
                             .multilineTextAlignment(.center).foregroundStyle(.secondary)
                         Button("Choose a starter…") { choosingStarter = true }.buttonStyle(.borderedProminent).disabled(model.storageBlocked)
                         Button("Add your own backdrop…") { model.importImage() }.disabled(model.storageBlocked)
@@ -196,7 +197,7 @@ struct DemoScenesView: View {
                 #if !APP_STORE
                 if model.hasDesktopSnapshot {
                     HStack {
-                        Text(model.desktopBusy ? "Waiting for macOS…" : "Desktop recovery details are saved.").font(.caption).foregroundStyle(.secondary)
+                        Text(model.desktopBusy ? "Waiting for macOS…" : "A desktop picture from an earlier version can be put back.").font(.caption).foregroundStyle(.secondary)
                         Spacer()
                         Button("Restore desktop") { model.restoreDesktop() }.disabled(model.desktopBusy)
                     }
@@ -205,31 +206,17 @@ struct DemoScenesView: View {
                 }.disabled(model.selected.map { model.isSceneReadOnly($0) } ?? false)
             }.padding(DemoScenesLayout.padding).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
-            #if !APP_STORE
-            DesktopMotionControls(controller: model.desktopMotion).padding(.horizontal, DemoScenesLayout.padding)
-            #endif
             if let scene = model.selected, model.image(for: scene) != nil {
                 Divider()
                 VStack(alignment: .leading, spacing: 8) {
-                    ViewThatFits(in: .horizontal) {
-                        HStack(spacing: 10) {
-                            presentationButtons
-                            Spacer(minLength: 0)
-                            connectionButton
-                            sceneActions
-                        }
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack { presentationButtons; Spacer(minLength: 0) }
-                            HStack { connectionButton; Spacer(minLength: 0); sceneActions }
-                        }
+                    HStack(spacing: 10) {
+                        presentButton
+                        presentOptions
+                        Spacer(minLength: 0)
+                        Text(model.usesSharedControls ? "Share the Workbench presentation window in your call. Command-/ focuses the floating toolbar."
+                             : "Share the Workbench presentation window in your call. Esc ends it.")
+                            .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.trailing)
                     }
-                    #if !APP_STORE
-                    Text(model.usesSharedControls ? "Use the floating toolbar for live controls. Command-/ focuses it." : "Click the edge tile for controls. Esc closes controls, then ends.")
-                        .font(.caption).foregroundStyle(.secondary)
-                    #else
-                    Text("Export your scene, then position a QuickTime movie preview over its device frame.")
-                        .font(.caption).foregroundStyle(.secondary)
-                    #endif
                 }.padding(.horizontal, DemoScenesLayout.padding).padding(.vertical, 12).background(Workbench.surface)
             }
             }
@@ -238,16 +225,17 @@ struct DemoScenesView: View {
         }
         .background(Workbench.background).tint(Workbench.accent).workbenchTheme()
         .onChange(of: model.selectedID) { _, _ in adjustingPersona = false }
-        .sheet(isPresented: $showingConnectionGuide, onDismiss: {
+        .sheet(isPresented: $showingHelp, onDismiss: {
             guard let app = pendingNativeApp else { return }
             pendingNativeApp = nil
-            app.open { model.notice = $0 }
+            model.openNativeApp(app)
         }) {
-            PhonePresentationGuide(openApp: { app in
+            PhoneConnectionHelp(status: phoneLink.status, diagnostic: { phoneLink.diagnostic(build: Workbench.buildLabel) }) { app in
                 pendingNativeApp = app
-                showingConnectionGuide = false
-            })
+                showingHelp = false
+            }
         }
+        .sheet(isPresented: $choosingSource) { sourceSheet }
         .sheet(item: $backdropReplacement) { draft in BackdropReplacementView(model: model, draft: draft) }
         .sheet(item: $removalRequest) { request in
             SceneRemovalConfirmation(request: request) { model.removeScenes(request.scenes) }
@@ -281,33 +269,76 @@ struct DemoScenesView: View {
             Button("Cancel", role: .cancel) {}
         } message: { Text("A simple wordmark you can use now and replace with the real logo later.") }
     }
-    private var presentationButtons: some View {
-        HStack(spacing: 8) {
+    /// The one way to start. The saved choice between a window and full screen is an option.
+    private var presentButton: some View {
+        Group {
             #if !APP_STORE
-            Button("Full screen") { model.startDemo() }.buttonStyle(.borderedProminent)
+            Button(model.isPresenting ? "Show presentation" : "Present") { model.startDemo() }.buttonStyle(.borderedProminent)
                 .disabled(model.desktopBusy || !model.systemIntegrationEnabled)
-                .accessibilityLabel("Present full screen")
-            Button("Window") { model.startDemo(mode: .windowed) }
-                .disabled(model.desktopBusy || !model.systemIntegrationEnabled)
-                .accessibilityLabel("Present in window")
+                .accessibilityLabel(model.isPresenting ? "Show the running presentation" : (model.startsFullScreen ? "Present full screen" : "Present in a window"))
+                .help(model.startsFullScreen ? "Opens the stage full screen" : "Opens the stage in a window you can share in a call")
             #else
             Button("Export image…") { model.exportPNG() }.buttonStyle(.borderedProminent)
             #endif
         }.fixedSize()
     }
-    private var connectionButton: some View {
-        Button { showingConnectionGuide = true } label: {
-            Label("Connection & audio…", systemImage: "cable.connector")
-        }.fixedSize().help("Device connection, phone audio and Apple app alternatives")
-    }
-    private var sceneActions: some View {
-        Menu("More") {
+    private var presentOptions: some View {
+        Menu("Options") {
             #if !APP_STORE
+            Toggle("Start full screen", isOn: Binding(get: { model.startsFullScreen }, set: { model.setStartsFullScreen($0) }))
+            Divider()
             Button("Export image…") { model.exportPNG() }
-            Button("Use as desktop") { model.applyDesktop() }.disabled(model.desktopBusy || !model.systemIntegrationEnabled)
-            Button("Use as animated desktop") { model.applyDesktop(animate: true) }.disabled(model.desktopBusy || !model.systemIntegrationEnabled)
             #endif
-        }.fixedSize().accessibilityLabel("More scene actions")
+        }.fixedSize().accessibilityLabel("Present options")
+    }
+    /// What is true about the phone, inside the frame where it will appear.
+    private func phoneFrameStatus(scene: DemoScene, in size: CGSize) -> some View {
+        let status = phoneLink.status
+        let viewport = ViewportGeometry(scene: scene, size: size).screen
+        return VStack(spacing: 6) {
+            Image(systemName: status.symbol).font(.title2)
+            Text(status.title).font(.caption.weight(.semibold)).multilineTextAlignment(.center)
+            if let step = status.step {
+                Button(step.title) { model.performPhoneStep(step) { choosingSource = true } }.controlSize(.small).buttonStyle(.borderedProminent)
+            }
+        }.padding(10).frame(width: max(80, viewport.width - 12))
+            .foregroundStyle(.white)
+            .position(x: viewport.midX, y: size.height - viewport.midY)
+            .allowsHitTesting(status.step != nil)
+            .accessibilityHidden(true)
+    }
+    /// Which screen to show, only when the Mac offers more than one or the
+    /// remembered one is away. Choosing is explicit and remembered.
+    private var sourceSheet: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack {
+                Text("Which screen?").font(.title2.bold())
+                Spacer()
+                Button("Done") { choosingSource = false }.keyboardShortcut(.defaultAction)
+            }
+            Text(phoneLink.status.title).font(.headline)
+            if let detail = phoneLink.status.detail { Text(detail).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+            if capture.sources.isEmpty {
+                Text("No screen sources yet.").foregroundStyle(.secondary)
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(capture.sources) { source in
+                        Button {
+                            model.performPhoneStep(.showSource(id: source.id, title: source.name)) {}
+                            choosingSource = false
+                        } label: {
+                            HStack { Image(systemName: source.isScreen ? "iphone" : "video"); Text(source.name); Spacer(); if capture.selectedID == source.id { Image(systemName: "checkmark") } }
+                        }.buttonStyle(.bordered)
+                    }
+                }
+            }
+            Divider()
+            HStack {
+                Button("Can’t see your phone?") { choosingSource = false; showingHelp = true }.buttonStyle(.link)
+                Spacer()
+                Button("Look again") { capture.refresh() }
+            }
+        }.padding(24).frame(width: 460).onExitCommand { choosingSource = false }
     }
     private func scenePersonaButton(_ scene: DemoScene) -> some View {
         Button {
@@ -380,6 +411,8 @@ struct DemoScenesView: View {
                     Spacer()
                     Button("Save as my device") { model.saveMyDevice() }.buttonStyle(.link)
                 }.font(.caption)
+                Text(capture.live ? "While the phone is live, the frame follows its own proportions." : "The frame follows the phone’s proportions once it is live.")
+                    .font(.caption).foregroundStyle(.secondary)
                 HStack(spacing: 16) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Width").font(.caption).foregroundStyle(.secondary)
@@ -504,23 +537,29 @@ private struct SceneCanvas: NSViewRepresentable {
     let handImage: NSImage?
     let personaImage: NSImage?
     let editable: Bool
-    let paused: Bool
     let editing: Bool
     let covered: Bool
+    let capture: DemoCapture
+    let live: Bool
+    let dimensions: CGSize
     let loadAmbience: (DemoScene) -> AmbientSceneImages?
-    let motionChanged: (SceneMotionState) -> Void
+    let visibility: (Bool) -> Void
     let update: (DemoScene) -> DemoScene?
-    func makeNSView(context: Context) -> SceneCanvasView { SceneCanvasView() }
+    func makeNSView(context: Context) -> SceneCanvasView { SceneCanvasView(previewLayer: capture.makePreviewLayer()) }
     func updateNSView(_ view: SceneCanvasView, context: Context) {
-        view.motionChanged = motionChanged
-        view.previewPaused = paused; view.layoutEditing = editing; view.previewCovered = covered
+        view.onVisibility = visibility
+        view.layoutEditing = editing; view.previewCovered = covered
+        view.isLive = live; view.liveDimensions = dimensions
         view.receive(scene, loadAmbience: loadAmbience)
         view.image = image; view.logoImage = logoImage; view.handImage = handImage; view.personaImage = personaImage; view.update = update; view.editable = editable
         view.refreshPreview()
     }
-    static func dismantleNSView(_ view: SceneCanvasView, coordinator: ()) { view.stopPreview() }
+    static func dismantleNSView(_ view: SceneCanvasView, coordinator: ()) { view.onVisibility?(false); view.onVisibility = nil }
 }
 
+/// The page's preview is the stage: the same still renderer and the same capture
+/// session, so the phone shows here before Present is pressed. It reports whether
+/// it can be seen, which is what lets the capture run.
 final class SceneCanvasView: NSView {
     var scene: DemoScene?
     var image: NSImage? { didSet { refreshPreview() } }
@@ -529,29 +568,46 @@ final class SceneCanvasView: NSView {
     var personaImage: NSImage? { didSet { refreshPreview() } }
     var update: ((DemoScene) -> DemoScene?)?
     var editable = true
-    var previewPaused = false { didSet { refreshPreview() } }
-    var layoutEditing = false { didSet { refreshPreview() } }
-    var previewCovered = false { didSet { refreshPreview() } }
-    var motionChanged: ((SceneMotionState) -> Void)?
-    private let preview = MovingSceneView()
+    var layoutEditing = false
+    var previewCovered = false
+    var isLive = false { didSet { preview.isLive = isLive; refreshPreview() } }
+    var liveDimensions = CGSize.zero { didSet { refreshPreview() } }
+    var onVisibility: ((Bool) -> Void)?
+    private let preview: DemoStageSurfaceView
     private let handles = SceneCanvasHandles()
     private var ambience: AmbientSceneImages?
+    private var occlusionObserver: NSObjectProtocol?
+    private var reportedVisible = false
     private(set) var isDragging = false
-    var motionState: SceneMotionState { preview.motionState }
     private var origin = CGPoint.zero
     private var initial: DemoScene?
     private var dragPreview: DemoScene?
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        preview.requiresActiveApplication = true
+    init(previewLayer: AVCaptureVideoPreviewLayer) {
+        preview = DemoStageSurfaceView(previewLayer: previewLayer)
+        super.init(frame: .zero)
         addSubview(preview); addSubview(handles)
-        preview.motionStateChanged = { [weak self] state in self?.motionChanged?(state) }
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     override func hitTest(_ point: NSPoint) -> NSView? { super.hitTest(point) == nil ? nil : self }
     override func layout() {
         super.layout(); preview.frame = bounds; handles.frame = bounds
         preview.needsLayout = true; handles.needsDisplay = true
+    }
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if let occlusionObserver { NotificationCenter.default.removeObserver(occlusionObserver); self.occlusionObserver = nil }
+        if let window {
+            occlusionObserver = NotificationCenter.default.addObserver(forName: NSWindow.didChangeOcclusionStateNotification, object: window, queue: .main) { [weak self] _ in self?.reportVisibility() }
+        }
+        reportVisibility()
+    }
+    override func viewDidHide() { super.viewDidHide(); reportVisibility() }
+    override func viewDidUnhide() { super.viewDidUnhide(); reportVisibility() }
+    private func reportVisibility() {
+        let visible = window.map { $0.occlusionState.contains(.visible) && !isHiddenOrHasHiddenAncestor } ?? false
+        guard visible != reportedVisible else { return }
+        reportedVisible = visible
+        onVisibility?(visible)
     }
     func receive(_ value: DemoScene, loadAmbience: ((DemoScene) -> AmbientSceneImages?)? = nil) {
         if scene?.id != value.id { initial = nil; dragPreview = nil; isDragging = false }
@@ -561,17 +617,21 @@ final class SceneCanvasView: NSView {
         scene = value
         refreshPreview()
     }
+    /// The live phone keeps its own proportions, as the stage does.
+    private func fitted(_ value: DemoScene) -> DemoScene {
+        guard isLive, liveDimensions.height > 0 else { return value }
+        var fitted = value
+        var viewport = value.viewport ?? .legacy
+        viewport.aspect = liveDimensions.width / liveDimensions.height
+        fitted.viewport = (try? viewport.validated()) ?? viewport
+        return fitted
+    }
     func refreshPreview() {
         guard let value = dragPreview ?? scene, let image else { return }
-        preview.configure(scene: value, backdrop: image, logo: logoImage, hand: handImage, persona: personaImage, ambience: ambience)
-        preview.motionSuspension = (isDragging || layoutEditing) ? .editing : previewCovered ? .covered : previewPaused ? .paused : nil
-        #if !APP_STORE
-        preview.motionRequested = value.gentleMotion == true
-        #endif
-        handles.scene = value; handles.needsDisplay = true
-    }
-    func stopPreview() {
-        preview.motionRequested = false; preview.motionStateChanged = nil
+        let shown = fitted(value)
+        preview.configure(scene: shown, backdrop: image, logo: logoImage, hand: handImage, persona: personaImage, ambience: ambience)
+        preview.viewportScene = shown; preview.needsLayout = true
+        handles.scene = shown; handles.needsDisplay = true
     }
     private var movingPhone = false
     private var movingPersona = false
@@ -586,7 +646,7 @@ final class SceneCanvasView: NSView {
             if let persona = scene.persona, let personaImage {
                 movingPersona = PersonaGeometry.rect(persona, imageSize: personaImage.size, in: bounds.size).contains(origin)
             }
-            let rect = SceneRenderer.phoneRect(scene, in: bounds.size)
+            let rect = SceneRenderer.phoneRect(fitted(scene), in: bounds.size)
             resizingWidth = scene.showsPhone && abs(origin.x - rect.maxX) < 12 && abs(origin.y - rect.midY) < 12
             resizingSize = scene.showsPhone && abs(origin.x - rect.maxX) < 12 && abs(origin.y - rect.minY) < 12
             movingPhone = scene.showsPhone && rect.contains(origin)
@@ -632,7 +692,11 @@ final class SceneCanvasView: NSView {
         refreshPreview()
     }
     override func viewWillMove(toWindow newWindow: NSWindow?) {
-        if newWindow == nil { dragPreview = nil; initial = nil; isDragging = false; preview.motionRequested = false }
+        if newWindow == nil {
+            dragPreview = nil; initial = nil; isDragging = false
+            if let occlusionObserver { NotificationCenter.default.removeObserver(occlusionObserver); self.occlusionObserver = nil }
+            if reportedVisible { reportedVisible = false; onVisibility?(false) }
+        }
         super.viewWillMove(toWindow: newWindow)
     }
 }
@@ -647,23 +711,6 @@ private final class SceneCanvasHandles: NSView {
         NSColor.controlAccentColor.setFill()
         for point in [CGPoint(x: rect.maxX, y: rect.midY), CGPoint(x: rect.maxX, y: rect.minY)] {
             NSBezierPath(ovalIn: CGRect(x: point.x - 4, y: point.y - 4, width: 8, height: 8)).fill()
-        }
-    }
-}
-
-private struct DesktopMotionControls: View {
-    @ObservedObject var controller: DesktopMotionController
-    var body: some View {
-        if controller.isRunning {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Label("Desktop motion", systemImage: "photo")
-                    Spacer()
-                    Button(controller.isPaused ? "Resume" : "Pause") { controller.togglePause() }
-                    Button("Stop motion") { controller.stop() }
-                }
-                Text(controller.status).font(.caption).foregroundStyle(.secondary)
-            }.padding(12).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 10))
         }
     }
 }

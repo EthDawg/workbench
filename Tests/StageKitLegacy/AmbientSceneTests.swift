@@ -29,7 +29,7 @@ final class AmbientSceneTests {
                 let record = try require(adapter.library.records.first { $0.id == scene.id })
                 let recipe = try require(record.scene.ambience)
                 XCTAssertEqual(scene.ambience, recipe); XCTAssertEqual(recipe.preset, starter.id)
-                XCTAssertEqual(scene.gentleMotion, true); XCTAssertFalse(scene.showsPhone)
+                XCTAssertTrue(scene.gentleMotion == nil, "Starters are still scenes; motion is retired on the Mac"); XCTAssertFalse(scene.showsPhone)
                 let package = try adapter.library.package(for: record.scene)
                 XCTAssertEqual(package.version, 2); XCTAssertEqual(package.assets.count, 3)
                 let directory = resources.deletingLastPathComponent().appendingPathComponent("AmbientScenes")
@@ -77,7 +77,7 @@ final class AmbientSceneTests {
             crop.x = 0.23; crop.y = 0.71; crop.zoom = 1.6
             try model.applyBackdrop(crop)
             let cropped = try require(model.selected)
-            XCTAssertEqual(cropped.ambience, initial.ambience); XCTAssertEqual(cropped.gentleMotion, true)
+            XCTAssertEqual(cropped.ambience, initial.ambience); XCTAssertEqual(cropped.gentleMotion, initial.gentleMotion)
             XCTAssertEqual(cropped.backgroundX, 0.23); XCTAssertEqual(cropped.backgroundY, 0.71); XCTAssertEqual(cropped.zoom, 1.6)
             let source = root.appendingPathComponent("synthetic-replacement.png"), bytes = try png(plate())
             try bytes.write(to: source)

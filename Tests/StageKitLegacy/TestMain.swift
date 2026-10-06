@@ -549,7 +549,7 @@ struct TestRunner {
         let assets = SceneAssetTests()
         let demo = DemoModeTests()
         let phonePresentation = PhonePresentationTests()
-        let desktopMotion = DesktopMotionTests()
+        let phoneLink = PhoneLinkTests()
         let gentleMotion = GentleMotionTests()
         let ambientScenes = AmbientSceneTests()
         let viewportFit = ViewportFitTests()
@@ -608,8 +608,18 @@ struct TestRunner {
             ("board private clipboard image and failure preservation", boardExport.testPrivateClipboardPNGAndFailurePreservation),
             ("presentation window and fullscreen lifecycle", presentationLifecycle.testModeChangesKeepPresentationAndEndClosesOnce),
             ("presentation transition interruption and failure recovery", presentationLifecycle.testEndDuringNativeTransitionsAndFailureRecovery),
-            ("phone: restricted versus denied video access", phonePresentation.testRestrictedCameraGuidanceDoesNotOfferUserPermissionToggle),
-            ("phone: explicit first source selection", phonePresentation.testFirstCaptureRequiresExplicitSelectionEvenForMuxedHint),
+            ("phone link: nothing on USB", phoneLink.testNothingAttachedNamesTheCableAndTheAccessoryPrompt),
+            ("phone link: phone on the bus without a screen", phoneLink.testPhoneOnTheBusWithoutAScreenAsksForUnlockAndTrust),
+            ("phone link: one phone screen adopted, video device waits", phoneLink.testOnePhoneScreenIsAdoptedAndAPlainVideoDeviceWaitsForAClick),
+            ("phone link: several screens and a remembered absent phone", phoneLink.testSeveralScreensAskForAChoiceAndARememberedAbsentPhoneWaits),
+            ("phone link: remembered phone reads as connecting", phoneLink.testRememberedPhonePresentReadsAsConnectingUntilTheSessionSpeaks),
+            ("phone link: monitor fixture and mirror", phoneLink.testMonitorFixtureAndMirrorAreIndependent),
+            ("phone link: session phases outrank availability", phoneLink.testSessionPhasesOutrankAvailability),
+            ("phone link: permission outranks availability", phoneLink.testPermissionOutranksAvailabilityAndRestrictedOffersNoToggle),
+            ("phone link: nouns follow the device", phoneLink.testNounsFollowTheDeviceNotTheSerial),
+            ("phone link: USB classification", phoneLink.testUSBClassificationKeepsPhonesAndDropsOtherAppleDevices),
+            ("phone link: diagnostic without identifiers", phoneLink.testDiagnosticNamesFactsWithoutIdentifiers),
+            ("phone: one screen adopted, lost device never switched", phonePresentation.testOnePhoneScreenIsAdoptedAndALostDeviceNeverSwitches),
             ("phone: handoff waits for capture and window", phonePresentation.testNativeHandoffWaitsForBothCaptureAndWindowInEitherOrder),
             ("phone: handoff launch and ordinary close ownership", phonePresentation.testHandoffKeepsFirstRequestAndDoesNotRetryFailedLaunchOrOrdinaryClose),
             ("phone: handoff native transition failure", phonePresentation.testHandoffWaitsThroughFailedNativeTransitionAndRepeatedEnd),
@@ -669,7 +679,7 @@ struct TestRunner {
             ("logo browser bounded download validation", sceneMedia.testDownloadsRejectOversizeHTMLAndInvalidBytes),
             ("logo browser request cancellation", sceneMedia.testDownloadCancellationStopsTheOwnedRequest),
             ("logo browser explicit captured-scene save", sceneMedia.testWebLogoPreviewAndExplicitSavePreserveOtherScenes),
-            ("editor motion suppression and drag pause", sceneMedia.testMotionPolicyReportsSuppressionAndCanvasPausesForEditing),
+            ("editor motion policy and drag ownership", sceneMedia.testMotionPolicyReportsSuppressionAndCanvasPausesForEditing),
             ("persona starter: CatalogHasStableUniqueBundleNamesAndEditableLabels", personaStarters.testCatalogHasStableUniqueBundleNamesAndEditableLabels),
             ("persona starter: MissingCorruptOversizedAndLinkedSourcesDoNotAddBrokenPersonas", personaStarters.testMissingCorruptOversizedAndLinkedSourcesDoNotAddBrokenPersonas),
             ("persona starter: ChoosingOneStarterUsesActiveGroupAndKeepsSeparateEditableCopies", personaStarters.testChoosingOneStarterUsesActiveGroupAndKeepsSeparateEditableCopies),
@@ -814,10 +824,7 @@ struct TestRunner {
             ("motion legacy and portable settings", gentleMotion.testLegacyAndPortableSceneMotion),
             ("motion export pixels stay still", gentleMotion.testMotionDoesNotChangeStillExport),
             ("motion foreground remains transparent", gentleMotion.testForegroundExcludesPhotograph),
-            ("motion transparent photo keeps still base", gentleMotion.testTransparentPhotographKeepsStillBase),
-            ("desktop ownership and spaces", desktopMotion.testDesktopOwnershipLossCannotResumeOrFollowAnotherSpace),
-            ("desktop sleep and pause independence", desktopMotion.testDesktopSleepReasonsAndPauseRemainIndependent),
-            ("desktop removal and fresh session", desktopMotion.testDesktopRemovalStopsEvenDuringSleepAndRestartNeedsNewSession)
+            ("motion transparent photo keeps still base", gentleMotion.testTransparentPhotographKeepsStillBase)
         ], at: 5)
         let libraryImageReuse = LibraryImageReuseTests()
         tests.append(contentsOf: [

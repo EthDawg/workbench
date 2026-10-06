@@ -18,36 +18,32 @@ struct CaptureRecovery {
     func accepts(_ token: Int, source: String) -> Bool { token == generation && source == desiredID }
     func candidate(in sources: [DemoSource]) -> String? {
         if let desiredID { return sources.contains { $0.id == desiredID } ? desiredID : nil }
-        // Muxed describes media, not a verified phone screen. Even a single
-        // external source needs the user's first selection; reconnects retain it.
-        return nil
-    }
-}
-
-enum CaptureVideoAccess {
-    static func unavailableMessage(for status: AVAuthorizationStatus) -> String? {
-        switch status {
-        case .restricted:
-            return "Device video access is restricted on this Mac. Use an approved presentation route or ask your IT administrator for help."
-        case .denied:
-            return "Device video access is off. Enable Workbench in System Settings › Privacy & Security › Camera, then choose Reconnect."
-        default: return nil
-        }
+        // Nothing chosen yet: the one phone or tablet screen on the Mac is shown and
+        // remembered, so a plugged-in phone appears without a hunt for a Source menu.
+        // A plain video device (a capture card, a camera) still needs a choice, and
+        // two screens always do. Losing the remembered device never opens another.
+        let screens = sources.filter(\.isScreen)
+        return sources.count == 1 && screens.count == 1 ? screens[0].id : nil
     }
 }
 
 /// Local, video-only preview. No recording output, microphone, network or
 /// third-party window control. All capture work runs off the main thread.
+/// The words for each phase live in `PhoneLink.status`; this class publishes
+/// only what it knows: the sources, the choice and the session's phase.
 final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleBufferDelegate {
     @Published private(set) var sources: [DemoSource] = []
     @Published private(set) var selectedID: String?
-    @Published private(set) var message = "Connect and unlock your device."
+    @Published private(set) var phase = CapturePhase.idle
     @Published private(set) var live = false
     /// The device this capture currently holds, so another camera owner can keep
     /// clear of it instead of taking it away. nil whenever no session is open.
     @Published private(set) var heldDeviceID: String?
     @Published private(set) var dimensions = CGSize.zero
-    let previewLayer = AVCaptureVideoPreviewLayer()
+    /// Every surface showing this session draws through its own layer: the Present
+    /// page's preview and the stage. Newest first, so a stage opened later is wired
+    /// before the preview behind it.
+    private let layers = NSHashTable<AVCaptureVideoPreviewLayer>.weakObjects()
     private let queue = DispatchQueue(label: "StageMark.device-preview", qos: .userInitiated)
     private var session: AVCaptureSession?
     private var recovery = CaptureRecovery()
@@ -78,14 +74,40 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
             recovery.desiredID = id; selectedID = id
         }
     }
-    func reportNotice(_ text: String) { message = text }
+    /// A layer for one surface. It shows the running session at once and every
+    /// later one; a surface that goes away releases it.
+    func makePreviewLayer() -> AVCaptureVideoPreviewLayer {
+        let layer = AVCaptureVideoPreviewLayer()
+        layer.videoGravity = .resizeAspect; layer.masksToBounds = true
+        layers.add(layer)
+        queue.async { [weak self] in
+            guard let self, let session, let port = session.inputs.first?.ports.first(where: { $0.mediaType == .video }) else { return }
+            session.beginConfiguration()
+            attach(layer, to: session, port: port)
+            session.commitConfiguration()
+        }
+        return layer
+    }
+    private func attach(_ layer: AVCaptureVideoPreviewLayer, to session: AVCaptureSession, port: AVCaptureInput.Port) {
+        layer.setSessionWithNoConnection(session)
+        let connection = AVCaptureConnection(inputPort: port, videoPreviewLayer: layer)
+        if connection.isVideoMirroringSupported {
+            connection.automaticallyAdjustsVideoMirroring = false; connection.isVideoMirrored = false
+        }
+        if session.canAddConnection(connection) { session.addConnection(connection) } else { layer.session = nil }
+    }
+    /// Lets this process see iPhone and iPad screens as capture devices. Process-wide
+    /// and idempotent; it requests no permission.
+    static func allowScreenCaptureDevices() {
+        var address = CMIOObjectPropertyAddress(mSelector: CMIOObjectPropertySelector(kCMIOHardwarePropertyAllowScreenCaptureDevices),
+            mScope: CMIOObjectPropertyScope(kCMIOObjectPropertyScopeGlobal), mElement: CMIOObjectPropertyElement(kCMIOObjectPropertyElementMain))
+        var allow: UInt32 = 1
+        _ = CMIOObjectSetPropertyData(CMIOObjectID(kCMIOObjectSystemObject), &address, 0, nil, UInt32(MemoryLayout.size(ofValue: allow)), &allow)
+    }
     func start() {
         queue.async { [weak self] in
             guard let self, !enabled else { return }; enabled = true
-            var address = CMIOObjectPropertyAddress(mSelector: CMIOObjectPropertySelector(kCMIOHardwarePropertyAllowScreenCaptureDevices),
-                mScope: CMIOObjectPropertyScope(kCMIOObjectPropertyScopeGlobal), mElement: CMIOObjectPropertyElement(kCMIOObjectPropertyElementMain))
-            var allow: UInt32 = 1
-            _ = CMIOObjectSetPropertyData(CMIOObjectID(kCMIOObjectSystemObject), &address, 0, nil, UInt32(MemoryLayout.size(ofValue: allow)), &allow)
+            Self.allowScreenCaptureDevices()
             discovery = AVCaptureDevice.DiscoverySession(deviceTypes: [.external], mediaType: nil, position: .unspecified)
             discoveryObservation = discovery?.observe(\.devices, options: [.new]) { [weak self] _, _ in self?.refresh() }
             let center = NotificationCenter.default
@@ -96,7 +118,8 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
                 guard let failed = notification.object as? AVCaptureSession else { return }
                 self?.queue.async { [weak self] in
                     guard let self, enabled, session === failed else { return }
-                    stopSession(); publish("The device feed was interrupted. Reconnecting to your selected device…")
+                    let id = activeID
+                    stopSession(); publish(id.map { .interrupted($0) } ?? .idle)
                     discover()
                 }
             })
@@ -113,11 +136,14 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         queue.async { [weak self] in
             guard let self, enabled else { return }
             retryAfter = .distantPast; retryDelay = 2
-            _ = recovery.select(id)
-            try? JSONEncoder().encode(id).write(to: preference, options: .atomic)
-            DispatchQueue.main.async { [weak self] in self?.selectedID = id }
+            remember(id)
             stopSession(); connect(id)
         }
+    }
+    private func remember(_ id: String) {
+        _ = recovery.select(id)
+        try? JSONEncoder().encode(id).write(to: preference, options: .atomic)
+        DispatchQueue.main.async { [weak self] in self?.selectedID = id }
     }
     func reconnect() {
         queue.async { [weak self] in
@@ -129,10 +155,10 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     /// Completion runs on main only after this capture queue has released its
     /// session and recovery observers. A native fallback must wait for it.
     func stop(completion: (() -> Void)? = nil) {
-        // Replace the former live label during the short full-screen exit.
-        publish("Ending demo…")
         queue.async { [self] in
-            enabled = false; _ = recovery.select(nil); stopSession()
+            // The remembered device survives a stop: the page and the stage share one capture
+            // that starts again when either needs it.
+            enabled = false; recovery.invalidateSession(); stopSession(); publish(.idle)
             timer?.cancel(); timer = nil
             observers.forEach(NotificationCenter.default.removeObserver); observers.removeAll()
             if let wakeObserver { NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver); self.wakeObserver = nil }
@@ -140,10 +166,12 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
             if let completion { DispatchQueue.main.async(execute: completion) }
         }
     }
-    private func publish(_ text: String, clear: Bool = true) {
+    private func publish(_ phase: CapturePhase) {
+        lastPublished = phase
         DispatchQueue.main.async { [weak self] in
-            self?.message = text
-            if clear { self?.live = false }
+            guard let self else { return }
+            self.phase = phase
+            if case .live = phase {} else { live = false }
         }
     }
     private func discover() {
@@ -153,22 +181,28 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         let choices = found.map { DemoSource(id: $0.uniqueID, name: $0.localizedName, isScreen: $0.hasMediaType(.muxed)) }.sorted { $0.name < $1.name }
         DispatchQueue.main.async { [weak self] in self?.sources = choices }
         if let activeID, devices[activeID] == nil {
-            stopSession(); publish("Device disconnected. Reconnect and unlock it; this stage will wait here.")
+            stopSession(); publish(.interrupted(activeID))
         }
         guard activeID == nil, Date() >= retryAfter else { return }
         if let candidate = recovery.candidate(in: choices) {
+            if recovery.desiredID == nil { remember(candidate) }
             connect(candidate)
+        } else if case .interrupted = phaseSnapshot {
+            // The selected device is still away; the stage keeps waiting for that exact device.
         } else {
-            publish(recovery.desiredID == nil ? "Choose a connected device screen. For iPhone or iPad, connect by USB, unlock and trust this Mac." : "Waiting for your selected device. Reconnect it, or choose another source.")
+            publish(.idle)
         }
     }
+    /// The last phase this queue published, read here without a hop to main.
+    private var lastPublished = CapturePhase.idle
+    private var phaseSnapshot: CapturePhase { lastPublished }
     private func connect(_ id: String) {
         guard enabled, activeID == nil, let device = devices[id], !waitingForPermission else { return }
         let authorization = AVCaptureDevice.authorizationStatus(for: .video)
         switch authorization {
         case .notDetermined:
             waitingForPermission = true
-            publish("Allow device video access in the macOS prompt to preview your screen.")
+            publish(.waitingForAccess)
             AVCaptureDevice.requestAccess(for: .video) { [weak self] _ in
                 self?.queue.async { [weak self] in
                     guard let self else { return }; waitingForPermission = false; discover()
@@ -176,13 +210,13 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
             }
             return
         case .denied, .restricted:
-            publish(CaptureVideoAccess.unavailableMessage(for: authorization)
-                ?? "Device video access is unavailable. Choose another approved presentation route.")
+            // PhoneLink reads the permission itself and says what to do.
+            publish(.idle)
             return
         default: break
         }
         retryAfter = Date().addingTimeInterval(retryDelay); retryDelay = min(30, retryDelay * 2)
-        publish("Connecting to \(device.localizedName)…")
+        publish(.connecting(id))
         do {
             let input = try AVCaptureDeviceInput(device: device)
             let newSession = AVCaptureSession()
@@ -201,13 +235,8 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
             let videoConnection = AVCaptureConnection(inputPorts: ports, output: output)
             guard newSession.canAddConnection(videoConnection) else { throw CaptureError.unavailable }
             newSession.addConnection(videoConnection)
-            previewLayer.setSessionWithNoConnection(newSession)
-            let previewConnection = AVCaptureConnection(inputPort: ports[0], videoPreviewLayer: previewLayer)
-            if previewConnection.isVideoMirroringSupported {
-                previewConnection.automaticallyAdjustsVideoMirroring = false; previewConnection.isVideoMirrored = false
-            }
-            guard newSession.canAddConnection(previewConnection) else { throw CaptureError.unavailable }
-            newSession.addConnection(previewConnection); newSession.commitConfiguration()
+            for layer in layers.allObjects.reversed() { attach(layer, to: newSession, port: ports[0]) }
+            newSession.commitConfiguration()
             // Explicit video-only wiring avoids connecting a muxed device
             // microphone as an accidental side effect of auto-connection.
             session = newSession; activeID = id; activeToken = recovery.generation
@@ -215,15 +244,15 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
             deliveryLock.lock(); deliveryToken = activeToken; deliveryLock.unlock()
             lastFrame = .distantPast; startedAt = Date()
             newSession.startRunning()
-            if !newSession.isRunning { stopSession(); publish("The device could not start. Close other apps using its screen, then Reconnect.") }
-        } catch { stopSession(); publish("Cannot open this device. Unlock it, close any other preview using it, then Reconnect.") }
+            if !newSession.isRunning { stopSession(); publish(.failed(id, .busy)) }
+        } catch { stopSession(); publish(.failed(id, .couldNotOpen)) }
     }
     private func stopSession() {
         // Automatic error/disconnect recovery can reopen the same device without
         // another selection. Its new session must never reuse an old frame token.
         recovery.invalidateSession()
         deliveryLock.lock(); deliveryToken = -1; deliveryLock.unlock()
-        session?.stopRunning(); previewLayer.session = nil; session = nil; activeID = nil
+        session?.stopRunning(); layers.allObjects.forEach { $0.session = nil }; session = nil; activeID = nil
         DispatchQueue.main.async { [weak self] in self?.live = false; self?.dimensions = .zero; self?.heldDeviceID = nil }
     }
     private func checkHealth() {
@@ -231,7 +260,7 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         guard let activeID else { discover(); return }
         if devices[activeID]?.isConnected != true { stopSession(); discover(); return }
         if Date().timeIntervalSince(max(lastFrame, startedAt)) > 5 {
-            publish("No new frames. Unlock your device or reconnect its cable, then choose Reconnect.")
+            publish(.stalled(activeID))
         }
     }
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
@@ -246,6 +275,8 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         pendingDelivery = true; deliveryLock.unlock()
         lastPublish = lastFrame
         let token = activeToken
+        let nextSize = CGSize(width: Int(size.width), height: Int(size.height))
+        lastPublished = .live(id, nextSize)
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             defer { deliveryLock.lock(); pendingDelivery = false; deliveryLock.unlock() }
@@ -253,9 +284,8 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
             // selected identity also gates any already-enqueued old frame.
             deliveryLock.lock(); let valid = deliveryToken == token; deliveryLock.unlock()
             guard valid, selectedID == id else { return }
-            let nextSize = CGSize(width: Int(size.width), height: Int(size.height))
             if dimensions != nextSize { dimensions = nextSize }
-            if !live { live = true; message = "Live device screen" }
+            if !live || phase != .live(id, nextSize) { live = true; phase = .live(id, nextSize) }
         }
     }
     private enum CaptureError: Error { case unavailable }
