@@ -96,7 +96,7 @@ struct MeetingWorkspaceView: View {
                             Button("Review transcript") { openHistory(id) }
                             Button("Prepare follow-up…") { prepareFollowUp(id) }
                             Spacer()
-                            Button("New recording") { showingNewRecording = true }
+                            Button("New recording…") { showingNewRecording = true }
                         }.controlSize(.large)
                         // Confirmed under its control, in space kept for it, so the row never shifts (Fit rule 7).
                         if let problem = copyFeedback.problem {
@@ -150,7 +150,7 @@ struct MeetingWorkspaceView: View {
                     }
                     HStack(spacing: 8) {
                         Label(engineName, systemImage: "waveform").font(.caption).foregroundStyle(.secondary)
-                        Button("Models", action: openModels).buttonStyle(.link).font(.caption)
+                        Button("Models…", action: openModels).buttonStyle(.link).font(.caption)
                             .help("Choose the speech model in Settings › Models")
                     }
                 }.voicePageCard()

@@ -492,10 +492,10 @@
   {
     "id": "LocalVoice.MeetingWorkspaceView.MeetingWorkspaceView.Button.models",
     "surface": "meeting page",
-    "label": "Models",
+    "label": "Models…",
     "kind": "action",
     "belongsTo": "settings",
-    "note": "Door to Settings › Models beside the engine Meetings uses, the one place an engine is chosen (Grammar rule 9; 1 Oct). No ellipsis: it opens a page, not a dialog (#279)."
+    "note": "Door to Settings › Models beside the engine Meetings uses, the one place an engine is chosen (Grammar rule 9; 1 Oct)."
   },
   {
     "id": "LocalVoice.MeetingWorkspaceView.MeetingWorkspaceView.Button.prepare-follow-up",
@@ -1038,10 +1038,10 @@
   {
     "id": "LocalVoice.Views.DictateSettingsView.Button.models",
     "surface": "dictate settings",
-    "label": "Models",
+    "label": "Models…",
     "kind": "action",
     "belongsTo": "settings",
-    "note": "No ellipsis: it opens a page, not a dialog (#279). Door to Settings › Models beside the speech and writing models Dictate uses, the one place an engine is chosen (Grammar rule 9; 1 October). Dictate's settings had no way to its models after Models folded into Settings."
+    "note": "Door to Settings › Models beside the speech and writing models Dictate uses, the one place an engine is chosen (Grammar rule 9; 1 October). Dictate's settings had no way to its models after Models folded into Settings."
   },
   {
     "id": "LocalVoice.Views.DictateSettingsView.Button.open-apple-shortcuts",

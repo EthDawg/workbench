@@ -253,7 +253,7 @@ struct ContentView: View {
                 HStack(spacing: 8) {
                     Label("\(model.modelMessage) · \(model.preferences.cleanup.rawValue) text style", systemImage: "waveform")
                         .font(.caption).foregroundStyle(.secondary)
-                    Button("Models") { model.page = "models" }.buttonStyle(.link).font(.caption)
+                    Button("Models…") { model.page = "models" }.buttonStyle(.link).font(.caption)
                         .help("Choose the speech and writing models in Settings › Models")
                 }
                 // The writing model's download, or why it stopped, beside the models it concerns (#134).
@@ -262,7 +262,7 @@ struct ContentView: View {
                 }
             }
         } else if model.phase == .idle {
-            Button("Models") { model.page = "models" }.buttonStyle(.link).font(.caption)
+            Button("Models…") { model.page = "models" }.buttonStyle(.link).font(.caption)
         }
     }
 
@@ -469,7 +469,7 @@ struct DictateSettingsView: View {
                             if let line = model.writingModelLine { Text(line) }
                         }.font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                         Spacer()
-                        Button("Models", action: openModels).help("Choose the speech and writing models in Settings › Models")
+                        Button("Models…", action: openModels).help("Choose the speech and writing models in Settings › Models")
                     }
                 }
                 Divider()
