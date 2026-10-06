@@ -149,15 +149,13 @@ struct WorkbenchControlState {
         }
     }
 
-    /// The row's next action, from the same function as the toolbar's label.
+    /// The row's next action, from the same function as the toolbar's label. Reading's primary
+    /// is already Stop reading there (ToolbarNextAction, 6 October); pause and resume are the
+    /// chooser's Read row's and the Read page's, so nothing is remapped here.
     func nextAction(_ tool: WorkbenchControlTool) -> ToolbarNextAction? {
         guard let mode = tool.mode else { return nil }
         let own = ownLive(mode)
         var action = ToolbarNextAction.resolve(own)
-        if action.operation == .pauseReading || action.operation == .resumeReading {
-            action.operation = .stopReading
-            action.title = ToolbarNextAction.title(.stopReading, live: own)
-        }
         if action.operation == .captureNext || action.operation == .resumeOverlays { action.isEnabled = own.mayStart }
         return action
     }
