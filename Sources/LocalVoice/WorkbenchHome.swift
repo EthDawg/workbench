@@ -1,7 +1,6 @@
 import SwiftUI
 import AppKit
 import StageKit
-import PhotoHandoffKit
 import ServiceManagement
 import ImageIO
 
@@ -18,7 +17,6 @@ struct WorkbenchHome: View {
     @StateObject private var introduction = FounderIntroductionModel()
     @State private var loginEnabled = SMAppService.mainApp.status == .enabled
     @State private var loginError: String?
-    @State private var photoBackdrop: PhotoBackdropRequest?
     @State private var libraryPreparation: LibraryPreparation?
     @State private var openSnapTalkSessions = false
     private struct LibraryPreparation: Identifiable {
@@ -49,16 +47,17 @@ struct WorkbenchHome: View {
     /// A page's sections, in switcher order. Each opens from its own route, and the page's own
     /// route opens the first; Keyboard, Models and Packs keep the routes their sidebar items had.
     static let sections: [(id: String, page: String, title: String)] = [
-        ("library", "library", "Resources"), ("packs", "library", "Packs"), ("photos", "library", "From iPhone"),
+        ("library", "library", "Resources"), ("packs", "library", "Packs"),
         ("settings", "settings", "General"), ("shortcuts", "settings", "Keyboard"),
         ("models", "settings", "Models"), ("connections", "settings", "Connections")]
     /// Pages reached from another page. A door to one keeps that page highlighted, so the
     /// sidebar is always the way back.
     static let subpages: [(id: String, page: String, title: String)] = [
         ("dictionary", "dictate", "Your dictionary")]
-    /// Home's photo arrival cue opens Library on From iPhone by this route. Nothing else holds
-    /// the section, so a later Library door returns to Resources.
-    static let photoArrivals = "photos"
+    /// Routes whose page or section has gone, and the route each now opens. Library's From
+    /// iPhone section left with the iPhone photo sync's other doors (#276), so its route opens
+    /// Library on Resources rather than falling through to Dictate.
+    static let retiredRoutes: [String: String] = ["photos": "library"]
 
     /// App-wide settings stay reachable below the sidebar's scrolling groups.
     static let pinnedPage = "settings"
@@ -73,9 +72,10 @@ struct WorkbenchHome: View {
 
     /// Where a route lands: the sidebar page it highlights and, on a page with sections, the
     /// section it shows. Every door resolves here, so a route that was once a page of its own
-    /// still works and nothing lands without a highlighted item. A route nothing knows shows
-    /// Dictate, as the page switch always has.
+    /// still works and nothing lands without a highlighted item. A retired route opens the
+    /// route that replaced it. A route nothing knows shows Dictate, as the page switch always has.
     static func destination(_ route: String) -> (page: String, section: String?) {
+        let route = retiredRoutes[route] ?? route
         if let section = sections.first(where: { $0.id == route }) { return (section.page, section.id) }
         if navItems.contains(where: { $0.id == route }) { return (route, nil) }
         return (subpages.first { $0.id == route }?.page ?? "dictate", nil)
@@ -231,16 +231,8 @@ struct WorkbenchHome: View {
                 model.onSuggestTranscriptDetails = { id in
                     handoffReview = HandoffReviewRequest(task: MetadataSuggestionReview.task, transcriptID: id)
                 }
-                model.onUsePhotoAsBackdrop = { url, title in
-                    keyboard.stopInteraction()
-                    photoBackdrop = PhotoBackdropRequest(url: url, title: title)
-                }
-                model.refreshPhotoHandoffIfEnabled()
             }
             .sheet(item: $libraryPreparation) { $0.view }
-            .sheet(item: $photoBackdrop) { request in
-                stage.backdropReplacementView(imageURL: request.url, title: request.title)
-            }
             .sheet(item: $handoffReview) { request in
                 HandoffReviewView(history: model.historyLibrary, jobs: model.handoffJobs,
                     skills: request.transcriptID == nil ? TranscriptHandoffSkill.builtIns + packs.transcriptSkills : [.followUp],
@@ -275,21 +267,17 @@ struct WorkbenchHome: View {
     }
     private var welcome: some View {
         WorkbenchHomePage(model: model, stage: stage, readback: readback, snap: snap, introduction: introduction,
-                          jobs: model.handoffJobs, photos: model.photoHandoff, meetings: model.meetings,
+                          jobs: model.handoffJobs, meetings: model.meetings,
                           greetingPlayed: $greetingPlayed, openProfile: { keyboard.stopInteraction(); showingProfile = true })
     }
-    /// Library holds Resources, Packs and From iPhone as sections of one page, with its switcher
-    /// at the top (#134). The route alone chooses the section, so every Library door opens
-    /// Resources and Home's arrival cue opens From iPhone by its own route.
+    /// Library holds Resources and Packs as sections of one page, with its switcher at the top
+    /// (#134). The route alone chooses the section, so every Library door opens Resources.
     private var library: some View {
         let section = Self.destination(model.page).section ?? "library"
         return VStack(alignment: .leading, spacing: 0) {
             sectionedHeader("library", selection: section)
             switch section {
             case "packs": PackLibraryView(model: packs) { pack, entry in packs.use(entry, from: pack, readback: readback, app: model, stage: stage) }
-            case "photos":
-                PhotoHandoffView(handoff: model.photoHandoff, onUseAsBackdrop: model.onUsePhotoAsBackdrop)
-                    .padding(Workbench.pagePadding).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             default: ContentView(model: model, embedded: true,
                 onUseImageInPresent: { prepareLibraryImage($0, for: .present) },
                 onUseImageInPersona: { prepareLibraryImage($0, for: .persona) })
@@ -345,10 +333,6 @@ struct WorkbenchHome: View {
             case "connections":
                 ScrollView { VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
                     SubscriptionSettingsView(jobs: model.handoffJobs)
-                    if model.photoHandoff.isConfigured {
-                        Divider()
-                        PhotoHandoffSettings(handoff: model.photoHandoff)
-                    }
                 }.padding(Workbench.pagePadding).frame(maxWidth: .infinity, alignment: .leading) }
             default:
                 ScrollView { VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
@@ -521,8 +505,8 @@ struct WorkbenchClipboardShelf: View {
 }
 
 /// Home reads current work and History from their owners. Dictate, Snap and Snap & Talk
-/// lead; a loaded session continues from the same card. The first-dictation guide and saved
-/// photo cue keep their existing owners and every tool retains its preparation page.
+/// lead; a loaded session continues from the same card. The first-dictation guide keeps its
+/// existing owner and every tool retains its preparation page.
 struct WorkbenchHomePage: View {
     @ObservedObject var model: AppModel
     @ObservedObject var stage: StageKitController
@@ -530,7 +514,6 @@ struct WorkbenchHomePage: View {
     @ObservedObject var snap: SnapModel
     @ObservedObject var introduction: FounderIntroductionModel
     @ObservedObject var jobs: HandoffJobsModel
-    @ObservedObject var photos: PhotoHandoffModel
     @ObservedObject var meetings: MeetingModel
     var greetingPlayed: Binding<Bool> = .constant(true)
     var openProfile: () -> Void = {}
@@ -576,7 +559,6 @@ struct WorkbenchHomePage: View {
                     case .firstResult: firstResult
                     case .quickStart: quickStart
                     case .recentWork: recentWork
-                    case .fromIPhone: fromIPhone
                     }
                 }
             }.padding(Workbench.pagePadding)
@@ -592,7 +574,7 @@ struct WorkbenchHomePage: View {
     /// What Home shows, from its owners. Dictation alone ends the guide (#15).
     private var journey: HomeJourney {
         HomeJourney(transcripts: model.history.count, guide: model.preferences.firstDictationGuide,
-                    hasCurrentWork: hasCurrentWork, hasSession: hasSession, photos: photos.photos.count, stayInGuide: stayInGuide)
+                    hasCurrentWork: hasCurrentWork, hasSession: hasSession, stayInGuide: stayInGuide)
     }
     /// Skip for now and Show me a first dictation, saved with the Dictate preferences.
     private func skipGuide() { stayInGuide = false; model.preferences.firstDictationGuide = .skipped }
@@ -890,20 +872,12 @@ struct WorkbenchHomePage: View {
     }
     private func stamp(_ date: Date) -> String { date.formatted(date: .abbreviated, time: .shortened) }
 
-    // MARK: Snap & Talk and iPhone
+    // MARK: Snap & Talk
 
     /// The loaded session with captures, not already listed as current work.
     private var hasSession: Bool {
         readback.sessionURL != nil && readback.currentSessionProblem == nil && !readback.activeSections.isEmpty
             && !readback.isRecording && !readback.hasPendingTranscriptions
-    }
-    /// Photos saved from iPhone live in Library; Home links to them with their count and the
-    /// newest one's stored date. It never calls them new.
-    @ViewBuilder private var fromIPhone: some View {
-        if let saved = HomeRecentWork.savedFromIPhone(photos.photos.map(\.created)) {
-            Button(saved) { model.page = WorkbenchHome.photoArrivals }
-                .buttonStyle(.link).accessibilityIdentifier("home.phone-photos")
-        }
     }
 }
 
@@ -934,19 +908,12 @@ enum HomeRecentWork {
         case .snap: return nil
         }
     }
-    /// Home's link to photos saved from iPhone: how many, and the newest one's stored date. They
-    /// are Library's, so they never join Recent work, and the clock never dates them.
-    static func savedFromIPhone(_ created: [Date]) -> String? {
-        guard let newest = created.max() else { return nil }
-        return "Saved from iPhone · \(created.count) \(created.count == 1 ? "photo" : "photos") · newest "
-            + newest.formatted(date: .abbreviated, time: .shortened)
-    }
 }
 
 /// What Home shows, and in what order. Counting is what LocalVoice can reach; live state comes
 /// from every module. The first-dictation guide is gated on dictation alone (#15): Snaps,
-/// sessions, results and photos never stop offering it. Skip for now keeps one small way back
-/// until someone dictates.
+/// sessions and results never stop offering it. Skip for now keeps one small way back until
+/// someone dictates.
 struct HomeJourney: Equatable {
     var transcripts = 0
     /// Saved with the Dictate preferences; nil reads as offered.
@@ -955,10 +922,8 @@ struct HomeJourney: Equatable {
     var hasCurrentWork = false
     /// A loaded Snap & Talk session with captures, not already current work.
     var hasSession = false
-    /// Photos saved from iPhone, in Library.
-    var photos = 0
     var stayInGuide = false
-    enum Section: Hashable { case currentWork, guide, firstResult, quickStart, recentWork, fromIPhone }
+    enum Section: Hashable { case currentWork, guide, firstResult, quickStart, recentWork }
     /// Any transcript in History ends first use: a dictation, or a meeting or call
     /// transcribed from Dictate. A recorded completion outlasts removing them.
     var hasDictated: Bool { transcripts > 0 || guide == .completed }
@@ -971,11 +936,11 @@ struct HomeJourney: Equatable {
     var guideToSave: FirstDictationGuide? { transcripts > 0 && guide != .completed ? .completed : nil }
     /// Current work first, then the guide while offered, primary workflows and recent work.
     /// Right after a first dictation the guide's result already shows its words. A loaded
-    /// Snap & Talk session uses its workflow card; photos remain a quiet Library cue.
+    /// Snap & Talk session uses its workflow card.
     var sections: [Section] {
         let result = showsGuide && hasDictated
         return (hasCurrentWork ? [.currentWork] : []) + (showsGuide ? [.guide] : []) + (result ? [.firstResult] : [])
-            + [.quickStart] + (result ? [] : [.recentWork]) + (photos > 0 ? [.fromIPhone] : [])
+            + [.quickStart] + (result ? [] : [.recentWork])
     }
 
 }

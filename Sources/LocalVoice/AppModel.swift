@@ -2,7 +2,6 @@ import AppKit
 import AVFoundation
 import Combine
 import UniformTypeIdentifiers
-import PhotoHandoffKit
 import ToolbarCore
 
 @MainActor
@@ -325,9 +324,6 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     let library = DemoLibraryModel()
     lazy var presenter = PresenterModel(library: library)
     var onShowPresenter: (() -> Void)?
-    let photoHandoff = PhotoHandoffModel(directory: Workbench.supportDirectory(component: "PhotoHandoff"), platform: "Mac")
-    private var photoHandoffRefresh: Task<Void, Never>?
-    private var photoHandoffActivation: AnyCancellable?
     private var loaded = false
     private var draftRevision: UInt64 = 0
     private var liveCapture: DictationVoiceCapture?
@@ -377,7 +373,6 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     @Published var toolbarControls: CaptureHUDControls?
     var onShowEditor: ((String) -> Void)?
     var onShowAnnotationMenu: (() -> Void)?
-    var onUsePhotoAsBackdrop: ((URL, String) -> Void)?
     var onMenuRecording: (() -> Void)?
     var onCloseMenu: (() -> Void)?
     var onCancelShortcut: (() -> Void)?
@@ -399,9 +394,6 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         // line Home, the panel and Dictate read.
         let engine = self.engine, sink = ModelProgressSink(self)
         Task { await engine.observeProgress { line in Task { @MainActor in sink.model?.showModelProgress(line) } } }
-        photoHandoffActivation = NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
-            .sink { [weak self] _ in self?.refreshPhotoHandoffIfEnabled() }
-        refreshPhotoHandoffIfEnabled()
         var savedUndelivered: UnresolvedDelivery?
         var loadedDraftRevision = draftRevision
         do {
@@ -443,15 +435,6 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         // only while its record still holds its words (#134 T5).
         undelivered.restore(savedUndelivered, loadedDraftRevision: loadedDraftRevision, in: deliveryRecords)
         Task { await prepare() }
-    }
-
-    func refreshPhotoHandoffIfEnabled() {
-        guard photoHandoff.isEnabled, photoHandoff.isConfigured, !photoHandoff.isBusy, photoHandoffRefresh == nil else { return }
-        photoHandoffRefresh = Task { [weak self] in
-            guard let self else { return }
-            defer { photoHandoffRefresh = nil }
-            await photoHandoff.refresh()
-        }
     }
 
     /// A model setup's progress, shown while speech is not ready yet.
@@ -2019,7 +2002,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         // and the existing recovery audio; next launch cannot replay this target.
         liveDictation?.end(); liveDictation = nil
         meetings.shutdown(); handoffJobs.shutdown()
-        photoHandoffRefresh?.cancel(); photoHandoffActivation = nil; readingTask?.cancel()
+        readingTask?.cancel()
         shortcutRequest.cancel(); transcriptionTask?.cancel(); transcriptionID = nil; recordingAttempt = nil
         clipboardReceipt.clear(); coach.remove(); liveCapture?.requestStop(); meter?.invalidate(); meter = nil
         if let capture = liveCapture { Task { _ = await capture.finish(recognize: false) } }

@@ -2,10 +2,9 @@ import Foundation
 
 /// Home's Recent work is History All's newest five (#134 H1). Six synthetic transcripts are
 /// interleaved with Snaps and Hand off tasks, with two items at the same time, an archived
-/// Snap, a removed transcript, retries grouped under one review and days-old iPhone photos.
-/// Home used to take one item of each kind and date photos by the clock, so an old photo led
-/// and newer dictations were left out; photos are Library's and never enter this list.
-/// Nothing is rendered.
+/// Snap, a removed transcript and retries grouped under one review. Home used to take one item
+/// of each kind and date iPhone photos by the clock, so an old photo led and newer dictations
+/// were left out. Nothing is rendered.
 enum HomeRecentWorkChecks {
     @MainActor static func run() throws {
         var passed = 0
@@ -58,16 +57,6 @@ enum HomeRecentWorkChecks {
                   "an archived Snap, a removed transcript and a grouped retry stay out")
         try check(newest.allSatisfy { $0.date <= base.addingTimeInterval(600) }, "nothing is dated by the clock, as a photo once was")
 
-        // Photos saved from iPhone days before any of these are Library's: not Recent work, which
-        // takes no photos at all, and Home's link names their stored date, never the clock's.
-        let daysOld = base.addingTimeInterval(-4 * 86_400), older = base.addingTimeInterval(-9 * 86_400)
-        let saved = HomeRecentWork.savedFromIPhone([older, daysOld])
-        try check(saved == "Saved from iPhone · 2 photos · newest " + daysOld.formatted(date: .abbreviated, time: .shortened),
-                  "the iPhone link gives the count and the newest photo's stored date: \(saved ?? "none")")
-        try check(HomeRecentWork.savedFromIPhone([daysOld])?.contains("· 1 photo ·") == true && HomeRecentWork.savedFromIPhone([]) == nil,
-                  "one photo reads as one, and no photos add no link")
-        try check(!(saved ?? "").split(separator: " ").contains("new"), "the link never calls the photos new")
-
         // A redraw with the same stores reads nothing and sorts nothing again (#150).
         reads = 0
         let newer = transcript(900, "A newer dictation")
@@ -83,6 +72,6 @@ enum HomeRecentWorkChecks {
         let resultDoor = HomeRecentWork.review(for: .result(retry))
         try check(resultDoor?.job == retry.id && resultDoor?.transcript == nil, "a result opens its History detail")
         try check(HomeRecentWork.review(for: .snap(visibleSnap)) == nil, "a Snap opens its own preview, not History")
-        print("HOME_RECENT_WORK_CHECKS_OK: \(passed) checks; History All's newest five, grouped results, equal times, days-old photos and no redraw rebuild")
+        print("HOME_RECENT_WORK_CHECKS_OK: \(passed) checks; History All's newest five, grouped results, equal times and no redraw rebuild")
     }
 }

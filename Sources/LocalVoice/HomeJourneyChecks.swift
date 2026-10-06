@@ -15,13 +15,10 @@ enum HomeJourneyChecks {
         try check(fresh.sections == [.guide, .quickStart, .recentWork], "nothing saved shows the guide, the quick starts and Recent work")
 
         // The gate: other saved work never ends the guide, and stays listed below it.
-        for (name, journey) in [("a loaded Snap & Talk session", HomeJourney(hasSession: true)), ("iPhone photos", HomeJourney(photos: 2)),
-                                ("both", HomeJourney(hasSession: true, photos: 1))] {
-            try check(journey.showsGuide && journey.offersSkip && !journey.hasDictated, "\(name) without a dictation still gets the guide")
-            try check(journey.sections.prefix(3) == [.guide, .quickStart, .recentWork], "\(name) stays below the guide and Recent work")
-        }
-        try check(HomeJourney(hasSession: true, photos: 1).sections == [.guide, .quickStart, .recentWork, .fromIPhone],
-                  "a loaded session uses its workflow card instead of creating a duplicate section")
+        let session = HomeJourney(hasSession: true)
+        try check(session.showsGuide && session.offersSkip && !session.hasDictated, "a loaded Snap & Talk session without a dictation still gets the guide")
+        try check(session.sections == [.guide, .quickStart, .recentWork],
+                  "a loaded session stays below the guide and uses its workflow card instead of creating a duplicate section")
 
         // A dictation ends first use, including one saved before this state existed.
         let dictated = HomeJourney(transcripts: 1)
@@ -29,7 +26,7 @@ enum HomeJourneyChecks {
         try check(dictated.sections == [.quickStart, .recentWork], "after a dictation Home shows the quick starts and recent work")
         try check(dictated.guideToSave == .completed && HomeJourney(transcripts: 1, guide: .skipped).guideToSave == .completed,
                   "a dictation in History is recorded as completed, even after Skip for now")
-        try check(HomeJourney(transcripts: 1, guide: .completed).guideToSave == nil && HomeJourney(hasSession: true, photos: 4).guideToSave == nil,
+        try check(HomeJourney(transcripts: 1, guide: .completed).guideToSave == nil && HomeJourney(hasSession: true).guideToSave == nil,
                   "completion is recorded once, and never from other work")
         let removed = HomeJourney(guide: .completed)
         try check(!removed.showsGuide && !removed.offersGuide && removed.sections == [.quickStart, .recentWork],
@@ -49,7 +46,7 @@ enum HomeJourneyChecks {
                   "a cancelled microphone request leaves the guide as it was, below current work")
 
         // Show me a first dictation offers the guide again, with its own Skip.
-        let resumed = HomeJourney(guide: .offered, photos: 1, stayInGuide: true)
+        let resumed = HomeJourney(guide: .offered, hasSession: true, stayInGuide: true)
         try check(resumed.showsGuide && resumed.offersSkip && resumed.sections.prefix(2) == [.guide, .quickStart], "the way back shows the guide again")
 
         // Dictating from the guide: it stays to show where the words went, then Done or leaving Home ends it.
@@ -62,9 +59,9 @@ enum HomeJourneyChecks {
         try check(HomeJourney(hasCurrentWork: true).sections.first == .currentWork
                   && HomeJourney(transcripts: 1, hasCurrentWork: true).sections == [.currentWork, .quickStart, .recentWork],
                   "current work renders above the guide and the quick starts")
-        let order: [HomeJourney.Section] = [.currentWork, .guide, .firstResult, .quickStart, .recentWork, .fromIPhone]
-        for journey in [HomeJourney(transcripts: 1, hasCurrentWork: true, hasSession: true, photos: 2),
-                        HomeJourney(hasCurrentWork: true, hasSession: true, photos: 2), landed, fresh] {
+        let order: [HomeJourney.Section] = [.currentWork, .guide, .firstResult, .quickStart, .recentWork]
+        for journey in [HomeJourney(transcripts: 1, hasCurrentWork: true, hasSession: true),
+                        HomeJourney(hasCurrentWork: true, hasSession: true), landed, fresh] {
             let positions = journey.sections.map { order.firstIndex(of: $0)! }
             try check(positions == positions.sorted(), "Home keeps its fixed order: \(journey.sections)")
         }

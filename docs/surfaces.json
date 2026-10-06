@@ -638,29 +638,6 @@
     "note": "Stops the neural voices download it sits beside; what arrived is kept. Option of Read (1 October, Ethan's request for local model support in Read): neural voices are downloaded once, on request, and then read on this Mac. Off until chosen; Mac voices stay the default."
   },
   {
-    "id": "LocalVoice.PhotoHandoffView.PhotoHandoffArrivalCue.Button.from-iphone",
-    "surface": "proactive offer PhotoHandoffArrivalCue",
-    "label": "From iPhone",
-    "kind": "action",
-    "belongsTo": "library"
-  },
-  {
-    "id": "LocalVoice.PhotoHandoffView.PhotoHandoffSettings.Button.enable-photo-handoff",
-    "surface": "settings page",
-    "label": "Enable photo handoff",
-    "kind": "setting",
-    "belongsTo": "library"
-  },
-  {
-    "id": "LocalVoice.PhotoHandoffView.PhotoHandoffSettings.Button.turn-off",
-    "surface": "settings page",
-    "label": "Turn off",
-    "kind": "setting",
-    "belongsTo": "library",
-    "aliasOf": "library",
-    "note": "Existing contextual \"Turn off\" label inside library; shared wording, not a separate capability."
-  },
-  {
     "id": "LocalVoice.PresentWorkspaceView.PresentPromptButton.button-title.view",
     "surface": "Present workspace",
     "label": "Saved Prompts…",
@@ -1537,15 +1514,6 @@
     "note": "Quality: the Packs sidebar item becomes the Packs section of Library, on the same route, packs, so pack links and Snap & Talk's Manage packs… land there (#134)."
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.section.photos",
-    "surface": "page sections",
-    "label": "From iPhone",
-    "page": "photos",
-    "kind": "option",
-    "belongsTo": "library",
-    "note": "Quality: From iPhone, the segment Saved resources already had beside Resources, becomes a section of Library's one switcher instead of a switcher inside a section (#134). Home's Saved from iPhone link opens it."
-  },
-  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.section.settings",
     "surface": "page sections",
     "label": "General",
@@ -1789,15 +1757,6 @@
     "note": "Quality: the live strip's Persona action (was Button.hide-persona), with its label and click now from the shared Persona action: Hide persona, Hide personas, or Show personas for a hidden prepared set, as the toolbar and panel read (#134).",
     "kind": "action",
     "belongsTo": "persona"
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.runtime-d81c55f49c5b",
-    "surface": "window home",
-    "label": null,
-    "expression": "saved",
-    "kind": "action",
-    "belongsTo": "library",
-    "note": "Runtime label from HomeRecentWork.savedFromIPhone: Saved from iPhone with the photo count and the newest photo's stored date, a quiet link to Library › From iPhone (#134 H1). Photos are Library's, so they are not Recent work, and nothing calls them new."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.set-up-automatic-paste",

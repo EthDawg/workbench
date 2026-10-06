@@ -19,8 +19,7 @@ struct DemoLibraryView: View {
     @FocusState private var searching: Bool
     @State private var removal: DemoResource?
 
-    /// Library's Resources section. Library's switcher, in WorkbenchHome, shows Packs and
-    /// From iPhone beside it.
+    /// Library's Resources section. Library's switcher, in WorkbenchHome, shows Packs beside it.
     var body: some View { resources }
 
     private var resources: some View {

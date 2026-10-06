@@ -1,7 +1,6 @@
 import AppKit
 import AVFoundation
 import ObjectiveC
-import PhotoHandoffKit
 import SwiftUI
 import StageKit
 import ToolbarCore
@@ -569,7 +568,7 @@ private struct HistoryNativeAcceptanceView: View {
         // Home's first-dictation states come before History's, which add Hand off tasks to recent work.
         if let home = pages.firstIndex(where: { $0.route == "home" }) {
             pages[home].shots += try renderHomeStates(to: output) + renderHomeChrome(to: output)
-                + [try renderHomeLargerText(to: output), try renderHomeSavedPhotos(to: output)]
+                + [try renderHomeLargerText(to: output)]
         }
         let review = try checkHomeReview(to: output)
         if let history = pages.firstIndex(where: { $0.route == "history" }) {
@@ -1223,7 +1222,7 @@ private struct HistoryNativeAcceptanceView: View {
         let scale: CGFloat = 1.35, size = NSSize(width: SurfaceGallery.sizes[1].size.width - 216, height: SurfaceGallery.sizes[1].size.height)
         model.page = "home"
         let page = WorkbenchHomePage(model: model, stage: stage, readback: readback, snap: snap, introduction: FounderIntroductionModel(),
-                                     jobs: model.handoffJobs, photos: model.photoHandoff, meetings: model.meetings)
+                                     jobs: model.handoffJobs, meetings: model.meetings)
             .frame(width: size.width / scale, height: size.height / scale).scaleEffect(scale, anchor: .topLeading)
             .frame(width: size.width, height: size.height, alignment: .topLeading)
             .background(Workbench.background).tint(Workbench.accent).workbenchTheme()
@@ -1235,39 +1234,6 @@ private struct HistoryNativeAcceptanceView: View {
         return try save(try snapshot(host), id: "state-larger-text", title: "Home at 1.35 times the text size, minimum window's content column",
                         detail: "The page drawn 1.35 times larger in the same column: the title, tiles and recent rows wrap and grow, and nothing clips.",
                         file: "page-home-state-larger-text-\(theme).png", to: output)
-    }
-
-    /// Home with photos saved from iPhone days before the newest capture (#134 H1). They are
-    /// Library's, so Recent work stays History's five newest, and the quiet link under it gives
-    /// their count and the newest photo's stored date. The photos are a synthetic local library
-    /// in the pass's own folder, with no image files and no iCloud.
-    func renderHomeSavedPhotos(to output: URL) throws -> SurfaceGallery.Shot {
-        let folder = home.appendingPathComponent("Gallery Photos", isDirectory: true)
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let newestCapture = SurfacePass.history.map(\.date).max()!
-        func photo(daysBefore days: Double, _ title: String) -> [String: Any] {
-            ["id": UUID().uuidString, "title": title, "created": newestCapture.addingTimeInterval(-days * 86_400).timeIntervalSinceReferenceDate,
-             "sourceDevice": "iPhone", "disposition": "local", "digest": String(repeating: "a", count: 64), "byteCount": 1_000,
-             "width": 10, "height": 10, "hasOriginal": false]
-        }
-        let library: [String: Any] = ["version": 1, "photos": [photo(daysBefore: 5, "Whiteboard"), photo(daysBefore: 9, "Receipt")],
-                                      "enabled": false, "accounts": [Any](), "suppressed": [Any]()]
-        try JSONSerialization.data(withJSONObject: library).write(to: folder.appendingPathComponent("photos.json"))
-        let photos = PhotoHandoffModel(directory: folder, platform: "Mac", allowsCloudAccess: false)
-        guard photos.photos.count == 2 else { throw VoiceError.message("The synthetic iPhone photos did not load: \(photos.error ?? "none listed").") }
-        let size = NSSize(width: SurfaceGallery.sizes[1].size.width - 216, height: SurfaceGallery.sizes[1].size.height)
-        model.page = "home"
-        let page = WorkbenchHomePage(model: model, stage: stage, readback: readback, snap: snap, introduction: FounderIntroductionModel(),
-                                     jobs: model.handoffJobs, photos: photos, meetings: model.meetings)
-            .frame(width: size.width, height: size.height).tint(Workbench.accent).workbenchTheme()
-        let host = NSHostingView(rootView: page)
-        let window = offscreenWindow(size: size, styleMask: [.borderless])
-        window.contentView = host
-        defer { window.contentView = nil; window.close() }
-        settle(host, seconds: 1)
-        return try save(try snapshot(host), id: "state-saved-photos", title: "Home with photos saved from iPhone, minimum window's content column",
-                        detail: "Two synthetic photos saved 5 and 9 days before the newest capture: Recent work is still History's five newest, and the quiet link under it reads Saved from iPhone with the count and the newest photo's stored date.",
-                        file: "page-home-state-saved-photos-\(theme).png", to: output)
     }
 
     // MARK: Floating toolbar visibility
@@ -1744,7 +1710,7 @@ private struct HistoryNativeAcceptanceView: View {
             }
         }
         pages[homeIndex].shots += try renderHomeChrome(to: output) + renderHomeStates(to: output)
-            + [renderHomeLargerText(to: output), renderHomeSavedPhotos(to: output)]
+            + [renderHomeLargerText(to: output)]
         let review = try checkHomeReview(to: output)
         if let history = pages.firstIndex(where: { $0.route == "history" }) {
             pages[history].shots.append(review.shot)
@@ -3610,7 +3576,6 @@ private struct HistoryNativeAcceptanceView: View {
                  E(surface: home, label: "Recent work · a result's title", leads: "Page: history, revealing that task", route: "history"),
                  action(home, "Recent work · a Snap's thumbnail and title", "Opens its read-only preview"),
                  page(home, "Open History", "history"),
-                 page(home, "Saved from iPhone, when photos are in Library", "photos"),
                  action(home, "Show me a first dictation, after Skip for now", "Shows the first-dictation guide again"),
                  page(home, "Models…, while speech is not ready", "models"),
                  E(surface: "Settings page", label: "Dictate settings…", leads: "Page: dictate, with its settings sheet open", route: "dictate"),
