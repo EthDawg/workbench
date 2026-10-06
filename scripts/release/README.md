@@ -209,7 +209,7 @@ For the first updater release, install an older updater-enabled test artifact an
 
 ## Keep release execution bounded
 
-Use one release owner and the existing helpers. Capture the source SHA, CI run IDs,
+Use one release owner and the existing helpers. Capture the source SHA, CI run IDs (for a main commit, its merge-group run),
 immutable package path and completed stage before waiting. Let a command such as
 `gh run watch RUN_ID --exit-status --interval 300` wait for the pinned run; do not
 start a second polling loop or repeatedly reread the repository while it waits.
@@ -228,12 +228,15 @@ scheduled model wakeups for routine release waiting. A background script may pol
 at five-minute intervals without model involvement; stop on failure or changed
 source and retain a concise result for the next check-in.
 
-CI can omit native jobs for known documentation/site-only changes on pull
-requests, complete merge groups and pushes to main. Site always validates the
-surface registry, contracts and release records and builds the website. The
-required Build and test gate also requires Site and every selected native job
-to pass. Source, resources, scripts, workflows, unknown paths, missing history
-and manual runs retain full native CI. See the exact
+The five native CI jobs run in the merge queue and on manual runs; a pull
+request push runs only the classifier and Site unless it carries the `ci:native`
+label, and a push to main made by the merge queue's bot skips the native jobs its
+group already ran. In a merge group, known documentation/site-only changes skip
+native; source, resources, scripts, workflows, unknown paths and missing history
+run it. Site always validates the surface registry, contracts and release records
+and builds the website. The required Build and test gate also requires Site and
+every selected native job to pass. For a commit on main, the native evidence is
+its merge-group run. See the exact
 [selection and merge queue policy](../../docs/updating.md#ci-and-the-merge-queue).
 This avoids rebuilding the app for metadata promotion after packaging; it does
 not waive signing, notarization, archive readback or installed acceptance.
