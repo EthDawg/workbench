@@ -240,3 +240,79 @@ its merge-group run. See the exact
 [selection and merge queue policy](../../docs/updating.md#ci-and-the-merge-queue).
 This avoids rebuilding the app for metadata promotion after packaging; it does
 not waive signing, notarization, archive readback or installed acceptance.
+
+
+### Artifact-bound candidate acceptance
+
+Before the existing `prepare_update.py` command creates its output, put
+`journey-acceptance.json` beside the final notarized ZIP and `release.json`. The
+same validation runs in `publish_update.py` before release creation or upload.
+There is no new command or workflow. Local Preview observation receipts marked
+`publicationReady: false`, source checks and gallery renders cannot substitute
+for this candidate attestation. Real native use with synthetic content is valid.
+This check cannot determine whether an observer told the truth; independent
+review and the actual native observations remain required.
+
+The `acceptance` object in version-controlled `config.json` owns the release
+claim, slice impact, every required journey/route, and the persisted formats to
+assess. Its current scope is the foundation candidate, including L1–L4, manual
+and connected Claude/Codex handoff, and separately observed USB Teams/Zoom routes.
+These are acceptance targets, not claims that the held work already passes.
+An independently accepted bounded slice may instead use an explained, reviewed
+`bounded-slice` policy with core smoke and its affected journeys, narrower claims
+and outstanding limits in #7. The candidate receipt cannot change that policy,
+select its scope or omit one of its variants. Do not add an applicability engine.
+
+Schema 1 has these fields (the synthetic fixture in `test_updates.py` is the
+executable format example; it is **not** real acceptance evidence):
+
+- `schemaVersion: 1`, `stage: "candidate"`, `publicationReady: true`, and
+  `resetComplete: false`. `policySHA256` is SHA-256 of the canonical UTF-8 JSON
+  acceptance policy: sorted keys, separators `(',', ':')`, no NaN/Infinity.
+- `artifact` contains exactly `source`, `channel`, `version`, `build`, `sha256`
+  from the release receipt and `bundle` from the verified app's bundle identifier.
+  Validation uses the extracted, signed, notarized final package. Renaming a ZIP
+  for GitHub changes neither its bytes nor this identity.
+- `observer`, different independent `reviewer`, `observedAt`, and `environment`
+  (`macOS`, `hardware`) identify the native review. Use public-safe attribution,
+  not account names, machine serials or unrelated personal information.
+- `candidateSmoke` records native `method`, passing `status`, exact-edition
+  `opening`, `permissions` and `savedWork` passes, plus its `evidence` paths.
+- `journeys` has exactly one record per configured `(id, variant)`. Candidate
+  journeys require native `method`, passing `status` and evidence. Only the
+  configured later-delivery records remain `not-tested` at this stage.
+- `evidence` lists explicitly sanitized files by `path`, `sha256` and
+  `sanitized: true`. Use `acceptance-evidence/<unique-simple-filename>`;
+  filenames contain letters, numbers, dots, hyphens or underscores. Each file
+  is a regular file of at most 8 MiB, at most 64 in total. Absolute/traversing,
+  noncanonical, reserved, duplicate and symlink paths are refused. Do not include
+  transcripts, private settings, credentials, fingerprints or adjacent private
+  evidence. Preparation copies only validated referenced bytes, never a folder.
+- `compatibility` names the exact previous published edition's `source`,
+  `version`, `build` and `sha256` in `previousRelease`, plus `reviewer`, a concrete
+  `assessment`, `upgradeEvidence` paths, and one `formats` record per configured
+  format (`name`, `upgrade`, `downgrade`, `recovery`). `downgrade` is `supported`
+  or `unsupported`; document the actual recovery limit. Snap & Talk/Meetings
+  format-2 data is not proven safe in older binaries by a backup filename or a
+  generic compatible flag. Preserve original material for a compatible build.
+
+Historical native observations may include a `reuse` object per journey. It
+names the original `artifact` (same identity fields), its `environment`, the
+reviewed `sourceImpact`, `configurationImpact`, `environmentImpact`, `reviewer`
+and evidence paths. This never removes the fresh exact-candidate smoke.
+Preview evidence alone cannot establish production opening, permissions or
+public delivery; those require the actual production edition and package.
+
+The public-first-install I1 and public-feed U2 observations happen **after**
+publication/feed deployment and cannot be pre-attested here. The candidate
+receipt deliberately leaves them `not-tested` and makes no reset-complete claim.
+Record those later exact-artifact delivery observations in the existing release
+and #7 evidence before describing the foundation as complete. A passing
+preflight, ZIP download or feed staging is not that browser/install/update test.
+No public publication or installation authority is granted by this format.
+
+Publication revalidates the prepared receipt and evidence, uploads the sidecar
+and only its listed sanitized files as release assets (evidence basenames), then
+reads them back from the draft and public release byte for byte. A draft mismatch
+leaves the release draft; a public mismatch does not stage the feed or website.
+Keep the source/tag/signature/notarization checks and final delivery verification.

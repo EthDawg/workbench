@@ -75,6 +75,135 @@ def verify_package(receipt, archive, config):
         release.check_signature(app, receipt['team'])
         subprocess.run(['xcrun', 'stapler', 'validate', app], check=True)
         subprocess.run(['spctl', '--assess', '--type', 'execute', app], check=True)
+        return info
+
+
+# This is a small artifact gate, not proof that an observer's attestation is true.
+JOURNEY_IDS = set('D1 M1 M2 H1 H2 S1 ST1 P1 P2 R1 U1 U2 I1 I2 Q1 Q2 Q3 L1 L2 L3 L4 X1 X2'.split())
+ACCEPTANCE_NAME = 'journey-acceptance.json'
+
+
+def read_json_bytes(data):
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError('Duplicate JSON key: ' + key)
+            result[key] = value
+        return result
+    def invalid(value):
+        raise ValueError('Invalid JSON constant: ' + value)
+    try:
+        return json.loads(data, object_pairs_hook=unique, parse_constant=invalid)
+    except (ValueError, UnicodeError) as error:
+        raise RuntimeError('Invalid acceptance JSON') from error
+
+
+def policy_digest(policy):
+    return hashlib.sha256(json.dumps(policy, sort_keys=True, separators=(',', ':'),
+                                     allow_nan=False).encode()).hexdigest()
+
+
+def validate_acceptance(directory, receipt, info, root):
+    """Return only the validated public bytes, before preparation or publication writes."""
+    def require(condition, message):
+        if not condition:
+            raise RuntimeError('Release acceptance: ' + message)
+    def text(value):
+        return isinstance(value, str) and bool(value.strip())
+    def digest(value):
+        return isinstance(value, str) and re.fullmatch(r'[0-9a-f]{64}', value) is not None
+    def regular_bytes(path):
+        require(not path.is_symlink() and path.is_file(), 'missing or symlink evidence')
+        require(path.stat().st_size <= 8 * 1024 * 1024, 'evidence exceeds 8 MiB')
+        return path.read_bytes()
+    try:
+        policy = read_json_bytes((root / 'scripts/release/config.json').read_bytes())['acceptance']
+        require(policy['schemaVersion'] == 1 and policy['claim'] in ('bounded-slice', 'foundation-candidate'), 'unknown policy')
+        require(text(policy['impact']['reason']) and policy['impact']['packages']
+                and set(policy['impact']['packages']) <= set('ABCDEFGHIJ'), 'missing reviewed slice impact')
+        rows = policy['journeys']
+        require(isinstance(rows, list) and rows, 'empty journey policy')
+        expected = {}
+        for row in rows:
+            key = (row['id'], row['variant'])
+            require(row['id'] in JOURNEY_IDS and text(row['variant']) and key not in expected, 'unknown or duplicate policy journey')
+            require(row['phase'] in ('candidate', 'delivery'), 'unknown journey phase')
+            require(row['phase'] != 'delivery' or row['id'] in ('I1', 'U2'), 'invalid delivery-only journey')
+            expected[key] = row['phase']
+        if policy['claim'] == 'foundation-candidate':
+            require({key[0] for key in expected} == JOURNEY_IDS, 'incomplete foundation policy')
+        sidecar = regular_bytes(directory / ACCEPTANCE_NAME)
+        acceptance = read_json_bytes(sidecar)
+        require(acceptance['schemaVersion'] == 1 and acceptance['stage'] == 'candidate', 'unknown schema or stage')
+        require(acceptance['publicationReady'] is True and acceptance['resetComplete'] is False, 'partial or premature completion claim')
+        require(acceptance['policySHA256'] == policy_digest(policy), 'different reviewed policy')
+        artifact = {key: receipt[key] for key in ('source', 'channel', 'version', 'build', 'sha256')}
+        artifact['bundle'] = info['CFBundleIdentifier']
+        require(acceptance['artifact'] == artifact, 'different package identity')
+        require(info['WorkbenchBuildKind'] == 'release' and info['WorkbenchSourceDirty'] is False, 'local or dirty package')
+        for key, field in [('source', 'WorkbenchSourceRevision'), ('version', 'CFBundleShortVersionString'), ('build', 'CFBundleVersion')]:
+            require(artifact[key] == info[field], 'different verified bundle')
+        require(all(text(acceptance[key]) for key in ('observer', 'reviewer', 'observedAt')), 'missing observation/review')
+        require(acceptance['reviewer'] != acceptance['observer'], 'independent review required')
+        require(all(text(acceptance['environment'][key]) for key in ('macOS', 'hardware')), 'missing native environment')
+        require(acceptance['candidateSmoke']['method'] == 'native' and acceptance['candidateSmoke']['status'] == 'pass', 'fresh native candidate smoke required')
+        require(all(acceptance['candidateSmoke'][key] == 'pass' for key in ('opening', 'permissions', 'savedWork')), 'exact-edition opening, permissions and saved-work smoke required')
+        files = {ACCEPTANCE_NAME: sidecar}
+        evidence = {}
+        require(isinstance(acceptance['evidence'], list) and 0 < len(acceptance['evidence']) <= 64, 'missing or excessive evidence')
+        for item in acceptance['evidence']:
+            name = item['path']
+            path = Path(name)
+            require(isinstance(name, str) and len(path.parts) == 2 and path.parts[0] == 'acceptance-evidence'
+                    and name == 'acceptance-evidence/' + path.name
+                    and path.name not in (ACCEPTANCE_NAME, 'release.json', 'SHA256SUMS.txt', receipt['archive'], receipt['archive'].replace(' ', '.'))
+                    and re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*', path.name), 'unsafe evidence path')
+            require(name not in evidence and item['sanitized'] is True and digest(item['sha256']), 'duplicate or unsanitized evidence')
+            require(not (directory / 'acceptance-evidence').is_symlink(), 'symlink evidence directory')
+            data = regular_bytes(directory / path)
+            require(hashlib.sha256(data).hexdigest() == item['sha256'], 'changed evidence bytes')
+            evidence[name] = data
+            files[name] = data
+        def references(names):
+            require(isinstance(names, list) and names and len(names) == len(set(names))
+                    and all(name in evidence for name in names), 'missing evidence reference')
+        references(acceptance['candidateSmoke']['evidence'])
+        seen = set()
+        for observation in acceptance['journeys']:
+            key = (observation['id'], observation['variant'])
+            require(key in expected and key not in seen, 'unknown or duplicate journey/variant')
+            seen.add(key)
+            if expected[key] == 'delivery':
+                require(observation['status'] == 'not-tested', 'public delivery cannot be pre-attested')
+                continue
+            require(observation['status'] == 'pass' and observation['method'] == 'native', 'required native journey has not passed')
+            references(observation['evidence'])
+            reuse = observation.get('reuse')
+            if reuse is not None:
+                original = reuse['artifact']
+                require(all(text(original[k]) for k in ('source', 'channel', 'version', 'build', 'bundle'))
+                        and digest(original['sha256']), 'missing original artifact')
+                require(re.fullmatch(r'[0-9a-f]{40}', original['source']) is not None, 'invalid original source')
+                require(all(text(reuse['environment'][k]) for k in ('macOS', 'hardware')), 'missing original environment')
+                require(all(text(reuse[k]) for k in ('sourceImpact', 'configurationImpact', 'environmentImpact', 'reviewer')), 'unreviewed historical reuse')
+                references(reuse['evidence'])
+        require(seen == set(expected), 'missing required journey/variant')
+        compatibility = acceptance['compatibility']
+        baseline = read_json_bytes((root / 'site/updates' / (receipt['channel'] + '.json')).read_bytes())
+        require(compatibility['previousRelease'] == {k: baseline[k] for k in ('source', 'version', 'build', 'sha256')}, 'wrong storage baseline')
+        require(text(compatibility['reviewer']) and text(compatibility['assessment']), 'unassessed storage compatibility')
+        references(compatibility['upgradeEvidence'])
+        require(isinstance(compatibility['formats'], list) and compatibility['formats'], 'missing persisted-format assessment')
+        formats = set()
+        for item in compatibility['formats']:
+            require(text(item['name']) and item['name'] not in formats and text(item['upgrade'])
+                    and item['downgrade'] in ('supported', 'unsupported') and text(item['recovery']), 'incomplete format compatibility')
+            formats.add(item['name'])
+        require(formats == set(policy['storageFormats']) and len(formats) == len(policy['storageFormats']), 'missing required format assessment')
+        return files
+    except (OSError, KeyError, TypeError, ValueError) as error:
+        raise RuntimeError('Release acceptance: missing or malformed receipt, policy or evidence') from error
 
 
 def prepare(directory, tag, notes, output):
@@ -85,9 +214,14 @@ def prepare(directory, tag, notes, output):
     if Path(name).name != name:
         raise RuntimeError('Archive must be inside the release directory')
     archive = directory / name
-    verify_package(receipt, archive, config)
+    info = verify_package(receipt, archive, config)
+    evidence = validate_acceptance(directory, receipt, info, ROOT)
     output.mkdir(parents=True, exist_ok=False)
-    filename = name.replace(' ', '.')
+    for name, data in evidence.items():
+        target = output / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+    filename = receipt['archive'].replace(' ', '.')
     destination = output / filename
     shutil.copy2(archive, destination)
     shutil.copy2(notes, output / (Path(filename).stem + '.html'))

@@ -411,6 +411,36 @@ class IntegratedSourceTests(ReleaseHistoryFixture, unittest.TestCase):
             publish_update.verify_integrated_source(self.previous)
 
 
+
+def acceptance_fixture(root, directory, receipt, baseline):
+    policy = json.loads((build_info.ROOT/'scripts/release/config.json').read_text())['acceptance']
+    (root/'scripts/release/config.json').write_text(json.dumps({'acceptance': policy}))
+    evidence_name = 'acceptance-evidence/native.md'
+    data = b'Synthetic test-only native attestation, not an actual acceptance claim.\n'
+    (directory/'acceptance-evidence').mkdir(exist_ok=True)
+    (directory/evidence_name).write_bytes(data)
+    artifact = {key: receipt[key] for key in ('source', 'channel', 'version', 'build', 'sha256')}
+    artifact['bundle'] = 'com.ethdawg.workbench' + ('.preview' if receipt['channel'] == 'preview' else '')
+    value = dict(schemaVersion=1, stage='candidate', publicationReady=True, resetComplete=False,
+        policySHA256=prepare_update.policy_digest(policy), artifact=artifact,
+        observer='Synthetic observer', reviewer='Synthetic independent reviewer', observedAt='2026-10-07T01:00:00Z',
+        environment={'macOS':'synthetic macOS 26.5.1', 'hardware':'synthetic Apple silicon'},
+        candidateSmoke={'method':'native', 'status':'pass', 'opening':'pass', 'permissions':'pass', 'savedWork':'pass', 'evidence':[evidence_name]},
+        evidence=[{'path':evidence_name, 'sha256':hashlib.sha256(data).hexdigest(), 'sanitized':True}],
+        journeys=[dict(id=row['id'], variant=row['variant'], status='not-tested' if row['phase']=='delivery' else 'pass',
+                       method='native', evidence=[evidence_name]) for row in policy['journeys']],
+        compatibility={'previousRelease':{k:baseline[k] for k in ('source','version','build','sha256')},
+            'reviewer':'Synthetic upgrade reviewer', 'assessment':'Synthetic fixture; no real upgrade claimed.',
+            'upgradeEvidence':[evidence_name], 'formats':[{'name':name,
+                'upgrade':'Original format-1 manifest and tracks checked in this fixture.',
+                'downgrade':'unsupported', 'recovery':'Retain original folders and use a compatible newer binary.'} for name in policy['storageFormats']]})
+    (directory/prepare_update.ACCEPTANCE_NAME).write_text(json.dumps(value))
+    info = {'CFBundleIdentifier':artifact['bundle'], 'CFBundleShortVersionString':receipt['version'],
+            'CFBundleVersion':receipt['build'], 'WorkbenchSourceRevision':receipt['source'],
+            'WorkbenchBuildKind':'release', 'WorkbenchSourceDirty':False}
+    return value, info
+
+
 class PinnedPublicationTests(ReleaseHistoryFixture, unittest.TestCase):
     def setUp(self):
         super().setUp()
@@ -435,7 +465,9 @@ class PinnedPublicationTests(ReleaseHistoryFixture, unittest.TestCase):
         self.previous_feed = self.destination/'production.xml'
         self.write_feed(self.previous_feed, '9')
         self.previous_record = self.destination/'production.json'
-        self.previous_record.write_text('{"synthetic":"previous published record"}\n')
+        baseline=dict(source=self.initial,version='1.9.0',build='9',sha256='b'*64)
+        self.previous_record.write_text(json.dumps(baseline))
+        self.acceptance,self.verified_info=acceptance_fixture(self.checkout,self.prepared,self.receipt,baseline)
         self.release_listing = [[]]
         self.tag_refs = []
         self.remote_calls = []
@@ -461,7 +493,9 @@ class PinnedPublicationTests(ReleaseHistoryFixture, unittest.TestCase):
         if args == ('api', 'repos/Ship-Work/workbench/git/matching-refs/tags/v2.0.0'):
             return json.dumps(self.tag_refs)
         if args[:2] == ('release', 'download'):
-            shutil.copy2(self.archive, Path(args[args.index('--dir')+1])/self.archive.name)
+            asset=args[args.index('--pattern')+1]
+            source=self.prepared/asset if asset in (self.archive.name,prepare_update.ACCEPTANCE_NAME) else self.prepared/'acceptance-evidence'/asset
+            shutil.copy2(source, Path(args[args.index('--dir')+1])/asset)
         elif args[:2] not in [('release', 'create'), ('release', 'upload'), ('release', 'edit')]:
             raise AssertionError(f'Unexpected GitHub call: {args}')
         return ''
@@ -474,10 +508,12 @@ class PinnedPublicationTests(ReleaseHistoryFixture, unittest.TestCase):
     @contextmanager
     def publication_boundary(self):
         with patch.object(publish_update, 'ROOT', self.checkout), \
-             patch.object(prepare_update, 'verify_package'), \
+             patch.object(prepare_update, 'verify_package', return_value=self.verified_info), \
              patch.object(publish_update.subprocess, 'run', side_effect=self.publication_command), \
              patch.object(publish_update, 'gh', side_effect=self.github), \
-             patch.object(publish_update.urllib.request, 'urlopen', return_value=io.BytesIO(self.archive.read_bytes())), \
+             patch.object(publish_update.urllib.request, 'urlopen', side_effect=lambda url,**kw: io.BytesIO(
+                 (self.prepared/(url.rsplit('/',1)[1]) if url.rsplit('/',1)[1] in (self.archive.name,prepare_update.ACCEPTANCE_NAME)
+                  else self.prepared/'acceptance-evidence'/url.rsplit('/',1)[1]).read_bytes())), \
              redirect_stdout(io.StringIO()):
             yield
 
@@ -489,7 +525,7 @@ class PinnedPublicationTests(ReleaseHistoryFixture, unittest.TestCase):
         self.assertEqual(self.publication_state(), before)
 
     def test_prior_integrated_package_keeps_exact_target_receipt_and_bytes(self):
-        original = {path.name: path.read_bytes() for path in self.prepared.iterdir()}
+        original = {str(path.relative_to(self.prepared)): path.read_bytes() for path in self.prepared.rglob('*') if path.is_file()}
         checkout_before = self.checkout_state()
         with self.publication_boundary():
             publish_update.publish(self.prepared, self.prepared/'notes.md')
@@ -497,7 +533,7 @@ class PinnedPublicationTests(ReleaseHistoryFixture, unittest.TestCase):
         self.assertEqual(create[create.index('--target')+1], self.previous)
         self.assertEqual(json.loads(self.previous_record.read_text())['source'], self.previous)
         self.assertEqual(self.previous_feed.read_bytes(), original['production.xml'])
-        self.assertEqual({path.name: path.read_bytes() for path in self.prepared.iterdir()}, original)
+        self.assertEqual({str(path.relative_to(self.prepared)): path.read_bytes() for path in self.prepared.rglob('*') if path.is_file()}, original)
         self.assertEqual(self.checkout_state(), checkout_before)
 
     def test_unintegrated_source_stops_before_release_writes_or_feed_changes(self):
@@ -506,7 +542,10 @@ class PinnedPublicationTests(ReleaseHistoryFixture, unittest.TestCase):
             with self.subTest(source=source):
                 self.remote_calls.clear()
                 self.receipt['source'] = source
+                self.acceptance['artifact']['source'] = source
+                self.verified_info['WorkbenchSourceRevision'] = source
                 self.save_receipt()
+                self.save_acceptance()
                 with self.publication_boundary(), self.assertRaisesRegex(RuntimeError, 'first-parent'):
                     publish_update.publish(self.prepared, self.prepared/'notes.md')
                 self.assert_no_release_writes(before)
@@ -544,6 +583,178 @@ class PinnedPublicationTests(ReleaseHistoryFixture, unittest.TestCase):
                     publish_update.publish(self.prepared, self.prepared/'notes.md')
                 self.assertEqual(self.remote_calls, [])
                 self.assert_no_release_writes(before)
+
+    def save_acceptance(self):
+        (self.prepared/prepare_update.ACCEPTANCE_NAME).write_text(json.dumps(self.acceptance))
+
+    def assert_acceptance_rejected(self, pattern='Release acceptance|Invalid acceptance'):
+        before = self.publication_state()
+        self.remote_calls.clear()
+        output = self.directory/'rejected-output'
+        with patch.object(prepare_update, 'ROOT', self.checkout), \
+             patch.object(prepare_update, 'verify_package', return_value=self.verified_info):
+            with self.assertRaisesRegex(RuntimeError, pattern):
+                prepare_update.prepare(self.prepared, 'v2.0.0', self.prepared/'notes.md', output)
+        self.assertFalse(output.exists())
+        with self.publication_boundary(), self.assertRaisesRegex(RuntimeError, pattern):
+            publish_update.publish(self.prepared, self.prepared/'notes.md')
+        self.assert_no_release_writes(before)
+
+    def test_acceptance_missing_unknown_partial_or_automated_cannot_publish(self):
+        original = copy.deepcopy(self.acceptance)
+        cases = [
+            ('schemaVersion', 2), ('stage', 'source'), ('publicationReady', False),
+            ('resetComplete', True), ('policySHA256', '0'*64), ('reviewer', ''),
+            ('environment', {}), ('journeys', original['journeys'][1:]),
+            ('journeys', original['journeys']+[original['journeys'][0]]),
+            ('evidence', []), ('compatibility', {'compatible':True}),
+            ('compatibility',dict(original['compatibility'],formats=original['compatibility']['formats'][1:])),
+            ('candidateSmoke', {'method':'automated', 'status':'pass', 'evidence':['acceptance-evidence/native.md']})]
+        for key, value in cases:
+            with self.subTest(key=key, value=str(value)[:40]):
+                self.acceptance = copy.deepcopy(original)
+                self.acceptance[key] = value
+                self.save_acceptance()
+                self.assert_acceptance_rejected()
+        for key, value in [('id','unknown'), ('variant','unreviewed-route'), ('status','not-tested'), ('status','fail'), ('method','automated')]:
+            with self.subTest(journey_field=key, value=value):
+                self.acceptance = copy.deepcopy(original)
+                self.acceptance['journeys'][0][key] = value
+                self.save_acceptance()
+                self.assert_acceptance_rejected()
+        for key, value in [('source','a'*40), ('channel','preview'), ('build','99'), ('version','9.9.9'), ('bundle','wrong.app'), ('sha256','f'*64)]:
+            with self.subTest(identity=key):
+                self.acceptance = copy.deepcopy(original)
+                self.acceptance['artifact'][key] = value
+                self.save_acceptance()
+                self.assert_acceptance_rejected()
+
+    def test_duplicate_keys_and_missing_receipt_reject_before_mutation(self):
+        path = self.prepared/prepare_update.ACCEPTANCE_NAME
+        path.write_text('{"schemaVersion":1,"schemaVersion":1}')
+        self.assert_acceptance_rejected()
+        path.unlink()
+        self.assert_acceptance_rejected()
+
+    def test_all_promoted_routes_are_required_and_delivery_is_later(self):
+        original = copy.deepcopy(self.acceptance)
+        for index, row in enumerate(original['journeys']):
+            if row['id'] not in ('H2', 'P1', 'L1', 'L2', 'L3', 'L4'):
+                continue
+            with self.subTest(id=row['id'], variant=row['variant']):
+                self.acceptance = copy.deepcopy(original)
+                del self.acceptance['journeys'][index]
+                self.save_acceptance()
+                self.assert_acceptance_rejected()
+        self.acceptance = copy.deepcopy(original)
+        next(r for r in self.acceptance['journeys'] if r['id']=='I1')['status']='pass'
+        self.save_acceptance()
+        self.assert_acceptance_rejected()
+
+    def test_missing_changed_escaping_or_symlink_evidence_rejects(self):
+        path = self.prepared/'acceptance-evidence/native.md'
+        data = path.read_bytes()
+        for changed in (b'changed after preparation', None):
+            if changed is None:
+                path.unlink()
+            else:
+                path.write_bytes(changed)
+            self.assert_acceptance_rejected()
+        outside = self.directory/'private-neighbor.md'
+        outside.write_bytes(data)
+        path.symlink_to(outside)
+        self.assert_acceptance_rejected()
+        path.unlink()
+        path.write_bytes(data)
+        original = copy.deepcopy(self.acceptance)
+        for name in ('../private-neighbor.md', str(outside), 'acceptance-evidence/../../private-neighbor.md',
+                     'acceptance-evidence/./native.md','acceptance-evidence/journey-acceptance.json'):
+            self.acceptance=copy.deepcopy(original)
+            self.acceptance['evidence'][0]['path']=name
+            self.save_acceptance()
+            self.assert_acceptance_rejected()
+        self.acceptance=original
+        self.save_acceptance()
+        path.parent.rename(self.prepared/'moved-evidence')
+        path.parent.symlink_to(self.prepared/'moved-evidence', target_is_directory=True)
+        self.assert_acceptance_rejected()
+
+    def test_unreviewed_reuse_and_wrong_upgrade_baseline_reject(self):
+        original = copy.deepcopy(self.acceptance)
+        self.acceptance['journeys'][0]['reuse'] = {'artifact':original['artifact']}
+        self.save_acceptance()
+        self.assert_acceptance_rejected()
+        self.acceptance = copy.deepcopy(original)
+        self.acceptance['compatibility']['previousRelease']['build']='unknown'
+        self.save_acceptance()
+        self.assert_acceptance_rejected()
+        self.acceptance = copy.deepcopy(original)
+        self.acceptance['compatibility']['formats'][0].pop('recovery')
+        self.save_acceptance()
+        self.assert_acceptance_rejected()
+
+    def test_reviewed_reuse_requires_fresh_candidate_smoke(self):
+        self.acceptance['journeys'][0]['reuse'] = dict(artifact=dict(self.acceptance['artifact'],source=self.initial),
+            environment=self.acceptance['environment'], sourceImpact='Reviewed source delta leaves this path unchanged.',
+            configurationImpact='Same route and configuration.', environmentImpact='Same approved OS and receiver.',
+            reviewer='Synthetic independent reviewer', evidence=['acceptance-evidence/native.md'])
+        self.save_acceptance()
+        files=prepare_update.validate_acceptance(self.prepared,self.receipt,self.verified_info,self.checkout)
+        self.assertEqual(set(files), {'journey-acceptance.json','acceptance-evidence/native.md'})
+        self.acceptance['candidateSmoke']['status']='not-tested'
+        self.save_acceptance()
+        self.assert_acceptance_rejected()
+
+    def test_preparation_normalizes_filename_without_changing_acceptance_bytes(self):
+        old=self.archive
+        self.archive=self.prepared/'Workbench Candidate.zip'
+        old.rename(self.archive)
+        self.receipt['archive']=self.archive.name
+        self.save_receipt()
+        notes=self.prepared/'notes.html'
+        notes.write_text('<p>Synthetic fixture.</p>')
+        output=self.directory/'prepared-output'
+        expected={name:data for name,data in prepare_update.validate_acceptance(self.prepared,self.receipt,self.verified_info,self.checkout).items()}
+        def commands(command, *args, **kwargs):
+            if str(command[0]).endswith('/generate_appcast'):
+                rss=ET.Element('rss'); item=ET.SubElement(ET.SubElement(rss,'channel'),'item')
+                for key,val in [('version','10'),('shortVersionString','2.0.0'),('minimumSystemVersion','14.0')]:
+                    ET.SubElement(item,prepare_update.SPARKLE+key).text=val
+                ET.SubElement(item,'enclosure',{'url':'https://github.com/Ship-Work/workbench/releases/download/v2.0.0/Workbench.Candidate.zip',
+                    'length':str(self.archive.stat().st_size),prepare_update.SPARKLE+'edSignature':'fixture-signature'})
+                ET.ElementTree(rss).write(command[command.index('-o')+1])
+            return subprocess.CompletedProcess(command,0)
+        # A neighboring private file must never be copied into public evidence.
+        (self.prepared/'acceptance-evidence/private.txt').write_text('synthetic private neighbor')
+        with patch.object(prepare_update,'ROOT',self.checkout), patch.object(prepare_update,'verify_package',return_value=self.verified_info), \
+             patch.object(prepare_update.subprocess,'run',side_effect=commands), redirect_stdout(io.StringIO()):
+            prepare_update.prepare(self.prepared,'v2.0.0',notes,output)
+        self.assertEqual((output/'Workbench.Candidate.zip').read_bytes(),self.archive.read_bytes())
+        self.assertEqual(json.loads((output/'release.json').read_text())['sha256'],self.receipt['sha256'])
+        self.assertEqual({name:(output/name).read_bytes() for name in expected},expected)
+        self.assertFalse((output/'acceptance-evidence/private.txt').exists())
+
+    def test_uploaded_evidence_mismatch_keeps_draft_and_feed(self):
+        before=self.publication_state()
+        original=self.github
+        def corrupt(*args):
+            result=original(*args)
+            if args[:2]==('release','download') and args[args.index('--pattern')+1]=='native.md':
+                (Path(args[args.index('--dir')+1])/'native.md').write_text('wrong remote bytes')
+            return result
+        with self.publication_boundary(),patch.object(publish_update,'gh',side_effect=corrupt),self.assertRaisesRegex(RuntimeError,'Uploaded acceptance'):
+            publish_update.publish(self.prepared,self.prepared/'notes.md')
+        self.assertFalse(any(call[:2]==('release','edit') for call in self.remote_calls))
+        self.assertEqual(self.publication_state(),before)
+
+    def test_public_evidence_mismatch_does_not_promote_feed(self):
+        before=self.publication_state()
+        with self.publication_boundary(),patch.object(publish_update.urllib.request,'urlopen',side_effect=lambda url,**kw:
+                io.BytesIO(self.archive.read_bytes() if url==self.receipt['download_url'] else b'wrong public evidence')), \
+                self.assertRaisesRegex(RuntimeError,'Public acceptance'):
+            publish_update.publish(self.prepared,self.prepared/'notes.md')
+        self.assertEqual(self.publication_state(),before)
+
 
 
 if __name__ == '__main__': unittest.main()

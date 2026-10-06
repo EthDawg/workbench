@@ -110,7 +110,7 @@ def publish(directory, notes):
         raise RuntimeError('Prepared download or feed URL differs from the release identity')
     if (directory/'SHA256SUMS.txt').read_text() != f"{receipt['sha256']}  {filename}\n":
         raise RuntimeError('Prepared checksum record differs from the archive')
-    prepare_update.verify_package(receipt, archive, config)
+    info = prepare_update.verify_package(receipt, archive, config)
     signature=prepare_update.validate_feed(feed, receipt, expected_url, archive.stat().st_size)
     signer=ROOT/'.build/artifacts/sparkle/Sparkle/bin/sign_update'
     subprocess.run([signer,'--account',config['keychain_account'],'--verify',feed],check=True)
@@ -119,6 +119,7 @@ def publish(directory, notes):
     previous = destination / feed.name
     # Reject stale prepared artifacts before creating or exposing a release.
     require_newer_build(previous, receipt['build'])
+    evidence = prepare_update.validate_acceptance(directory, receipt, info, ROOT)
     # Never create duplicate releases or overwrite already published assets.
     listing=[r for page in json.loads(gh('api',f'repos/{REPO}/releases','--paginate','--slurp')) for r in page]
     existing=next((r for r in listing if r['tag_name']==tag),None)
@@ -131,18 +132,29 @@ def publish(directory, notes):
              '--notes-file',str(notes),'--draft']
     if receipt['channel']=='preview': command.append('--prerelease')
     gh(*command)
-    gh('release','upload',tag,archive,directory/'SHA256SUMS.txt',directory/'release.json','--repo',REPO)
+    gh('release','upload',tag,archive,directory/'SHA256SUMS.txt',directory/'release.json',
+       *[directory / name for name in evidence], '--repo',REPO)
     # Verify authenticated draft downloads before exposing the release.
     with tempfile.TemporaryDirectory(prefix='workbench-publish-') as temporary:
         gh('release','download',tag,'--repo',REPO,'--pattern',filename,'--dir',temporary)
         if hashlib.sha256((Path(temporary)/filename).read_bytes()).hexdigest()!=receipt['sha256']:
             raise RuntimeError('Uploaded asset differs; release remains a draft')
+        for name, data in evidence.items():
+            asset = Path(name).name
+            gh('release','download',tag,'--repo',REPO,'--pattern',asset,'--dir',temporary)
+            if (Path(temporary) / asset).read_bytes() != data:
+                raise RuntimeError('Uploaded acceptance evidence differs; release remains a draft')
     gh('release','edit',tag,'--repo',REPO,'--draft=false')
     with urllib.request.urlopen(receipt['download_url'],timeout=120) as response:
         digest=hashlib.sha256()
         while block:=response.read(1024*1024): digest.update(block)
     if digest.hexdigest()!=receipt['sha256']:
         raise RuntimeError('Public download mismatch; feed has not been promoted')
+    for name, data in evidence.items():
+        url = receipt['download_url'].rsplit('/', 1)[0] + '/' + Path(name).name
+        with urllib.request.urlopen(url, timeout=120) as response:
+            if response.read(len(data) + 1) != data:
+                raise RuntimeError('Public acceptance evidence mismatch; feed has not been promoted')
     # These are the only website files staged by this command. The site selects
     # production.json for the public download and preserves the Preview channel.
     destination.mkdir(parents=True,exist_ok=True)

@@ -1,6 +1,7 @@
 ## What improves?
 
-<!-- One clear problem and the resulting behavior. Link the issue with Closes #123. -->
+<!-- One clear problem and the resulting behavior. Link the issue with Closes #123.
+Answer Value before scope (docs/workbench.md): evidenced recurring outcome; simpler native/removal/default alternative; existing owner and unavailable dependency; complexity removed/added and why; complete-use/comprehension evidence. For substantial promotion, name the advantage, voluntary reuse evidence and reconsideration condition. Keep this proportionate; no extra proposal is required. -->
 
 ## Validation
 
