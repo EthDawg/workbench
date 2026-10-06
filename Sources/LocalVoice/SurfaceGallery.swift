@@ -438,7 +438,7 @@ private struct HistoryNativeAcceptanceView: View {
         model.history = [transcript] + Self.history
         model.transcript = "Unfinished Dictate draft. Preserve this exact wording."
         model.rawTranscript = model.transcript
-        model.speechText = "Unfinished Read draft. Keep this until I choose Replace."
+        model.importReading("Unfinished Read draft. Keep this until I choose Replace.", from: .savedText)
         model.historyLibrary.setMetadata(TranscriptMetadata(purpose: .meeting, person: "Avery Example", company: "Synthetic Orchard"), for: transcript.id)
         model.historyLibrary.setSelected([.init(kind: .transcript, id: Self.history[0].id)])
         let jobs = model.handoffJobs
