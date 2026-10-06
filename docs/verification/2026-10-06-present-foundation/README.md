@@ -41,6 +41,24 @@ Branch `claude/present-foundation` from `main` 7989426b41f84afaf8e38bf57ae4b2a68
 - `bash scripts/test.sh` on the integrated branch (main ac82c2a merged in): `harnesses`, `package-tests` and `checks` exit 0, and `stage` reports 281 tests · 5933 assertions · 0 failures with the two exclusive-shortcut checks skipped while the installed Workbench Preview held ⌥D–⌥R.
 - After the independent review's fixes (9ff2817): StageKit's runner **283 tests · 5980 assertions · 0 failures**; `swift build -c release` OK; `--check-core` exit 0 with 30 `_OK` groups; `python3 scripts/check-surfaces.py` **Surface registry OK: 559 entries** (the Present menu's Choose screen submenu and Match Device Proportions classified); `--render-surfaces` **SURFACE_GALLERY_OK: 332 renders, 162 entries, 0 flags**. The images in this folder are from that tree.
 
+## Hardware, 6 October evening
+
+Ethan ran the receipt from the signed scratch Preview (build 20261006103836, source 4ac88b1) through LaunchServices with his iPhone on this Mac's USB, unlocked and trusted:
+
+```
+USB: iPhone (product 0x12A8)
+Screen sources: <the phone's name> (screen)
+Remembered device: present
+Device video access: authorized
+Session: no session
+Status: iPhone ready — Present shows <the phone's name>.
+  0.2 s  No phone on USB — …
+  0.2 s  iPhone connected, screen not available yet — …
+  0.5 s  iPhone ready — Present shows <the phone's name>.
+```
+
+So macOS offers the phone's screen here within half a second, the bus watch sees the phone, the remembered device from an earlier session is found, and the words move through the rows in order. An earlier run of the same receipt from build 20261006082236 found the screen source but reported "no iPhone or iPad on the bus": IOKit silently rejects a vendor-only USB matching dictionary, so the watch matched nothing. Fixed in 4ac88b1 by matching the device class and classifying in code. The live picture on the page and the stage, and the two preview layers, are still owed (below).
+
 ## Not verified here
 
 - A real iPhone: none was on this Mac's USB bus on 6 October (IOKit and AVFoundation probes both returned no device, and the only external AVCapture device was the wireless Continuity Camera, which Present filters out). The adoption of the one phone screen, the live preview on the page before Present, the second preview layer on the stage, reconnect after a cable pull and the macOS accessory prompt need Ethan's phone on this Mac and on the managed work Mac. `LocalVoice --phone-link FOLDER` from the installed app (`open -n -a "…/Workbench.app" --args --phone-link ~/Desktop/phone-link`) writes the receipt that names what that Mac can see.
