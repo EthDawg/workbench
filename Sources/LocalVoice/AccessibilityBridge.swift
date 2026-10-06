@@ -52,32 +52,10 @@ enum AccessibilityBridge {
             return AXUIElementIsAttributeSettable(element, key as CFString, &settable) == .success && settable.boolValue
         }
     }
-    static func performAction(_ element: AXUIElement, _ action: String) -> AXError {
-        perform { AXUIElementPerformAction(element, action as CFString) }
-    }
     /// Bounds every later message to this exact element object; equal
     /// elements read later do not inherit it, the process default applies.
     static func setMessagingTimeout(_ element: AXUIElement, _ seconds: Float) -> AXError {
         perform { AXUIElementSetMessagingTimeout(element, seconds) }
-    }
-    /// The element an application reports as focused, or nil.
-    static func focusedElement(of pid: pid_t) -> AXUIElement? {
-        element(attribute(application(pid), kAXFocusedUIElementAttribute).1)
-    }
-    /// An application's focus, read in one hop.
-    struct ApplicationSnapshot {
-        var application: AXUIElement
-        var focusedElement: AXUIElement?
-        var focusedWindow: AXUIElement?
-    }
-    static func snapshot(of pid: pid_t) -> ApplicationSnapshot {
-        let app = application(pid)
-        return perform {
-            var focused: CFTypeRef?, window: CFTypeRef?
-            _ = AXUIElementCopyAttributeValue(app, kAXFocusedUIElementAttribute as CFString, &focused)
-            _ = AXUIElementCopyAttributeValue(app, kAXFocusedWindowAttribute as CFString, &window)
-            return ApplicationSnapshot(application: app, focusedElement: element(focused), focusedWindow: element(window))
-        }
     }
     /// A text range attribute's value as an NSRange, when it is one.
     static func range(_ value: CFTypeRef?) -> NSRange? {
@@ -96,7 +74,11 @@ enum AccessibilityBridge {
     // MARK: Observers
 
     /// One application's notifications, delivered on the main run loop as
-    /// plain frames. `end` removes every registration and the run loop source.
+    /// plain frames. The observer's run-loop source is attached to the main
+    /// run loop at creation, before any notification is registered; `main`
+    /// attached it after its three registrations, a benign difference, since
+    /// the source carries nothing until a registration succeeds. `end`
+    /// removes every registration and the run loop source.
     final class Observation {
         private var observer: AXObserver?
         private var registrations: [(AXUIElement, String)] = []

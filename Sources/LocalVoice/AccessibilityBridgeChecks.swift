@@ -42,29 +42,18 @@ enum AccessibilityBridgeChecks {
                   && AccessibilityBridge.element(AccessibilityBridge.application(getpid())) != nil,
                   "only elements read as elements")
 
-        // Focus helpers, aimed at this process: it serves no accessibility
-        // tree, so both read as no focus, and the snapshot keeps the
-        // application element it was asked about.
-        let pid = getpid()
-        let readStart = Date()
-        let focused = AccessibilityBridge.focusedElement(of: pid)
-        let snapshot = AccessibilityBridge.snapshot(of: pid)
-        let readTime = Date().timeIntervalSince(readStart)
-        try check(focused == nil && snapshot.focusedElement == nil && snapshot.focusedWindow == nil,
-                  "focusedElement(of:) and snapshot(of:) read this process as having no focus")
-        try check(CFEqual(snapshot.application, AccessibilityBridge.application(pid)), "a snapshot carries its application element")
         // A caller's own budget is honoured on the element it set it on: a
-        // 20 ms bound keeps a read of this process under that budget's order,
-        // with nothing process-wide changed for elements without one.
-        let app = AccessibilityBridge.application(pid)
+        // 20 ms bound keeps a read of this process, which serves no
+        // accessibility tree, under that budget's order, with nothing
+        // process-wide changed for elements without one.
+        let app = AccessibilityBridge.application(getpid())
         try check(AccessibilityBridge.setMessagingTimeout(app, 0.02) == .success, "a caller can bound an element's messaging timeout")
         let budgetStart = Date()
         let (error, value) = AccessibilityBridge.attribute(app, kAXFocusedUIElementAttribute)
         let budgetTime = Date().timeIntervalSince(budgetStart)
         try check(error != .success || AccessibilityBridge.element(value) == nil, "a budgeted read of this process reads no focus")
         try check(budgetTime < 0.5, "a budgeted read returns within its budget's order (\(Int(budgetTime * 1000)) ms)")
-        print("ACCESSIBILITY_BRIDGE_CHECKS_OK: \(count) checks; this process's focus read in \(Int(readTime * 1000)) ms, "
-              + "a 20 ms-budgeted read in \(Int(budgetTime * 1000)) ms; "
+        print("ACCESSIBILITY_BRIDGE_CHECKS_OK: \(count) checks; a 20 ms-budgeted read of this process's focus in \(Int(budgetTime * 1000)) ms; "
               + "this process only, no other application read")
     }
 }
