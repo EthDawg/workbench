@@ -271,7 +271,12 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         guard enabled else { return }
         guard let activeID else { discover(); return }
         if devices[activeID]?.isConnected != true { stopSession(); discover(); return }
-        if Date().timeIntervalSince(max(lastFrame, startedAt)) > 5 {
+        // A phone screen takes about ten seconds to deliver its first frame while the
+        // session negotiates (measured on 6 October 2026: 10.2 s). Only a feed that has
+        // flowed and then gone quiet for five seconds is stalled; before the first frame
+        // the words stay at connecting for fifteen seconds.
+        let grace: TimeInterval = lastFrame == .distantPast ? 15 : 5
+        if Date().timeIntervalSince(max(lastFrame, startedAt)) > grace {
             publish(.stalled(activeID))
         }
     }

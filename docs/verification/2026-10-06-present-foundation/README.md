@@ -57,7 +57,20 @@ Status: iPhone ready — Present shows <the phone's name>.
   0.5 s  iPhone ready — Present shows <the phone's name>.
 ```
 
-So macOS offers the phone's screen here within half a second, the bus watch sees the phone, the remembered device from an earlier session is found, and the words move through the rows in order. An earlier run of the same receipt from build 20261006082236 found the screen source but reported "no iPhone or iPad on the bus": IOKit silently rejects a vendor-only USB matching dictionary, so the watch matched nothing. Fixed in 4ac88b1 by matching the device class and classifying in code. The live picture on the page and the stage, and the two preview layers, are still owed (below).
+So macOS offers the phone's screen here within half a second, the bus watch sees the phone, the remembered device from an earlier session is found, and the words move through the rows in order.
+
+A second run with `--live` (build 20261006105547, source 25a77af) ran the capture session headless and proved frames arrive:
+
+```
+Session: live 1320×2868
+Status: Showing iPhone — Use the phone itself for taps, typing and its own voice features.
+Frames: first after 10.2 s, 1320×2868
+  0.3 s  Connecting to iPhone…
+  6.2 s  iPhone stopped sending its picture — …
+ 10.1 s  Showing iPhone — …
+```
+
+The first frame took ten seconds, during which the five-second stall check wrongly said the phone had stopped sending its picture; the capture now gives the first frame fifteen seconds of grace and keeps "Connecting" until then, while a feed that has flowed and then gone quiet is still called stalled after five. An earlier run of the same receipt from build 20261006082236 found the screen source but reported "no iPhone or iPad on the bus": IOKit silently rejects a vendor-only USB matching dictionary, so the watch matched nothing. Fixed in 4ac88b1 by matching the device class and classifying in code. The live picture drawn on the page and the stage, and the two preview layers, are still owed (below); the session and its frames are proven.
 
 ## Not verified here
 
