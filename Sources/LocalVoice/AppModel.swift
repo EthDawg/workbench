@@ -509,8 +509,11 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     /// Read's one start, given the front app's selection (ReadStart): the selection becomes
     /// the draft and reads at once when that discards nothing unheard; a different draft
     /// nobody has heard keeps the selection behind Replace reading / Keep current on the
-    /// Read page, as every import does, and nothing plays. Returns whether reading started;
-    /// when it did not, the Read page is open and says why.
+    /// Read page, as every import does, and nothing plays. While dictation or a meeting owns
+    /// the microphone no reading can start, so the selection arrives as every import does
+    /// (the draft, or that review) and the page says what must finish first; the selection is
+    /// never dropped. Returns whether reading started; when it did not, the Read page is open
+    /// and says why.
     @discardableResult
     func readSelection(_ selection: ReadingSelectionImport) -> Bool {
         switch ReadStart.draft(current: speechText, incoming: selection.text, heard: draftWasHeard) {
@@ -518,15 +521,29 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
             receiveReadingSelection(selection)
             return false
         case .readNow:
+            if let wait = readingWaitsForOtherWork {
+                receiveReadingSelection(selection)
+                report(wait, on: .read)
+                return false
+            }
             if listen(to: selection.text) { return true }
             page = "speak"; onShowEditor?("speak")
             return false
         }
     }
-    /// Audio exists for the draft as it stands: it was heard (a reading was made, stopped or
-    /// finished) or saved. Cancel while preparing discards that audio, so such a draft counts
-    /// as unheard and is kept.
-    var draftWasHeard: Bool { audio != nil && signature == audioSignature }
+    /// Audio exists for the draft's text: it was heard (a reading was made, stopped or
+    /// finished) or saved, in whatever voice or pace. Cancel while preparing discards the
+    /// audio being made, so such a draft counts as unheard and is kept (ReadStart.heard).
+    var draftWasHeard: Bool { ReadStart.heard(draft: speechText, audioText: audio?.text) }
+    /// Why no reading can start now: a meeting or dictation owns the microphone and the phase.
+    /// Nil when a reading may start.
+    var readingWaitsForOtherWork: String? {
+        if meetings.isBusy { return Self.readingWaitsForMeeting }
+        if phase != .idle { return Self.readingWaitsForDictation }
+        return nil
+    }
+    static let readingWaitsForMeeting = "Finish the meeting recording or transcription before playing a reading."
+    static let readingWaitsForDictation = "Wait for the dictation to finish before playing a reading."
 
     /// The click is the choice: different text replaces the reading through the
     /// same step as Replace reading, then Listen starts. The same text is not
@@ -536,9 +553,10 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     func listen(to text: String) -> Bool {
         // Only replace the draft when the reading can start, so it never waits unheard.
         guard !meetings.isBusy else {
-            report("Finish the meeting recording or transcription before playing a reading.", on: .read, from: .homeReadTileMeeting); return false
+            report(Self.readingWaitsForMeeting, on: .read, from: .homeReadTileMeeting); return false
         }
-        guard phase == .idle else { return false }
+        // Dictation owns the phase: said on Read, as the meeting wait is, never a silent no.
+        guard phase == .idle else { report(Self.readingWaitsForDictation, on: .read); return false }
         guard canReplaceReading else { status = Self.replaceWaitsForSave; return false }
         // Text the selected provider cannot read is turned away before anything changes: the
         // draft, its audio, player and playhead, and any review stay exactly as they were, and
@@ -1492,7 +1510,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         // A meeting can start while a reading plays. Pause still pauses it, so the
         // reading never keeps playing into the meeting; Listen and Resume wait.
         let pausing = playing && !rendering && phase == .idle
-        guard pausing || !meetings.isBusy else { report("Finish the meeting recording or transcription before playing a reading.", on: .read); return }
+        guard pausing || !meetings.isBusy else { report(Self.readingWaitsForMeeting, on: .read); return }
         guard !rendering, phase == .idle else { return }
         stopVoicePreview()
         clearReadingFailure()

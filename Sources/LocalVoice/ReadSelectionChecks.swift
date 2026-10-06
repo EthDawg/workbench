@@ -100,6 +100,13 @@ enum ReadSelectionChecks {
         try check(ReadStart.draft(current: "Heard", incoming: "New", heard: true) == .readNow, "a different draft whose audio was made is replaced and the selection reads")
         try check(ReadStart.draft(current: "Unheard", incoming: "New", heard: false) == .review, "a different draft nobody heard waits behind Replace reading / Keep current")
         try check(ReadStart.draft(current: "  \n", incoming: "New", heard: false) == .readNow, "a whitespace draft is empty")
+        // Heard is about the text, not the voice or pace that read it: the audio made for this draft.
+        try check(ReadStart.heard(draft: "Heard", audioText: "Heard") && !ReadStart.heard(draft: "Heard", audioText: nil),
+                  "a draft counts as heard once audio exists for its text, and never before")
+        try check(!ReadStart.heard(draft: "Edited since", audioText: "Heard"), "editing the draft after hearing it makes it unheard again")
+        try check(ReadStart.draft(current: "Heard", incoming: "New", heard: ReadStart.heard(draft: "Heard", audioText: "Heard")) == .readNow,
+                  "after a voice or pace change the heard draft is still replaced and the next selection reads")
+
         // What a door does with the outcome: focus goes back to the app only while a reading plays;
         // the Read page, opened with its reason, is never covered.
         try check(ReadStart.outcome(of: .read("Read this."), started: true) == .reading, "a selection that started reading gives focus back")

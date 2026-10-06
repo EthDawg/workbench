@@ -57,6 +57,16 @@ enum ReadStart {
         return heard ? .readNow : .review
     }
 
+    /// Whether the draft was heard: audio was made for this text (played, stopped, finished or
+    /// saved), whatever voice or pace made it. Changing the voice or pace afterwards, on the Read
+    /// page or in the panel row's Voice menu, does not make a heard draft unheard; the audio
+    /// still exists for this text. Cancel while preparing discards the audio being made, so such
+    /// a draft stays unheard and is kept.
+    static func heard(draft: String, audioText: String?) -> Bool {
+        guard let audioText else { return false }
+        return audioText == draft
+    }
+
     /// The selected text under an app's focused element, through the same Accessibility
     /// reads dictation makes (TextDelivery): the selected text, else the selected range
     /// and the string for it. This is Read's only Accessibility use, so the bridge the
