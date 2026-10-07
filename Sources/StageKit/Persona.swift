@@ -1185,7 +1185,12 @@ final class PersonaLibrary: NSObject, ObservableObject {
                 selectLivePersona(profile)
                 guard displayedID == profile else { return .failure(PersonaError.unreadableImage) }
             }
-            return hasHiddenCard ? showAgain() : .success(())
+            if hasHiddenCard { return showAgain() }
+            // The photo is already up while Live Camera waits for access, starts or has failed:
+            // choosing My Profile still ends that visit, so a late frame cannot replace it.
+            endCameraForArtwork(handingOff: true)
+            clearLiveNotices()
+            return .success(())
         }
         do {
             try showOverlayChecked(showing: profile)
@@ -1223,8 +1228,13 @@ final class PersonaLibrary: NSObject, ObservableObject {
         }
         clearCardFailure()
         liveSource = .camera
-        // Switching from a card on screen: the bubble takes its place and size.
-        camera.start(deviceID: deviceID, replacing: session == nil && artworkVisible ? overlayState : nil)
+        // Switching from a card on screen: the bubble takes its place and size, read when the
+        // first frame arrives, so a card moved while the camera starts is followed.
+        let replacing: (() -> PersonaOverlayState?)? = session == nil && artworkVisible ? { [weak self] in
+            guard let self, self.session == nil, self.artworkVisible else { return nil }
+            return self.overlayState
+        } : nil
+        camera.start(deviceID: deviceID, replacing: replacing)
         return .success(())
     }
     /// Show camera again: the same camera, back in the bubble's kept place. It is
@@ -1697,7 +1707,9 @@ final class PersonaLibrary: NSObject, ObservableObject {
                         self.selectLivePersona(id)
                         guard self.displayedID == id else { return }
                     }
+                    // A card already up beside a starting or failed Live Camera ends that visit too.
                     if self.hasHiddenCard { self.showAgain() }
+                    else { self.endCameraForArtwork(handingOff: true); self.clearLiveNotices() }
                 })
             }
         } else {

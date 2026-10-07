@@ -387,10 +387,12 @@ struct PersonaLibraryView: View {
                 }
                 // My Profile, one click from whatever card or Live Camera shows, in its place. It
                 // sits with the page's other Show actions, so it is there whichever source is prepared.
-                if library.profileID != nil, !library.showsProfile {
+                // Also while the photo is up beside a starting or failed Live Camera: it ends that visit.
+                if library.profileID != nil, !library.showsProfile || library.cameraOwnsSlot {
                     Button("Show My Profile") { requestLaunch(.profile) }
-                        .help(library.cameraOwnsSlot ? "Shows your profile photo in Live Camera’s place and ends Live Camera"
-                                                     : "Shows your profile photo as the floating persona, in the shown card’s place")
+                        .help(library.cameraOwnsSlot && library.camera.isLive ? "Shows your profile photo in Live Camera’s place and ends Live Camera"
+                              : library.cameraOwnsSlot ? "Shows your profile photo and ends Live Camera"
+                              : "Shows your profile photo as the floating persona, in the shown card’s place")
                 }
             } else {
                 if library.sessionState.phase == .paused {

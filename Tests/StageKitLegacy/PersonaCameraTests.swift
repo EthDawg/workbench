@@ -80,7 +80,12 @@ final class PersonaCameraTests {
     /// answer and no prompt, timer or device is real.
     private final class Fixture {
         let root: URL
-        let capture = Capture()
+        /// Each session the camera made: a hand-off sends one away with its bubble, and the
+        /// next start makes a fresh one, as the app does.
+        var captures: [Capture] = [Capture()]
+        /// The newest session.
+        var capture: Capture { captures[captures.count - 1] }
+        private var capturesHandedOut = 0
         /// Each visit's window: a new one after End, as the app makes.
         var bubbles: [Bubble] = []
         /// The newest window, or a fresh one before any was made.
@@ -95,7 +100,7 @@ final class PersonaCameraTests {
         var saved: SavedPersona?
         let effects = Effects()
         lazy var camera = PersonaLiveCamera(
-            capture: { [unowned self] in capture }, panel: { [unowned self] in nextBubble() },
+            capture: { [unowned self] in nextCapture() }, panel: { [unowned self] in nextBubble() },
             authorize: { [unowned self] answer in permissionRequests.append(answer) },
             schedule: { [unowned self] seconds, action in
                 pendingDeadlines.append((seconds, action))
@@ -118,6 +123,12 @@ final class PersonaCameraTests {
             library.selectedID = saved?.id
         }
         func offer(_ list: PersonaCameraList) { cameras = list }
+        /// The camera asks for a session: the first one, then a new one each time.
+        func nextCapture() -> Capture {
+            defer { capturesHandedOut += 1 }
+            if capturesHandedOut < captures.count { return captures[capturesHandedOut] }
+            let made = Capture(); captures.append(made); return made
+        }
         /// The camera asks for a window: the one made before any was asked for, then a new one each time.
         func nextBubble() -> Bubble {
             defer { handedOut += 1 }
@@ -1128,15 +1139,18 @@ final class PersonaCameraTests {
 
             // Back to Live Camera, and to the photo, and Live Camera again before the photo covers it.
             f.live()
-            let second = f.bubble
+            let second = f.bubble, secondSession = f.capture
+            XCTAssertTrue(secondSession !== f.captures[0], "A visit after a hand-off opens a fresh session")
             invoke(f.library.makeToolbarPickerMenu(), "My Profile")
             XCTAssertTrue(second.steppingAside != nil)
             f.library.startCamera(); f.permissionRequests.last?(.authorized); f.capture.starts.last?.1(.frame)
-            let third = f.bubble
+            let third = f.bubble, thirdSession = f.capture
             XCTAssertTrue(third !== second && third.shown && third.fadedIn, "A new bubble fades in over the photo")
-            let before = f.capture.stops
+            XCTAssertTrue(thirdSession !== secondSession, "Switching back opens its own session")
+            XCTAssertEqual(secondSession.stops, 0, "Switching back never stops the picture still under the photo")
             second.covered()
-            XCTAssertEqual(f.capture.stops, before, "A late hand-off never stops the newer visit's camera")
+            XCTAssertEqual(secondSession.stops, 1, "Covered, the old session stops")
+            XCTAssertEqual(thirdSession.stops, 0, "A late hand-off never stops the newer visit's camera")
             XCTAssertEqual(f.bubbles.filter(\.shown).count, 1, "One picture stays whole: the new bubble")
             XCTAssertEqual(f.camera.state, .live)
 
@@ -1312,6 +1326,93 @@ final class PersonaCameraTests {
             f.library.hideCamera()
             let hidden = f.library.makeControlsMenu().items.map { $0.isSeparatorItem ? "---" : $0.title }
             XCTAssertEqual(Array(hidden.dropFirst()), ["Choose Persona", "---", "Show Live Camera Again", "---", "End Live Camera"])
+        }
+    }
+
+    /// Choosing My Profile while it is already up beside a Live Camera that is waiting for access,
+    /// starting or has failed ends that visit: the camera goes off, the slot is the photo's, the
+    /// pill reads My Profile, and a late permission answer or frame changes nothing. The same for
+    /// a card chosen from the cards.
+    func testMyProfileEndsAStartingOrFailedLiveCamera() throws {
+        try MainActor.assumeIsolated {
+            for failure in ["permission", "starting", "denied", "in use", "timed out"] {
+                let f = Fixture(withArtwork: true); defer { f.cleanup() }
+                let url = f.root.appendingPathComponent("profile.png")
+                try Fixture.png().write(to: url)
+                let profile = try f.library.addImage(url, name: "Profile photo")
+                f.library.profilePersonaID = { profile.id }
+                try f.library.showProfile().get()
+                switch failure {
+                case "in use": f.camera.deviceInUse = { "built-in" }; f.library.startCamera()
+                default:
+                    f.library.startCamera()
+                    if failure != "permission" { f.permissionRequests.last?(failure == "denied" ? .denied : .authorized) }
+                    if failure == "timed out" { f.pendingDeadlines.last?.1() }
+                }
+                XCTAssertTrue(f.library.cameraOwnsSlot && f.library.artworkVisible, "\(failure): the photo is still up beside Live Camera")
+                XCTAssertEqual(f.library.toolbarPicker?.title, "Live Camera")
+                invoke(f.library.makeToolbarPickerMenu(), "My Profile")
+                XCTAssertEqual(f.camera.state, .off, "\(failure): My Profile ends Live Camera")
+                XCTAssertEqual(f.library.liveSource, .artwork)
+                XCTAssertEqual(f.library.toolbarPicker?.title, "My Profile")
+                XCTAssertEqual(f.library.makeToolbarPickerMenu().items.first { $0.title == "My Profile" }?.state, .on)
+                XCTAssertTrue(f.library.artworkVisible && f.library.showsProfile)
+                // A late answer or frame from that visit does nothing.
+                f.permissionRequests.last?(.authorized)
+                f.capture.starts.last?.1(.frame)
+                XCTAssertEqual(f.camera.state, .off, "\(failure): nothing late reopens it")
+                XCTAssertTrue(f.library.artworkVisible)
+            }
+            // A card from the cards, shown beside a starting Live Camera, ends it the same way.
+            let f = Fixture(withArtwork: true); defer { f.cleanup() }
+            invoke(f.library.makeToolbarPickerMenu(), "Site lead")
+            f.library.startCamera()
+            invoke(f.library.makeToolbarPickerMenu(), "Site lead")
+            XCTAssertEqual(f.camera.state, .off, "The shown card, chosen again, ends a starting Live Camera")
+            XCTAssertEqual(f.library.toolbarPicker?.title, "Site lead")
+        }
+    }
+
+    /// Centre Stage turned on in the menu bar's Video menu moves the running camera to a format
+    /// that can frame you, as Workbench's own switch does.
+    func testCentreStageFromTheVideoMenuConformsTheRunningCamera() {
+        MainActor.assumeIsolated {
+            let f = Fixture(); defer { f.cleanup() }
+            f.live()
+            f.capture.starts.last?.1(.features(ProfileCameraFeatures(centerStage: true)))
+            XCTAssertEqual(f.capture.conformed, 0)
+            f.effects.userChanges(true)
+            XCTAssertTrue(f.camera.centerStageOn)
+            XCTAssertEqual(f.capture.conformed, 1, "The Video menu's switch reconfigures the running camera")
+            f.effects.userChanges(false)
+            XCTAssertEqual(f.capture.conformed, 1, "Turning it off changes no format")
+        }
+    }
+
+    /// The bubble takes the card's place as it is when the first frame arrives, so a card moved
+    /// while the camera starts is followed; a place chosen for the camera meanwhile wins.
+    func testTheBubbleTakesTheCardsPlaceAtTheFirstFrame() throws {
+        try MainActor.assumeIsolated {
+            let f = Fixture(); defer { f.cleanup() }
+            var card = PersonaOverlayState(x: 0.2, y: 0.2, width: 0.2)
+            f.camera.start(replacing: { card })
+            f.permissionRequests.last?(.authorized)
+            card.x = 0.7; card.y = 0.6     // The card is dragged while the camera starts.
+            f.capture.starts.last?.1(.frame)
+            XCTAssertEqual(f.camera.placement.x, 0.7, accuracy: 0.0001)
+            XCTAssertEqual(f.camera.placement.y, 0.6, accuracy: 0.0001)
+            XCTAssertEqual(f.camera.placement.width, 0.2, accuracy: 0.0001)
+            XCTAssertTrue(f.bubble.fadedIn)
+
+            // Through the library: Position chosen for the starting camera is kept.
+            let g = Fixture(withArtwork: true); defer { g.cleanup() }
+            try g.library.showOverlay().get()
+            g.library.setOverlayPosition(x: 0.2, y: 0.2)
+            g.library.startCamera(); g.permissionRequests.last?(.authorized)
+            g.library.setOverlayPosition(x: 0.9, y: 0.1)
+            g.capture.starts.last?.1(.frame)
+            XCTAssertEqual(g.camera.placement.x, 0.9, accuracy: 0.0001)
+            XCTAssertEqual(g.camera.placement.y, 0.1, accuracy: 0.0001)
         }
     }
 }
