@@ -443,6 +443,14 @@ final class PhoneCaptureTests: PhoneOwnerFixture {
         defer { scenes.shutdown(); try? FileManager.default.removeItem(at: root) }
         let capture = scenes.capture
         let page = capture.makePreviewLayer(for: .page)
+        // In a real window, as in the app, so each renderer composites and drains what it holds;
+        // offscreen layers never drain, and a paravirtual GPU (CI) then reports them not ready.
+        let window = NSWindow(contentRect: CGRect(x: -4000, y: -4000, width: 400, height: 400), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        let host = NSView(frame: CGRect(x: 0, y: 0, width: 400, height: 400)); host.wantsLayer = true
+        window.contentView = host; window.orderFrontRegardless()
+        defer { window.orderOut(nil); window.contentView = nil; window.close() }
+        page.frame = CGRect(x: 0, y: 0, width: 200, height: 400); host.layer?.addSublayer(page)
         scenes.setPageVisible(true)
         XCTAssertTrue(waitUntil { hardware.read(capture) { $0.opened.count } == 1 })
         guard let output = hardware.read(capture, { $0.outputs.last }) else { XCTAssertTrue(false, "The session has a frame output"); return }
@@ -452,9 +460,15 @@ final class PhoneCaptureTests: PhoneOwnerFixture {
         XCTAssertTrue(waitUntil { self.words(scenes).phase == .live }, "and the phone is live")
         // A still phone may send nothing new: the stage opened now draws the latest frame at once.
         let stage = capture.makePreviewLayer(for: .stage)
+        stage.frame = CGRect(x: 200, y: 0, width: 200, height: 400); host.layer?.addSublayer(stage)
         XCTAssertTrue(waitUntil { capture.queue.sync { capture.drawnFrames } == [.page: 1, .stage: 1] }, "A stage opened on a still screen is not black")
-        capture.queue.async { capture.deliver(buffer, from: output) }
-        XCTAssertTrue(waitUntil { capture.queue.sync { capture.drawnFrames } == [.page: 2, .stage: 2] }, "The next frame reaches both surfaces")
+        // A renderer still holding a frame skips the next by design (backpressure), so frames keep
+        // coming, as a live phone sends them, until each surface has drawn a later one.
+        XCTAssertTrue(waitUntil(3) {
+            capture.queue.sync { capture.deliver(buffer, from: output) }
+            let drawn = capture.queue.sync { capture.drawnFrames }
+            return (drawn[.page] ?? 0) >= 2 && (drawn[.stage] ?? 0) >= 2
+        }, "Later frames reach both surfaces")
         withExtendedLifetime((page, stage)) {}
 
         scenes.startDemo(mode: .windowed); scenes.endPresentation()
