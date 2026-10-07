@@ -565,7 +565,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     /// Help › Report a Problem… (#296). With the Workbench window in front, the report names its
     /// page; otherwise it names Help. The page is read now, before the composer takes focus.
     @objc func reportProblem() {
-        let surface = window != nil && NSApp.keyWindow === window ? BugReportSurface.page(model.page) : .help
+        // A retired route reports as the page it opens, never as unknown.
+        let page = WorkbenchHome.retiredRoutes[model.page] ?? model.page
+        let surface = window != nil && NSApp.keyWindow === window ? BugReportSurface.page(page) : .help
         openBugReport(BugReportOrigin(surface: surface, errorCode: nil))
     }
     func showControls() {

@@ -1438,7 +1438,7 @@
     "page": "connections",
     "kind": "option",
     "belongsTo": "settings",
-    "note": "Quality: Settings' assistant connections and photo handoff move into its Connections section, opened by the route connections (#134). History's Connections… shows the same settings over History."
+    "note": "Quality: Settings' assistant connections move into its Connections section, opened by the route connections (#134). History's Connections… shows the same settings over History."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.section.library",

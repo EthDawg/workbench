@@ -814,7 +814,7 @@ final class AppModel: NSObject, ObservableObject {
                 : (preservedSavedDraft ? "An unsaved capture was recovered. Your saved draft is unchanged. Retry saving adds the capture to History without pasting."
                    : "An unsaved capture was recovered. Use Retry saving; text will not be pasted automatically.")
             captureFailure = message; status = message
-        } catch { report(error.localizedDescription, on: .dictate); captureFailure = self.error; status = "Capture recovery needs attention." }
+        } catch { report(error.localizedDescription, on: .dictate); captureFailure = self.error; status = "The recovered capture couldn’t be opened." }
     }
 
     @discardableResult private func discardRecordingRecovery() -> Bool {

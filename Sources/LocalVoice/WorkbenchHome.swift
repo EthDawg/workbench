@@ -457,14 +457,11 @@ struct WorkbenchHome: View {
         "packs": "Reusable skills, scenes, personas and resources."]
 
     /// A page whose own view draws no page title takes its name from the page record here, in
-    /// the same place and type as every other page (#134). A page of two columns is divided
-    /// from its title, so both columns start below it.
-    private func titled<Page: View>(_ route: String, summary: String, divided: Bool = false, @ViewBuilder page: () -> Page) -> some View {
+    /// the same place and type as every other page (#134).
+    private func titled<Page: View>(_ route: String, summary: String, @ViewBuilder page: () -> Page) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             WorkbenchPageHeader(route, summary: summary)
-                .padding([.horizontal, .top], Workbench.pagePadding).padding(.bottom, divided ? Workbench.sectionSpacing : 0)
-            // Within the page's padding, as every other page's dividers are; never to the window edge.
-            if divided { Divider().padding(.horizontal, Workbench.pagePadding) }
+                .padding([.horizontal, .top], Workbench.pagePadding)
             page()
         }
     }
