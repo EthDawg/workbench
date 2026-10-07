@@ -578,7 +578,7 @@
     "note": "Existing contextual \"Turn off\" label inside library; shared wording, not a separate capability."
   },
   {
-    "id": "LocalVoice.LibraryPromptButton.LibraryPromptButton.button-title.view",
+    "id": "LocalVoice.LibraryPromptButton.LibraryPromptButton.Button.saved-prompts",
     "surface": "Library",
     "label": "Saved Prompts…",
     "kind": "action",

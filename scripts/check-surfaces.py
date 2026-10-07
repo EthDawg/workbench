@@ -1036,8 +1036,6 @@ class Inventory:
             # Native menu titles assigned after construction.
             if v[i:i + 3] == ['.', 'title', '='] and swift.stem == 'main' and literal([swift.tokens[i + 3]]):
                 self.add(swift, i, 'menu-title', [swift.tokens[i + 3]], 'app menu bar', identity=v[i - 1])
-            if v[i:i + 3] == ['.', 'title', '='] and swift.stem == 'LibraryPromptButton' and literal([swift.tokens[i + 3]]):
-                self.add(swift, i, 'button-title', [swift.tokens[i + 3]], 'Library', identity=v[i - 1])
             # The floating toolbar resolves its action title before rendering the row.
             # A title computed by another function is recorded where that function is.
             if v[i:i + 2] == ['title', '='] and v[i - 1] != '.' and swift.stem == 'FloatingToolbar':
