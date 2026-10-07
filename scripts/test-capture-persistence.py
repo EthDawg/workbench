@@ -328,6 +328,7 @@ struct FixtureVoicePreferences { var capture = CaptureMode.hold; var dictationSh
     var voiceSession = LiveVoiceSnapshot()
     var peakPower: Float = -160, recordingSettings: CaptureSettings?
     var readingTask: Task<Void, Never>?, audioURL: URL?
+    var appActivation: AnyCancellable?
     var onPhaseChange: (() -> Void)?
     var waitingForDrawing = false
     var shouldDeferDelivery: (() -> Bool)?
