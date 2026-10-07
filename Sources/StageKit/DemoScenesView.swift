@@ -570,7 +570,12 @@ private struct SceneCanvas: NSViewRepresentable {
         view.image = image; view.logoImage = logoImage; view.handImage = handImage; view.personaImage = personaImage; view.update = update; view.editable = editable
         view.refreshPreview()
     }
-    static func dismantleNSView(_ view: SceneCanvasView, coordinator: ()) { view.onVisibility?(false); view.onVisibility = nil }
+    static func dismantleNSView(_ view: SceneCanvasView, coordinator: ()) {
+        // Off the view update, after any report the canvas still had queued (which now drops).
+        let handler = view.onVisibility
+        view.onVisibility = nil
+        DispatchQueue.main.async { handler?(false) }
+    }
 }
 
 /// The page's preview is the stage: the same still renderer and the same capture
@@ -630,7 +635,12 @@ final class SceneCanvasView: NSView {
         guard !hasReported || visible != reportedVisible else { return }
         hasReported = true; reportedVisible = visible
         let handler = onVisibility
-        DispatchQueue.main.async { handler?(visible) }
+        // A report still queued when the canvas is dismantled is dropped, so a late "visible"
+        // can never land after the dismantle's "hidden" and keep the capture running unseen.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, onVisibility != nil else { return }
+            handler?(visible)
+        }
     }
     func receive(_ value: DemoScene, loadAmbience: ((DemoScene) -> AmbientSceneImages?)? = nil) {
         if scene?.id != value.id { initial = nil; dragPreview = nil; isDragging = false }
