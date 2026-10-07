@@ -3750,7 +3750,7 @@ private struct HistoryNativeAcceptanceView: View {
     /// are run with recording callbacks to learn their destination; other StageKit items are listed only.
     func menus() -> [SurfaceGallery.Listing] {
         let panel = quickPanel(readback)
-        var listings = [SurfaceGallery.Listing(title: "Dictate · Options (SwiftUI menu, listed from its source)", lines:
+        var listings = [SurfaceGallery.Listing(title: "Dictate · Options (native menu, listed from its source so Set up automatic paste… never runs)", lines:
             ["Delivery"] + DeliveryMode.allCases.map { "  " + $0.rawValue }
             + ["Copies for ⌘V until automatic paste is approved (while Paste automatically waits for Accessibility approval)", "  Set up automatic paste…"]
             + ["Text style"] + CleanupStyle.allCases.map { "  " + $0.rawValue }

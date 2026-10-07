@@ -1570,7 +1570,7 @@
     "note": "Quality: Draw's options end with the one door to its page, as Snap, Present and Persona's do (#134). Its tools and boards stay above it."
   },
   {
-    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-dictate-options.Button.history",
+    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-dictate-options.ToolbarMenuAction.history",
     "surface": "quick panel dictate options",
     "label": "History…",
     "kind": "action",
@@ -1578,7 +1578,7 @@
     "note": "Quality: Dictate's recent-transcripts option in the same slot, renamed to the place it opens. It opens History on Transcripts (#137)."
   },
   {
-    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-dictate-options.Button.meetings",
+    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-dictate-options.ToolbarMenuAction.meetings",
     "surface": "quick panel dictate options",
     "label": "Meetings…",
     "kind": "workflow",
@@ -1586,14 +1586,14 @@
     "note": "Existing meeting/call transcription workflow promoted to a visible Meetings destination by the desktop redesign. Navigation starts no recording."
   },
   {
-    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-dictate-options.Button.open-dictate",
+    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-dictate-options.ToolbarMenuAction.open-dictate",
     "surface": "quick panel dictate options",
     "label": "Open Dictate…",
     "kind": "action",
     "belongsTo": "dictate"
   },
   {
-    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-dictate-options.Button.set-up-automatic-paste",
+    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-dictate-options.ToolbarMenuAction.set-up-automatic-paste",
     "surface": "quick panel dictate options",
     "label": "Set up automatic paste…",
     "kind": "action",
@@ -1601,7 +1601,7 @@
     "note": "Option of Dictate: the Dictate page's Set up automatic paste… beside the delivery choice it serves, so the panel, Home and Dictate agree. Shown only while Paste automatically waits for Accessibility approval, under a header saying transcripts are copied for ⌘V until then (#165)."
   },
   {
-    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-dictate-options.Menu.options",
+    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-dictate-options.NativeControlMenu.options",
     "surface": "quick panel dictate options",
     "label": "Options",
     "kind": "option",
