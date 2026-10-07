@@ -56,7 +56,8 @@ final class PersonaCameraTests {
         var voiceFrames = 0
         /// Whether the last show faded in over a picture it replaced.
         var fadedIn = false
-        var fadedOut = 0
+        /// A card is fading in over it: it stays whole, and this releases it once covered.
+        var steppingAside: (() -> Void)?
         func showLive(layer: CALayer, aspect: CGSize, outline: PersonaArtworkOutline?,
                       name: String, help: String, state: PersonaOverlayState, animated: Bool) -> PersonaOverlayState {
             self.layer = layer; self.aspect = aspect; self.outline = outline
@@ -66,7 +67,9 @@ final class PersonaCameraTests {
         func setVoiceRing(_ on: Bool) { voiceRing = on }
         func setVoiceColor(_ color: InkColor) { voiceColor = color }
         func showVoice(_ frames: [PersonaVoiceFrame]) { voiceFrames += frames.count }
-        func fadeOut(then completion: @escaping () -> Void) { fadedOut += 1; completion() }
+        func stepAside(then completion: @escaping () -> Void) { steppingAside = completion }
+        /// The incoming card has covered it.
+        func covered() { let completion = steppingAside; steppingAside = nil; completion?() }
         func configureLive(name: String, help: String, state: PersonaOverlayState) { self.state = state }
         func hide() { shown = false }
         func releaseLive() { shown = false; released += 1; layer = nil }
@@ -78,7 +81,11 @@ final class PersonaCameraTests {
     private final class Fixture {
         let root: URL
         let capture = Capture()
-        let bubble = Bubble()
+        /// Each visit's window: a new one after End, as the app makes.
+        var bubbles: [Bubble] = []
+        /// The newest window, or a fresh one before any was made.
+        var bubble: Bubble { if bubbles.isEmpty { bubbles.append(Bubble()) }; return bubbles[bubbles.count - 1] }
+        private var handedOut = 0
         var permissionRequests: [(AVAuthorizationStatus) -> Void] = []
         var pendingDeadlines: [(TimeInterval, () -> Void)] = []
         var cancelledDeadlines = 0
@@ -88,7 +95,7 @@ final class PersonaCameraTests {
         var saved: SavedPersona?
         let effects = Effects()
         lazy var camera = PersonaLiveCamera(
-            capture: { [unowned self] in capture }, panel: { [unowned self] in bubble },
+            capture: { [unowned self] in capture }, panel: { [unowned self] in nextBubble() },
             authorize: { [unowned self] answer in permissionRequests.append(answer) },
             schedule: { [unowned self] seconds, action in
                 pendingDeadlines.append((seconds, action))
@@ -111,6 +118,12 @@ final class PersonaCameraTests {
             library.selectedID = saved?.id
         }
         func offer(_ list: PersonaCameraList) { cameras = list }
+        /// The camera asks for a window: the one made before any was asked for, then a new one each time.
+        func nextBubble() -> Bubble {
+            defer { handedOut += 1 }
+            if handedOut < bubbles.count { return bubbles[handedOut] }
+            let made = Bubble(); bubbles.append(made); return made
+        }
 
         /// Start camera, allow access and deliver the first real frame. The
         /// session's own events arrive on the main thread, as they do in the app.
@@ -951,8 +964,8 @@ final class PersonaCameraTests {
             f.library.setOverlayWidth(0.18)
             invoke(f.library.makeToolbarPickerMenu(), "My Profile")
             XCTAssertEqual(f.camera.state, .off, "My Profile ends Live Camera")
-            XCTAssertGreaterThan(f.capture.stops, 0, "The camera is released")
-            XCTAssertEqual(f.bubble.fadedOut, 1, "The bubble fades out as the photo comes back")
+            XCTAssertTrue(f.bubble.steppingAside != nil && f.bubble.shown, "The bubble stays whole under the photo fading in")
+            f.bubble.covered()
             XCTAssertTrue(f.library.artworkVisible && f.library.shownIdentity?.personaID == profile.id)
             XCTAssertEqual(f.library.cardPlacement.x, 0.9, accuracy: 0.0001)
             XCTAssertEqual(f.library.cardPlacement.y, 0.3, accuracy: 0.0001)
@@ -1014,7 +1027,7 @@ final class PersonaCameraTests {
             f.live()
             var names = titles(f.library.makeControlsMenu())
             XCTAssertFalse(f.camera.offersCenterStage, "A camera that cannot frame you offers no Center Stage")
-            XCTAssertFalse(names.contains("Center Stage"))
+            XCTAssertFalse(names.contains("Centre Stage"))
             XCTAssertTrue(names.contains("Video Effects…"), "The system's video effects are one click away")
             invoke(f.library.makeControlsMenu(), "Video Effects…")
             XCTAssertEqual(f.effects.videoEffects, 1)
@@ -1022,22 +1035,239 @@ final class PersonaCameraTests {
             f.capture.starts.last?.1(.features(ProfileCameraFeatures(centerStage: true)))
             XCTAssertTrue(f.camera.offersCenterStage)
             let menu = f.library.makeControlsMenu()
-            XCTAssertEqual(menu.items.first { $0.title == "Center Stage" }?.state, .off)
-            invoke(menu, "Center Stage")
+            XCTAssertEqual(menu.items.first { $0.title == "Centre Stage" }?.state, .off)
+            invoke(menu, "Centre Stage")
             XCTAssertEqual(f.effects.sets, [true], "Workbench sets the per-app switch")
             XCTAssertTrue(f.camera.centerStageOn)
             XCTAssertEqual(f.capture.conformed, 1, "A running camera moves to a format that can frame you")
             f.effects.userChanges(false)
             XCTAssertFalse(f.camera.centerStageOn, "A change in the Video menu is followed")
-            XCTAssertEqual(f.library.makeControlsMenu().items.first { $0.title == "Center Stage" }?.state, .off)
+            XCTAssertEqual(f.library.makeControlsMenu().items.first { $0.title == "Centre Stage" }?.state, .off)
 
             f.library.hideCamera()
             names = titles(f.library.makeControlsMenu())
-            XCTAssertFalse(names.contains("Center Stage") || names.contains("Video Effects…"), "A hidden camera offers neither")
+            XCTAssertFalse(names.contains("Centre Stage") || names.contains("Video Effects…"), "A hidden camera offers neither")
             // Another camera that cannot frame you, started fresh, offers none.
             f.library.showCameraAgain(); f.permissionRequests.last?(.authorized); f.capture.starts.last?.1(.frame)
             XCTAssertFalse(f.camera.offersCenterStage, "Each start reads its own camera")
             XCTAssertEqual(f.effects.sets, [true], "Starting changes no switch")
+        }
+    }
+
+    // MARK: Review of 8 October
+
+    /// One crossfade path. Live Camera → My Profile: the photo fades in on top while the bubble
+    /// stays whole beneath it, and the camera is released only once the bubble is covered. A
+    /// switch back before then leaves exactly one picture whole: the new bubble.
+    func testTheOutgoingPictureStaysWholeUntilTheIncomingOneCoversIt() throws {
+        try MainActor.assumeIsolated {
+            let f = Fixture(withArtwork: true); defer { f.cleanup() }
+            let url = f.root.appendingPathComponent("profile.png")
+            try Fixture.png().write(to: url)
+            let profile = try f.library.addImage(url, name: "Profile photo")
+            f.library.profilePersonaID = { profile.id }
+            try f.library.showProfile().get()
+            f.live()
+            let first = f.bubble
+            XCTAssertTrue(first.shown && first.fadedIn, "The bubble fades in over the photo")
+
+            let stops = f.capture.stops
+            invoke(f.library.makeToolbarPickerMenu(), "My Profile")
+            XCTAssertEqual(f.camera.state, .off, "The visit is over at once, so every door reads My Profile")
+            XCTAssertTrue(f.library.artworkVisible)
+            XCTAssertTrue(first.shown && first.steppingAside != nil, "The bubble stays whole under the photo")
+            XCTAssertEqual(f.capture.stops, stops, "The camera keeps its picture until the photo covers it")
+            first.covered()
+            XCTAssertFalse(first.shown)
+            XCTAssertEqual(first.released, 1)
+            XCTAssertEqual(f.capture.stops, stops + 1, "Then the camera is released")
+
+            // Back to Live Camera, and to the photo, and Live Camera again before the photo covers it.
+            f.live()
+            let second = f.bubble
+            invoke(f.library.makeToolbarPickerMenu(), "My Profile")
+            XCTAssertTrue(second.steppingAside != nil)
+            f.library.startCamera(); f.permissionRequests.last?(.authorized); f.capture.starts.last?.1(.frame)
+            let third = f.bubble
+            XCTAssertTrue(third !== second && third.shown && third.fadedIn, "A new bubble fades in over the photo")
+            let before = f.capture.stops
+            second.covered()
+            XCTAssertEqual(f.capture.stops, before, "A late hand-off never stops the newer visit's camera")
+            XCTAssertEqual(f.bubbles.filter(\.shown).count, 1, "One picture stays whole: the new bubble")
+            XCTAssertEqual(f.camera.state, .live)
+
+            // Hide and End stay immediate.
+            f.library.hideCamera()
+            XCTAssertFalse(third.shown)
+            XCTAssertTrue(third.steppingAside == nil, "Hide does not wait for anything")
+        }
+    }
+
+    /// The card under an incoming bubble, in a real window: it stays at full opacity until the
+    /// bubble has faded in, then goes; shown again before that, it simply stays.
+    func testACardSteppingAsideStaysWholeAndComesBackWhole() {
+        MainActor.assumeIsolated {
+            guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
+            let controller = PersonaOverlayController(pointer: PersonaTestPointer(), revealDelay: 0)
+            defer { controller.shutdown() }
+            let image = NSImage(size: CGSize(width: 200, height: 200), flipped: false) { rect in
+                NSColor.orange.setFill(); rect.fill(); return true
+            }
+            var state = PersonaOverlayState(); state.width = 0.1
+            _ = controller.show(image: image, name: "Card", state: state)
+            guard let window = controller.window else { XCTAssertTrue(false, "A window"); return }
+            controller.hide(steppingAside: true)
+            XCTAssertTrue(window.isVisible && window.alphaValue == 1 && controller.isSteppingAside, "Whole while the bubble fades in")
+            XCTAssertTrue(window.ignoresMouseEvents, "It no longer takes the pointer")
+            _ = controller.show(image: image, name: "Card", state: state)
+            XCTAssertTrue(window.isVisible && window.alphaValue == 1 && !controller.isSteppingAside, "Shown again, it stays whole")
+            RunLoop.current.run(until: Date().addingTimeInterval(PersonaOverlayController.stepAsideHold + 0.15))
+            XCTAssertTrue(window.isVisible, "A cancelled step aside never hides it later")
+            controller.hide(steppingAside: true)
+            RunLoop.current.run(until: Date().addingTimeInterval(PersonaOverlayController.stepAsideHold + 0.15))
+            XCTAssertFalse(window.isVisible, "Covered, it goes")
+            XCTAssertEqual(window.alphaValue, 1)
+        }
+    }
+
+    /// The bubble the app really makes, with the default window factory: the ring is on with its
+    /// geometry, the window is larger than the circle by the ring's room, and nothing is drawn
+    /// in a subview that could sit over or under the ring.
+    func testTheRealBubbleWindowCarriesTheRing() {
+        MainActor.assumeIsolated {
+            guard let screen = NSScreen.main else { return }
+            let microphones = Box()
+            let access = PersonaVoiceAccess(permission: { .allowed }, requestPermission: { $0(true) },
+                                            makeSource: { let source = Microphone(); microphones.made.append(source); return source },
+                                            savedChoice: { true }, saveChoice: { _ in })
+            let root = FileManager.default.temporaryDirectory.appendingPathComponent("PersonaRealBubble-" + UUID().uuidString)
+            try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            let capture = Capture()
+            var permissions: [(AVAuthorizationStatus) -> Void] = []
+            let camera = PersonaLiveCamera(capture: { capture }, authorize: { permissions.append($0) }, schedule: { _, _ in {} },
+                                           list: { PersonaCameraList(devices: [PersonaCameraDevice(id: "built-in", name: "Built-in camera", inUseByAnotherApp: false)], preferredID: "built-in") },
+                                           effects: .inert)
+            let library = PersonaLibrary(root: root.appendingPathComponent("library"), sessionHUDEnabled: false, voice: access, camera: camera)
+            library.usesSharedControls = true
+            defer { library.shutdown(); try? FileManager.default.removeItem(at: root) }
+            library.startCamera(); permissions.last?(.authorized); capture.starts.last?.1(.frame)
+            XCTAssertEqual(camera.state, .live)
+            XCTAssertTrue(microphones.running)
+            guard let window = NSApp.windows.first(where: { $0.title == "Workbench persona" && $0.isVisible }),
+                  let content = window.contentView else { XCTAssertTrue(false, "The bubble's window shows"); return }
+            content.layoutSubtreeIfNeeded()
+            let ring = content.layer?.sublayers?.compactMap { $0 as? PersonaVoiceRingLayer }.first
+            XCTAssertTrue(ring != nil && ring?.isHidden == false, "The bubble's window draws the ring")
+            XCTAssertTrue(ring?.geometry != nil, "The ring has its geometry around the circle")
+            XCTAssertTrue(content.subviews.isEmpty, "Everything is a layer of one view: nothing can sit over or under the ring")
+            let circle = camera.placement.width * screen.visibleFrame.width
+            let room = PersonaVoiceRingGeometry(outline: PersonaCircleRenderer.outline,
+                                                artwork: CGRect(x: 0, y: 0, width: circle, height: circle)).outsets
+            XCTAssertEqual(window.frame.width, circle + room.left + room.right, accuracy: 2)
+            XCTAssertTrue(window.frame.width > circle + 10, "The window makes room for the ring")
+            library.setVoiceRing(false)
+            XCTAssertEqual(window.frame.width, circle, accuracy: 2)
+        }
+    }
+
+    /// macOS is asked for the microphone only when React to my voice is switched on: never by
+    /// showing My Profile or starting Live Camera, which may be in front of an audience.
+    func testOnlyTheSwitchAsksForTheMicrophone() throws {
+        try MainActor.assumeIsolated {
+            var requests = 0
+            let access = PersonaVoiceAccess(permission: { .undecided }, requestPermission: { _ in requests += 1 },
+                                            makeSource: { Microphone() }, savedChoice: { true }, saveChoice: { _ in })
+            let f = Fixture(withArtwork: true); defer { f.cleanup() }
+            _ = f.library.replaceVoiceAccess(access)
+            f.library.setVoiceRing(false)
+            // A remembered On with access never asked, as after a permission reset.
+            let root = f.root.appendingPathComponent("voice")
+            let library = PersonaLibrary(root: root, sessionHUDEnabled: false, voice: access, camera: f.camera)
+            library.usesSharedControls = true
+            defer { library.shutdown() }
+            let url = f.root.appendingPathComponent("profile.png")
+            try Fixture.png().write(to: url)
+            let profile = try library.addImage(url, name: "Profile photo")
+            library.profilePersonaID = { profile.id }
+            XCTAssertTrue(library.voiceRing)
+            try library.showProfile().get()
+            library.startCamera(); f.permissionRequests.last?(.authorized); f.capture.starts.last?.1(.frame)
+            XCTAssertEqual(f.camera.state, .live)
+            XCTAssertEqual(requests, 0, "Showing My Profile and starting Live Camera ask nothing")
+            XCTAssertTrue(library.voiceStatus?.contains("switch off and on") == true, "The status line says how to allow it")
+            library.setVoiceRing(false); library.setVoiceRing(true)
+            XCTAssertEqual(requests, 1, "Switching it on asks, once")
+        }
+    }
+
+    /// A lost input or an engine that cannot restart stops the ring with its reason, and leaves
+    /// the saved choice on; a refusal turns it off and is remembered.
+    func testAFaultStopsTheRingWithoutSavingItOff() throws {
+        try MainActor.assumeIsolated {
+            var saved: [Bool] = []
+            let microphones = Box()
+            let access = PersonaVoiceAccess(permission: { .allowed }, requestPermission: { $0(true) },
+                                            makeSource: { let source = Microphone(); microphones.made.append(source); return source },
+                                            savedChoice: { true }, saveChoice: { saved.append($0) })
+            let f = Fixture(withArtwork: true); defer { f.cleanup() }
+            let library = PersonaLibrary(root: f.root.appendingPathComponent("voice"), sessionHUDEnabled: false, voice: access, camera: f.camera)
+            library.usesSharedControls = true
+            defer { library.shutdown() }
+            library.startCamera(); f.permissionRequests.last?(.authorized); f.capture.starts.last?.1(.frame)
+            XCTAssertTrue(microphones.running)
+            microphones.made.last?.onUnavailable?("React to my voice stopped: the input changed and could not restart.")
+            XCTAssertFalse(microphones.running, "The fault stops the microphone")
+            XCTAssertFalse(library.voiceRing, "The switch shows it stopped")
+            XCTAssertTrue(library.notice?.contains("could not restart") == true, "The notice says why")
+            XCTAssertTrue(saved.isEmpty, "The saved choice stays on for next time")
+            library.setVoiceRing(true)
+            XCTAssertTrue(microphones.running, "Switching it on again listens again")
+            XCTAssertEqual(saved, [true])
+        }
+    }
+
+    /// My Profile is always the first row. With no profile photo saved, it is My Profile…, which
+    /// opens the profile editor; and Live Camera is checked only while the bubble shows.
+    func testMyProfileIsAlwaysTheFirstRowAndLiveCameraIsCheckedOnlyWhileItShows() {
+        MainActor.assumeIsolated {
+            let f = Fixture(withArtwork: true); defer { f.cleanup() }
+            var edits = 0
+            f.library.onEditProfile = { edits += 1 }
+            var menu = f.library.makeToolbarPickerMenu()
+            XCTAssertEqual(menu.items.map(\.title), ["My Profile…", "Live Camera", "", "Site lead"])
+            invoke(menu, "My Profile…")
+            XCTAssertEqual(edits, 1, "My Profile… opens the profile editor")
+            XCTAssertEqual(f.permissionRequests.count, 0)
+
+            f.library.startCamera()
+            menu = f.library.makeToolbarPickerMenu()
+            XCTAssertEqual(menu.items.first { $0.title == "Live Camera" }?.state, .off, "Asking for access is not showing")
+            f.permissionRequests.last?(.authorized)
+            XCTAssertEqual(f.library.makeToolbarPickerMenu().items.first { $0.title == "Live Camera" }?.state, .off, "Nor is starting")
+            f.capture.starts.last?.1(.frame)
+            XCTAssertEqual(f.library.makeToolbarPickerMenu().items.first { $0.title == "Live Camera" }?.state, .on, "Showing is")
+            f.library.hideCamera()
+            XCTAssertEqual(f.library.makeToolbarPickerMenu().items.first { $0.title == "Live Camera" }?.state, .off, "Hidden is not")
+            XCTAssertEqual(f.library.makeToolbarPickerMenu().items.first?.title, "My Profile…", "The first row never moves")
+        }
+    }
+
+    /// The Live Camera menu, grouped and worded as the card's menu is.
+    func testTheLiveCameraMenuIsGroupedInTitleCase() {
+        MainActor.assumeIsolated {
+            let f = Fixture(); defer { f.cleanup() }
+            f.offer(PersonaCameraList(devices: [PersonaCameraDevice(id: "built-in", name: "Built-in camera", inUseByAnotherApp: false),
+                                                PersonaCameraDevice(id: "studio", name: "Studio Cam", inUseByAnotherApp: false)],
+                                      preferredID: "built-in"))
+            f.live()
+            f.capture.starts.last?.1(.sources([ProfileCameraSource(id: "built-in", name: "Built-in camera"), ProfileCameraSource(id: "studio", name: "Studio Cam")], selected: "built-in"))
+            f.capture.starts.last?.1(.features(ProfileCameraFeatures(centerStage: true)))
+            let titles = f.library.makeControlsMenu().items.map { $0.isSeparatorItem ? "---" : ($0.view != nil ? "Size" : $0.title) }
+            XCTAssertEqual(Array(titles.dropFirst()), ["Choose Persona", "---", "Size", "Lock Live Camera · Clicks Pass Through", "Position Live Camera", "Switch Camera",
+                                                       "---", "Centre Stage", "Video Effects…", "---", "Hide Live Camera", "End Live Camera"])
+            f.library.hideCamera()
+            let hidden = f.library.makeControlsMenu().items.map { $0.isSeparatorItem ? "---" : $0.title }
+            XCTAssertEqual(Array(hidden.dropFirst()), ["Choose Persona", "---", "Show Live Camera Again", "---", "End Live Camera"])
         }
     }
 }

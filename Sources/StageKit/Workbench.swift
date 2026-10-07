@@ -206,4 +206,11 @@ struct WorkbenchTheme: ViewModifier {
 }
 extension View {
     func workbenchTheme() -> some View { modifier(WorkbenchTheme()) }
+    /// The page kit's card without a title (docs/desktop.md, `.workbenchCard()`), StageKit's twin:
+    /// 12 pt corners, 16 pt inside, the control surface and a hairline, never a tinted box.
+    func kitCard() -> some View {
+        padding(16).frame(maxWidth: .infinity, alignment: .leading)
+            .background(Workbench.surface, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Workbench.border))
+    }
 }

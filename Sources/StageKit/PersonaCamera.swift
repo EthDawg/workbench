@@ -125,19 +125,14 @@ protocol PersonaCameraDisplaying: AnyObject {
     func hide()
     func releaseLive()
     func shutdown()
-    /// React to my voice around the bubble, exactly as around a card.
+    /// React to my voice around the bubble, exactly as around a card. Every display draws
+    /// it: there is deliberately no do-nothing default, so a changed signature cannot drop it.
     func setVoiceRing(_ on: Bool)
     func setVoiceColor(_ color: InkColor)
     func showVoice(_ frames: [PersonaVoiceFrame])
-    /// Fades the bubble out while a card fades in over it, then `completion` releases it.
-    func fadeOut(then completion: @escaping () -> Void)
-}
-
-extension PersonaCameraDisplaying {
-    func setVoiceRing(_ on: Bool) {}
-    func setVoiceColor(_ color: InkColor) {}
-    func showVoice(_ frames: [PersonaVoiceFrame]) {}
-    func fadeOut(then completion: @escaping () -> Void) { completion() }
+    /// A card is fading in over the bubble: the bubble stays whole beneath it and, once it is
+    /// covered, `completion` releases it and the camera.
+    func stepAside(then completion: @escaping () -> Void)
 }
 
 extension PersonaOverlayController: PersonaCameraDisplaying {}
@@ -393,16 +388,28 @@ final class PersonaLiveCamera: ObservableObject {
     }
     /// End camera, and Cancel while it is starting: the device goes, the bubble's
     /// window goes, and this visit is over. Saved artwork is untouched.
-    /// `fading` lets the bubble fade out while a card fades in over it; the camera is
-    /// released at once either way.
-    func end(fading: Bool = false) {
+    /// `handingOff`: a card is fading in over the live bubble in its place. The visit ends
+    /// now, so every door reads the card, but the bubble keeps its picture until the card covers
+    /// it; then the bubble goes and the camera is released, unless a newer visit has started.
+    /// Hide, End and sleep release everything at once.
+    func end(handingOff: Bool = false) {
         guard isActive else { return }
+        if handingOff, isLive, let leaving = panel {
+            // Drop this visit's late events and deadlines, but keep the device until covered.
+            request = UUID(); disarmDeadline()
+            panel = nil
+            visit = UUID()
+            let ended = visit, capture = self.capture
+            move(to: .off)
+            leaving.stepAside { [weak self] in
+                leaving.releaseLive(); leaving.shutdown()
+                guard let self, self.visit == ended, self.state == .off else { return }
+                capture?.stop()
+            }
+            return
+        }
         release()
         visit = UUID()
-        if fading, isLive, let leaving = panel {
-            panel = nil
-            leaving.fadeOut { leaving.releaseLive(); leaving.shutdown() }
-        }
         move(to: .off)
     }
     func shutdown() {
@@ -633,11 +640,10 @@ struct PersonaCameraPanel: View {
             }
             if camera.isLive || camera.isHidden { placement }
             if camera.isLive { effects }
-            Text("Your saved personas stay unchanged. The bubble’s position resets when Workbench quits.")
+            Text("Your saved personas stay unchanged. Live Camera’s own place resets when Workbench quits; a card you switch to takes that place and keeps it.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
-        .padding(12)
-        .background(Workbench.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+        .kitCard()
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Live Camera · " + (camera.status.isEmpty ? "not started" : camera.status))
     }
@@ -687,18 +693,18 @@ struct PersonaCameraPanel: View {
         }
     }
 
-    /// What this camera offers a presenter: Center Stage where it can frame you, and the
+    /// What this camera offers a presenter: Centre Stage where it can frame you, and the
     /// system's Video menu for Portrait, Studio Light, Reactions and Background.
     @ViewBuilder private var effects: some View {
         let visit = camera.visit
         HStack(spacing: 12) {
             if camera.offersCenterStage {
-                Toggle("Center Stage", isOn: Binding(get: { camera.centerStageOn },
+                Toggle("Centre Stage", isOn: Binding(get: { camera.centerStageOn },
                                                      set: { on in camera.perform(ifCurrent: visit) { camera.setCenterStage(on) } }))
-                    .help("Keeps you framed as you move. macOS remembers it for Workbench, and the Video menu in the menu bar changes it too.")
+                    .help("Keeps you framed as you move. It applies to Workbench as a whole, Take photo… in My Profile too; macOS remembers it, and the menu bar’s Video menu changes the same switch.")
             }
             Button("Video Effects…") { camera.perform(ifCurrent: visit) { camera.showVideoEffects() } }
-                .help("Opens macOS’s Video menu: Portrait, Studio Light, Reactions, Background and more, for this camera")
+                .help("Opens the menu bar’s Video menu for Workbench: Portrait, Studio Light, Edge Light, Reactions, Background and more.")
         }
     }
 

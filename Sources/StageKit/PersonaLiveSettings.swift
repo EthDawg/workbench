@@ -57,7 +57,7 @@ struct PersonaLiveSettings: View {
                 Text("These controls change the selected live copy. Save live layout updates the prepared set for next time.")
                     .font(.caption).foregroundStyle(.secondary)
                 if let feedback = state.feedback { Text(feedback).font(.caption).foregroundStyle(.secondary) }
-            }.padding(12).background(Workbench.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+            }.kitCard()
         }
     }
     @ViewBuilder private func copyActions(_ copy: PersonaSessionInstance, group: UUID?) -> some View {

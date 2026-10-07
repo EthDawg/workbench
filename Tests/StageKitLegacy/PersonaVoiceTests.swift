@@ -125,7 +125,7 @@ final class PersonaVoiceTests {
         library.endOverlaySession()
         XCTAssertTrue(microphones.running.isEmpty, "End stops the microphone")
         XCTAssertTrue(library.voiceRing, "Ending keeps the choice for next time")
-        XCTAssertEqual(library.voiceStatus, "Listens while a persona shows")
+        XCTAssertEqual(library.voiceStatus, "Listens while a persona or Live Camera shows")
 
         let reopened = PersonaLibrary(root: root, sessionPanelFactory: { Display() }, sessionHUDEnabled: false, voice: access(microphones, defaults))
         XCTAssertTrue(reopened.voiceRing, "The choice survives a restart")

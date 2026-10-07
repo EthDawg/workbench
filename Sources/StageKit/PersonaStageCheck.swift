@@ -66,6 +66,7 @@ public enum PersonaStageCheck {
             DispatchQueue.main.async { MainActor.assumeIsolated { completion(.failure(.unavailable)) } }
         }
         func stop() { stops += 1 }
+        func conformToCenterStage() {}
     }
 
     /// The stand-in camera picture: a blue no voice colour preset is near.

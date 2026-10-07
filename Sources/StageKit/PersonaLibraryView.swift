@@ -481,8 +481,7 @@ struct PersonaLibraryView: View {
                 Text("Size, position and lock change this card only. Hide keeps it for Show again; End releases it. Your saved personas stay as they are." + (library.shortcutHint.map { " " + $0 } ?? ""))
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
-            .padding(12)
-            .background(Workbench.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+            .kitCard()
             .accessibilityElement(children: .contain)
             .accessibilityLabel((shown.hidden ? "Hidden card: " : "Shown card: ") + shown.name)
         }

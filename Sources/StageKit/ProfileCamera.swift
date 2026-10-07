@@ -44,12 +44,8 @@ protocol ProfileCameraCapturing: AnyObject {
     func takePhoto(completion: @escaping @MainActor (Result<NSImage, ProfileCameraIssue>) -> Void)
     func stop()
     /// Center Stage was turned on: a running camera whose format cannot frame people
-    /// moves to one that can.
+    /// moves to one that can. No default: every capture says what it does.
     func conformToCenterStage()
-}
-
-extension ProfileCameraCapturing {
-    func conformToCenterStage() {}
 }
 
 /// Owns one explicit camera visit. Late permissions, frames, photos and deadlines cannot

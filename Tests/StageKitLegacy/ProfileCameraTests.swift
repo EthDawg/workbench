@@ -12,6 +12,8 @@ final class ProfileCameraTests {
         func start(sourceID: String?, receive: @escaping @MainActor (ProfileCameraEvent) -> Void) { starts.append((sourceID, receive)) }
         func takePhoto(completion: @escaping @MainActor (Result<NSImage, ProfileCameraIssue>) -> Void) { photos.append(completion) }
         func stop() { stops += 1 }
+        /// The profile's photo camera never offers Centre Stage.
+        func conformToCenterStage() {}
     }
     @MainActor private final class Fixture {
         let capture = Capture()
