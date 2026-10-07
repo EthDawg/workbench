@@ -588,8 +588,13 @@ final class SceneCanvasView: NSView {
     var previewCovered = false
     var isLive = false { didSet { preview.isLive = isLive; refreshPreview() } }
     var liveDimensions = CGSize.zero { didSet { refreshPreview() } }
-    /// Set after the view may already be in a window, so the current state is reported at once.
-    var onVisibility: ((Bool) -> Void)? { didSet { reportedVisible = false; reportVisibility() } }
+    /// Set on every SwiftUI update. The first time, the current state is reported on the next
+    /// main-queue turn; after that only real changes are. Reporting never happens inside a view
+    /// update (which published from within it) and a hide is never swallowed by a reassignment.
+    var onVisibility: ((Bool) -> Void)? {
+        didSet { if !hasReported { DispatchQueue.main.async { [weak self] in self?.reportVisibility() } } }
+    }
+    private var hasReported = false
     private let preview: DemoStageSurfaceView
     private let handles = SceneCanvasHandles()
     private var ambience: AmbientSceneImages?
@@ -622,9 +627,10 @@ final class SceneCanvasView: NSView {
     override func viewDidUnhide() { super.viewDidUnhide(); reportVisibility() }
     private func reportVisibility() {
         let visible = window.map { $0.isVisible && $0.occlusionState.contains(.visible) && !isHiddenOrHasHiddenAncestor } ?? false
-        guard visible != reportedVisible else { return }
-        reportedVisible = visible
-        onVisibility?(visible)
+        guard !hasReported || visible != reportedVisible else { return }
+        hasReported = true; reportedVisible = visible
+        let handler = onVisibility
+        DispatchQueue.main.async { handler?(visible) }
     }
     func receive(_ value: DemoScene, loadAmbience: ((DemoScene) -> AmbientSceneImages?)? = nil) {
         if scene?.id != value.id { initial = nil; dragPreview = nil; isDragging = false }
