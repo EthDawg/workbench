@@ -40,131 +40,11 @@
   "component_archive": ".build/component/Workbench.zip",
   "acceptance": {
     "schemaVersion": 1,
-    "claim": "foundation-candidate",
+    "claim": "bounded-slice",
     "journeys": [
       {
         "id": "D1",
         "variant": "native",
-        "phase": "candidate"
-      },
-      {
-        "id": "M1",
-        "variant": "native",
-        "phase": "candidate"
-      },
-      {
-        "id": "M2",
-        "variant": "native",
-        "phase": "candidate"
-      },
-      {
-        "id": "H1",
-        "variant": "native",
-        "phase": "candidate"
-      },
-      {
-        "id": "S1",
-        "variant": "native",
-        "phase": "candidate"
-      },
-      {
-        "id": "ST1",
-        "variant": "native",
-        "phase": "candidate"
-      },
-      {
-        "id": "P2",
-        "variant": "native",
-        "phase": "candidate"
-      },
-      {
-        "id": "R1",
-        "variant": "native",
-        "phase": "candidate"
-      },
-      {
-        "id": "U1",
-        "variant": "native",
-        "phase": "candidate"
-      },
-      {
-        "id": "I2",
-        "variant": "native",
-        "phase": "candidate"
-      },
-      {
-        "id": "Q1",
-        "variant": "native",
-        "phase": "candidate"
-      },
-      {
-        "id": "Q2",
-        "variant": "native",
-        "phase": "candidate"
-      },
-      {
-        "id": "Q3",
-        "variant": "native",
-        "phase": "candidate"
-      },
-      {
-        "id": "L1",
-        "variant": "native",
-        "phase": "candidate"
-      },
-      {
-        "id": "L2",
-        "variant": "native",
-        "phase": "candidate"
-      },
-      {
-        "id": "L3",
-        "variant": "native",
-        "phase": "candidate"
-      },
-      {
-        "id": "L4",
-        "variant": "native",
-        "phase": "candidate"
-      },
-      {
-        "id": "X1",
-        "variant": "native",
-        "phase": "candidate"
-      },
-      {
-        "id": "X2",
-        "variant": "native",
-        "phase": "candidate"
-      },
-      {
-        "id": "H2",
-        "variant": "manual-codex",
-        "phase": "candidate"
-      },
-      {
-        "id": "H2",
-        "variant": "manual-claude",
-        "phase": "candidate"
-      },
-      {
-        "id": "H2",
-        "variant": "connected-codex",
-        "phase": "candidate"
-      },
-      {
-        "id": "H2",
-        "variant": "connected-claude",
-        "phase": "candidate"
-      },
-      {
-        "id": "P1",
-        "variant": "usb-teams",
-        "phase": "candidate"
-      },
-      {
-        "id": "P1",
-        "variant": "usb-zoom",
         "phase": "candidate"
       },
       {
@@ -181,11 +61,6 @@
         "id": "U2",
         "variant": "public-feed-update",
         "phase": "delivery"
-      },
-      {
-        "id": "X3",
-        "variant": "native",
-        "phase": "candidate"
       }
     ],
     "storageFormats": [
@@ -210,7 +85,7 @@
         "I",
         "J"
       ],
-      "reason": "Candidate for the decided Mac foundation, including Library L1-L4. Public delivery remains a later observation."
+      "reason": "2.5.0 (8 October 2026): the maintainer chose to ship and test every foundation journey in production on his work Mac, reporting through Report a Problem. This release attests only the fresh smoke (opening, permissions, saved work), D1 dictation into a real app and the signed 2.4.1-to-2.5.0 upgrade on the exact notarized package. The other foundation journeys (M1, M2, H1, H2, S1, ST1, P1, P2, R1, U1, I2, Q1-Q3, L1-L4, X1-X3) are not attested here and stay owed in #7."
     }
   }
 }
