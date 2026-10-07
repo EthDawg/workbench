@@ -1296,11 +1296,13 @@
     "note": "Returns to the current Dictate draft without replacing it."
   },
   {
-    "id": "LocalVoice.Workbench.WorkbenchAppearancePicker.Picker.suite-appearance",
+    "id": "LocalVoice.Workbench.WorkbenchAppearancePicker.Picker.appearance",
     "surface": "settings page",
-    "label": "Suite appearance",
+    "label": "Appearance",
     "kind": "setting",
-    "belongsTo": "settings"
+    "belongsTo": "settings",
+    "aliasOf": "settings",
+    "note": "Renamed from Suite appearance to Appearance, macOS's own word for System, Light or Dark (7 Oct 2026, Settings › General as a grouped form). Shares the word with Persona's card Appearance by intent: each sits in its own owner's settings and means that owner's look."
   },
   {
     "id": "LocalVoice.WorkbenchControlTool.WorkbenchControlState.hover-title.operation",
@@ -2010,11 +2012,12 @@
     "note": "The same updater action as the sidebar; native review is retained for exceptional releases."
   },
   {
-    "id": "LocalVoice.WorkbenchUpdates.WorkbenchUpdateSettings.Link.release-notes-and-downloads",
+    "id": "LocalVoice.WorkbenchUpdates.WorkbenchUpdateSettings.Button.release-notes-and-downloads",
     "surface": "settings page",
     "label": "Release notes and downloads",
     "kind": "action",
-    "belongsTo": "settings"
+    "belongsTo": "settings",
+    "note": "A Workbench-coloured link button rather than a system-blue Link (7 Oct 2026); same destination."
   },
   {
     "id": "LocalVoice.WorkbenchUpdates.WorkbenchUpdateSettings.Toggle.check-for-updates-automatically",

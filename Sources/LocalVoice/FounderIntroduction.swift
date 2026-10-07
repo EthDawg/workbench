@@ -74,7 +74,7 @@ struct FounderIntroductionCard: View {
     var canDismiss = true
     var body: some View {
         HStack(alignment: .top, spacing: 16) {
-            Image(systemName: "envelope").font(.system(size: 25)).foregroundStyle(Color.accentColor).padding(.top, 2)
+            Image(systemName: "envelope").font(.system(size: 25)).foregroundStyle(Workbench.accent).padding(.top, 2)
             VStack(alignment: .leading, spacing: 9) {
                 Text("Say hello to Ethan and Matt").font(.headline)
                 Text("Open an editable draft in your email app. You choose whether to send.")
@@ -93,7 +93,6 @@ struct FounderIntroductionCard: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }.frame(maxWidth: .infinity, alignment: .leading)
-        }.padding(20)
-            .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 14))
+        }.workbenchCard()
     }
 }

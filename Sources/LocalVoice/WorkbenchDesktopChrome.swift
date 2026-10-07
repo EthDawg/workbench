@@ -16,7 +16,6 @@ struct WorkbenchNavigationStyle: ButtonStyle {
             .overlay(RoundedRectangle(cornerRadius: 9)
                 .fill(Color.primary.opacity(isEnabled ? (configuration.isPressed ? 0.12 : hovered ? (scheme == .dark ? 0.08 : 0.045) : 0) : 0))
                 .allowsHitTesting(false))
-            .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(selected ? Workbench.accent.opacity(0.22) : .clear))
             .contentShape(RoundedRectangle(cornerRadius: 9))
             .opacity(isEnabled ? 1 : 0.5)
             .onHover { hovered = $0 }
@@ -30,7 +29,8 @@ enum SidebarMetrics {
     static let expandedWidth: CGFloat = 215
     /// The sidebar's side padding, the same in both widths.
     static let inset: CGFloat = 10
-    static let iconWidth: CGFloat = 22
+    /// Wide enough for the widest sidebar glyph (Meetings) at the sidebar's 14 pt symbols.
+    static let iconWidth: CGFloat = 24
     /// From a row's leading edge to its icon: centres the icon in the collapsed sidebar.
     static let rowInset = (collapsedWidth - iconWidth) / 2 - inset
     /// The header's 36-point toggle sits on the same centre.
@@ -180,7 +180,7 @@ struct WorkbenchUpdateSidebar: View {
             Button { hovered = nil; updates.checkForUpdates() } label: {
                 HStack(spacing: 10) {
                     Image(systemName: updates.downloaded ? "arrow.clockwise.circle" : "arrow.down.circle")
-                        .font(.system(size: 15)).frame(width: SidebarMetrics.iconWidth).accessibilityHidden(true)
+                        .font(.system(size: 14)).imageScale(.medium).frame(width: SidebarMetrics.iconWidth).accessibilityHidden(true)
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { sectionFrames?("sidebar.update", $0) }
                     Text(updates.buttonTitle).font(.system(size: 13)).sidebarName(hidden: collapsed)
                 }.padding(.leading, SidebarMetrics.rowInset)
@@ -192,15 +192,13 @@ struct WorkbenchUpdateSidebar: View {
                 .accessibilityLabel(updates.buttonTitle)
                 .accessibilityHint((updates.requiresReview ? "Review this release. " : "Updates and restarts Workbench. ") + updates.sidebarDetail)
                 .accessibilityIdentifier("sidebar.update")
-            VStack(alignment: .leading, spacing: 0) {
-                Text(updates.sidebarDetail).font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true).lineLimit(3)
-                    .padding(.horizontal, SidebarMetrics.rowInset).padding(.bottom, 4)
-                if updates.canCheck && !updates.restartWaiting && !updates.requiresReview {
-                    Text("Restarts Workbench").font(.caption2).foregroundStyle(.secondary)
-                        .padding(.horizontal, SidebarMetrics.rowInset)
-                }
-            }.sidebarName(hidden: collapsed, width: SidebarMetrics.expandedWidth - 2 * SidebarMetrics.inset)
+            // Two lines at most, so the page list above keeps its rows whole; that it restarts
+            // Workbench is in the hint and the accessibility hint. The same height in both widths,
+            // so collapsing moves no icon.
+            Text(updates.sidebarDetail).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                .padding(.horizontal, SidebarMetrics.rowInset).padding(.bottom, 4)
+                .help(updates.sidebarDetail)
+                .sidebarName(hidden: collapsed, width: SidebarMetrics.expandedWidth - 2 * SidebarMetrics.inset)
         }
     }
 }

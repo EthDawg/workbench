@@ -135,7 +135,7 @@ struct WorkbenchHeader: View {
 struct WorkbenchAppearancePicker: View {
     @ObservedObject private var suite = WorkbenchSettings.shared
     var body: some View {
-        Picker("Suite appearance", selection: Binding(get: { suite.appearance }, set: { suite.setAppearance($0) })) {
+        Picker("Appearance", selection: Binding(get: { suite.appearance }, set: { suite.setAppearance($0) })) {
             ForEach(WorkbenchSettings.Appearance.allCases, id: \.self) { Text($0.rawValue).tag($0) }
         }
     }

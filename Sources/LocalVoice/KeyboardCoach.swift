@@ -332,15 +332,15 @@ struct KeyboardCoachView: View {
         VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
             // The page header carries this section's summary, above the switcher (WorkbenchHome.sectionSummaries).
             HStack(alignment: .top, spacing: 20) {
-                actionList.frame(width: 230, height: 230)
-                Divider().frame(height: 230)
+                actionList.frame(width: 250).frame(minHeight: 230, maxHeight: 420)
+                Divider().frame(minHeight: 230, maxHeight: 420)
                 VStack(alignment: .leading, spacing: 12) {
                     if let selected {
                         HStack(alignment: .firstTextBaseline) {
                             Text(selected.title).font(.title3.weight(.semibold))
                             Spacer()
                             Text(model.interaction == .recording ? "Press keys…" : selected.shortcut.label)
-                                .font(.system(size: 23, weight: .medium, design: .monospaced)).foregroundStyle(Color.accentColor)
+                                .font(.title3.monospacedDigit().weight(.medium)).foregroundStyle(.primary)
                         }
                         HStack {
                             Button(model.interaction == .recording ? "Cancel recording" : "Record shortcut") {
@@ -353,19 +353,19 @@ struct KeyboardCoachView: View {
                                 if model.interaction == .practicing { model.stopInteraction() } else { model.beginPractice() }
                             }.buttonStyle(.borderedProminent).disabled(!selected.shortcut.enabled || selected.error != nil)
                         }
-                        if let error = selected.error { Label(error, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true) }
+                        if let error = selected.error { WorkbenchNote(error, font: .caption) }
                         if model.interaction == .practicing || model.practice?.isComplete == true { practiceProgress }
                         if let message = model.message {
-                            Text(message).font(.callout).foregroundStyle(model.hasError ? Color.orange : .secondary).fixedSize(horizontal: false, vertical: true)
+                            Text(message).font(.callout).foregroundStyle(model.hasError ? .primary : .secondary).fixedSize(horizontal: false, vertical: true)
                         } else if !model.isInteracting {
                             Text("Choose an action, then change its keys or practice three complete presses.").font(.callout).foregroundStyle(.secondary)
                         }
                     }
                 }.frame(maxWidth: .infinity, alignment: .leading)
-            }.frame(minHeight: 230)
+            }.frame(minHeight: 230).workbenchCard()
             VirtualMacKeyboard(shortcut: selected?.shortcut, active: model.isInteracting, heldModifiers: model.heldModifiers, heldKey: model.heldKey)
             HStack(alignment: .top, spacing: 10) {
-                Image(systemName: model.isInteracting ? "hand.raised.fill" : "keyboard").foregroundStyle(Color.accentColor)
+                Image(systemName: model.isInteracting ? "hand.raised.fill" : "keyboard").foregroundStyle(Workbench.accent)
                 VStack(alignment: .leading, spacing: 5) {
                     Text(model.interaction == .practicing ? "Practice stays here. Nothing records or draws while you try the keys." : model.interaction == .recording ? "Global shortcuts are paused while you choose a combination." : "Every action is still available from its button or menu.")
                     Text("Labels follow your input layout. The picture shows an ANSI keyboard.")
@@ -379,33 +379,52 @@ struct KeyboardCoachView: View {
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.willResignActiveNotification)) { _ in model.stopInteraction() }
     }
 
+    /// Shortcuts that are on first, in the order Home's Your keys teaches them (the presenter's
+    /// killer keys before the rest), then the ones that are off under their own heading, so the
+    /// list reads as the habit to build rather than the catalogue's order.
+    static func ordered(_ entries: [ShortcutEntry]) -> (on: [ShortcutEntry], off: [ShortcutEntry]) {
+        let rank = Dictionary(uniqueKeysWithValues: HomeKeys.priority.enumerated().map { ($1, $0) })
+        let on = entries.enumerated().filter { $0.element.shortcut.enabled }
+            .sorted { (rank[$0.element.id] ?? HomeKeys.priority.count + $0.offset, $0.offset) < (rank[$1.element.id] ?? HomeKeys.priority.count + $1.offset, $1.offset) }
+            .map(\.element)
+        return (on, entries.filter { !$0.shortcut.enabled })
+    }
+
     private var actionList: some View {
-        ScrollView {
-            VStack(spacing: 4) {
-                ForEach(model.entries) { entry in
+        let groups = Self.ordered(model.entries)
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(groups.on) { row($0) }
+                if !groups.off.isEmpty {
+                    Text("Off · \(groups.off.count)").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                        .padding(.top, 10).padding(.leading, 10).accessibilityAddTraits(.isHeader)
+                    ForEach(groups.off) { row($0) }
+                }
+            }
+        }.scrollIndicators(.visible)
+    }
+
+    private func row(_ entry: ShortcutEntry) -> some View {
                     Button { model.selectedID = entry.id } label: {
                         HStack {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(entry.title).fontWeight(.medium)
-                                if entry.error != nil { Text("Needs another combination").font(.caption2).foregroundStyle(.orange) }
+                                if entry.error != nil { WorkbenchNote("Needs another combination", font: .caption2, selectable: false) }
                             }
                             Spacer(minLength: 8)
                             Text(entry.shortcut.label).font(.system(.caption, design: .monospaced))
                         }.padding(10).frame(maxWidth: .infinity, alignment: .leading)
-                            .background(model.selectedID == entry.id ? Color.accentColor.opacity(0.13) : .clear, in: RoundedRectangle(cornerRadius: 9))
+                            .background(model.selectedID == entry.id ? Workbench.accent.opacity(0.13) : .clear, in: RoundedRectangle(cornerRadius: 9))
                             .contentShape(Rectangle())
                     }.buttonStyle(.plain).accessibilityLabel("\(entry.title), \(entry.shortcut.label)")
                         .accessibilityAddTraits(model.selectedID == entry.id ? .isSelected : [])
-                }
-            }
-        }.scrollIndicators(.visible)
     }
 
     private var practiceProgress: some View {
         HStack(spacing: 8) {
             ForEach(0..<3) { index in
                 Image(systemName: index < (model.practice?.completed ?? 0) ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(index < (model.practice?.completed ?? 0) ? Color.accentColor : Color.secondary.opacity(0.45))
+                    .foregroundStyle(index < (model.practice?.completed ?? 0) ? Workbench.accent : Color.secondary.opacity(0.45))
             }
             Text(practicePrompt).font(.callout).foregroundStyle(.secondary)
         }.accessibilityElement(children: .ignore).accessibilityLabel("\(model.practice?.completed ?? 0) of 3 complete presses. \(practicePrompt)")
@@ -468,9 +487,9 @@ private struct VirtualMacKeyboard: View {
     private func keycap(_ key: Key, width: CGFloat, functionRow: Bool) -> some View {
         let intended = highlighted(key)
         let pressed = isPressed(key)
-        let foreground: Color = pressed ? .white : (intended ? .accentColor : .primary.opacity(0.7))
-        let background: Color = pressed ? .accentColor : (intended ? .accentColor.opacity(0.13) : Color(NSColor.controlBackgroundColor))
-        let border: Color = intended ? .accentColor.opacity(0.55) : .primary.opacity(0.08)
+        let foreground: Color = pressed ? .white : (intended ? Workbench.accent : .primary.opacity(0.7))
+        let background: Color = pressed ? Workbench.accent : (intended ? Workbench.accent.opacity(0.13) : Color(NSColor.controlBackgroundColor))
+        let border: Color = intended ? Workbench.accent.opacity(0.55) : .primary.opacity(0.08)
         return Text(label(key))
             .font(.system(size: functionRow ? 10 : 12, weight: intended ? .semibold : .regular))
             .lineLimit(1).minimumScaleFactor(0.6)

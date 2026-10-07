@@ -197,6 +197,13 @@ enum HomeJourneyChecks {
         try check(Set(HomeKeys.rows.joined()).count == 15 && HomeKeys.priority.allSatisfy { HomeKeys.shortNames[$0] != nil },
                   "the map has fifteen left-hand keys and every priority shortcut has a keycap name")
 
+        // Settings › Keyboard lists what is on first, in the order Your keys teaches it, then what is off.
+        let catalogue = [entry("voice.2", 13), entry("stage.undo", 6, enabled: false), entry("stage.pen", 2), entry("custom.one", 40),
+                         entry("voice.1", 9), entry("voice.8", 5, enabled: false)]
+        let listed = KeyboardCoachView.ordered(catalogue)
+        try check(listed.on.map(\.id) == ["voice.1", "stage.pen", "voice.2", "custom.one"] && listed.off.map(\.id) == ["stage.undo", "voice.8"],
+                  "Keyboard leads with Dictate and Draw, keeps unknown shortcuts after the taught ones, and gathers what is off below")
+
         let frames = HomeGreetingSequence.frames
         try check(frames.contains { $0.text == HomeGreetingSequence.welcome && $0.milliseconds >= 600 },
                   "the greeting types Welcome back and holds it briefly")

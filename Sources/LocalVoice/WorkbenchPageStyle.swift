@@ -13,6 +13,8 @@ extension Workbench {
     /// on the control surface with a hairline, so a card reads the same on Home and on a tool page.
     static let tileRadius: CGFloat = 12
     static let tilePadding: CGFloat = 16
+    /// The width Settings' cards keep, whichever section is shown.
+    static let settingsWidth: CGFloat = 720
     /// Orange asks for attention and nothing else; red stays for recording and removal.
     static let attention = Color.orange
 }
