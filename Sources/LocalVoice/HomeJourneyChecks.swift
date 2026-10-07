@@ -168,6 +168,11 @@ enum HomeJourneyChecks {
         var unreadable = untrusted; unreadable.failure = .fieldUnreadable; unreadable.destinationName = "Chrome"
         var changed = untrusted; changed.failure = .focusChanged
         var pasted = untrusted; pasted.failure = nil; pasted.wasPasted = true
+        var unconfirmed = unreadable; unconfirmed.failure = .pasteUnconfirmed
+        try check(AutomaticPasteProblem(unconfirmed, postEventAllowed: { false })?.line.contains("Post Event") == true
+                  && AutomaticPasteProblem(unconfirmed, postEventAllowed: { true })?.line.contains("Post Event") == false
+                  && AutomaticPasteProblem(unreadable, postEventAllowed: { false })?.postEventRefused == false,
+                  "Post Event shapes the hint only after an unconfirmed paste, and never gates one")
         try check(AutomaticPasteProblem(unreadable)?.line.contains("into Chrome") == true && AutomaticPasteProblem(changed) == nil
                   && AutomaticPasteProblem(pasted) == nil && AutomaticPasteProblem.approvalReason(for: unreadable, alreadyExplained: false) == nil,
                   "only failures outside the person's control count against automatic paste")

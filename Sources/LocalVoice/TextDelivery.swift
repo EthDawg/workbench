@@ -379,11 +379,15 @@ struct AutomaticPasteProblem: Equatable {
     var failure: TextDelivery.FailureKind
     var app: String?
     var date: Date
+    /// macOS's Post Event answer, read only after a paste went unconfirmed. It may reflect access
+    /// as of launch, so it shapes this hint and never gates a paste.
+    var postEventRefused = false
 
-    init?(_ outcome: TextDelivery.Outcome, date: Date = Date()) {
+    init?(_ outcome: TextDelivery.Outcome, date: Date = Date(), postEventAllowed: () -> Bool = { CGPreflightPostEventAccess() }) {
         guard !outcome.wasPasted, let failure = outcome.failure,
               [.fieldUnreadable, .pasteUnavailable, .pasteUnconfirmed].contains(failure) else { return nil }
         self.failure = failure; app = outcome.destinationName; self.date = date
+        postEventRefused = failure == .pasteUnconfirmed && !postEventAllowed()
     }
     /// The row's line while Accessibility reads Allowed.
     var line: String {
@@ -391,7 +395,10 @@ struct AutomaticPasteProblem: Equatable {
         switch failure {
         case .fieldUnreadable: return "\(into) only copied: Workbench couldn’t read the text field there. Some web apps and remote desktops hide it."
         case .pasteUnavailable: return "\(into) only copied: macOS didn’t let Workbench send ⌘V."
-        default: return "\(into) was sent, but Workbench couldn’t confirm it landed."
+        default:
+            return postEventRefused
+                ? "\(into) was sent, but macOS didn’t let Workbench press ⌘V. Switch Workbench off and on in Accessibility, or ask IT to allow Post Event."
+                : "\(into) was sent, but Workbench couldn’t confirm it landed."
         }
     }
     /// For Copy permission details: the kind, the app and when, never the words.
