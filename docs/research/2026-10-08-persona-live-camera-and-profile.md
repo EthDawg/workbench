@@ -51,6 +51,25 @@ A real microphone and his real photo still need his eyes. See the acceptance at 
 - **Center Stage and Video Effects.** `ProfileCameraSession` reports whether the running camera has a Center Stage format, and with Center Stage on it keeps a format that supports it. `PersonaCameraEffects` wraps the per-app switch (cooperative control, KVO) and `showSystemUserInterface(.videoEffects)`. Checks pass fakes, and the window check passes `.inert`.
 - **Names.** Ethan named the sources Live Camera and My Profile (8 October). Every surface uses those names; device words such as Switch camera and Camera Settings… stay.
 
+## After the fix
+
+The same check at `b21e12e`, from a signed scratch Preview (build `20261007203454`, source `b21e12e`). It passes 25 checks and fails none:
+
+```
+PASS Live Camera: the ring listens while it shows (a synthetic microphone is open)
+PASS Live Camera: the picture shows in the real window (100% of its circle)
+PASS Live Camera: the resting ring of dots surrounds the picture in the real window — ring 9412 px in 4/4 quadrants, reaching 23 px past the picture; picture 100% of its circle (656×656 px)
+PASS Live Camera: a voice raises the dots into bars in the real window — ring 30700 px in 4/4 quadrants, reaching 82 px past the picture; picture 100% of its circle (656×656 px)
+PASS choosing the photo in the picker ends Live Camera and shows the photo
+PASS My Profile after Live Camera: a voice raises the dots into bars in the real window — ring 30700 px in 4/4 quadrants, reaching 82 px past the picture; picture 100% of its circle (656×656 px)
+PASS choosing Live Camera in the picker shows the bubble in the photo's stead
+PASS Live Camera takes My Profile's place and size (centres 0 pt apart, 328 and 328 pt wide)
+PASS Live Camera after My Profile: a voice raises the dots into bars in the real window — ring 30700 px in 4/4 quadrants, reaching 82 px past the picture; picture 100% of its circle (656×656 px)
+PASS Hide Live Camera closes the ring's microphone
+```
+
+With either source showing, the pill's picker opens with `My Profile, Live Camera`. At rest the dots are deliberately quiet: 34% opacity, per [the decided look](../personas.md#react-to-my-voice). Real speech raises them into bars.
+
 ## Apple research (checked 8 October 2026)
 
 Deployment minimum macOS 14 (Package.swift). Built with the macOS 26.5 SDK (Xcode, `xcrun --show-sdk-version`). All of the following are released APIs, not beta. Header facts were read from `AVFoundation.framework/Headers/AVCaptureDevice.h` in that SDK.

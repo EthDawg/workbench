@@ -177,6 +177,8 @@ public final class StageKitController: ObservableObject {
         if library.cameraOwnsSlot { return library.camera.status }
         if library.sessionState.phase == .paused { return "Hidden" }
         if library.sessionState.phase != .idle { return "\(library.sessionState.instances.filter(\.visible).count) Overlays" }
+        // The source on screen by name: My Profile, or Shown for another card.
+        if library.showsProfile { return "My Profile" }
         if library.overlayVisible { return "Shown" }
         // A hidden card is kept for Show again, like a paused set.
         return library.hasHiddenCard ? "Hidden" : ""

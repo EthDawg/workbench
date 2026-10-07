@@ -724,6 +724,15 @@ final class PersonaCameraTests {
                         if name == "switch" {
                             f.camera.prepareDevice("studio")
                             XCTAssertTrue(f.camera.hasPreparedSwitch, "The switch layout must actually offer Switch camera")
+                        } else {
+                            // A camera that can frame you, with a profile photo saved: Center Stage,
+                            // Video Effects… and Show My Profile all show.
+                            let url = f.root.appendingPathComponent("profile.png")
+                            try Fixture.png().write(to: url)
+                            let profile = try f.library.addImage(url, name: "Profile photo")
+                            f.library.profilePersonaID = { profile.id }
+                            f.capture.starts.last?.1(.features(ProfileCameraFeatures(centerStage: true)))
+                            XCTAssertTrue(f.camera.offersCenterStage, "The live layout must actually offer Center Stage")
                         }
                     case "missing-source":
                         f.library.startCamera(deviceID: "disconnected"); f.permissionRequests.last?(.authorized)

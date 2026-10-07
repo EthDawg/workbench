@@ -2053,7 +2053,7 @@ private struct HistoryNativeAcceptanceView: View {
                 let (rep, drawn) = try renderPage(route, in: window)
                 pass.pages[index].shots.append(try save(rep, id: name,
                     title: "\(name) window, \(Int(drawn.width)) × \(Int(drawn.height)) pt",
-                    detail: "Production page: Library owns Saved Prompts, Persona owns Me, and Present keeps scene preparation.",
+                    detail: "Production page: Library owns Saved Prompts, Persona owns My Profile and Live Camera, and Present keeps scene preparation.",
                     file: "page-\(route)-\(name)-\(theme).png", to: output))
             }
         }
@@ -3955,7 +3955,7 @@ private struct HistoryNativeAcceptanceView: View {
         }
         list += [page("Home sidebar", "Update button, when an update is waiting", "settings")]
         // Home shows results and this Mac's permissions; each door sits beside what it acts on.
-        list += [action(home, "Me · Your profile", "Opens local photo and Persona preparation"),
+        list += [action(home, "My Profile · Your profile photo", "Opens local photo and Persona preparation"),
                  action(home, "Your meetings · Copy transcript", "Copies the newest meeting's complete current text"),
                  E(surface: home, label: "Your meetings · Review transcript, or an earlier meeting", leads: "Page: history, showing that transcript", route: "history"),
                  action(home, "Your meetings · Prepare follow-up…", "Opens the reviewed follow-up handoff for that transcript"),
