@@ -401,11 +401,7 @@ struct PersonaLibraryView: View {
                         // The state in primary words with an orange symbol, beside its one fix; the
                         // button says where to go, so the sentence does not repeat it.
                         HStack(alignment: .firstTextBaseline, spacing: 8) {
-                            Label {
-                                Text("Microphone access is off.")
-                            } icon: {
-                                Image(systemName: "exclamationmark.circle.fill").foregroundStyle(Color.orange).accessibilityHidden(true)
-                            }.font(.caption)
+                            PersonaNote("Microphone access is off.")
                             Button("Microphone Settings…") { library.openMicrophoneSettings() }.controlSize(.small)
                                 .help("Open Privacy & Security › Microphone in System Settings")
                         }.frame(maxWidth: 420, alignment: .trailing)
@@ -413,9 +409,12 @@ struct PersonaLibraryView: View {
                     if library.voiceRing {
                         HStack(spacing: 8) {
                             InkSwatches(selected: library.voiceColor, purpose: "voice colour") { library.setVoiceColor($0) }
+                            // A hairline and the visible word set the well apart from the presets, so it
+                            // reads as a picker rather than one more swatch.
+                            Divider().frame(height: 16)
                             ColorPicker("Custom", selection: Binding(get: { Color(nsColor: library.voiceColor.nsColor) },
                                                                      set: { library.setVoiceColor(InkColor(NSColor($0))) }), supportsOpacity: false)
-                                .labelsHidden().accessibilityLabel("Custom voice colour")
+                                .font(.caption).foregroundStyle(.secondary).fixedSize().accessibilityLabel("Custom voice colour")
                                 .accessibilityValue(library.voiceColor.accessibilityDescription).help("Custom voice colour")
                         }.padding(.top, 3)
                     }
@@ -595,7 +594,7 @@ private struct PersonaStarterChooser: View {
                     Text("Some starter portraits are unavailable in this build.").font(.caption).foregroundStyle(.secondary)
                 }
             }
-            if let notice { Text(notice).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true) }
+            if let notice { PersonaNote(notice) }
             HStack {
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 Spacer()
@@ -771,8 +770,8 @@ struct PersonaCardEditor: View {
                                : "A card already shown keeps its look until you choose Update shown card. Scenes keep their existing copy until you use the persona again.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if let failure = session.failure {
-                Text(failure).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
-            } else if let notice = library.notice { Text(notice).font(.caption).foregroundStyle(.orange) }
+                PersonaNote(failure)
+            } else if let notice = library.notice { PersonaNote(notice) }
             HStack {
                 Button("Cancel") { session.cancel(); dismiss() }.keyboardShortcut(.cancelAction)
                 Spacer()
@@ -890,7 +889,7 @@ private struct PersonaGroupEditor: View {
             List(library.items) { item in
                 Toggle(item.name, isOn: Binding(get: { chosen.contains(item.id) }, set: { if $0 { chosen.insert(item.id) } else { chosen.remove(item.id) } }))
             }.frame(height: 280)
-            if let notice = library.notice { Text(notice).font(.caption).foregroundStyle(.orange) }
+            if let notice = library.notice { PersonaNote(notice) }
             HStack {
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 Spacer()
@@ -901,5 +900,21 @@ private struct PersonaGroupEditor: View {
                 }.keyboardShortcut(.defaultAction).disabled(library.isReadOnly)
             }
         }.padding(24).frame(width: 460).background(Workbench.background).workbenchTheme()
+    }
+}
+
+/// A problem or caution in Persona: primary words beside an orange filled triangle, as LocalVoice's
+/// WorkbenchNote has it (StageKit cannot see that kit). Orange carries only the symbol; it is too
+/// faint to read as text on a light sheet. Red stays for recording and removal.
+struct PersonaNote: View {
+    let text: String
+    var font: Font = .caption
+    init(_ text: String, font: Font = .caption) { self.text = text; self.font = font }
+    var body: some View {
+        Label {
+            Text(text).foregroundStyle(.primary).fixedSize(horizontal: false, vertical: true)
+        } icon: {
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Color.orange).accessibilityHidden(true)
+        }.font(font).accessibilityElement(children: .combine)
     }
 }

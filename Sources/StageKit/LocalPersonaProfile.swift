@@ -101,12 +101,7 @@ struct LocalPersonaProfileView: View {
                 }.buttonStyle(.link)
             }
             if let message = notice ?? library.notice {
-                // Primary words, an orange symbol: orange text is too faint to read on a light sheet.
-                Label {
-                    Text(message).fixedSize(horizontal: false, vertical: true)
-                } icon: {
-                    Image(systemName: "exclamationmark.circle.fill").foregroundStyle(Color.orange).accessibilityHidden(true)
-                }.font(.callout)
+                PersonaNote(message, font: .callout)
             }
         }
         // Escape is Done too, even when no control has keyboard focus. Both live on the profile

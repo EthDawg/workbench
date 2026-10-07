@@ -511,7 +511,7 @@ final class HandoffJobsModel: ObservableObject {
             }
             jobs.sort { $0.createdAt > $1.createdAt }
             if unreadable > 0 { error = "\(unreadable) handoff receipt(s) could not be read. Their files were kept; other handoffs remain available." }
-        } catch { self.error = "Some handoff receipts need attention. " + error.localizedDescription }
+        } catch { self.error = "Workbench couldn’t open the handoff folder, so past handoffs aren’t listed. Their files were kept. " + error.localizedDescription }
     }
 
     func enabled(_ provider: SubscriptionProvider) -> Bool { readSwitch(provider) }

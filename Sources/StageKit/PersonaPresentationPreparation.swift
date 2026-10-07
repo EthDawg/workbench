@@ -207,7 +207,7 @@ struct PersonaPresentationPreparation: View {
                 overlays.removeAll { $0.id == item.id }; selectedID = overlays.last?.id
             }
         }.disabled(library.isReadOnly)
-        if !validLabel(item.publicLabel ?? "") { Text("Use at most 80 characters on one line.").font(.caption).foregroundStyle(.orange) }
+        if !validLabel(item.publicLabel ?? "") { PersonaNote("Use at most 80 characters on one line.") }
     }
 
     private func chooseGroup(_ id: UUID?) {
@@ -287,7 +287,7 @@ private struct PersonaDemoGroupChooser: View {
                     catch { library.notice = error.localizedDescription }
                 }.keyboardShortcut(.defaultAction).disabled(library.isReadOnly)
             }
-            if let notice = library.notice { Text(notice).font(.caption).foregroundStyle(.orange) }
+            if let notice = library.notice { PersonaNote(notice) }
         }.padding(24).frame(width: 510).background(Workbench.background).workbenchTheme()
     }
     private func move(_ id: UUID, by delta: Int) {

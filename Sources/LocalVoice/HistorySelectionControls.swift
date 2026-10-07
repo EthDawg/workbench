@@ -181,8 +181,11 @@ struct SubscriptionSettingsView: View {
                     Toggle("Use installed \(provider.title)", isOn: Binding(get: { jobs.enabled(provider) }, set: { jobs.setEnabled(provider, $0) }))
                     if jobs.enabled(provider) {
                         if let connection = jobs.connections[provider] {
-                            Label(connection.detail, systemImage: connection.ready ? "checkmark.circle" : "exclamationmark.circle")
-                                .font(.caption).foregroundStyle(connection.ready ? Color.secondary : Color.orange)
+                            if connection.ready {
+                                Label(connection.detail, systemImage: "checkmark.circle").font(.caption).foregroundStyle(.secondary)
+                            } else {
+                                WorkbenchNote(connection.detail, font: .caption)
+                            }
                             if !connection.version.isEmpty { Text(connection.version).font(.caption2).foregroundStyle(.secondary) }
                         } else { Text("Checking the installed CLI…").font(.caption).foregroundStyle(.secondary) }
                         Link("Install or sign in with \(provider.title)", destination: URL(string: provider == .claude
