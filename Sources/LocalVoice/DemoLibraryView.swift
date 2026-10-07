@@ -22,8 +22,7 @@ struct DemoLibraryView: View {
     /// The selected text's own height, so its actions sit under it rather than at the window's foot.
     @State private var contentHeight: CGFloat = 0
 
-    /// Library's Resources section. Library's switcher, in WorkbenchHome, shows Packs and
-    /// From iPhone beside it.
+    /// Library's Resources section. Library's switcher, in WorkbenchHome, shows Packs beside it.
     var body: some View { resources }
 
     private var savedBrowserSettings: SavedBrowserSettings {

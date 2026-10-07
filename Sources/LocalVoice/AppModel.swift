@@ -2,7 +2,6 @@ import AppKit
 import AVFoundation
 import Combine
 import UniformTypeIdentifiers
-import PhotoHandoffKit
 import ToolbarCore
 
 @MainActor
@@ -170,9 +169,9 @@ final class AppModel: NSObject, ObservableObject {
     let library = DemoLibraryModel()
     lazy var presenter = PresenterModel(library: library)
     var onShowPresenter: (() -> Void)?
-    let photoHandoff = PhotoHandoffModel(directory: Workbench.supportDirectory(component: "PhotoHandoff"), platform: "Mac")
-    private var photoHandoffRefresh: Task<Void, Never>?
-    private var photoHandoffActivation: AnyCancellable?
+    /// Activation rechecks the microphone and Meetings' admission, so a grant made in System
+    /// Settings shows without a relaunch.
+    private var appActivation: AnyCancellable?
     private var loaded = false
     private var draftRevision: UInt64 = 0
     private var liveCapture: DictationVoiceCapture?
@@ -210,7 +209,6 @@ final class AppModel: NSObject, ObservableObject {
     @Published var toolbarControls: CaptureHUDControls?
     var onShowEditor: ((String) -> Void)?
     var onShowAnnotationMenu: (() -> Void)?
-    var onUsePhotoAsBackdrop: ((URL, String) -> Void)?
     var onMenuRecording: (() -> Void)?
     var onCloseMenu: (() -> Void)?
     var onCancelShortcut: (() -> Void)?
@@ -228,9 +226,8 @@ final class AppModel: NSObject, ObservableObject {
         if startSpeechLifecycle {
             Task { await engine.observe { state in Task { @MainActor in sink.model?.acceptRecognition(state) } } }
         }
-        photoHandoffActivation = NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
-            .sink { [weak self] _ in self?.refreshPhotoHandoffIfEnabled(); self?.refreshMicrophoneAuthorization(); self?.meetings.refreshAdmission() }
-        refreshPhotoHandoffIfEnabled()
+        appActivation = NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
+            .sink { [weak self] _ in self?.refreshMicrophoneAuthorization(); self?.meetings.refreshAdmission() }
         var savedUndelivered: UnresolvedDelivery?
         var loadedDraftRevision = draftRevision
         do {
@@ -263,15 +260,6 @@ final class AppModel: NSObject, ObservableObject {
         // only while its record still holds its words (#134 T5).
         undelivered.restore(savedUndelivered, loadedDraftRevision: loadedDraftRevision, in: deliveryRecords)
         if startSpeechLifecycle { Task { await prepare() } }
-    }
-
-    func refreshPhotoHandoffIfEnabled() {
-        guard photoHandoff.isEnabled, photoHandoff.isConfigured, !photoHandoff.isBusy, photoHandoffRefresh == nil else { return }
-        photoHandoffRefresh = Task { [weak self] in
-            guard let self else { return }
-            defer { photoHandoffRefresh = nil }
-            await photoHandoff.refresh()
-        }
     }
 
     /// Reject observer deliveries that crossed on their way back to the main actor.
@@ -1320,7 +1308,7 @@ final class AppModel: NSObject, ObservableObject {
         // and the existing recovery audio; next launch cannot replay this target.
         liveDictation?.end(); liveDictation = nil
         meetings.shutdown(); handoffJobs.shutdown()
-        photoHandoffRefresh?.cancel(); photoHandoffActivation = nil
+        appActivation = nil
         shortcutRequest.cancel(); transcriptionTask?.cancel(); transcriptionID = nil; recordingAttempt = nil
         clipboardReceipt.clear(); coach.remove(); liveCapture?.requestStop(); meter?.invalidate(); meter = nil
         if let capture = liveCapture { Task { _ = await capture.finish(recognize: false) } }

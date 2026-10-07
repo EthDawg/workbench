@@ -47,9 +47,7 @@ struct FixturePreferences { func shortcut(_ id: UInt32) -> FixtureShortcut { Fix
     @Published var page = "library"
     @Published var libraryFocusToken = UUID()
     @Published var preferences = FixturePreferences()
-    let photoHandoff = FixturePhotoHandoff()
     let presenter = FixturePresenter()
-    var onUsePhotoAsBackdrop: ((URL, String) -> Void)?
 }
 // The separate Saved Prompts panel is covered by production --check-core and
 // the integrated gallery/native pass. This isolated resource-row harness does
@@ -58,18 +56,10 @@ struct LibraryPromptButton: View {
     let model: AppModel
     var body: some View { EmptyView() }
 }
-// Photo arrival is covered by its own shared-module and UI checks. This recall
-// fixture deliberately keeps cloud and handoff dependencies out of its scope.
-final class FixturePhotoHandoff {}
 final class FixturePresenter {}
 struct ChromeConnectionView: View {
     let presenter: FixturePresenter
     var body: some View { EmptyView() }
-}
-struct PhotoHandoffView: View {
-    let handoff: FixturePhotoHandoff
-    var onUseAsBackdrop: ((URL, String) -> Void)?
-    var body: some View { Text("Photo handoff is outside this recall fixture.") }
 }
 enum Workbench {
     static let accent = Color.accentColor

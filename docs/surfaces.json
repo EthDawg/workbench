@@ -785,29 +785,6 @@
     "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
   },
   {
-    "id": "LocalVoice.PhotoHandoffView.PhotoHandoffArrivalCue.Button.from-iphone",
-    "surface": "proactive offer PhotoHandoffArrivalCue",
-    "label": "From iPhone",
-    "kind": "action",
-    "belongsTo": "library"
-  },
-  {
-    "id": "LocalVoice.PhotoHandoffView.PhotoHandoffSettings.Button.enable-photo-handoff",
-    "surface": "settings page",
-    "label": "Enable photo handoff",
-    "kind": "setting",
-    "belongsTo": "library"
-  },
-  {
-    "id": "LocalVoice.PhotoHandoffView.PhotoHandoffSettings.Button.turn-off",
-    "surface": "settings page",
-    "label": "Turn off",
-    "kind": "setting",
-    "belongsTo": "library",
-    "aliasOf": "library",
-    "note": "Existing contextual \"Turn off\" label inside library; shared wording, not a separate capability."
-  },
-  {
     "id": "LocalVoice.LibraryPromptButton.LibraryPromptButton.Button.saved-prompts",
     "surface": "Library",
     "label": "Saved Prompts…",
@@ -1498,15 +1475,6 @@
     "kind": "option",
     "belongsTo": "library",
     "note": "Quality: the Packs sidebar item becomes the Packs section of Library, on the same route, packs, so pack links and Snap & Talk's Manage packs… land there (#134)."
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.section.photos",
-    "surface": "page sections",
-    "label": "From iPhone",
-    "page": "photos",
-    "kind": "option",
-    "belongsTo": "library",
-    "note": "Quality: From iPhone, the segment Saved resources already had beside Resources, becomes a section of Library's one switcher instead of a switcher inside a section (#134). Home's Saved from iPhone link opens it."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.section.settings",

@@ -50,15 +50,21 @@ enum WorkbenchPageChecks {
             try check(pages.contains(WorkbenchHome.destination(route).page), "\(route) lands on a sidebar page")
         }
 
-        // From iPhone keeps its own route while its section exists, and nothing else holds the
-        // section, so the Library doors that follow it (the Library shortcut, Window › Library, the
-        // sidebar item and Switch to › Set up, all "library") open Resources. A photo route once
-        // opened "library" with a separate flag those doors never cleared (#198 review).
-        let cue = WorkbenchHome.destination("photos")
-        try check(cue.page == "library" && cue.section == "photos", "the photos route opens Library on From iPhone")
+        // From iPhone left Library with the iPhone photo sync's other doors (#276). Its route is
+        // retired, not forgotten: it opens Library on Resources, as every Library door (the Library
+        // shortcut, Window › Library, the sidebar item and Switch to › Set up, all "library") does,
+        // rather than falling through to Dictate.
+        try check(!WorkbenchHome.sections.contains { $0.id == "photos" || $0.title == "From iPhone" }, "Library has no From iPhone section")
+        let retired = WorkbenchHome.destination("photos")
+        try check(retired.page == "library" && retired.section == "library", "the retired From iPhone route opens Library on Resources")
+        for (route, replacement) in WorkbenchHome.retiredRoutes {
+            try check(!(pages + WorkbenchHome.sections.map(\.id) + WorkbenchHome.subpages.map(\.id)).contains(route),
+                      "the retired route \(route) is not also a live page, section or subpage")
+            try check(WorkbenchHome.destination(route) == WorkbenchHome.destination(replacement), "the retired route \(route) lands where \(replacement) does")
+        }
         for route in [WorkbenchHome.navItems.first { $0.title == "Library" }?.id ?? "", "library"] {
             let landing = WorkbenchHome.destination(route)
-            try check(landing.page == "library" && landing.section == "library", "after the photos route, a Library door (\(route)) opens Resources")
+            try check(landing.page == "library" && landing.section == "library", "a Library door (\(route)) opens Resources")
         }
 
         try check(WorkbenchHome.name(of: "settings") == "Settings" && WorkbenchHome.name(of: "library") == "Library",

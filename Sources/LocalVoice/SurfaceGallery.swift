@@ -1,7 +1,6 @@
 import AppKit
 import AVFoundation
 import ObjectiveC
-import PhotoHandoffKit
 import PrivatePackKit
 import SceneSyncKit
 import SwiftUI

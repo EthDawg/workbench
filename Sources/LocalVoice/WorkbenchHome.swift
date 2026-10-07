@@ -1,7 +1,6 @@
 import SwiftUI
 import AppKit
 import StageKit
-import PhotoHandoffKit
 import ServiceManagement
 import ImageIO
 
@@ -19,7 +18,6 @@ struct WorkbenchHome: View {
     @State private var loginEnabled = SMAppService.mainApp.status == .enabled
     @State private var loginError: String?
     @State private var loginNeedsApproval = SMAppService.mainApp.status == .requiresApproval
-    @State private var photoBackdrop: PhotoBackdropRequest?
     @State private var libraryPreparation: LibraryPreparation?
     @State private var openSnapTalkSessions = false
     private struct LibraryPreparation: Identifiable {
@@ -50,13 +48,17 @@ struct WorkbenchHome: View {
     /// A page's sections, in switcher order. Each opens from its own route, and the page's own
     /// route opens the first; Keyboard, Models and Packs keep the routes their sidebar items had.
     static let sections: [(id: String, page: String, title: String)] = [
-        ("library", "library", "Resources"), ("packs", "library", "Packs"), ("photos", "library", "From iPhone"),
+        ("library", "library", "Resources"), ("packs", "library", "Packs"),
         ("settings", "settings", "General"), ("shortcuts", "settings", "Keyboard"),
         ("models", "settings", "Models"), ("connections", "settings", "Connections")]
     /// Pages reached from another page. A door to one keeps that page highlighted, so the
     /// sidebar is always the way back.
     static let subpages: [(id: String, page: String, title: String)] = [
         ("dictionary", "dictate", "Your dictionary")]
+    /// Routes whose page or section has gone, and the route each now opens. Read's route left
+    /// with Read; Library's From iPhone section left with the iPhone photo sync's other doors
+    /// (#276). Both open Library on Resources rather than falling through to Dictate.
+    static let retiredRoutes: [String: String] = ["speak": "library", "photos": "library"]
 
     /// The sidebar's footer: "Stable 2.4.1", "Preview 2.4.1 · local" for a build from source, or
     /// "Local build" when there is no version at all.
@@ -78,10 +80,10 @@ struct WorkbenchHome: View {
 
     /// Where a route lands: the sidebar page it highlights and, on a page with sections, the
     /// section it shows. Every door resolves here, so a route that was once a page of its own
-    /// still works and nothing lands without a highlighted item. A route nothing knows shows
-    /// Dictate, as the page switch always has.
+    /// still works and nothing lands without a highlighted item. A retired route opens the
+    /// route that replaced it. A route nothing knows shows Dictate, as the page switch always has.
     static func destination(_ route: String) -> (page: String, section: String?) {
-        if route == "speak" { return ("library", "library") }
+        let route = retiredRoutes[route] ?? route
         if let section = sections.first(where: { $0.id == route }) { return (section.page, section.id) }
         if navItems.contains(where: { $0.id == route }) { return (route, nil) }
         return (subpages.first { $0.id == route }?.page ?? "dictate", nil)
@@ -240,16 +242,8 @@ struct WorkbenchHome: View {
                 model.onSuggestTranscriptDetails = { id in
                     handoffReview = HandoffReviewRequest(task: MetadataSuggestionReview.task, transcriptID: id)
                 }
-                model.onUsePhotoAsBackdrop = { url, title in
-                    keyboard.stopInteraction()
-                    photoBackdrop = PhotoBackdropRequest(url: url, title: title)
-                }
-                model.refreshPhotoHandoffIfEnabled()
             }
             .sheet(item: $libraryPreparation) { $0.view }
-            .sheet(item: $photoBackdrop) { request in
-                stage.backdropReplacementView(imageURL: request.url, title: request.title)
-            }
             .sheet(item: $handoffReview) { request in
                 HandoffReviewView(history: model.historyLibrary, jobs: model.handoffJobs,
                     skills: request.transcriptID == nil ? TranscriptHandoffSkill.builtIns + packs.transcriptSkills : [.followUp],
@@ -288,9 +282,8 @@ struct WorkbenchHome: View {
                           greetingPlayed: $greetingPlayed, openProfile: { keyboard.stopInteraction(); showingProfile = true },
                           prepareFollowUp: { id in handoffReview = HandoffReviewRequest(task: MeetingFollowUp.task, transcriptID: id) })
     }
-    /// Library holds Resources, Packs and From iPhone as sections of one page, with its switcher
-    /// at the top (#134). The route alone chooses the section, so every Library door opens
-    /// Resources and Home's arrival cue opens From iPhone by its own route.
+    /// Library holds Resources and Packs as sections of one page, with its switcher at the top
+    /// (#134). The route alone chooses the section, so every Library door opens Resources.
     private var library: some View {
         let section = Self.destination(model.page).section ?? "library"
         return VStack(alignment: .leading, spacing: 0) {
@@ -301,9 +294,6 @@ struct WorkbenchHome: View {
             }, onRetrySavedResource: {
                 if packs.addSavedResource(to: model.library, reviewCurrentStore: true) { model.page = "library" }
             })
-            case "photos":
-                PhotoHandoffView(handoff: model.photoHandoff, onUseAsBackdrop: model.onUsePhotoAsBackdrop)
-                    .padding(Workbench.pagePadding).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             default: ContentView(model: model, embedded: true,
                 onUseImageInPresent: { prepareLibraryImage($0, for: .present) },
                 onUseImageInPersona: { prepareLibraryImage($0, for: .persona) })
@@ -344,7 +334,6 @@ struct WorkbenchHome: View {
             case "connections":
                 settingsStack {
                     SubscriptionSettingsView(jobs: model.handoffJobs).workbenchCard()
-                    if model.photoHandoff.isConfigured { PhotoHandoffSettings(handoff: model.photoHandoff).workbenchCard() }
                 }
             default:
                 // The same cards as every other page, one per subject, with what each setting does
