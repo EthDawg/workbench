@@ -102,19 +102,19 @@ struct PackLibraryView: View {
         }
     }
 
-    /// The summary, then the packs or the one empty state, then Pack settings, at the page's full
+    /// The action row, then the packs or the one empty state, then Pack settings, at the page's full
     /// width as Resources has it.
     private func page(centred: Bool) -> some View {
         VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
-            // Library's title and switcher name this section, so it opens on its summary (#134).
+            // Library's header carries this section's summary (WorkbenchHome.sectionSummaries),
+            // so its one action sits at the trailing edge.
             HStack(alignment: .firstTextBaseline) {
-                Text("Reusable skills, scenes, personas and resources.").foregroundStyle(.secondary)
                 Spacer()
                 if !model.packs.isEmpty && !showingAdd {
                     Button("Add a pack…") { showingAdd = true }
                 }
-            // Resources' summary row is 26 points high (its Saved Prompts… and Add), so this one is
-            // too: the summary keeps its place when the tab changes.
+            // Resources' action row is 26 points high (its Saved Prompts… and Add), so this one is
+            // too: the content keeps its place when the tab changes.
             }.frame(minHeight: 26)
             if model.noticePackID == nil || !model.packs.contains(where: { $0.id == model.noticePackID }) { feedback }
             if let saved = model.savedResource {
@@ -233,7 +233,8 @@ struct PackLibraryView: View {
             HStack {
                 Text("Your account and Workbench Packs both need access to the repository.")
                     .foregroundStyle(.secondary)
-                Link("Pack owner setup", destination: URL(string: "https://github.com/apps/workbench-packs")!)
+                Button("Pack owner setup") { NSWorkspace.shared.open(URL(string: "https://github.com/apps/workbench-packs")!) }
+                    .buttonStyle(.workbenchLink)
             }.font(.caption)
         }.workbenchCard()
     }
@@ -255,7 +256,7 @@ struct PackLibraryView: View {
                     Text(pack.name).font(.title3.weight(.semibold))
                     HStack(spacing: 8) {
                         Text("Version \(pack.version)")
-                        Link(pack.repository, destination: pack.sourceURL)
+                        Button(pack.repository) { NSWorkspace.shared.open(pack.sourceURL) }.buttonStyle(.workbenchLink)
                     }.font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -274,9 +275,9 @@ struct PackLibraryView: View {
             DisclosureGroup("Workspace appearance") { HStack {
                 if model.brandPackID == pack.id {
                     Label("Workspace appearance", systemImage: "checkmark.circle.fill").font(.caption).foregroundStyle(.secondary)
-                    Button("Reset") { model.setBrand(nil) }.buttonStyle(.link).font(.caption)
+                    Button("Reset") { model.setBrand(nil) }.buttonStyle(.workbenchLink).font(.caption)
                 } else {
-                    Button("Use workspace appearance") { model.setBrand(pack.id) }.buttonStyle(.link).font(.caption)
+                    Button("Use workspace appearance") { model.setBrand(pack.id) }.buttonStyle(.workbenchLink).font(.caption)
                 }
             } }
         }.workbenchCard()

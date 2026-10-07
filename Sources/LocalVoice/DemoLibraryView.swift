@@ -48,8 +48,8 @@ struct DemoLibraryView: View {
     private var resources: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .firstTextBaseline) {
-                // Library's title and switcher name this section, so it opens on its summary (#134).
-                Text("Keep useful prompts, links and files together.").foregroundStyle(.secondary)
+                // Library's header carries this section's summary (WorkbenchHome.sectionSummaries),
+                // so its actions sit at the trailing edge.
                 Spacer()
                 LibraryPromptButton(model: model).fixedSize().frame(height: 26)
                 Menu {

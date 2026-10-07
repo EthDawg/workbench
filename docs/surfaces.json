@@ -304,7 +304,7 @@
     "belongsTo": "settings"
   },
   {
-    "id": "LocalVoice.HistorySelectionControls.SubscriptionSettingsView.Link.claude",
+    "id": "LocalVoice.HistorySelectionControls.SubscriptionSettingsView.Button.claude",
     "surface": "settings page",
     "label": "Install or sign in with Claude Code",
     "case": "claude",
@@ -312,7 +312,7 @@
     "belongsTo": "settings"
   },
   {
-    "id": "LocalVoice.HistorySelectionControls.SubscriptionSettingsView.Link.codex",
+    "id": "LocalVoice.HistorySelectionControls.SubscriptionSettingsView.Button.codex",
     "surface": "settings page",
     "label": "Install or sign in with Codex",
     "case": "codex",
@@ -5080,7 +5080,7 @@
     "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
   },
   {
-    "id": "LocalVoice.PackLibraryView.PackLibraryView.Link.pack-owner-setup",
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.pack-owner-setup",
     "surface": "Library Packs",
     "label": "Pack owner setup",
     "kind": "action",
@@ -5089,7 +5089,7 @@
     "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
   },
   {
-    "id": "LocalVoice.PackLibraryView.PackLibraryView.Link.runtime-89df3f808764",
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.runtime-89df3f808764",
     "surface": "Library Packs",
     "label": null,
     "expression": "pack . repository",

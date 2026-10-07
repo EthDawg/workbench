@@ -178,7 +178,7 @@ struct SubscriptionSettingsView: View {
                 .font(.callout).foregroundStyle(.secondary)
             ForEach(SubscriptionProvider.allCases) { provider in
                 VStack(alignment: .leading, spacing: 5) {
-                    Toggle("Use installed \(provider.title)", isOn: Binding(get: { jobs.enabled(provider) }, set: { jobs.setEnabled(provider, $0) }))
+                    Toggle("Use installed \(provider.title)", isOn: Binding(get: { jobs.enabled(provider) }, set: { jobs.setEnabled(provider, $0) })).toggleStyle(.switch)
                     if jobs.enabled(provider) {
                         if let connection = jobs.connections[provider] {
                             if connection.ready {
@@ -188,9 +188,10 @@ struct SubscriptionSettingsView: View {
                             }
                             if !connection.version.isEmpty { Text(connection.version).font(.caption2).foregroundStyle(.secondary) }
                         } else { Text("Checking the installed CLI…").font(.caption).foregroundStyle(.secondary) }
-                        Link("Install or sign in with \(provider.title)", destination: URL(string: provider == .claude
-                            ? "https://code.claude.com/docs/en/quickstart" : "https://learn.chatgpt.com/docs/codex/cli")!)
-                            .font(.caption)
+                        Button("Install or sign in with \(provider.title)") {
+                            NSWorkspace.shared.open(URL(string: provider == .claude
+                                ? "https://code.claude.com/docs/en/quickstart" : "https://learn.chatgpt.com/docs/codex/cli")!)
+                        }.buttonStyle(.workbenchLink).font(.caption)
                     }
                 }
             }

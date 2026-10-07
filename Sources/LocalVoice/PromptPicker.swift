@@ -435,7 +435,7 @@ struct PromptPickerView: View {
                 Spacer(minLength: 4 * scale)
                 if attempt.finished && attempt.hasDetails {
                     Button(model.showsDetails ? "Hide details" : "Details") { model.showsDetails.toggle() }
-                        .buttonStyle(.link).accessibilityLabel(model.showsDetails ? "Hide details of the last prompt" : "Details of the last prompt")
+                        .buttonStyle(.workbenchLink).accessibilityLabel(model.showsDetails ? "Hide details of the last prompt" : "Details of the last prompt")
                 }
             }
             if attempt.finished && model.showsDetails {

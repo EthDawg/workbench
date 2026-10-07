@@ -92,13 +92,13 @@ struct LocalPersonaProfileView: View {
             if persona == nil, let selected = library.selected {
                 Button("Use \(selected.name) as Me") {
                     if LocalPersonaProfile.choose(selected.id, in: library, defaults: defaults) { library.objectWillChange.send(); changed() }
-                }.buttonStyle(.link).disabled(library.isReadOnly)
+                }.buttonStyle(.borderless).foregroundStyle(Workbench.accent).disabled(library.isReadOnly)
             }
             if let persona {
                 Button("Open Me in Persona") {
                     library.prepareGroup(nil); library.selectedID = persona.id
                     dismiss(); openPersona()
-                }.buttonStyle(.link)
+                }.buttonStyle(.borderless).foregroundStyle(Workbench.accent)
             }
             if let message = notice ?? library.notice {
                 PersonaNote(message, font: .callout)
