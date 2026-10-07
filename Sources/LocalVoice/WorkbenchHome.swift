@@ -338,7 +338,7 @@ struct WorkbenchHome: View {
                 settingsStack {
                     // Each model view names its own job, so its card carries no second title.
                     ModelSettingsView(engine: model.engine, isBusy: model.phase != .idle || model.meetings.isBusy || readback.isRecording || readback.isCapturing || readback.hasPendingTranscriptions,
-                                      snapshot: model.recognition, onNotNow: { model.page = "home" }, onSnapshot: model.acceptRecognition).workbenchCard()
+                                      snapshot: model.recognition, onSnapshot: model.acceptRecognition).workbenchCard()
                     CleanupModelSettingsView(manager: model.cleanupModels, isBusy: model.phase != .idle || model.preparing).workbenchCard()
                 }
             case "connections":

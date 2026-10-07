@@ -390,9 +390,14 @@ private struct HistoryNativeAcceptanceView: View {
         meetings = SurfacePass.syntheticMeetings(support)
         recordingMeetings = SurfacePass.syntheticMeetings(support.deletingLastPathComponent().appendingPathComponent("Meetings (panel state)"))
         model.meetings = meetings
-        // The isolated view fixtures supply readiness; no preparation or observer
-        // can overwrite them, load local models, or acquire assets.
-        model.ready = true; model.modelMessage = RecognitionConfiguration().summary
+        // Meetings reads the app's own speech readiness, as main.swift wires it, so its status
+        // never says Ready to record beside a Models page that says Download Parakeet.
+        // (The panel's recording fixture starts its own meeting and keeps its synthetic admission.)
+        meetings.hostAdmission = { [weak model] in MeetingHostAdmission(recognition: model?.recognition ?? .init()) }
+        // The isolated view fixtures supply readiness through the one snapshot every page reads. Its
+        // sequence is ahead of the isolated engine's, so Models' own refresh cannot replace it with
+        // that empty engine's "Download Parakeet"; the speech pass's states (10 000 on) still apply.
+        model.acceptRecognition(RecognitionSnapshot(sequence: 1_000, admission: .localReady))
         model.accessibilityGranted = false
         model.history = SurfacePass.history
         model.transcript = SurfacePass.history[0].text; model.rawTranscript = model.transcript
@@ -1407,7 +1412,46 @@ private struct HistoryNativeAcceptanceView: View {
         }
         let fallback = try copyFallback()
         let settings = try renderDictateOptionsFocused(to: output)
-        return (shots: [fallback, settings.shot], checks: [settings.check])
+        return (shots: [fallback, settings.shot] + (try renderVoiceStates(to: output)), checks: [settings.check])
+    }
+
+    /// The Voice pages' other phases at the default window: Dictate before its first words and while
+    /// recording, Your dictionary holding rules with one conflict, and Meetings live. Each state is
+    /// set on the real owners and restored afterwards; nothing records or recognizes audio.
+    func renderVoiceStates(to output: URL) throws -> [SurfaceGallery.Shot] {
+        let kept = (draft: model.transcript, raw: model.rawTranscript, replacements: model.replacements,
+                    meetings: model.meetings, page: model.page)
+        let window = homeWindow(size: SurfaceGallery.sizes[0].size)
+        defer {
+            model.phase = .idle; model.elapsed = 0; model.level = 0
+            model.transcript = kept.draft; model.rawTranscript = kept.raw; model.replacements = kept.replacements
+            model.meetings = kept.meetings; model.page = kept.page
+            window.contentViewController = nil; window.close()
+        }
+        var shots: [SurfaceGallery.Shot] = []
+        func shot(_ route: String, _ id: String, _ title: String, _ detail: String) throws {
+            let (rep, drawn) = try renderPage(route, in: window)
+            shots.append(try save(rep, id: id, title: "\(title), \(Int(drawn.width)) × \(Int(drawn.height)) pt", detail: detail,
+                                  file: "page-\(route)-\(id)-\(theme).png", to: output))
+        }
+        model.transcript = ""; model.rawTranscript = ""
+        try shot("dictate", "state-first-run", "Dictate, before the first words",
+                 "An empty transcript says how to start; Copy text waits, disabled, until there are words.")
+        model.transcript = SurfacePass.history[1].text; model.rawTranscript = model.transcript
+        model.phase = .recording; model.elapsed = 14; model.level = 0.6
+        try shot("dictate", "state-recording", "Dictate, recording",
+                 "The microphone is Stop, the level peaks in the middle, and the elapsed time sits beside Pause and Cancel.")
+        model.phase = .idle; model.elapsed = 0; model.level = 0
+        model.replacements = [Replacement(heard: "git hub", written: "GitHub"), Replacement(heard: "work bench", written: "Workbench"),
+                              Replacement(heard: "maya", written: "Maya"), Replacement(heard: "maya", written: "Maia")]
+        try shot("dictionary", "state-entries", "Your dictionary, four rules and one conflict",
+                 "Two saved rules share a phrase: the conflict card names what dictation writes today and offers one choice per spelling.")
+        model.meetings = recordingMeetings
+        try drive(recordingMeetings, start: true)
+        try shot("meeting", "state-live", "Meetings, recording app audio",
+                 "A synthetic source that sends silence: the live status, its elapsed time and the limit, Finish meeting and Pause.")
+        try drive(recordingMeetings, start: false)
+        return shots
     }
 
     /// Settings' existing focus request must attach the production sheet to this Home window.
@@ -1628,6 +1672,8 @@ private struct HistoryNativeAcceptanceView: View {
               meetings.recoveries.map(\.id) == [call.lastPathComponent] else {
             throw VoiceError.message("The silent meeting was not settled apart from the kept call: \(meetings.error ?? meetings.notice), kept \(meetings.recoveries.map(\.id)).")
         }
+        // Once settled, the page reads the app's own speech readiness, as main.swift wires it.
+        meetings.hostAdmission = { [weak model] in MeetingHostAdmission(recognition: model?.recognition ?? .init()) }
         let window = homeWindow(size: SurfaceGallery.sizes[0].size)
         defer { window.contentViewController = nil; window.close() }
         let (image, size) = try renderPage("meeting", in: window)

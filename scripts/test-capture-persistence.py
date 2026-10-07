@@ -258,6 +258,7 @@ enum AudioRenderer { static func remove(_ url: URL?) {} }
     var removedTranscripts: [UUID] = []
     func transcriptRemoved(_ id: UUID) { removedTranscripts.append(id) }
     func shutdown() { shutdownCount += 1 }
+    func refreshAdmission() {}
     func hasRecording(for id: UUID) -> Bool { false }
     func removeCompletedRecording(for id: UUID, commit: () throws -> Void) throws -> String? { try commit(); return nil }
 }

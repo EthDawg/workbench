@@ -348,15 +348,15 @@
     "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
   },
   {
-    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Button.save-refinement-choice",
+    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Button.save",
     "surface": "settings page",
-    "label": "Save refinement choice",
+    "label": "Save",
     "kind": "setting",
     "belongsTo": "settings",
-    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134). Renamed from Save refinement choice under the section's Text style heading, Dictate's name for the choice (#279)."
   },
   {
-    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Link.browse-models",
+    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Button.browse-models",
     "surface": "settings page",
     "label": "Browse models",
     "kind": "action",
@@ -364,7 +364,7 @@
     "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
   },
   {
-    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Link.disable-ollama-cloud",
+    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Button.disable-ollama-cloud",
     "surface": "settings page",
     "label": "Disable Ollama Cloud",
     "kind": "action",
@@ -372,7 +372,7 @@
     "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
   },
   {
-    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Link.get-ollama",
+    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Button.get-ollama",
     "surface": "settings page",
     "label": "Get Ollama",
     "kind": "action",
@@ -388,12 +388,12 @@
     "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
   },
   {
-    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Picker.natural-cleanup-model",
+    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Picker.natural-style-model",
     "surface": "settings page",
-    "label": "Natural cleanup model",
+    "label": "Natural style model",
     "kind": "setting",
     "belongsTo": "settings",
-    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134). Renamed from Natural cleanup model so the Natural text style has one name, as on Dictate (#279)."
   },
   {
     "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.TextField.model-name",

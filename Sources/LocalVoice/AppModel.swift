@@ -279,6 +279,7 @@ final class AppModel: NSObject, ObservableObject {
         guard state.sequence >= recognition.sequence else { return }
         recognition = state; ready = state.canTranscribe; preparing = state.isPreparing
         modelMessage = state.line; modelFailure = state.failure?.errorDescription
+        meetings.refreshAdmission()  // Meetings never says Ready to record while speech is not ready.
     }
     func prepare() async {
         do { try await engine.prepareCached() } catch { /* The engine owns the typed failure. */ }
@@ -1202,7 +1203,7 @@ final class AppModel: NSObject, ObservableObject {
         if phase != .idle { captureFailure = text }
         if let id = shortcutRequest.id { shortcutRequest.finish(id: id, result: .failure(VoiceError.message(text))) }
         let message = liveDictation?.attempted == true ? text + " Live text may remain in your app. Review it before copying the kept result." : text
-        report(message, on: .dictate, code: code); phase = .idle; status = "Needs attention"; onPhaseChange?()
+        report(message, on: .dictate, code: code); phase = .idle; status = "Dictation stopped"; onPhaseChange?()
     }
     /// A dictation that ended without words (#156). Routine outcomes are not
     /// failures: no recovery panel and no error, just a cue in place of the
