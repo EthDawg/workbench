@@ -178,10 +178,10 @@ struct MacPermissionRow: Equatable, Identifiable {
         case .checkedOnUse:
             return ["macOS asks the first time Meetings records a call. " + permission.withoutIt]
         case .needsAdministrator:
-            let ask = permission == .accessibility
-                ? "macOS asks for an administrator’s name and password to turn this on."
-                : "macOS may ask for an administrator’s name and password to turn this on."
-            return [ask + " Ask your IT team, or someone with an admin account on this Mac, and use Copy permission details for them.",
+            // Accessibility says it in full; Screen Recording, its neighbour, only hedges.
+            return [permission == .accessibility
+                        ? "macOS asks for an administrator’s name and password to turn this on. Ask your IT team, or anyone with an admin account on this Mac; Copy permission details tells them what to allow."
+                        : "macOS may ask for an administrator’s name and password to turn this on.",
                     permission.withoutIt]
         case .notAsked, .notSetUp:
             return [permission.withoutIt]
@@ -567,7 +567,7 @@ struct HomePermissionsPanel: View {
                 .accessibilityIdentifier("home.permissions.summary")
         }) {
             if expanded {
-                Text("What Workbench can use on this Mac. Nothing is asked until you press Set up…, and each row says what still works without it. To turn one off, use Change….")
+                Text("What Workbench can use on this Mac. Nothing is asked until you press Set up…, each row says what still works without it, and Change… turns one off.")
                     .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(snapshot.rows) { row in
