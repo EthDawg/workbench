@@ -576,7 +576,9 @@ struct DictionaryView: View {
     }
 
     private func save(_ change: CorrectionRuleChange?) {
-        guard let change else { return }
+        // Return can reach both a field's submit and the Add button; the second finds the fields
+        // already cleared by the first and does nothing, rather than reporting an empty phrase.
+        guard let change, !heard.isEmpty, !written.isEmpty else { return }
         do {
             if change.updatesExisting { try model.updateReplacement(heard: heard, written: written) }
             else { try model.addReplacement(heard: heard, written: written) }
