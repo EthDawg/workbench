@@ -121,7 +121,7 @@ struct SnapWorkspaceView: View {
     /// Region, Window and Screen need Screen Recording (#112). Everything already
     /// saved keeps working, and an image the person already has can still come in.
     private var screenAccessCard: some View {
-        CaptureAccessCard(title: "Screen Recording is off for Workbench", symbol: "rectangle.dashed.badge.record",
+        CaptureAccessCard(title: "Screen Recording is off for Workbench",
                           detail: "Region, Window and Screen need it to capture. Your Snaps stay here to view, copy, edit and hand off, and you can add an image you already have.",
                           reopenHint: model.suggestsReopenForScreenAccess ? ScreenCaptureAccess.reopenHint : nil,
                           footnote: "Allow Workbench under Privacy & Security › Screen Recording. macOS may ask you to quit and reopen Workbench afterwards. If your organisation manages this Mac, it may keep screen capture off.") {
@@ -248,14 +248,14 @@ struct SnapThumbnail: View {
 /// works, then its buttons below the words, so a long sentence never squeezes them.
 struct CaptureAccessCard<Actions: View>: View {
     let title: String
-    let symbol: String
     let detail: String
     var reopenHint: String?
     var footnote: String?
     @ViewBuilder var actions: () -> Actions
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label(title, systemImage: symbol).font(.callout.weight(.semibold))
+            // A problem reads the same on every page: the kit's note, triangle and primary words.
+            WorkbenchNote(title, font: .callout.weight(.semibold))
             Text(detail).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             HStack { actions() }.padding(.top, 2)
             if let reopenHint {
@@ -264,9 +264,7 @@ struct CaptureAccessCard<Actions: View>: View {
             if let footnote {
                 Text(footnote).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
-        }.padding(Workbench.tilePadding).frame(maxWidth: .infinity, alignment: .leading)
-            .background(Workbench.attention.opacity(0.08), in: RoundedRectangle(cornerRadius: Workbench.tileRadius))
-            .overlay(RoundedRectangle(cornerRadius: Workbench.tileRadius).strokeBorder(Workbench.attention.opacity(0.25)))
+        }.workbenchCard()
             .accessibilityElement(children: .contain)
     }
 }

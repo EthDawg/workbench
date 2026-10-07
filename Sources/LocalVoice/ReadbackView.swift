@@ -188,7 +188,7 @@ struct ReadbackView: View {
                     recentSessions(inSheet: false)
                 }
             }.padding(.horizontal, Workbench.pagePadding).padding(.bottom, 24)
-                .frame(maxWidth: 900, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
@@ -299,8 +299,8 @@ struct ReadbackView: View {
             }.padding(.horizontal, 24).padding(.bottom, 12)
         }
         if !model.isRecording && !model.isCapturing && model.currentSessionProblem == nil && !model.permissionsReady {
-            // Snap's card: what is off, what still works, then its buttons below the words.
-            CaptureAccessCard(title: accessTitle, symbol: model.screenPermissionGranted ? "mic.slash" : "rectangle.dashed.badge.record",
+            // The capture access card Snap shares: what is off, what still works, then its buttons.
+            CaptureAccessCard(title: accessTitle,
                               detail: accessDetail,
                               reopenHint: model.suggestsReopenForScreenAccess && !model.screenPermissionGranted ? ScreenCaptureAccess.reopenHint : nil,
                               footnote: model.screenPermissionGranted ? nil : "Allow Workbench under Privacy & Security › Screen Recording. macOS may ask you to quit and reopen Workbench afterwards. If your organisation manages this Mac, it may keep screen capture off.") {

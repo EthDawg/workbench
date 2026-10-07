@@ -129,7 +129,7 @@ struct ControlCenter: View {
             }
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
-                    Label("Your two essential shortcuts", systemImage: "keyboard").font(.callout.weight(.semibold))
+                    Label("Your essential shortcuts", systemImage: "keyboard").font(.callout.weight(.semibold))
                     Spacer()
                     Text(settings.value.activation.rawValue).font(.caption).foregroundStyle(.secondary)
                 }
@@ -529,7 +529,11 @@ struct BreakTimerView: View {
                 Text(app.timerTransport == .finished ? "Time is up" : app.timerTransport == .paused ? "Paused" : "")
                     .font(.callout.weight(.medium)).foregroundStyle(Color(nsColor: settings.value.timerColor.nsColor).opacity(0.65))
                 if let notice = app.timerPlacementNotice {
-                    Text(notice).font(.caption2).foregroundStyle(.orange).multilineTextAlignment(.center)
+                    // Orange words fail contrast: only the symbol carries attention.
+                    Label {
+                        Text(notice).foregroundStyle(Color(nsColor: settings.value.timerColor.nsColor)).multilineTextAlignment(.center)
+                    } icon: { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange) }
+                        .font(.caption2)
                         .accessibilityLabel("Timer position: \(notice)")
                 }
                 Spacer(minLength: 8)
@@ -538,7 +542,7 @@ struct BreakTimerView: View {
                     // The Timer word set on every surface: its next step, Stop timer, Position… and
                     // Hide timer, as plain words (docs/workbench.md, One app, several ways in).
                     Button(transport.transport.title + " timer") { transport() }
-                    Button("Stop timer") { app.resetTimer(); app.hideTimer() }
+                    Button("Stop timer") { app.resetTimer(); app.hideTimer() }.disabled(!app.timerSessionStarted)
                     // Position…: one compact control with the eight docks, the floating toolbar's
                     // (#134 Fit rule 1), never a submenu of anchors.
                     Button("Position…") { app.showTimerPositionControl() }

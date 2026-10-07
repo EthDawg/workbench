@@ -42,8 +42,12 @@ struct QuickControlsView: View {
                         }.foregroundStyle(.secondary)
                     }
                     if !app.shortcutFailures.isEmpty {
-                        Button("Resolve \(app.shortcutFailures.count) shortcut conflicts…") { app.showControls(tab: "Shortcuts") }
-                            .font(.system(size: 11)).foregroundStyle(.orange).buttonStyle(.link)
+                        // Orange words fail contrast: only the symbol carries attention.
+                        Button { app.showControls(tab: "Shortcuts") } label: {
+                            Label {
+                                Text("Resolve \(app.shortcutFailures.count) shortcut conflicts…").foregroundStyle(.primary)
+                            } icon: { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange) }
+                        }.font(.caption).buttonStyle(.borderless)
                     }
                     switch app.quickTab {
                     case .draw: drawing
