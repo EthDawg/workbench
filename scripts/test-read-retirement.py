@@ -44,7 +44,9 @@ class RetirementAdmission(unittest.TestCase):
             source = (ROOT / "Sources/LocalVoice" / filename).read_text()
             if filename == "WorkbenchHome.swift":
                 self.assertEqual(source.count('"speak"'), 1)
-                self.assertIn('if route == "speak" { return ("library", "library") }', source)
+                # Read's route is retired, not forgotten: one table sends it to Library on Resources.
+                self.assertIn('"speak": "library"', source)
+                self.assertIn('let route = retiredRoutes[route] ?? route', source)
             else:
                 self.assertNotIn('"speak"', source, filename)
             self.assertNotIn('"Read aloud"', source, filename)
