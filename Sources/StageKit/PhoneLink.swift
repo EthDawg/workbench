@@ -673,13 +673,27 @@ public final class PhoneLinkMonitor: ObservableObject {
         scene.viewport = .phone; scene.phoneHeight = 0.9
         let size = CGSize(width: 420, height: 640)
         let backdrop = NSImage(size: size, flipped: false) { rect in NSColor(white: 0.55, alpha: 1).setFill(); rect.fill(); return true }
-        let view = DemoStageSurfaceView(previewLayer: capture.makePreviewLayer(for: .stage))
+        let stageLayer = capture.makePreviewLayer(for: .stage)
+        let view = DemoStageSurfaceView(previewLayer: stageLayer)
         let window = NSWindow(contentRect: CGRect(origin: CGPoint(x: 60, y: 60), size: size), styleMask: [.titled], backing: .buffered, defer: false)
         window.title = "Workbench phone check"; window.isReleasedWhenClosed = false; window.level = .floating
         window.contentView = view
         view.configure(scene: scene, backdrop: backdrop, logo: nil, hand: nil, persona: nil)
         view.viewportScene = scene
         window.orderFrontRegardless()
+
+        // Control: a solid green picture in the phone's place, before any phone frame. It proves
+        // the stage and the measurement can show a picture at all, apart from the phone's feed.
+        let green = CGContext(data: nil, width: 8, height: 8, bitsPerComponent: 8, bytesPerRow: 32, space: CGColorSpaceCreateDeviceRGB(),
+                              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        green?.setFillColor(CGColor(red: 0.1, green: 0.85, blue: 0.3, alpha: 1)); green?.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
+        view.isLive = true; view.needsLayout = true; view.layoutSubtreeIfNeeded()
+        CATransaction.begin(); CATransaction.setDisableActions(true); stageLayer.contents = green?.makeImage(); CATransaction.commit()
+        try? await Task.sleep(nanoseconds: 700_000_000)
+        let controlGeometry = ViewportGeometry(scene: scene, size: view.bounds.size)
+        let control = await Self.measureStage(window: window, view: view, screen: controlGeometry.screen, suffix: "control")
+        CATransaction.begin(); CATransaction.setDisableActions(true); stageLayer.contents = nil; CATransaction.commit()
+        view.isLive = false
 
         let started = Date()
         capture.start()
@@ -698,11 +712,11 @@ public final class PhoneLinkMonitor: ObservableObject {
         }
         view.layoutSubtreeIfNeeded()
         let geometry = ViewportGeometry(scene: scene, size: view.bounds.size)
-        let drawn = await Self.measureStage(window: window, view: view, screen: geometry.screen)
+        let drawn = await Self.measureStage(window: window, view: view, screen: geometry.screen, suffix: "stage")
         window.orderOut(nil)
         subscription.cancel()
         let frames = (firstFrame.map { String(format: "Frames: first after %.1f s, %d×%d", $0, Int(dimensions.width), Int(dimensions.height)) }
-            ?? "Frames: none within \(Int(seconds)) s") + "\n" + probe.summary + "\nStage picture: " + drawn
+            ?? "Frames: none within \(Int(seconds)) s") + "\n" + probe.summary + "\nStage control (green test picture): " + control + "\nStage picture: " + drawn
         let final = (signals: monitor.signals, status: monitor.sharedStatus, report: monitor.diagnostic(build: build) + "\n" + frames, firstFrame: firstFrame, size: dimensions)
         monitor.setActive(false)
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in capture.stop { continuation.resume() } }
@@ -712,7 +726,7 @@ public final class PhoneLinkMonitor: ObservableObject {
     /// Reads the stage window back as the window server composites it and measures the phone's
     /// screen area: a drawn phone is not uniformly black.
     @MainActor
-    private static func measureStage(window: NSWindow, view: NSView, screen: CGRect) async -> String {
+    private static func measureStage(window: NSWindow, view: NSView, screen: CGRect, suffix: String) async -> String {
         do {
             let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
             guard let shared = content.windows.first(where: { $0.windowID == CGWindowID(window.windowNumber) }) else {
@@ -724,7 +738,7 @@ public final class PhoneLinkMonitor: ObservableObject {
             configuration.width = Int(window.frame.width * scale); configuration.height = Int(window.frame.height * scale)
             let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
             if let path = ProcessInfo.processInfo.environment["WORKBENCH_PHONE_FRAME_PNG"], !path.isEmpty {
-                let stagePath = (path as NSString).deletingPathExtension + "-stage.png"
+                let stagePath = (path as NSString).deletingPathExtension + "-\(suffix).png"
                 try? NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: stagePath))
             }
             // The phone's screen in window coordinates (origin bottom left), then in image pixels (origin top left).
