@@ -49,12 +49,12 @@ enum PersonaCameraFailure: Equatable {
     var message: String {
         switch self {
         case .inUse(let camera, let owner):
-            return "“\(camera)” is already in use by \(owner). End that use or choose another camera, then start the camera again."
+            return "“\(camera)” is already in use by \(owner). End that use or choose another camera, then start Live Camera again."
         case .missing(let camera):
-            return "The selected camera" + (camera.map { ", “\($0)”," } ?? "") + " isn’t connected. Choose another camera, or reconnect it, then start the camera again."
+            return "The selected camera" + (camera.map { ", “\($0)”," } ?? "") + " isn’t connected. Choose another camera, or reconnect it, then start Live Camera again."
         case .access(let issue):
             switch issue {
-            case .denied: return "Camera access is off. Allow Workbench in Camera settings, then start the camera again."
+            case .denied: return "Camera access is off. Allow Workbench in Camera settings, then start Live Camera again."
             case .restricted: return "Camera access is restricted on this Mac. Show saved artwork instead."
             case .unavailable: return "No camera is available. Open your Mac’s lid or connect a camera, then try again."
             case .failedToStart: return "The camera couldn’t start. Close any other app using it, then try again."
@@ -98,8 +98,8 @@ enum PersonaCameraPause: Equatable {
     case chosen, asleep
     var message: String {
         switch self {
-        case .chosen: return "Camera hidden · the camera is released. Show camera again when you’re ready."
-        case .asleep: return "The camera was released when this Mac slept. Show camera again when you’re ready."
+        case .chosen: return "Live Camera hidden · the camera is released. Show Live Camera again when you’re ready."
+        case .asleep: return "The camera was released when this Mac slept. Show Live Camera again when you’re ready."
         }
     }
 }
@@ -293,6 +293,17 @@ final class PersonaLiveCamera: ObservableObject {
         case .live: return "Live Camera"
         case .hidden: return "Live Camera hidden"
         case .failed: return "Live Camera stopped"
+        }
+    }
+    /// The panel's own line under its Live Camera heading, which names the source already.
+    var phase: String {
+        switch state {
+        case .off: return "Not started"
+        case .permission: return "Waiting for camera access"
+        case .starting: return "Starting"
+        case .live: return "Showing"
+        case .hidden: return "Hidden"
+        case .failed: return "Stopped"
         }
     }
     /// One sentence about where the visit is, shown where the visit is managed.
@@ -599,8 +610,7 @@ struct PersonaCameraPanel: View {
                 Image(systemName: "video.circle").font(.title3).foregroundStyle(.secondary).accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Live Camera").font(.headline)
-                    Text(camera.status.isEmpty ? "Not started" : camera.status)
-                        .font(.caption).foregroundStyle(.secondary)
+                    Text(camera.phase).font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 8)
                 if camera.isStarting { ProgressView().controlSize(.small) }
