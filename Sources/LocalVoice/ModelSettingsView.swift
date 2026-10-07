@@ -65,10 +65,14 @@ struct ModelSettingsView: View {
                     ProgressView().controlSize(.small)
                     Button("Cancel setup") { Task { await engine.cancelPreparation(); await refresh() } }
                         .disabled(current.phase == .cancelling)
+                } else if draft == active && current.canTranscribe {
+                    // The chosen model works: say so, rather than a button that does nothing.
+                    WorkbenchStatusBadge(text: "In use", tone: .done)
+                        .accessibilityLabel("\(draft.provider.title) is in use")
                 } else {
                     Button(actionTitle) { Task { await apply() } }
                         .buttonStyle(.borderedProminent)
-                        .disabled(isBusy || applying || !loaded || (current.canTranscribe && draft == active))
+                        .disabled(isBusy || applying || !loaded)
                     if draft == active && draft.provider == .parakeet && !current.canTranscribe {
                         // Retrying saved files means something only after they failed to prepare.
                         if current.failure != nil {
@@ -90,11 +94,10 @@ struct ModelSettingsView: View {
 
     }
 
-    /// What the one button does now: download or retry the model in use, switch to another,
-    /// or nothing while the chosen model is ready.
+    /// What the one button does now: switch to another model, or download or retry the one in
+    /// use. A ready model shows a status instead, so the button always does something.
     private var actionTitle: String {
         if draft != active { return draft.provider == .parakeet ? "Use Parakeet" : "Use local server" }
-        if current.canTranscribe { return "In use" }
         return draft.provider == .parakeet ? "Download Parakeet" : "Use local server"
     }
 
