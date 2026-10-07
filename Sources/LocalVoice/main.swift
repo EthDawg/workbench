@@ -158,6 +158,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         stage.onEditShortcuts = { [weak self] in self?.navigate("shortcuts") }
         stage.onBeginActivity = { [weak self] in self?.beginStageActivity() }
+        stage.onPresentationWillBegin = { [weak self] in
+            // Present is about to hide the window; End brings it back only if it was showing.
+            if self?.window?.isVisible == true { self?.windowHiddenForStage = true }
+        }
+        stage.onPresentationEnded = { [weak self] in
+            // End lands back on the page that was showing, reading "Presentation ended" with Reconnect.
+            guard let self, windowHiddenForStage else { return }
+            windowHiddenForStage = false
+            showWindow(countsAsVisit: false)
+        }
         stage.validateExternalShortcut = { [weak self] code, modifiers in
             guard let self else { return nil }
             for entry in self.voiceShortcutEntries() {
@@ -589,6 +599,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         model.previewingPanel = false
         window?.orderOut(nil)
     }
+    /// The window was showing when stage work hid it, so the end of a presentation brings it back.
+    var windowHiddenForStage = false
     func closeControls() { popover.performClose(nil); finishEditing() }
     /// Every way the panel closes ends here: the editor and its recorder end
     /// and global actions resume.

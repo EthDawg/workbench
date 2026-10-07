@@ -214,6 +214,23 @@ final class PhoneEndTests: PhoneOwnerFixture {
         XCTAssertEqual(words(scenes).phase, .ended)
     }
 
+    /// In Workbench (shared controls) End asks the host to bring back what Present hid; that
+    /// restore is not a visit, so the phone stays released until a deliberate action.
+    func testEndAsksTheHostToRestoreItsWindowAndStaysEnded() throws {
+        let hardware = SyntheticCaptureHardware(available: [phone], access: .authorized)
+        let (scenes, root) = try makeScenes(hardware)
+        defer { scenes.shutdown(); try? FileManager.default.removeItem(at: root) }
+        var restores = 0
+        scenes.onEndPresentation = { restores += 1 }
+        scenes.setPageVisible(true)
+        XCTAssertTrue(waitUntil { hardware.read(scenes.capture) { $0.opened.count } == 1 })
+        scenes.startDemo(mode: .windowed); scenes.endPresentation()
+        XCTAssertTrue(waitUntil { self.words(scenes).phase == .ended })
+        XCTAssertEqual(restores, 1, "End asks the host once to restore the window it hid")
+        settle()
+        XCTAssertEqual(hardware.read(scenes.capture) { $0.opened.count }, 1, "Restoring the window takes nothing back")
+    }
+
     /// "Presentation ended" does not last for the app's lifetime: a fresh visit to the Present
     /// page, or the phone plugged in again, is as deliberate as Reconnect. End's own reopening
     /// of the page, and a bus look that merely finds the phone still there, are not.

@@ -68,6 +68,15 @@ public final class StageKitController: ObservableObject {
         didSet { coordinator.onDrawingChanged = onDrawingChanged }
     }
     /// Hide the shell before drawing, starting a timer or presenting a scene.
+    /// A presentation ended. The host brings back what starting it hid, without that counting
+    /// as a fresh visit to Present, so End stays final.
+    public var onPresentationEnded: (() -> Void)? {
+        didSet { coordinator.demoScenes.onEndPresentation = onPresentationEnded }
+    }
+    /// A presentation is about to start and hide the host's window.
+    public var onPresentationWillBegin: (() -> Void)? {
+        didSet { coordinator.demoScenes.onWillBeginPresentation = onPresentationWillBegin }
+    }
     public var onBeginActivity: (() -> Void)? {
         didSet {
             coordinator.onBeginActivity = onBeginActivity

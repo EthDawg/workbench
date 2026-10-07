@@ -273,6 +273,10 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
     private var presentPreferencesURL: URL { root.appendingPathComponent("present-preferences.json") }
     var onOpen: (() -> Void)?
     var onBeginPresentation: (() -> Void)?
+    /// With shared controls, the host restores what the presentation hid when it ends.
+    var onEndPresentation: (() -> Void)?
+    /// Called just before a presentation hides the host's surfaces.
+    var onWillBeginPresentation: (() -> Void)?
     var mayBeginInteraction: (() -> Bool)?
     var isPresenting: Bool { presentation != nil }
     /// The running presentation shows a device frame, so the phone's status belongs beside it.
@@ -510,6 +514,7 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
         if scene.hand != nil && handImage(for: scene) == nil { notice = SceneError.missingHand.localizedDescription; return }
         if scene.persona != nil && personaImage(for: scene) == nil { notice = SceneError.missingPersona.localizedDescription; return }
         if presentation != nil { presentation?.bringForward(); return }
+        onWillBeginPresentation?()
         onBeginPresentation?()
         // Present is a deliberate action: it takes the phone back after End or a handoff.
         setReleased(nil)
@@ -533,6 +538,7 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
             presentation = nil; objectWillChange.send()
             reconsiderCapture()
             if usesSharedControls != true { endReopenUntil = released == .ended ? Date().addingTimeInterval(endReopenWindow) : nil; show() }
+            else { onEndPresentation?() }
         }
         presentation = presenter
         objectWillChange.send()

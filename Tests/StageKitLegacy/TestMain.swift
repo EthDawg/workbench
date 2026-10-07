@@ -638,6 +638,7 @@ struct TestRunner {
             ("phone End: a late frame neither goes live nor reopens", phoneEnd.testALateFrameAfterEndNeitherGoesLiveNorReopens),
             ("phone End: stale stage steps cannot take the phone back", phoneEnd.testTheStagesStepsAfterEndCannotTakeThePhoneBack),
             ("phone End: a fresh visit or a re-plug resumes, End's own reopening does not", phoneEnd.testEndedResumesOnAFreshVisitOrWhenThePhoneIsPluggedInAgain),
+            ("phone End: the host restores its window and End stays final", phoneEnd.testEndAsksTheHostToRestoreItsWindowAndStaysEnded),
             ("phone capture: the one phone screen is adopted beside a camera", phoneCapture.testTheOnePhoneScreenIsAdoptedBesideACamera),
             ("phone capture: Present and Reconnect after End try at once", phoneCapture.testPresentAfterEndTriesAtOnce),
             ("phone capture: a disconnect found by the health check is said", phoneCapture.testADisconnectFoundByTheHealthCheckIsSaid),
