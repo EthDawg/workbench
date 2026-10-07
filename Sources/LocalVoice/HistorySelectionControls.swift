@@ -34,7 +34,7 @@ struct HistorySelectionControls: View {
                 Button("Clear") { history.setSelected([]) }.disabled(history.selected.isEmpty)
                 Button("Hand off…", action: onHandOff).disabled(history.selected.isEmpty).buttonStyle(.borderedProminent)
             }
-            if let error = history.error { Text(error).foregroundStyle(.red).font(.caption) }
+            if let error = history.error { WorkbenchNote(error) }
         }
         .sheet(item: $editor) { request in
             HistorySelectionEditor(history: history, request: request)
@@ -83,7 +83,7 @@ private struct HistorySelectionEditor: View {
                     if history.error == nil { dismiss() }
                 }.keyboardShortcut(.defaultAction).disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
-            if let error = history.error { Text(error).foregroundStyle(.red).font(.caption) }
+            if let error = history.error { WorkbenchNote(error) }
         }.padding(24).frame(width: 420)
     }
 }
@@ -104,7 +104,7 @@ struct TranscriptMetadataEditor: View {
             Text("Transcript details").font(.title2)
             Text("Details help you find this later. Your original words stay unchanged.").foregroundStyle(.secondary)
             ForEach(library.metadata(for: transcript.id).captureNotes, id: \.self) { note in
-                Label(note, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.orange)
+                WorkbenchNote(note)
             }
             Picker("Purpose", selection: $purpose) {
                 ForEach(TranscriptPurpose.allCases, id: \.self) { Text($0.title).tag($0) }
@@ -144,7 +144,7 @@ struct TranscriptMetadataEditor: View {
                     if library.error == nil { dismiss() }
                 }.keyboardShortcut(.defaultAction)
             }
-            if let error = library.error { Text(error).foregroundStyle(.red).font(.caption) }
+            if let error = library.error { WorkbenchNote(error) }
         }.padding(24).frame(width: 450)
             .onAppear {
                 let metadata = library.metadata(for: transcript.id)
@@ -178,16 +178,20 @@ struct SubscriptionSettingsView: View {
                 .font(.callout).foregroundStyle(.secondary)
             ForEach(SubscriptionProvider.allCases) { provider in
                 VStack(alignment: .leading, spacing: 5) {
-                    Toggle("Use installed \(provider.title)", isOn: Binding(get: { jobs.enabled(provider) }, set: { jobs.setEnabled(provider, $0) }))
+                    Toggle("Use installed \(provider.title)", isOn: Binding(get: { jobs.enabled(provider) }, set: { jobs.setEnabled(provider, $0) })).toggleStyle(.switch)
                     if jobs.enabled(provider) {
                         if let connection = jobs.connections[provider] {
-                            Label(connection.detail, systemImage: connection.ready ? "checkmark.circle" : "exclamationmark.circle")
-                                .font(.caption).foregroundStyle(connection.ready ? Color.secondary : Color.orange)
+                            if connection.ready {
+                                Label(connection.detail, systemImage: "checkmark.circle").font(.caption).foregroundStyle(.secondary)
+                            } else {
+                                WorkbenchNote(connection.detail, font: .caption)
+                            }
                             if !connection.version.isEmpty { Text(connection.version).font(.caption2).foregroundStyle(.secondary) }
                         } else { Text("Checking the installed CLI…").font(.caption).foregroundStyle(.secondary) }
-                        Link("Install or sign in with \(provider.title)", destination: URL(string: provider == .claude
-                            ? "https://code.claude.com/docs/en/quickstart" : "https://learn.chatgpt.com/docs/codex/cli")!)
-                            .font(.caption)
+                        Button("Install or sign in with \(provider.title)") {
+                            NSWorkspace.shared.open(URL(string: provider == .claude
+                                ? "https://code.claude.com/docs/en/quickstart" : "https://learn.chatgpt.com/docs/codex/cli")!)
+                        }.buttonStyle(.workbenchLink).font(.caption)
                     }
                 }
             }
@@ -245,8 +249,8 @@ struct HandoffJobCard<MadeFrom: View>: View {
                 .accessibilityLabel("Result, \(job.title), \(job.status.title)")
                 .focusable(revealed == job.id).focused(focus, equals: job.id)
                 .accessibilityFocused(voiceOverFocus, equals: job.id)
-            Text((job.itemCount == 1 ? "1 item" : "\(job.itemCount) items") + " · " + job.createdAt.formatted(date: .abbreviated, time: .shortened))
-                .font(.caption).foregroundStyle(.secondary)
+            Text((job.itemCount == 1 ? "1 item" : "\(job.itemCount) items") + " · " + HistoryDate.text(job.createdAt))
+                .font(.subheadline).foregroundStyle(.secondary)
             madeFrom
             Text(job.detail).font(.callout)
             if job.status == .completed && files?.resultReadable == false {
@@ -257,7 +261,7 @@ struct HandoffJobCard<MadeFrom: View>: View {
                     Button("Open current review") { jobs.onOpenReview?(key) }
                         .accessibilityLabel("Open current review, " + context)
                     if let current = jobs.currentPublishedJob(key: key) {
-                        Text("Current result · " + current.updatedAt.formatted(date: .abbreviated, time: .shortened))
+                        Text("Current result · " + HistoryDate.text(current.updatedAt))
                             .font(.caption).foregroundStyle(.secondary)
                     } else { Text("Current document includes local edits or an overview.").font(.caption).foregroundStyle(.secondary) }
                 }
@@ -277,7 +281,7 @@ struct HandoffJobCard<MadeFrom: View>: View {
                     }
                 }
                 startAction(job)
-            }.buttonStyle(.borderless).font(.caption)
+            }.buttonStyle(.borderless).font(.callout)
             if let session = job.providerSessionID {
                 Text("Provider receipt: \(session)").textSelection(.enabled).font(.caption2).foregroundStyle(.secondary)
             }
@@ -296,9 +300,9 @@ struct HandoffJobCard<MadeFrom: View>: View {
                         let previousContext = Self.context(previous)
                         let readable = previous.status == .completed && jobs.files(previous)?.resultReadable == true
                         VStack(alignment: .leading, spacing: 6) {
-                            Text(previous.createdAt.formatted(date: .abbreviated, time: .shortened) + " · " + previous.status.title)
+                            Text(HistoryDate.text(previous.createdAt) + " · " + previous.status.title)
                                 .accessibilityLabel("Earlier task, \(previous.title), \(previous.status.title), "
-                                                    + previous.createdAt.formatted(date: .abbreviated, time: .shortened))
+                                                    + HistoryDate.text(previous.createdAt))
                                 .focusable(revealed == previous.id).focused(focus, equals: previous.id)
                                 .accessibilityFocused(voiceOverFocus, equals: previous.id)
                             Text(previous.detail).foregroundStyle(.secondary)
@@ -349,8 +353,7 @@ struct HandoffJobCard<MadeFrom: View>: View {
     }
 
     private func resultProblem(_ files: HandoffTaskFiles?) -> some View {
-        Label(files?.resultProblem ?? "The saved result is unavailable. Show selected files opens the task folder.",
-              systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.orange)
+        WorkbenchNote(files?.resultProblem ?? "The saved result is unavailable. Show selected files opens the task folder.")
     }
 
     @ViewBuilder private func resultPreview(_ task: HandoffJob) -> some View {
@@ -369,17 +372,20 @@ struct HandoffJobCard<MadeFrom: View>: View {
 
     /// Names the task an action belongs to, since every card repeats its buttons.
     static func context(_ job: HandoffJob) -> String {
-        job.title + ", " + job.createdAt.formatted(date: .abbreviated, time: .shortened)
+        job.title + ", " + HistoryDate.text(job.createdAt)
     }
 
     @ViewBuilder private func startAction(_ job: HandoffJob) -> some View {
         if job.status == .ready || [.failed, .cancelled, .interrupted].contains(job.status) {
-            Menu(job.status == .ready ? "Start task…" : "Retry…") {
+            Menu {
                 ForEach(SubscriptionProvider.allCases) { provider in
                     Button((job.status == .ready ? "Start with " : "Retry with ") + provider.title) {
                         jobs.start(job, provider: provider, retry: job.status != .ready)
                     }.disabled(jobs.isBusy || !jobs.canRun(job, with: provider))
                 }
+            } label: {
+                // A menu's own title ignores the row's font, so it is set here to match the links beside it.
+                Text(job.status == .ready ? "Start task…" : "Retry…").font(.callout)
             }.fixedSize().accessibilityLabel((job.status == .ready ? "Start task, " : "Retry, ") + Self.context(job))
         }
     }
@@ -392,14 +398,15 @@ struct HandoffResultPreview: View {
     var copyText: () -> Void
 
     var body: some View {
+        // The words, then Copy below them, as every other Copy in Workbench sits under its text.
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Button("Copy result", action: copyText).accessibilityLabel("Copy result, " + context)
-            }.buttonStyle(.borderless).font(.caption)
-                .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             Text(text.isEmpty ? "The saved result has no text." : text)
                 .textSelection(.enabled).font(.body)
-                .frame(maxWidth: .infinity, alignment: .leading).padding(12).background(Workbench.background)
+                .frame(maxWidth: .infinity, alignment: .leading).padding(12)
+                .background(Workbench.background, in: RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Workbench.border))
+            Button("Copy result", action: copyText).accessibilityLabel("Copy result, " + context)
+                .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
     }
 }
@@ -486,7 +493,7 @@ struct HandoffReviewView: View {
                                     Text(source.title).font(.callout.weight(.medium)).lineLimit(2)
                                     Text(source.text).font(.caption).foregroundStyle(.secondary).lineLimit(3)
                                     ForEach(source.captureNotes, id: \.self) { note in
-                                        Label(note, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.orange)
+                                        WorkbenchNote(note)
                                     }
                                     ForEach(Array(source.images.enumerated()), id: \.offset) { _, bytes in
                                         if let image = NSImage(data: bytes) {
@@ -524,7 +531,7 @@ struct HandoffReviewView: View {
                         .accessibilityIdentifier("handoff.runner-readiness")
                 }.frame(maxWidth: .infinity, alignment: .leading)
             }
-            if let problem { Text(problem).font(.caption).foregroundStyle(.red) }
+            if let problem { WorkbenchNote(problem) }
             HStack {
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("Connections…") { showingConnections = true }

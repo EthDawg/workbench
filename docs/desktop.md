@@ -115,9 +115,9 @@ Each page moves to the kit in its own small PR, rendered in the surface gallery,
 | Snap & Talk | Empty state to `WorkbenchEmptyState` with New session… prominent; header's extra bottom padding removed | Done in the Screen pages PR: capture strip on the page column, Transcription stopped instead of Needs attention, Cancel confirms after 10 s; pointer pass owed |
 | Draw (StageKit) | StageKit cannot see the page tokens: move them into the shared `Workbench` namespace, then use `WorkbenchPageHeader` and the kit's card, badge and prominent action | Cards, one name per tool (Pointer, Board), text styles and the Timer word set done in the Screen pages PR with StageKit's own hairline; the token move is still next |
 | Present | Owned by #276 / #285 | After #285 lands |
-| Persona | Frozen beyond kit tokens (mac-foundation §1) | Tokens only |
-| History | Row radius to the kit; one prominent Hand off… in the selection footer | Later |
-| Library | Resources and Packs empty states and radii to the kit; From iPhone retires with #286 | After #286 |
+| Persona | Frozen beyond kit tokens (mac-foundation §1) | Tokens and defects done in the Saved pages PR: one first-run empty state, groups hidden until something is saved, one Done |
+| History | Row radius to the kit; one prominent Hand off… in the selection footer | Done in the Saved pages PR (rows, one date, Transcript review); pointer pass owed |
+| Library | Resources and Packs empty states and radii to the kit; From iPhone retires with #286 | Resources and Packs done in the Saved pages PR; From iPhone after #286 |
 | Settings | Every section is the same stack of kit cards at one width (`Workbench.settingsWidth`): General's subjects each a card, Models' two views and Connections carded, Keyboard's list and detail in one card with its summary in the header; Keyboard lists what is on first in Your keys' order, then Off · N; Workbench's accent, not system blue | Done in the chrome PR (stacked on the first); login approval in the first |
 
 ## Working on a page

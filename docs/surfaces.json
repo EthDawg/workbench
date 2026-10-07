@@ -534,7 +534,7 @@
     "belongsTo": "settings"
   },
   {
-    "id": "LocalVoice.HistorySelectionControls.SubscriptionSettingsView.Link.claude",
+    "id": "LocalVoice.HistorySelectionControls.SubscriptionSettingsView.Button.claude",
     "surface": "settings page",
     "label": "Install or sign in with Claude Code",
     "case": "claude",
@@ -542,7 +542,7 @@
     "belongsTo": "settings"
   },
   {
-    "id": "LocalVoice.HistorySelectionControls.SubscriptionSettingsView.Link.codex",
+    "id": "LocalVoice.HistorySelectionControls.SubscriptionSettingsView.Button.codex",
     "surface": "settings page",
     "label": "Install or sign in with Codex",
     "case": "codex",
@@ -808,7 +808,7 @@
     "note": "Existing contextual \"Turn off\" label inside library; shared wording, not a separate capability."
   },
   {
-    "id": "LocalVoice.LibraryPromptButton.LibraryPromptButton.button-title.view",
+    "id": "LocalVoice.LibraryPromptButton.LibraryPromptButton.Button.saved-prompts",
     "surface": "Library",
     "label": "Saved Prompts…",
     "kind": "action",
@@ -2585,6 +2585,15 @@
     "belongsTo": "persona",
     "note": "Existing contextual dismissal wording inside the local Persona profile; it closes the draft or sheet without creating a capability.",
     "aliasOf": "persona"
+  },
+  {
+    "id": "StageKit.LocalPersonaProfile.LocalPersonaProfileView.Button.done.2",
+    "surface": "local profile",
+    "label": "Done",
+    "kind": "action",
+    "belongsTo": "persona",
+    "aliasOf": "StageKit.LocalPersonaProfile.LocalPersonaProfileView.Button.done",
+    "note": "The same Done, bound to Escape while the visible Done takes Return, so Escape closes the profile even when no control has keyboard focus (docs/workbench.md Fit rule 5)."
   },
   {
     "id": "StageKit.LocalPersonaProfile.LocalPersonaProfileView.Button.edit-appearance",
@@ -4623,31 +4632,31 @@
     "note": "Existing scene chooser callback, now included by the Persona route scanner while registering Me. Uses the selected saved Persona in the preparing scene and starts nothing."
   },
   {
-    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.add-a-file",
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.add-local-file.2",
     "surface": "Library Resources",
-    "label": "Add a file…",
+    "label": "Add local file…",
     "kind": "action",
     "belongsTo": "library",
-    "aliasOf": "library",
-    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+    "aliasOf": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.add-local-file",
+    "note": "Quality: the empty Library's door to the same editor as the Add menu's item, in the Add menu's words (renamed from “Add a file…” so one action has one name, with … because it opens an editor)."
   },
   {
-    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.add-a-link",
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.new-link.2",
     "surface": "Library Resources",
-    "label": "Add a link",
+    "label": "New link…",
     "kind": "action",
     "belongsTo": "library",
-    "aliasOf": "library",
-    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+    "aliasOf": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.new-link",
+    "note": "Quality: the empty Library's door to the same editor as the Add menu's item, in the Add menu's words (renamed from “Add a link” so one action has one name, with … because it opens an editor)."
   },
   {
-    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.add-a-prompt",
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.new-prompt.3",
     "surface": "Library Resources",
-    "label": "Add a prompt",
+    "label": "New prompt…",
     "kind": "action",
     "belongsTo": "library",
-    "aliasOf": "library",
-    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+    "aliasOf": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.new-prompt",
+    "note": "Quality: the empty Library's door to the same editor as the Add menu's item, in the Add menu's words (renamed from “Add a prompt” so one action has one name, with … because it opens an editor)."
   },
   {
     "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.add-local-file",
@@ -4706,11 +4715,11 @@
   {
     "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.edit",
     "surface": "Library Resources",
-    "label": "Edit",
+    "label": "Edit…",
     "kind": "action",
     "belongsTo": "library",
     "aliasOf": "library",
-    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text. Ends in … since 7 Oct: it opens an editor (docs/desktop.md § Words)."
   },
   {
     "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.export-library",
@@ -4751,29 +4760,29 @@
   {
     "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.new-link",
     "surface": "Library Resources",
-    "label": "New link",
+    "label": "New link…",
     "kind": "action",
     "belongsTo": "library",
     "aliasOf": "library",
-    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text. Ends in … since 7 Oct: it opens an editor (docs/desktop.md § Words)."
   },
   {
     "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.new-prompt",
     "surface": "Library Resources",
-    "label": "New prompt",
+    "label": "New prompt…",
     "kind": "action",
     "belongsTo": "library",
     "aliasOf": "library",
-    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text. Ends in … since 7 Oct: it opens an editor (docs/desktop.md § Words)."
   },
   {
     "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.new-prompt.2",
     "surface": "Library Resources",
-    "label": "New prompt",
+    "label": "New prompt…",
     "kind": "action",
     "belongsTo": "library",
     "aliasOf": "library",
-    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text. Ends in … since 7 Oct: it opens an editor (docs/desktop.md § Words)."
   },
   {
     "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.quick-look",
@@ -4895,16 +4904,6 @@
     "belongsTo": "library",
     "aliasOf": "library",
     "note": "Option of Library recovery: reveals the retained storage diagnostic while saved data and original files remain untouched."
-  },
-  {
-    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Label.runtime-138bf0706676",
-    "surface": "Library Resources",
-    "label": null,
-    "expression": "item . fileAvailable ? \"File found\" : \"File needs attention\"",
-    "note": "Runtime label from item . fileAvailable ? \"File found\" : \"File needs attention\"; no rendered text assumed. Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text.",
-    "kind": "status",
-    "belongsTo": "library",
-    "aliasOf": "library"
   },
   {
     "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Label.runtime-610dbe83b810",
@@ -5289,16 +5288,6 @@
     "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
   },
   {
-    "id": "LocalVoice.PackLibraryView.PackLibraryView.Label.runtime-ab530a13e459",
-    "surface": "Library Packs",
-    "label": null,
-    "expression": "message",
-    "note": "Runtime label from message; no rendered text assumed. Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission.",
-    "kind": "status",
-    "belongsTo": "library",
-    "aliasOf": "library"
-  },
-  {
     "id": "LocalVoice.PackLibraryView.PackLibraryView.Label.workspace-appearance",
     "surface": "Library Packs",
     "label": "Workspace appearance",
@@ -5308,7 +5297,7 @@
     "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
   },
   {
-    "id": "LocalVoice.PackLibraryView.PackLibraryView.Link.pack-owner-setup",
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.pack-owner-setup",
     "surface": "Library Packs",
     "label": "Pack owner setup",
     "kind": "action",
@@ -5317,7 +5306,7 @@
     "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
   },
   {
-    "id": "LocalVoice.PackLibraryView.PackLibraryView.Link.runtime-89df3f808764",
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.runtime-89df3f808764",
     "surface": "Library Packs",
     "label": null,
     "expression": "pack . repository",

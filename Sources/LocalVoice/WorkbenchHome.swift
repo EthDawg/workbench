@@ -463,7 +463,9 @@ struct WorkbenchHome: View {
     /// A section's one-line summary, in the page header above the switcher where every other page
     /// has its own; the section's view does not repeat it.
     static let sectionSummaries: [String: String] = [
-        "shortcuts": "One set of shortcuts for speaking, drawing and presenting."]
+        "shortcuts": "One set of shortcuts for speaking, drawing and presenting.",
+        "library": "Keep useful prompts, links and files together.",
+        "packs": "Reusable skills, scenes, personas and resources."]
 
     /// A page whose own view draws no page title takes its name from the page record here, in
     /// the same place and type as every other page (#134). A page of two columns is divided

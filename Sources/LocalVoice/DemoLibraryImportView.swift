@@ -56,7 +56,7 @@ struct DemoLibraryImportView: View {
                 }
                 if let error = library.importError {
                     HStack {
-                        Text(error).font(.callout).foregroundStyle(.orange).textSelection(.enabled)
+                        WorkbenchNote(error)
                         Spacer()
                         Button("Review again") { library.refreshImportReview() }
                     }
