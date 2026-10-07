@@ -69,11 +69,11 @@ struct TranscriptReviewView: View {
                 Button("Done", action: done).keyboardShortcut(.defaultAction)
             }
             HStack {
-                Text(item.date, format: .dateTime.month(.abbreviated).day().year().hour().minute())
+                Text(HistoryDate.text(item.date))
                 Text(model.historyLibrary.metadata(for: item.id).purpose.title)
                 Spacer()
                 Text("\(TextRules.wordCount(text)) words").monospacedDigit()
-            }.font(.caption).foregroundStyle(.secondary)
+            }.font(.subheadline).foregroundStyle(.secondary)
             Picker("Wording", selection: $version) {
                 Text("Current text").tag(TranscriptExportVersion.cleaned)
                 Text("Original wording").tag(TranscriptExportVersion.original)
@@ -82,15 +82,18 @@ struct TranscriptReviewView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     let notes = model.historyLibrary.metadata(for: item.id).captureNotes
                     if !notes.isEmpty {
-                        Label(notes.joined(separator: "\n"), systemImage: "exclamationmark.triangle")
-                            .font(.caption).foregroundStyle(.orange).textSelection(.enabled)
-                            .fixedSize(horizontal: false, vertical: true)
+                        WorkbenchNote(notes.joined(separator: "\n"))
                     }
-                    Text(text).font(.body).textSelection(.enabled)
+                    // A reading measure: long lines are hard to follow, so the words stop near
+                    // 600 points with a little air between lines, however wide the sheet grows.
+                    Text(text).font(.body).lineSpacing(3).textSelection(.enabled)
+                        .frame(maxWidth: 600, alignment: .leading)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                }.padding(14)
+                }.padding(Workbench.tilePadding)
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { sectionFrames?("history.transcript-review.document", $0) }
-            }.id(version).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 8))
+            }.id(version).background(Workbench.surface, in: RoundedRectangle(cornerRadius: Workbench.tileRadius))
+                // The hairline Dictate's transcript has, so the text box reads as one on macOS 26.
+                .overlay(RoundedRectangle(cornerRadius: Workbench.tileRadius).strokeBorder(Workbench.border))
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { sectionFrames?("history.transcript-review.text", $0) }
                 .accessibilityIdentifier("history.transcript-review.text")
             HStack(spacing: 12) {
@@ -115,16 +118,20 @@ struct TranscriptReviewView: View {
             }.controlSize(.regular)
             if let problem = feedback.problem {
                 ScrollView {
-                    Text(problem).font(.caption).foregroundStyle(.red).textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    WorkbenchNote(problem).frame(maxWidth: .infinity, alignment: .leading)
                 }.frame(maxHeight: 60)
             } else {
                 ConfirmationLabel(text: feedback.confirmation?.kind, reserving: ["Copied current text", "Saved"])
             }
-        }.padding(24).frame(width: 640, height: 560)
+        }.padding(Workbench.pagePadding)
+            // A sheet the person can make bigger for a long meeting. macOS opens a sheet at its
+            // minimum, so the minimum is the size it has always opened at.
+            .frame(minWidth: 640, idealWidth: 640, maxWidth: 1000, minHeight: 560, idealHeight: 560, maxHeight: .infinity)
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { sectionFrames?("history.transcript-review", $0) }
             .accessibilityIdentifier("history.transcript-review")
             .onExitCommand(perform: done)
+            // Escape is Done even when no control has keyboard focus; the visible Done is Return.
+            .background { Button("Done", action: done).keyboardShortcut(.cancelAction).hidden() }
             .sheet(item: $recording) { item in
                 MeetingRecordingReviewView(meetings: model.meetings, playback: model.meetings.recordingPlayback,
                                            transcript: item) { recording = nil }

@@ -19,9 +19,10 @@ struct DemoLibraryView: View {
     var onUseImageInPersona: ((DemoLibraryImageSnapshot) -> Void)? = nil
     @FocusState private var searching: Bool
     @State private var removal: DemoResource?
+    /// The selected text's own height, so its actions sit under it rather than at the window's foot.
+    @State private var contentHeight: CGFloat = 0
 
-    /// Library's Resources section. Library's switcher, in WorkbenchHome, shows Packs and
-    /// From iPhone beside it.
+    /// Library's Resources section. Library's switcher, in WorkbenchHome, shows Packs beside it.
     var body: some View { resources }
 
     private var savedBrowserSettings: SavedBrowserSettings {
@@ -31,28 +32,29 @@ struct DemoLibraryView: View {
     @ViewBuilder private var readPreservationRecovery: some View {
         if let problem = library.readPreservationFailure {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Workbench couldn’t finish preserving your old Read text. The original is still saved.")
-                DisclosureGroup("Details") { Text(problem).textSelection(.enabled) }
+                WorkbenchNote("Workbench couldn’t finish preserving your old Read text. The original is still saved.")
+                DisclosureGroup("Details") { Text(problem).font(.caption).textSelection(.enabled) }
                 HStack {
                     Button("Retry saving Read text") { library.retryReadPreservation() }
                     Button("Show original saved state") {
                         NSWorkspace.shared.activateFileViewerSelecting([library.readPreservationSource])
                     }
                 }
-            }.font(.caption).foregroundStyle(.orange)
+            }
         }
     }
 
     private var resources: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .firstTextBaseline) {
-                // Library's title and switcher name this section, so it opens on its summary (#134).
-                Text("Keep useful prompts, links and files together.").foregroundStyle(.secondary)
+                // Library's header carries this section's summary (WorkbenchHome.sectionSummaries),
+                // so its actions sit at the trailing edge.
                 Spacer()
                 LibraryPromptButton(model: model).fixedSize().frame(height: 26)
                 Menu {
-                    Button("New prompt") { library.newPrompt() }
-                    Button("New link") { library.draft = DemoResource(kind: .link) }
+                    // Each opens an editor, so each asks for more (…).
+                    Button("New prompt…") { library.newPrompt() }
+                    Button("New link…") { library.draft = DemoResource(kind: .link) }
                     Button("Add local file…") { library.chooseFile() }
                     Divider()
                     // Opens the prompt editor with the clipboard's text, so it asks for more (…).
@@ -73,29 +75,30 @@ struct DemoLibraryView: View {
             readPreservationRecovery
             if let problem = library.storageFailure {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Saved resources are preserved. Editing is paused.")
-                    DisclosureGroup("Library details") { Text(problem).textSelection(.enabled) }
+                    WorkbenchNote("Saved resources are preserved. Editing is paused.")
+                    DisclosureGroup("Library details") { Text(problem).font(.caption).textSelection(.enabled) }
                     Button("Show saved library") { NSWorkspace.shared.activateFileViewerSelecting([library.store.url]) }
-                }.font(.caption).foregroundStyle(.orange)
+                }
             }
             if let error = library.error {
                 HStack(alignment: .top) {
-                    Text(error).textSelection(.enabled)
+                    WorkbenchNote(error)
                     Spacer()
-                    Button { library.error = nil } label: { Image(systemName: "xmark") }.accessibilityLabel("Dismiss library error")
-                }.font(.caption).foregroundStyle(.orange)
+                    Button { library.error = nil } label: { Image(systemName: "xmark") }.buttonStyle(.borderless)
+                        .accessibilityLabel("Dismiss library error")
+                }
             }
             if library.resources.isEmpty && library.savingDisabled {
-                Text("Your saved Library could not be displayed. Its file has not been replaced.")
-                    .foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
+                WorkbenchEmptyState(symbol: "exclamationmark.triangle", title: "Your saved Library could not be displayed",
+                    detail: "Its file has not been replaced.") { EmptyView() }
+                    .frame(maxWidth: 520, alignment: .leading).frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if library.resources.isEmpty {
                 emptyLibrary
             } else if library.matches.isEmpty {
-                VStack(spacing: 12) {
-                    Image(systemName: "magnifyingglass").font(.title)
-                    Text("No matching resources.").font(.headline)
+                WorkbenchEmptyState(symbol: "magnifyingglass", title: "No matching resources",
+                    detail: "Try other words, or show every resource.") {
                     Button("Clear filters") { library.query = ""; library.favoritesOnly = false }
-                }.frame(maxWidth: .infinity, maxHeight: .infinity)
+                }.frame(maxWidth: 520, alignment: .leading).frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 HSplitView {
                     List(selection: $library.selection) {
@@ -108,17 +111,21 @@ struct DemoLibraryView: View {
                                 }
                             }.padding(.vertical, 6).tag(item.id)
                         }
-                    }.listStyle(.sidebar).frame(minWidth: 190, idealWidth: 220, maxWidth: 300)
+                    // An inset list inside the card: a sidebar style here read as a second sidebar,
+                    // with titles too faint to read.
+                    }.listStyle(.inset).scrollContentBackground(.hidden).frame(minWidth: 190, idealWidth: 220, maxWidth: 300)
                         .onKeyPress(.return, phases: .down) { _ in performReturnAction(fromSearch: false) }
                     if let item = library.selected { detail(item).frame(minWidth: 230, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading) }
                     else {
                         Text("Choose a resource to review or reuse.").foregroundStyle(.secondary)
                             .frame(minWidth: 230, maxWidth: .infinity, maxHeight: .infinity)
                     }
-                }.background(Workbench.surface, in: RoundedRectangle(cornerRadius: 12))
+                }.background(Workbench.surface, in: RoundedRectangle(cornerRadius: Workbench.tileRadius))
+                    .clipShape(RoundedRectangle(cornerRadius: Workbench.tileRadius))
+                    .overlay(RoundedRectangle(cornerRadius: Workbench.tileRadius).strokeBorder(Workbench.border))
             }
             HStack {
-                Text(library.notice ?? "\(library.resources.count) \(library.resources.count == 1 ? "resource" : "resources") · \(model.preferences.shortcut(3).label) to recall")
+                Text(library.notice ?? footerSummary)
                     .font(.caption).foregroundStyle(.secondary).lineLimit(2)
                 Spacer()
                 Menu {
@@ -156,7 +163,7 @@ struct DemoLibraryView: View {
             Group {
                 Button("Find resource") { focusSearchWhenReady() }.keyboardShortcut("f")
                     .disabled(library.draft != nil || library.importReview != nil || removal != nil)
-                Button("New prompt") { library.newPrompt() }.keyboardShortcut("n")
+                Button("New prompt…") { library.newPrompt() }.keyboardShortcut("n")
                     .disabled(library.savingDisabled || library.importReview != nil || removal != nil)
                 // Save clipboard as prompt lives with the prompts it makes, and keeps ⇧⌘S while
                 // they show; it left the Window menu (#134). A closed menu's items never receive
@@ -166,6 +173,12 @@ struct DemoLibraryView: View {
                     .disabled(library.savingDisabled || library.importReview != nil || removal != nil)
             }.hidden()
         }
+    }
+    /// The count, and the recall key only while it is on: “Off to recall” said nothing useful.
+    private var footerSummary: String {
+        let count = "\(library.resources.count) \(library.resources.count == 1 ? "resource" : "resources")"
+        let recall = model.preferences.shortcut(3)
+        return recall.enabled ? count + " · \(recall.label) to recall" : count
     }
     private func performReturnAction(fromSearch: Bool) -> KeyPress.Result {
         guard WorkbenchHome.destination(model.page).section == "library", library.draft == nil, removal == nil,
@@ -189,20 +202,16 @@ struct DemoLibraryView: View {
             searching = true
         }
     }
+    /// The page's one empty state, centred as a whole empty page is, with the Add menu's own words.
     private var emptyLibrary: some View {
-        VStack(spacing: 18) {
-            Image(systemName: "square.stack.3d.up").font(.system(size: 42, weight: .light)).foregroundStyle(Workbench.accent)
-            Text("Keep something useful.").font(.title2.weight(.medium))
-            Text("Save a prompt, link or file reference to find it here later.")
-                .font(.system(size: 13)).foregroundStyle(.secondary).multilineTextAlignment(.center)
-            HStack(spacing: 12) {
-                Button("Add a prompt") { library.newPrompt() }.buttonStyle(.borderedProminent)
-                Button("Add a file…") { library.chooseFile() }
-                Button("Add a link") { library.draft = DemoResource(kind: .link) }
+        WorkbenchEmptyState(symbol: "square.stack", title: "Keep something useful",
+            detail: "Save a prompt, link or file reference to find it here later. Files stay in their original folders; download cloud files before using them offline.") {
+            Group {
+                Button("New prompt…") { library.newPrompt() }.buttonStyle(.borderedProminent)
+                Button("Add local file…") { library.chooseFile() }
+                Button("New link…") { library.draft = DemoResource(kind: .link) }
             }.disabled(library.savingDisabled)
-            Text("Files stay in their original folders. Download cloud files before using them offline.")
-                .font(.caption).foregroundStyle(.secondary)
-        }.frame(maxWidth: .infinity, maxHeight: .infinity)
+        }.frame(maxWidth: 520, alignment: .leading).frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     private func detail(_ item: DemoResource) -> some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -217,8 +226,10 @@ struct DemoLibraryView: View {
                     .disabled(library.savingDisabled)
             }
             if item.kind == .file {
-                Label(item.fileAvailable ? "File found" : "File needs attention", systemImage: item.fileAvailable ? "checkmark.circle" : "exclamationmark.circle")
-                    .font(.caption).foregroundStyle(item.fileAvailable ? Workbench.accent : .orange)
+                // What actually happened: found, missing, or there but unreadable.
+                WorkbenchStatusBadge(text: item.fileAvailable ? "File found"
+                    : item.fileURL.map { FileManager.default.fileExists(atPath: $0.path) } == true ? "Can’t read file" : "File not found",
+                    tone: item.fileAvailable ? .done : .attention)
                 Text(item.fileName).font(.callout).textSelection(.enabled)
                 Text("In \(item.fileLocation)").font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 Text(item.fileAvailable ? "The original stays in its folder. Keep cloud files downloaded for offline use." : "Connect its drive or locate the file again.")
@@ -260,8 +271,13 @@ struct DemoLibraryView: View {
                         Text(summary).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
                     }
                 }
-                ScrollView { Text(item.content).font(.system(size: 13)).lineSpacing(4).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
-                    .frame(maxHeight: .infinity)
+                // As tall as the text, up to a cap, so the actions follow the words; it gives way in a
+                // short window, so Edit… and Remove below never fall out of the card.
+                ScrollView {
+                    Text(item.content).font(Workbench.bodyText).lineSpacing(4).textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
+                }.frame(minHeight: min(max(contentHeight, 18), 60), maxHeight: min(max(contentHeight, 18), 360))
                 HStack {
                     primaryActionButton(item)
                     if item.kind == .link { Button("Copy link") { library.copy(item) } }
@@ -276,13 +292,12 @@ struct DemoLibraryView: View {
                 Divider()
                 ScrollView { Text(item.notes).font(.caption).foregroundStyle(.secondary).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }.frame(maxHeight: 90)
             }
-            Spacer(minLength: 0)
             HStack {
-                Button("Edit") { library.draft = item }.disabled(library.savingDisabled)
+                Button("Edit…") { library.draft = item }.disabled(library.savingDisabled)
                 Spacer()
                 Button { removal = item } label: { Image(systemName: "trash") }.accessibilityLabel("Remove resource").disabled(library.savingDisabled)
-            }.font(.caption).buttonStyle(.borderless)
-        }.padding(18)
+            }.font(.callout).buttonStyle(.borderless)
+        }.padding(Workbench.tilePadding)
     }
     @ViewBuilder private func imageReuseActions(_ item: DemoResource) -> some View {
         if DemoLibraryImageUse.present.supports(item), let onUseImageInPresent {
@@ -344,9 +359,9 @@ private struct DemoResourceEditor: View {
             Toggle("Favorite", isOn: $item.favorite)
             if let problem = item.validationMessage { Text(problem).font(.caption).foregroundStyle(.secondary) }
             if let notice = library.draftNotice { Text(notice).font(.caption).foregroundStyle(.secondary) }
-            if let error = library.error { Text(error).font(.caption).foregroundStyle(.orange).lineLimit(3) }
+            if let error = library.error { WorkbenchNote(error).lineLimit(3) }
             if let problem = library.storageFailure {
-                Text("Saving is paused to preserve the saved Library. Cancel to return to its recovery details.").font(.caption).foregroundStyle(.orange)
+                WorkbenchNote("Saving is paused to preserve the saved Library. Cancel to return to its recovery details.")
                 DisclosureGroup("Library details") { Text(problem).font(.caption).textSelection(.enabled) }
             }
             HStack {

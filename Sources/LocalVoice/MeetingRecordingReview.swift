@@ -204,7 +204,7 @@ struct MeetingRecordingReviewView: View {
                 let sources = recording.manifest.tracks.map { $0.source == .local ? "Microphone" : recording.manifest.appName ?? "App audio" }
                 Text(sources.joined(separator: " · ")).font(.callout).foregroundStyle(.secondary)
                 if !recording.manifest.gaps.isEmpty {
-                    ScrollView { Text(recording.manifest.gaps.joined(separator: "\n")).font(.callout).foregroundStyle(.orange).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }.frame(maxHeight: 90)
+                    ScrollView { WorkbenchNote(recording.manifest.gaps.joined(separator: "\n")).frame(maxWidth: .infinity, alignment: .leading) }.frame(maxHeight: 90)
                 }
             }
             if playback.loading { ProgressView("Opening recording…").controlSize(.small) }
@@ -216,7 +216,7 @@ struct MeetingRecordingReviewView: View {
                 }.font(.caption.monospacedDigit()).foregroundStyle(.secondary)
             }
             if let problem = playback.problem {
-                Text(problem).font(.callout).foregroundStyle(.orange).textSelection(.enabled)
+                WorkbenchNote(problem)
             }
             HStack(spacing: 12) {
                 Button {

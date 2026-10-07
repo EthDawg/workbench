@@ -5,7 +5,9 @@ struct ModelSettingsView: View {
     let engine: RecognitionEngine
     var isBusy: Bool
     var snapshot: RecognitionSnapshot
-    var onNotNow: () -> Void = {}
+    /// Only a first-use caller passes this: Not now then leaves setup for later. Settings › Models
+    /// is a place, not a step, so without it there is nothing to defer.
+    var onNotNow: (() -> Void)? = nil
     var onSnapshot: @MainActor (RecognitionSnapshot) -> Void = { _ in }
     @State private var draft = RecognitionConfiguration()
     @State private var active = RecognitionConfiguration()
@@ -16,12 +18,9 @@ struct ModelSettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top) {
-                Image(systemName: "waveform.badge.magnifyingglass").font(.title2).foregroundStyle(Workbench.accent)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Speech model").font(Workbench.sectionTitle).accessibilityAddTraits(.isHeader)
-                    Text("Choose what turns your recordings into text.").foregroundStyle(.secondary)
-                }
+            VStack(alignment: .leading, spacing: 4) {
+                ModelSectionHeader(title: "Speech model", symbol: "waveform.badge.magnifyingglass")
+                Text("Choose what turns your recordings into text.").font(.callout).foregroundStyle(.secondary)
             }
             Label(current.line, systemImage: current.canTranscribe ? "checkmark.circle" : "circle.dotted")
                 .font(.callout).foregroundStyle(current.canTranscribe ? .primary : .secondary)
@@ -57,9 +56,7 @@ struct ModelSettingsView: View {
                 }
             }
 
-            if let failure {
-                Label(failure, systemImage: "exclamationmark.triangle").font(.callout).foregroundStyle(.red).textSelection(.enabled)
-            }
+            if let failure { WorkbenchNote(failure) }
             if let details = current.failure?.details {
                 DisclosureGroup("Details") { Text(details).font(.callout).textSelection(.enabled) }
             }
@@ -68,13 +65,19 @@ struct ModelSettingsView: View {
                     ProgressView().controlSize(.small)
                     Button("Cancel setup") { Task { await engine.cancelPreparation(); await refresh() } }
                         .disabled(current.phase == .cancelling)
+                } else if draft == active && current.canTranscribe {
+                    // The chosen model works: say so, rather than a button that does nothing.
+                    WorkbenchStatusBadge(text: "In use", tone: .done)
+                        .accessibilityLabel("\(draft.provider.title) is in use")
                 } else {
                     Button(actionTitle) { Task { await apply() } }
                         .buttonStyle(.borderedProminent)
-                        .disabled(isBusy || applying || !loaded || (current.canTranscribe && draft == active))
+                        .disabled(isBusy || applying || !loaded)
                     if draft == active && draft.provider == .parakeet && !current.canTranscribe {
+                        // The contract's way back to files already on this Mac, without downloading: after a
+                        // failure, and after Cancel setup, which leaves no failure to show.
                         Button("Retry saved files") { Task { await prepareCached() } }.disabled(isBusy || applying)
-                        Button("Not now", action: onNotNow)
+                        if let onNotNow { Button("Not now", action: onNotNow) }
                     }
                 }
             }
@@ -82,6 +85,7 @@ struct ModelSettingsView: View {
                 Text("Model changes are available when recording and processing finish.").font(.caption).foregroundStyle(.secondary)
             }
         }
+        .frame(maxWidth: 720, alignment: .leading)
         .task {
             draft = await engine.configuration(); active = draft
             await refresh(); loaded = true
@@ -89,11 +93,10 @@ struct ModelSettingsView: View {
 
     }
 
-    /// What the one button does now: download or retry the model in use, switch to another,
-    /// or nothing while the chosen model is ready.
+    /// What the one button does now: switch to another model, or download or retry the one in
+    /// use. A ready model shows a status instead, so the button always does something.
     private var actionTitle: String {
         if draft != active { return draft.provider == .parakeet ? "Use Parakeet" : "Use local server" }
-        if current.canTranscribe { return "In use" }
         return draft.provider == .parakeet ? "Download Parakeet" : "Use local server"
     }
 
@@ -132,5 +135,19 @@ struct ModelSettingsView: View {
             failure = Self.operationFailure(error, snapshot: await engine.snapshot())
         }
         await refresh()
+    }
+}
+
+/// The Models page's section header: one form for Speech model and Text style, its symbol in the
+/// accent as on a WorkbenchTile, read as a heading by VoiceOver.
+struct ModelSectionHeader: View {
+    let title: String
+    let symbol: String
+    var body: some View {
+        Label {
+            Text(title)
+        } icon: {
+            Image(systemName: symbol).foregroundStyle(Workbench.accent).accessibilityHidden(true)
+        }.font(Workbench.sectionTitle).accessibilityAddTraits(.isHeader)
     }
 }

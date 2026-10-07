@@ -193,39 +193,35 @@ struct WorkbenchQuickPanel: View {
     @ViewBuilder private func options(_ tool: WorkbenchControlTool) -> some View {
         switch tool {
         case .dictate:
-            Menu("Options") {
+            // A native menu like every other row's, so its Options chevron matches theirs.
+            NativeControlMenu(title: "Options") {
+                let menu = NSMenu(title: "Dictate"); menu.autoenablesItems = false
+                let idle = model.phase == .idle
                 // The same two choices, under the same names, as the Dictate page's task region.
-                Section("Delivery") {
-                    ForEach(DeliveryMode.allCases, id: \.self) { delivery in
-                        Button { model.preferences.delivery = delivery } label: {
-                            if model.preferences.delivery == delivery { Label(delivery.rawValue, systemImage: "checkmark") }
-                            else { Text(delivery.rawValue) }
-                        }.disabled(model.phase != .idle)
-                    }
+                menu.addItem(.sectionHeader(title: "Delivery"))
+                for delivery in DeliveryMode.allCases {
+                    menu.addItem(ToolbarMenuAction(delivery.rawValue, checked: model.preferences.delivery == delivery, enabled: idle) {
+                        model.preferences.delivery = delivery
+                    })
                 }
                 // The choice is kept while it waits for approval; say what happens until then.
                 if model.preferences.delivery == .paste && !model.accessibilityGranted {
-                    Section("Copies for ⌘V until automatic paste is approved") {
-                        Button("Set up automatic paste…") { model.onCloseMenu?(); model.requestAccessibility() }
-                    }
+                    menu.addItem(.sectionHeader(title: "Copies for ⌘V until automatic paste is approved"))
+                    menu.addItem(ToolbarMenuAction("Set up automatic paste…") { model.onCloseMenu?(); model.requestAccessibility() })
                 }
-                Section("Text style") {
-                    ForEach(CleanupStyle.allCases, id: \.self) { style in
-                        Button { model.preferences.cleanup = style } label: {
-                            if model.preferences.cleanup == style { Label(style.rawValue, systemImage: "checkmark") }
-                            else { Text(style.rawValue) }
-                        }.disabled(model.phase != .idle)
-                    }
+                menu.addItem(.sectionHeader(title: "Text style"))
+                for style in CleanupStyle.allCases {
+                    menu.addItem(ToolbarMenuAction(style.rawValue, checked: model.preferences.cleanup == style, enabled: idle) {
+                        model.preferences.cleanup = style
+                    })
                 }
-                Divider()
+                menu.addItem(.separator())
                 // Capture history belongs to Dictate, so its option opens History on Transcripts.
-                Button("History…") { model.openHistory(HistoryDoor(filter: .transcripts)); open("history") }
-                Button("Meetings…") { open("meeting") }
-                Button("Open Dictate…") { open("dictate") }
-            }.menuStyle(.borderlessButton).fixedSize()
-                // A small control draws the 11 pt label the native Options controls use on every
-                // other row; a font on a borderless menu is ignored.
-                .controlSize(.small).foregroundStyle(Workbench.accent)
+                menu.addItem(ToolbarMenuAction("History…") { model.openHistory(HistoryDoor(filter: .transcripts)); open("history") })
+                menu.addItem(ToolbarMenuAction("Meetings…") { open("meeting") })
+                menu.addItem(ToolbarMenuAction("Open Dictate…") { open("dictate") })
+                return menu
+            }
         case .snap:
             NativeControlMenu(title: "Options") {
                 let menu = NSMenu(title: "Snap"); menu.autoenablesItems = false

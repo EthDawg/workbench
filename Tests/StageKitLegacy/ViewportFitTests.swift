@@ -49,6 +49,37 @@ final class ViewportFitTests {
         }
     }
 
+    /// In a real window the phone's picture must draw over the frame's black screen. Checking the
+    /// layer's frame alone passed while AppKit sorted the picture under the foreground, and the
+    /// phone showed black on every build until 7 October 2026.
+    func testThePhonesPictureDrawsAboveTheFrameInAWindow() throws {
+        var scene = DemoScene(background: "photo.png")
+        scene.viewport = .phone
+        let size = CGSize(width: 800, height: 450)
+        let backdrop = NSImage(size: size, flipped: false) { rect in NSColor.blue.setFill(); rect.fill(); return true }
+        let green = NSImage(size: CGSize(width: 8, height: 8), flipped: false) { rect in NSColor.green.setFill(); rect.fill(); return true }
+        let picture = CALayer(); picture.contents = green.cgImage(forProposedRect: nil, context: nil, hints: nil); picture.contentsGravity = .resize
+        let view = DemoStageSurfaceView(previewLayer: picture)
+        let window = NSWindow(contentRect: CGRect(origin: .zero, size: size), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.contentView = nil; window.close() }
+        window.contentView = view
+        view.configure(scene: scene, backdrop: backdrop, logo: nil, hand: nil, persona: nil)
+        view.viewportScene = scene; view.isLive = true
+        view.needsLayout = true; view.layoutSubtreeIfNeeded(); view.displayIfNeeded()
+        CATransaction.flush()
+        let screen = ViewportGeometry(scene: scene, size: size).screen
+        let context = CGContext(data: nil, width: Int(size.width), height: Int(size.height), bitsPerComponent: 8, bytesPerRow: 0,
+                                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        view.layer!.render(in: context)
+        let image = context.makeImage()!
+        let bytes = CFDataGetBytePtr(image.dataProvider!.data)!
+        // CGContext rows run bottom-up here, matching the unflipped view's coordinates.
+        let row = Int(size.height) - 1 - Int(screen.midY), offset = row * image.bytesPerRow + Int(screen.midX) * 4
+        XCTAssertTrue(bytes[offset + 1] > 200 && bytes[offset] < 60 && bytes[offset + 2] < 60,
+                      "The phone's picture must show inside the frame, not the frame's black screen (got \(bytes[offset]), \(bytes[offset + 1]), \(bytes[offset + 2]))")
+    }
+
     func testExportAndLiveScreenUseFullHeightBorder() throws {
         var scene = DemoScene(background: "photo.png")
         scene.viewport = .phone; scene.phoneHeight = 1

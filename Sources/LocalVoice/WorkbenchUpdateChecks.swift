@@ -104,6 +104,8 @@ enum WorkbenchUpdateChecks {
         policy.receiveOffer(version: "9.0.5", summary: nil, downloaded: false, reply: { choices.append($0) })
         try require(choices.count == 3 && !policy.installRequested, "a different release needs its own update choice")
         policy.finishUpdateSession()
+        try require(!policy.status.contains("is ready") && policy.availableVersion == nil,
+                    "a dismissed offer takes its ready line with it, so Settings never offers an update it can't install")
         policy.updater(updater, didFindValidUpdate: item); policy.checkForUpdates()
         policy.receiveOffer(version: item.displayVersionString, buildNumber: "different-build", summary: nil, downloaded: true, reply: { choices.append($0) })
         try require(choices.count == 3 && !policy.installRequested, "same marketing version with a different build needs fresh consent")

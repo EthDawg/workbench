@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import SceneSyncKit
 import ImageIO
 import UniformTypeIdentifiers
@@ -186,7 +187,8 @@ final class SceneSyncAdapterTests {
             let source = root.appendingPathComponent("portrait.png"); try png().write(to: source)
             let model = DemoScenes(root: root, systemIntegrationEnabled: false); try model.addImage(source, name: "Synthetic canvas")
             var initial = model.selected!; initial.showsPhone = false; XCTAssertTrue(model.update(initial)); initial = model.selected!
-            let canvas = SceneCanvasView(frame: CGRect(x: 0, y: 0, width: 600, height: 400))
+            let canvas = SceneCanvasView(previewLayer: AVCaptureVideoPreviewLayer())
+            canvas.frame = CGRect(x: 0, y: 0, width: 600, height: 400)
             canvas.receive(initial); canvas.image = model.image(for: initial)
             var attempts: [DemoScene] = []
             canvas.update = { value in attempts.append(value); return model.update(value) ? model.selected : nil }

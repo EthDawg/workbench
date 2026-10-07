@@ -10,6 +10,12 @@ enum Workbench {
         return !NSRunningApplication.runningApplications(withBundleIdentifier: String(identifier.dropLast(".preview".count))).isEmpty
     }
     static var displayName: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? name }
+    /// Version and build as Info.plist states them, for reports; "development" from a bare binary.
+    static var buildLabel: String {
+        let info = Bundle.main.infoDictionary ?? [:]
+        guard let version = info["CFBundleShortVersionString"] as? String else { return "development" }
+        return version + ((info["CFBundleVersion"] as? String).map { " (\($0))" } ?? "")
+    }
     // Only debug QA bundles opt into disposable storage. Release builds ignore
     // the marker, and normal Preview/production data and migration stay intact.
     static var fixtureRoot: URL? {
@@ -96,6 +102,31 @@ enum Workbench {
     static let accent = WorkbenchPalette.accent
     static let border = Color.primary.opacity(0.08)
     static let controlWidth: CGFloat = 370
+}
+
+/// A text link in Workbench's accent, the same as LocalVoice's page kit: `.buttonStyle(.link)`
+/// ignores the tint on macOS and draws system blue beside mint buttons. Internal, so the app
+/// module keeps its own `.workbenchLink` without ambiguity.
+struct WorkbenchLinkStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(isEnabled ? Workbench.accent : Color.secondary)
+            .opacity(configuration.isPressed ? 0.6 : 1)
+            .contentShape(Rectangle())
+    }
+}
+extension ButtonStyle where Self == WorkbenchLinkStyle {
+    static var workbenchLink: WorkbenchLinkStyle { .init() }
+}
+
+extension PhoneLinkStatus {
+    /// A failure takes the page kit's triangle; otherwise the phase's own symbol.
+    var toneSymbol: String { tone == .attention ? "exclamationmark.triangle.fill" : symbol }
+    /// Orange only on a failure's symbol, the accent when live, secondary otherwise.
+    var toneColor: Color {
+        switch tone { case .done: return Workbench.accent; case .attention: return .orange; case .neutral: return .secondary }
+    }
 }
 
 final class WorkbenchSettings: ObservableObject {

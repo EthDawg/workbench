@@ -37,6 +37,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var terminating = false
     private var terminationPending = false
     private var meetingOffer: MeetingOfferPanelController?
+    /// Report a problem (#296): one owner for the composer, its draft and outbox.
+    var bugReports: BugReportModel?
+    var bugReportWindow: BugReportWindowController?
+    /// The report's own region capture, separate from Snap's, so Snap's draft and host are untouched.
+    var bugReportCapture: SnapCapture?
+    private var bugReportObserver: NSObjectProtocol?
+    var isTerminatingForReports: Bool { terminating }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let editions = ["com.ethdawg.workbench", "com.ethdawg.workbench.preview", "com.ethdawg.localvoice", "com.ethdawg.localvoice.preview", "local.ethan.StageMark", "local.ethan.StageMark.preview"]
@@ -73,7 +80,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         snap.mayBeginCapture = { [weak self] in
             guard let self, !self.terminating else { return "Workbench is closing." }
-            return self.readback.isCapturing || self.shortcutsSuspended || self.stage?.isTakingScreenshot == true
+            return self.readback.isCapturing || self.shortcutsSuspended || self.stage?.isTakingScreenshot == true || self.bugReports?.capturing == true
                 ? "Finish the current screen capture or shortcut edit first." : nil
         }
         // One completion path for every Snap door: the editor opens on the Snap
@@ -110,8 +117,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         model.meetings.hostAdmission = { [weak self] in
             guard let self else { return MeetingHostAdmission(closing: true) }
             return MeetingHostAdmission(recognition: self.model.recognition,
-                captureProblem: self.model.phase == .idle && !self.readback.blocksDictation && !self.shortcutsSuspended
-                    ? nil : .busy("Finish Dictate or Snap & Talk before starting a meeting."), closing: self.terminating)
+                captureProblem: self.bugReportMicrophoneBusy.map { .busy($0) }
+                    ?? (self.model.phase == .idle && !self.readback.blocksDictation && !self.shortcutsSuspended
+                    ? nil : .busy("Finish Dictate or Snap & Talk before starting a meeting.")), closing: self.terminating)
         }
         model.meetings.mayPlayRecording = { [weak self] in
             guard let self, !self.terminating else { return false }
@@ -150,6 +158,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         stage.onEditShortcuts = { [weak self] in self?.navigate("shortcuts") }
         stage.onBeginActivity = { [weak self] in self?.beginStageActivity() }
+        stage.onPresentationWillBegin = { [weak self] in
+            // Present is about to hide the window; End brings it back only if it was showing.
+            if self?.window?.isVisible == true { self?.windowHiddenForStage = true }
+        }
+        stage.onPresentationEnded = { [weak self] in
+            // End lands back on the page that was showing, reading "Presentation ended" with Reconnect.
+            guard let self, windowHiddenForStage else { return }
+            windowHiddenForStage = false
+            showWindow(countsAsVisit: false)
+        }
         stage.validateExternalShortcut = { [weak self] code, modifiers in
             guard let self else { return nil }
             for entry in self.voiceShortcutEntries() {
@@ -165,6 +183,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             guard let self else { return "Workbench is unavailable." }
             if self.readback.blocksDictation { return "Finish the current Snap & Talk capture, narration and transcription queue before starting ordinary dictation." }
             if self.model.meetings.isBusy { return "Finish the meeting recording or transcription before starting Dictate." }
+            if let reason = self.bugReportMicrophoneBusy { return reason }
             return CaptureInputPolicy.canStart(isPresenting: self.stage.isPresenting, hasExternalMacTarget: target != nil, delivery: self.model.preferences.delivery)
                 ? nil : "Choose Copy to clipboard to capture a thought, or focus a Mac text field. To enter text on your phone, use its keyboard or Dictation button."
         }
@@ -172,6 +191,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             guard let self else { return "Workbench is unavailable." }
             if self.shortcutsSuspended { return "Finish changing the shortcut before starting Snap & Talk." }
             if self.snap.isCapturing { return "Finish the current Snap before starting Snap & Talk." }
+            if let reason = self.bugReportMicrophoneBusy { return reason }
+            if self.bugReports?.capturing == true { return "Finish the problem report's screenshot before starting Snap & Talk." }
             return self.model.phase == .idle && !self.model.meetings.isBusy
                 ? nil : "Finish the current dictation or meeting before starting Snap & Talk narration."
         }
@@ -183,6 +204,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             if suspended { self.model.promptInsertion.cancel(); self.hotkeys.unregister(); self.stage.escape(); self.stage.setShortcutsSuspended(true) }
             else { self.stage.setShortcutsSuspended(false); self.registerShortcuts(); self.keyboard.replaceEntries(self.shortcutEntries()) }
         })
+        keyboard.restorePractised(UserDefaults.standard.stringArray(forKey: KeyboardCoachModel.practisedKey) ?? []) {
+            UserDefaults.standard.set($0.sorted(), forKey: KeyboardCoachModel.practisedKey)
+        }
+        stage.onShortcutUsed = { [weak self] id in self?.keyboard.recordUse("stage." + id) }
         panelEditor = PanelShortcutEditor(keyboard: keyboard)
         let homeWindow = WorkbenchHomeWindow(contentViewController: NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard, readback: readback, snap: snap)))
         homeWindow.onHide = { [weak self] in
@@ -195,7 +220,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         window.minSize = NSSize(width: 1050, height: 730)
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
         window.titlebarAppearsTransparent = true; window.titleVisibility = .hidden
-        window.isReleasedWhenClosed = false; window.center()
+        window.isReleasedWhenClosed = false
+        // The window comes back where and how big it was left; only its first opening centres it
+        // (docs/desktop.md § When the window shows).
+        if !window.setFrameUsingName(Self.windowFrameName) { window.center() }
+        window.setFrameAutosaveName(Self.windowFrameName)
         // The normal launch below opens the window after its controls exist.
         if PackLibraryModel.shared.pendingSource != nil { model.page = "packs" }
         capturePanel = CapturePanelController(model: model, readback: readback, stage: stage, snapModel: snap,
@@ -293,6 +322,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         model.onResetPanel = { [weak self] in self?.capturePanel.position(reset: true) }
         hotkeys.onKey = { [weak self] id, down, time in
             guard let self, VoicePreferences.shortcutIDs.contains(id) else { return }
+            if down { self.keyboard?.recordUse("voice.\(id)") }
             if id == 1 { self.model.shortcutChanged(down: down, at: time) }
             else if down, id == 3 { self.model.showLibrary() }
             else if down, id == 7 {
@@ -320,7 +350,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             self.updateRecordingUI()
         }
         readback.onHideForEditorCapture = { [weak self] in self?.window.orderOut(nil) }
-        readback.onRestoreAfterEditorCapture = { [weak self] in self?.showWindow() }
+        readback.onRestoreAfterEditorCapture = { [weak self] in self?.showWindow(countsAsVisit: false) }
         navigationObserver = NotificationCenter.default.addObserver(forName: .workbenchNavigate, object: nil, queue: .main) { [weak self] notification in
             guard let page = notification.object as? String else { return }
             Task { @MainActor in self?.navigate(page) }
@@ -329,15 +359,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             guard let self else { return WorkbenchUpdateActivity(interaction: true) }
             return WorkbenchUpdateActivity(voice: self.model.phase != .idle || self.model.preparing,
                 insertion: self.model.promptInsertion.running,
-                capture: self.readback.blocksDictation || self.snap.isBusy || self.stage.isTakingScreenshot || self.model.meetings.isBusy || self.model.handoffJobs.isBusy,
+                capture: self.readback.blocksDictation || self.snap.isBusy || self.stage.isTakingScreenshot || self.model.meetings.isBusy || self.model.handoffJobs.isBusy
+                    || self.bugReports?.isBusy == true,
                 presentation: self.stage.isPresenting || self.stage.hasActivePersona, drawing: self.stage.isDrawing,
                 timer: self.stage.hasActiveTimer,
                 interaction: self.shortcutsSuspended || NSApp.modalWindow != nil || NSApp.windows.contains(where: { $0.attachedSheet != nil }))
         }
-        WorkbenchUpdates.shared.showUpdate = { [weak self] in self?.showWindow() }
+        WorkbenchUpdates.shared.showUpdate = { [weak self] in self?.showWindow(countsAsVisit: false) }
+        bugReports = makeBugReports()
+        bugReportObserver = NotificationCenter.default.addObserver(forName: BugReportRequest.name, object: nil, queue: .main) { [weak self] notification in
+            guard let origin = (notification.object as? BugReportRequest.Box)?.origin else { return }
+            MainActor.assumeIsolated { self?.openBugReport(origin) }
+        }
         WorkbenchUpdates.shared.start()
         setupMenus()
-        registerShortcuts(); showWindow()
+        // A launch at login keeps to the menu bar and the toolbar; every other launch opens the
+        // window. A pack link always opens it. When macOS does not mark the launch, the window
+        // opens as it always has.
+        registerShortcuts()
+        if !Self.launchedAtLogin(NSAppleEventManager.shared().currentAppleEvent) || PackLibraryModel.shared.pendingSource != nil { showWindow() }
         meetingOffer = MeetingOfferPanelController(model: model.meetings) { [weak self] in self?.navigate("meeting") }
         model.clipboardReceipt.$receipt.receive(on: RunLoop.main)
             .sink { [weak self] _ in
@@ -429,28 +469,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let main = NSMenu(); let application = NSMenuItem(); let appMenu = NSMenu(title: "Workbench")
         appMenu.addItem(withTitle: "About Workbench", action: #selector(showAbout), keyEquivalent: "")
         appMenu.addItem(withTitle: "Check for Updates…", action: #selector(showUpdates), keyEquivalent: "")
-        appMenu.addItem(withTitle: "Copy build details", action: #selector(copyBuildDetails), keyEquivalent: "")
+        appMenu.addItem(withTitle: "Copy Build Details", action: #selector(copyBuildDetails), keyEquivalent: "")
+        appMenu.addItem(.separator())
         appMenu.addItem(pageItem("settings", more: true, key: ","))
         appMenu.addItem(pageItem("shortcuts", more: true))
+        appMenu.addItem(.separator())
         let services = NSMenu(title: "Services")
         let servicesItem = NSMenuItem(title: "Services", action: nil, keyEquivalent: "")
         servicesItem.submenu = services; appMenu.addItem(servicesItem)
         appMenu.addItem(.separator())
+        // The standard Mac app menu: Hide, Hide Others and Show All, then Quit on its own.
         appMenu.addItem(withTitle: "Hide Workbench", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        let hideOthers = appMenu.addItem(withTitle: "Hide Others", action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")
+        hideOthers.keyEquivalentModifierMask = [.command, .option]
+        appMenu.addItem(withTitle: "Show All", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
+        appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Quit Workbench", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         application.submenu = appMenu; main.addItem(application)
         let edit = NSMenuItem(); edit.title = "Edit"; let editMenu = NSMenu(title: "Edit")
-        for (title, action, key) in [("Undo", "undo:", "z"), ("Cut", "cut:", "x"), ("Copy", "copy:", "c"), ("Paste", "paste:", "v"), ("Select All", "selectAll:", "a")] { editMenu.addItem(withTitle: title, action: Selector(action), keyEquivalent: key) }
+        // Redo is Shift-Command-Z, as in every Mac text field; without the item the key does nothing.
+        editMenu.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+        editMenu.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "z").keyEquivalentModifierMask = [.command, .shift]
+        editMenu.addItem(.separator())
+        for (title, action, key) in [("Cut", "cut:", "x"), ("Copy", "copy:", "c"), ("Paste", "paste:", "v"), ("Select All", "selectAll:", "a")] { editMenu.addItem(withTitle: title, action: Selector(action), keyEquivalent: key) }
         edit.submenu = editMenu; main.addItem(edit)
         let draw = NSMenuItem(title: "Draw", action: nil, keyEquivalent: "")
         draw.submenu = stage.makeAnnotationMenu(); main.addItem(draw)
         let windows = NSMenuItem(); windows.title = "Window"; let menu = NSMenu(title: "Window")
         menu.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
-        menu.addItem(withTitle: "Open Workbench", action: #selector(showWindow), keyEquivalent: "0")
+        menu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        menu.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Open Workbench", action: #selector(showWindow as () -> Void), keyEquivalent: "0")
         // Show or Hide by the saved preference, through the same switch as the panel and Settings (#134).
         menu.addItem(withTitle: Self.floatingToolbarTitle(visible: model.floatingToolbarVisible), action: #selector(toggleFloatingToolbar), keyEquivalent: "")
-        menu.addItem(withTitle: "Focus floating toolbar", action: #selector(focusFloatingToolbar), keyEquivalent: "")
-        menu.addItem(withTitle: "Restore menu-bar icon", action: #selector(restoreMenuBarIcon), keyEquivalent: "")
+        menu.addItem(withTitle: "Focus Floating Toolbar", action: #selector(focusFloatingToolbar), keyEquivalent: "")
+        menu.addItem(withTitle: "Restore Menu Bar Icon", action: #selector(restoreMenuBarIcon), keyEquivalent: "")
         menu.addItem(.separator())
         // Every sidebar page, in the sidebar's order and by its name, so the Window menu's doors never
         // differ from the window's own list (#134).
@@ -459,10 +513,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         menu.addItem(pageItem("present")); menu.addItem(pageItem("personas"))
         menu.addItem(.separator())
         menu.addItem(pageItem("history")); menu.addItem(pageItem("library", key: "l"))
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Bring All to Front", action: #selector(NSApplication.arrangeInFront(_:)), keyEquivalent: "")
         windows.submenu = menu; main.addItem(windows)
         let help = NSMenuItem(); help.title = "Help"
         let helpMenu = NSMenu(title: "Help")
         helpMenu.addItem(withTitle: "Workbench Guide", action: #selector(showGuide), keyEquivalent: "")
+        helpMenu.addItem(withTitle: "Report a Problem…", action: #selector(reportProblem), keyEquivalent: "")
         help.submenu = helpMenu; main.addItem(help)
         return (main, services, menu, helpMenu)
     }
@@ -505,7 +562,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
     @objc func toggleFloatingToolbar() { model.floatingToolbarVisible.toggle() }
     /// The Window menu's toolbar item names what choosing it does now.
-    static func floatingToolbarTitle(visible: Bool) -> String { visible ? "Hide floating toolbar" : "Show floating toolbar" }
+    static func floatingToolbarTitle(visible: Bool) -> String { visible ? "Hide Floating Toolbar" : "Show Floating Toolbar" }
     @objc func focusFloatingToolbar() { capturePanel.focusToolbar() }
     @objc func restoreMenuBarIcon() {
         statusItem.isVisible = true
@@ -515,6 +572,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         showFloatingToolbar()
     }
     @objc func showGuide() { NSWorkspace.shared.open(URL(string: "https://workbench-mac.vercel.app/guide/")!) }
+    /// Help › Report a Problem… (#296). With the Workbench window in front, the report names its
+    /// page; otherwise it names Help. The page is read now, before the composer takes focus.
+    @objc func reportProblem() {
+        // A retired route reports as the page it opens, never as unknown.
+        let page = WorkbenchHome.retiredRoutes[model.page] ?? model.page
+        let surface = window != nil && NSApp.keyWindow === window ? BugReportSurface.page(page) : .help
+        openBugReport(BugReportOrigin(surface: surface, errorCode: nil))
+    }
     func showControls() {
         guard let button = statusItem.button, button.window?.isVisible == true else {
             showFloatingToolbar(); return
@@ -534,6 +599,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         model.previewingPanel = false
         window?.orderOut(nil)
     }
+    /// The window was showing when stage work hid it, so the end of a presentation brings it back.
+    var windowHiddenForStage = false
     func closeControls() { popover.performClose(nil); finishEditing() }
     /// Every way the panel closes ends here: the editor and its recorder end
     /// and global actions resume.
@@ -633,9 +700,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         guard BrowserIntegration.isAvailable, model.phase == .idle, !shortcutsSuspended else { return }
         stage.escape(); closeControls(); presenterPanel.show()
     }
-    @objc func showWindow() { closeControls(); if window.isMiniaturized { window.deminiaturize(nil) }; window.makeKeyAndOrderFront(nil); statusItem?.isVisible = true; NSApp.activate(ignoringOtherApps: true) }
+    @objc func showWindow() { showWindow(countsAsVisit: true) }
+    /// The window persists when closed, so Present's page sees no new appearance; the person
+    /// reopening it on Present is a fresh visit (after End, the phone may show again). Restores
+    /// nobody asked for, such as after a Snap & Talk capture or for an update, pass false.
+    func showWindow(countsAsVisit: Bool) {
+        let reopening = !window.isVisible || window.isMiniaturized
+        closeControls(); if window.isMiniaturized { window.deminiaturize(nil) }; window.makeKeyAndOrderFront(nil); statusItem?.isVisible = true; NSApp.activate(ignoringOtherApps: true)
+        if countsAsVisit, reopening, model.page == "present" { stage.presentPageReopened() }
+    }
     @objc func showAbout() { NSApp.orderFrontStandardAboutPanel(options: [.applicationName: Workbench.displayName, .applicationVersion: WorkbenchUpdates.shared.build.label, .credits: NSAttributedString(string: "\(WorkbenchUpdates.shared.build.details)\n\nEveryday tools for speaking, explaining and presenting.\nSpeech powered by Parakeet, FluidAudio and your selected recognition provider.")]) }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showWindow(); return true }
+    /// The saved size and position of the Workbench window, kept per edition with its preferences.
+    static let windowFrameName = "WorkbenchWindow"
+    /// macOS marks an Open at Login launch in the event that opens the app.
+    static func launchedAtLogin(_ event: NSAppleEventDescriptor?) -> Bool {
+        guard let event, event.eventID == AEEventID(kAEOpenApplication) else { return false }
+        return event.paramDescriptor(forKeyword: AEKeyword(keyAEPropData))?.enumCodeValue == OSType(keyAELaunchedAsLogInItem)
+    }
     func applicationDidBecomeActive(_ notification: Notification) {
         readback?.refreshPermissionState()
         PackLibraryModel.shared.checkAutomatically()
@@ -674,8 +756,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         capturePanel?.close()
         meetingOffer?.close()
         snap?.cancelCapture()
+        bugReports?.shutdown()
         model?.promptInsertion.cancel(); keyboard?.stopInteraction(); stage?.shutdown(); readback?.shutdown(); model?.cleanupModels.cancel(); model?.shutdown(); hotkeys.unregister()
         if let navigationObserver { NotificationCenter.default.removeObserver(navigationObserver) }
+        if let bugReportObserver { NotificationCenter.default.removeObserver(bugReportObserver) }
     }
     func navigate(_ page: String) {
         keyboard?.stopInteraction(); keyboard?.replaceEntries(shortcutEntries()); model.page = page; showWindow()
@@ -737,7 +821,7 @@ func runCLI(_ args: [String]) async -> Int32 {
             try CorrectionRuleChecks.run()
             try HomeJourneyChecks.run()
             try PanelDestinationChecks.run()
-            try await MainActor.run { try WorkbenchPageChecks.run(); try HomeRecentWorkChecks.run() }
+            try await MainActor.run { try WorkbenchPageChecks.run() }
             try InsertionBoundaryChecks.run()
             try CoreChecks.run(); try CleanupChecks.run(); try DemoLibraryChecks.run(); try ReadbackChecks.run(); try await ReadbackChecks.runAdmissionChecks(); try ProviderChecks.run(); try CaptureHUDChecks.run(); try CaptureSettingsChecks.run(); try LocalRefinementChecks.run()
             try await AccessibilityBridgeChecks.run()
@@ -814,6 +898,10 @@ func runCLI(_ args: [String]) async -> Int32 {
             try await MainActor.run { try ReadbackOrderingChecks.run() }
         case "--check-readback-resources":
             try ReadbackChecks.runPackagedResources()
+        case "--check-bug-report":
+            // Report a problem (#296), against the shared schema document; stubs only, nothing is sent.
+            let document = URL(fileURLWithPath: args.count > 1 ? args[1] : "docs/bug-reporting-schema.md")
+            print(try await BugReportChecks.run(schemaDocument: document).joined(separator: "\n"))
         case "--check-snap-capture":
             try await SnapCaptureChecks.run()
         case "--check-transcript-handoff":
@@ -831,6 +919,10 @@ func runCLI(_ args: [String]) async -> Int32 {
             try await CheckReceipt.run(mode: args[0], folder: args[1]) { folder in
                 try await HistoryJourneyCheck.run(stores: folder!.appendingPathComponent("stores"))
             }
+        // What this Mac shows of a phone, watched headless; the new folder is the receipt (#276).
+        case "--phone-link":
+            let (folder, seconds, live, stage) = try PhoneLinkChecks.stageArguments(args)
+            try await PhoneLinkChecks.run(folder: folder, seconds: seconds, live: live, stage: stage)
         case "--check-readback-pack":
             try await MainActor.run { try ReadbackPackChecks.run() }
             try await PackLibraryChecks.run()
@@ -853,7 +945,7 @@ func runCLI(_ args: [String]) async -> Int32 {
             guard args.count == 2 else { throw VoiceError.message("Usage: LocalVoice --transcribe AUDIO_FILE") }
             try await engine().prepareCached()
             print(try await engine().transcribe(URL(fileURLWithPath: args[1])))
-        default: throw VoiceError.message("Usage: LocalVoice [--prepare-model | --transcribe AUDIO_FILE | --check-core | --check-readback | --check-read-retirement | --check-library | --check-quick-look-panel FILE… | --render-surfaces OUTPUT_DIRECTORY]")
+        default: throw VoiceError.message("Usage: LocalVoice [--prepare-model | --transcribe AUDIO_FILE | --check-core | --check-readback | --check-read-retirement | --check-library | --check-quick-look-panel FILE… | --render-surfaces OUTPUT_DIRECTORY | --phone-link NEW_FOLDER [SECONDS] [--live] [--stage]]")
         }
         return 0
     } catch { fputs("Local Voice: \(error.localizedDescription)\n", stderr); return 1 }

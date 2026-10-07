@@ -188,6 +188,10 @@ ENTRY_POINTS = [
     ('LocalVoice/HistorySelectionControls.swift', 'HandoffResultPreview', 'history page', 'doors'),
     ('LocalVoice/HistorySelectionControls.swift', 'HistorySelectionControls', 'history page', 'doors'),
     ('LocalVoice/HistorySelectionControls.swift', 'TranscriptMetadataEditor', 'history page', 'doors'),
+    # Report a problem (#296): the composer window that Help and a Dictate or Snap problem open,
+    # and the one door beside those problems.
+    ('LocalVoice/BugReportView.swift', 'BugReportView', 'report a problem window', 'controls'),
+    ('LocalVoice/BugReportView.swift', 'ReportProblemButton', 'problem recovery', 'controls'),
     ('LocalVoice/DemoLibraryView.swift', 'DemoLibraryView', 'Library Resources', 'controls'),
     ('LocalVoice/DemoLibraryView.swift', 'DemoResourceEditor', 'Library resource editor', 'controls'),
 ]
@@ -1036,8 +1040,6 @@ class Inventory:
             # Native menu titles assigned after construction.
             if v[i:i + 3] == ['.', 'title', '='] and swift.stem == 'main' and literal([swift.tokens[i + 3]]):
                 self.add(swift, i, 'menu-title', [swift.tokens[i + 3]], 'app menu bar', identity=v[i - 1])
-            if v[i:i + 3] == ['.', 'title', '='] and swift.stem == 'LibraryPromptButton' and literal([swift.tokens[i + 3]]):
-                self.add(swift, i, 'button-title', [swift.tokens[i + 3]], 'Library', identity=v[i - 1])
             # The floating toolbar resolves its action title before rendering the row.
             # A title computed by another function is recorded where that function is.
             if v[i:i + 2] == ['title', '='] and v[i - 1] != '.' and swift.stem == 'FloatingToolbar':

@@ -549,7 +549,9 @@ struct TestRunner {
         let assets = SceneAssetTests()
         let demo = DemoModeTests()
         let phonePresentation = PhonePresentationTests()
-        let desktopMotion = DesktopMotionTests()
+        let phoneLink = PhoneLinkTests()
+        let phoneEnd = PhoneEndTests()
+        let phoneCapture = PhoneCaptureTests()
         let gentleMotion = GentleMotionTests()
         let ambientScenes = AmbientSceneTests()
         let viewportFit = ViewportFitTests()
@@ -608,12 +610,45 @@ struct TestRunner {
             ("board private clipboard image and failure preservation", boardExport.testPrivateClipboardPNGAndFailurePreservation),
             ("presentation window and fullscreen lifecycle", presentationLifecycle.testModeChangesKeepPresentationAndEndClosesOnce),
             ("presentation transition interruption and failure recovery", presentationLifecycle.testEndDuringNativeTransitionsAndFailureRecovery),
-            ("phone: restricted versus denied video access", phonePresentation.testRestrictedCameraGuidanceDoesNotOfferUserPermissionToggle),
-            ("phone: explicit first source selection", phonePresentation.testFirstCaptureRequiresExplicitSelectionEvenForMuxedHint),
+            ("phone link: nothing on USB", phoneLink.testNothingAttachedNamesTheCableAndTheAccessoryPrompt),
+            ("phone link: a cold start looks before it says anything is wrong", phoneLink.testAColdStartLooksBeforeItSaysAnythingIsWrong),
+            ("phone link: phone on the bus without a screen", phoneLink.testPhoneOnTheBusWithoutAScreenAsksForUnlockAndTrust),
+            ("phone link: one phone screen adopted, video device waits", phoneLink.testOnePhoneScreenIsAdoptedAndAPlainVideoDeviceWaitsForAClick),
+            ("phone link: several screens and a remembered absent phone", phoneLink.testSeveralScreensAskForAChoiceAndARememberedAbsentPhoneWaits),
+            ("phone link: remembered phone reads as connecting", phoneLink.testRememberedPhonePresentReadsAsConnectingUntilTheSessionSpeaks),
+            ("phone link: monitor fixture and mirror", phoneLink.testMonitorFixtureAndMirrorAreIndependent),
+            ("phone link: released for an Apple app", phoneLink.testReleasedForAnAppleAppSaysSoUntilReconnect),
+            ("phone link: session phases outrank availability", phoneLink.testSessionPhasesOutrankAvailability),
+            ("phone link: permission outranks availability", phoneLink.testPermissionOutranksAvailabilityAndRestrictedOffersNoToggle),
+            ("phone link: nouns follow the device", phoneLink.testNounsFollowTheDeviceNotTheSerial),
+            ("phone link: USB classification", phoneLink.testUSBClassificationKeepsPhonesAndDropsOtherAppleDevices),
+            ("phone link: diagnostic without identifiers", phoneLink.testDiagnosticNamesFactsWithoutIdentifiers),
+            ("phone: one screen adopted, lost device never switched", phonePresentation.testOnePhoneScreenIsAdoptedAndALostDeviceNeverSwitches),
             ("phone: handoff waits for capture and window", phonePresentation.testNativeHandoffWaitsForBothCaptureAndWindowInEitherOrder),
             ("phone: handoff launch and ordinary close ownership", phonePresentation.testHandoffKeepsFirstRequestAndDoesNotRetryFailedLaunchOrOrdinaryClose),
             ("phone: handoff native transition failure", phonePresentation.testHandoffWaitsThroughFailedNativeTransitionAndRepeatedEnd),
             ("phone: capture release retains pending handoff", phonePresentation.testCaptureStopCompletionRetainsHandoffAfterPresenterRelease),
+            ("phone link: ended until a deliberate action", phoneLink.testEndedSaysSoAndOffersOnlyADeliberateWayBack),
+            ("phone link: a failed USB check is not an empty bus", phoneLink.testAFailedUSBCheckIsNotAnEmptyBus),
+            ("phone link: monitor keeps a failed look and drops a late one", phoneLink.testTheMonitorKeepsAFailedLookAndDropsALateOne),
+            ("phone link: bounded capture faults and QuickTime only when busy", phoneLink.testCaptureFaultsStayBoundedAndOnlyABusyDeviceNamesQuickTime),
+            ("phone link: reports carry kinds, never personal names", phoneLink.testReportsCarryKindsNeverPersonalNames),
+            ("phone link: copy success depends on the pasteboard", phoneLink.testCopySuccessDependsOnThePasteboardsAnswer),
+            ("phone End: a late permission answer stays ended", phoneEnd.testEndWithAPendingPermissionStaysEndedWhenTheAnswerArrivesLate),
+            ("phone End: a late frame neither goes live nor reopens", phoneEnd.testALateFrameAfterEndNeitherGoesLiveNorReopens),
+            ("phone End: stale stage steps cannot take the phone back", phoneEnd.testTheStagesStepsAfterEndCannotTakeThePhoneBack),
+            ("phone End: a fresh visit or a re-plug resumes, End's own reopening does not", phoneEnd.testEndedResumesOnAFreshVisitOrWhenThePhoneIsPluggedInAgain),
+            ("phone End: the host restores its window and End stays final", phoneEnd.testEndAsksTheHostToRestoreItsWindowAndStaysEnded),
+            ("phone capture: the one phone screen is adopted beside a camera", phoneCapture.testTheOnePhoneScreenIsAdoptedBesideACamera),
+            ("phone capture: Present and Reconnect after End try at once", phoneCapture.testPresentAfterEndTriesAtOnce),
+            ("phone capture: a disconnect found by the health check is said", phoneCapture.testADisconnectFoundByTheHealthCheckIsSaid),
+            ("phone capture: a stall keeps the last frame and says so beside it", phoneCapture.testAStallKeepsTheLastFrameAndSaysSoBesideIt),
+            ("phone capture: another app's interruption is named and recovers", phoneCapture.testAnInterruptionByAnotherAppSaysSoAndRecovers),
+            ("phone capture: the page's preview outlives a brief cover", phoneCapture.testThePagesPreviewOutlivesABriefCover),
+            ("phone capture: an unchanged answer is not republished", phoneCapture.testAnUnchangedAnswerIsNotRepublished),
+            ("phone capture: the stage is wired before the page", phoneCapture.testTheStageIsWiredBeforeThePagesPreview),
+            ("phone capture: every frame is drawn on the page and the stage", phoneCapture.testEveryFrameOfTheSessionIsDrawnOnThePageAndTheStage),
+            ("every SF Symbol StageKit names exists", SymbolTests().testEverySymbolStageKitNamesExists),
             ("persona sessions: empty return and visible feedback", personaSessions.testEmptySetCanBeRevisitedAndLiveFailuresStayVisible),
             ("persona sessions: opt-in archive migration", personaSessions.testOptInMigrationBacksUpExactArchiveAndPreservesLegacyPlacement),
             ("persona sessions: independent placed copies", personaSessions.testTwoInstancesOwnIndependentGeometryVisibilityLockAndOrder),
@@ -662,6 +697,7 @@ struct TestRunner {
             ("full-height frame persistence and edges", viewportFit.testFullHeightSurvivesSavingAndReachesBothEdges),
             ("maximum frame size across displays", viewportFit.testMaximumSizeFitsDisplayAndPreservesScreenShape),
             ("full-height export and live geometry", viewportFit.testExportAndLiveScreenUseFullHeightBorder),
+            ("the phone's picture draws above the frame in a window", viewportFit.testThePhonesPictureDrawsAboveTheFrameInAWindow),
             ("logo native WebP decoding and alpha", logoImport.testWebPAndTransparentPadding),
             ("logo image orientation and rejection", logoImport.testOrientationAndInvalidImages),
             ("logo paste image and file persistence", logoImport.testPasteImageAndFilePersistence),
@@ -669,7 +705,7 @@ struct TestRunner {
             ("logo browser bounded download validation", sceneMedia.testDownloadsRejectOversizeHTMLAndInvalidBytes),
             ("logo browser request cancellation", sceneMedia.testDownloadCancellationStopsTheOwnedRequest),
             ("logo browser explicit captured-scene save", sceneMedia.testWebLogoPreviewAndExplicitSavePreserveOtherScenes),
-            ("editor motion suppression and drag pause", sceneMedia.testMotionPolicyReportsSuppressionAndCanvasPausesForEditing),
+            ("editor motion policy and drag ownership", sceneMedia.testMotionPolicyReportsSuppressionAndCanvasPausesForEditing),
             ("persona starter: CatalogHasStableUniqueBundleNamesAndEditableLabels", personaStarters.testCatalogHasStableUniqueBundleNamesAndEditableLabels),
             ("persona starter: MissingCorruptOversizedAndLinkedSourcesDoNotAddBrokenPersonas", personaStarters.testMissingCorruptOversizedAndLinkedSourcesDoNotAddBrokenPersonas),
             ("persona starter: ChoosingOneStarterUsesActiveGroupAndKeepsSeparateEditableCopies", personaStarters.testChoosingOneStarterUsesActiveGroupAndKeepsSeparateEditableCopies),
@@ -814,10 +850,7 @@ struct TestRunner {
             ("motion legacy and portable settings", gentleMotion.testLegacyAndPortableSceneMotion),
             ("motion export pixels stay still", gentleMotion.testMotionDoesNotChangeStillExport),
             ("motion foreground remains transparent", gentleMotion.testForegroundExcludesPhotograph),
-            ("motion transparent photo keeps still base", gentleMotion.testTransparentPhotographKeepsStillBase),
-            ("desktop ownership and spaces", desktopMotion.testDesktopOwnershipLossCannotResumeOrFollowAnotherSpace),
-            ("desktop sleep and pause independence", desktopMotion.testDesktopSleepReasonsAndPauseRemainIndependent),
-            ("desktop removal and fresh session", desktopMotion.testDesktopRemovalStopsEvenDuringSleepAndRestartNeedsNewSession)
+            ("motion transparent photo keeps still base", gentleMotion.testTransparentPhotographKeepsStillBase)
         ], at: 5)
         let libraryImageReuse = LibraryImageReuseTests()
         tests.append(contentsOf: [

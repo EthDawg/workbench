@@ -76,6 +76,15 @@ enum HistoryInputAvailability: Equatable {
     }
 }
 
+/// History's one way of saying when something was made: month, day and time, with the year only
+/// when it is not this year. Rows, task cards and the transcript review all use it.
+enum HistoryDate {
+    static func text(_ date: Date, now: Date = Date(), calendar: Calendar = .current) -> String {
+        let style = Date.FormatStyle.dateTime.month(.abbreviated).day().hour().minute()
+        return calendar.isDate(date, equalTo: now, toGranularity: .year) ? date.formatted(style) : date.formatted(style.year())
+    }
+}
+
 /// The page's logic, kept apart from its view so checks can run it on
 /// synthetic stores. Each kind keeps its own search.
 @MainActor
@@ -254,6 +263,7 @@ struct HistoryView: View {
     @State private var details: Transcript?
     @State private var removal: TranscriptRemoval?
     @State private var recording: Transcript?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(model: AppModel, snap: SnapModel, openSnapTalkSessions: (() -> Void)? = nil, applySuggestedMetadata: @escaping (HandoffJob, String) -> Void) {
         self.model = model; self.snap = snap
@@ -284,13 +294,11 @@ struct HistoryView: View {
             runningTask
             notices
             if model.history.isEmpty && snap.items.isEmpty && jobs.jobs.isEmpty {
-                VStack(spacing: 10) {
-                    Image(systemName: "clock").font(.largeTitle).foregroundStyle(.secondary)
-                    Text("Dictations, Snaps and Hand off results land here, newest first.").font(.headline)
-                    let dictate = model.preferences.dictationShortcut
-                    Text(dictate.enabled ? "Press \(dictate.label) to dictate, or choose Snap in the menu bar." : "Choose Dictate or Snap in the menu bar.")
-                        .foregroundStyle(.secondary)
-                }.frame(maxWidth: .infinity, maxHeight: .infinity)
+                let dictate = model.preferences.dictationShortcut
+                WorkbenchEmptyState(symbol: "clock", title: "Nothing here yet",
+                    detail: "Dictations, Snaps and Hand off results land here, newest first. "
+                        + (dictate.enabled ? "Press \(dictate.label) to dictate, or choose Snap in the menu bar." : "Choose Dictate or Snap in the menu bar.")) { EmptyView() }
+                    .frame(maxWidth: 520, alignment: .leading).frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 TextField("Search transcripts, Snaps and results", text: $query).textFieldStyle(.roundedBorder)
                     .accessibilityLabel("Search History")
@@ -298,11 +306,13 @@ struct HistoryView: View {
                     ForEach(HistoryFilter.allCases) { Text($0.title).tag($0) }
                 }.pickerStyle(.segmented).labelsHidden().accessibilityLabel("Show in History")
                 if entries.isEmpty {
-                    VStack(spacing: 8) {
-                        Image(systemName: appliedQuery.isEmpty ? "tray" : "magnifyingglass").font(.title2).foregroundStyle(.secondary)
-                        Text(appliedQuery.isEmpty ? emptyFilterTitle : "Nothing matches this search").font(.headline)
-                        Text("Your selection is kept.").font(.caption).foregroundStyle(.secondary)
-                    }.frame(maxWidth: .infinity, maxHeight: .infinity)
+                    // The selection note only says something when there is a selection to keep.
+                    WorkbenchEmptyState(symbol: appliedQuery.isEmpty ? "tray" : "magnifyingglass",
+                        title: appliedQuery.isEmpty ? emptyFilterTitle : "Nothing matches this search",
+                        detail: (appliedQuery.isEmpty ? emptyFilterDetail : "Try other words, or another filter.")
+                            + (library.selected.isEmpty ? "" : " Your selection is kept.")) {
+                        if !appliedQuery.isEmpty { Button("Clear search") { query = ""; appliedQuery = "" } }
+                    }.frame(maxWidth: 520, alignment: .leading).frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     list(entries, stores: stores)
                 }
@@ -366,17 +376,28 @@ struct HistoryView: View {
     @ViewBuilder private var notices: some View {
         // Removing or exporting a transcript that went wrong: the menu-bar panel's Open History…
         // leads to these words (#134).
-        if let attention = model.attention, attention.page == .history {
-            Text(attention.message).font(.caption).foregroundStyle(.red).textSelection(.enabled)
-        }
+        // Primary words with an orange symbol (docs/desktop.md § Status): red is for recording and removal.
+        if let attention = model.attention, attention.page == .history { WorkbenchNote(attention.message) }
         if let notice = jobs.notice { Text(notice).font(.caption).foregroundStyle(.secondary) }
-        if let error = jobs.error { Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
+        if let error = jobs.error { WorkbenchNote(error) }
         if let notice = snap.notice { Text(notice).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
         if !snap.problems.isEmpty {
-            DisclosureGroup("\(snap.problems.count) Snap record\(snap.problems.count == 1 ? " needs" : "s need") attention") {
+            DisclosureGroup {
                 ForEach(snap.problems, id: \.self) { Text($0).font(.caption).textSelection(.enabled) }
                 Button("Reload history") { snap.refresh() }
-            }.foregroundStyle(.orange)
+            } label: {
+                WorkbenchStatusBadge(text: "\(snap.problems.count) Snap record\(snap.problems.count == 1 ? "" : "s") couldn’t be read", tone: .attention)
+            }
+        }
+    }
+
+    private var emptyFilterDetail: String {
+        switch filter {
+        case .all: "Dictations, Snaps and Hand off results land here, newest first."
+        case .transcripts: "What you dictate and record in Meetings lands here."
+        case .snaps: "Snaps you take land here; archived ones are under Archived."
+        case .results: "Choose items, then Hand off… to prepare a task. Its result lands here."
+        case .archived: "Snaps you archive wait here until you restore them."
         }
     }
 
@@ -405,8 +426,6 @@ struct HistoryView: View {
                                 history: stores.sameSecond[Int(item.date.timeIntervalSince1970.rounded(.down))] ?? [item],
                                 review: $transcriptReview, details: $details, removal: $removal, recording: $recording,
                                 shown: shownTranscript == item.id, focus: $focusedTranscript, voiceOverFocus: $voiceOverTranscript)
-                                .overlay(RoundedRectangle(cornerRadius: 10)
-                                    .strokeBorder(shownTranscript == item.id ? Workbench.accent : .clear, lineWidth: 2))
                         case .snap(let item):
                             HistorySnapRow(snap: snap, library: library, item: item, images: images,
                                 saveImageToLibrary: { chosen in
@@ -422,9 +441,7 @@ struct HistoryView: View {
                                 HistoryMadeFrom(jobs: jobs, job: job) {
                                     HistoryList.availability(of: $0, transcripts: stores.transcripts, snaps: stores.snaps)
                                 }
-                            }.padding(16).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 10))
-                                .overlay(RoundedRectangle(cornerRadius: 10)
-                                    .strokeBorder(target?.card == job.id && target?.task == job.id ? Workbench.accent : .clear, lineWidth: 2))
+                            }.workbenchCard(outlined: target?.card == job.id && target?.task == job.id)
                         }
                     }
                 }.padding(.vertical, 2)
@@ -434,10 +451,10 @@ struct HistoryView: View {
                 // opened, and move keyboard and VoiceOver focus to that task.
                 guard revealRequest != nil, let target else { return }
                 try? await Task.sleep(nanoseconds: 80_000_000)
-                withAnimation { proxy.scrollTo(HistoryEntry.ID.result(target.card), anchor: .top) }
+                withAnimation(reduceMotion ? nil : .default) { proxy.scrollTo(HistoryEntry.ID.result(target.card), anchor: .top) }
                 if target.task != target.card {
                     try? await Task.sleep(nanoseconds: 250_000_000)
-                    withAnimation { proxy.scrollTo(HistoryEntry.ID.result(target.task), anchor: .center) }
+                    withAnimation(reduceMotion ? nil : .default) { proxy.scrollTo(HistoryEntry.ID.result(target.task), anchor: .center) }
                 }
                 try? await Task.sleep(nanoseconds: 120_000_000)
                 focusedTask = target.task
@@ -449,7 +466,7 @@ struct HistoryView: View {
                 // nothing is selected: the shared selection is only its checkboxes.
                 guard transcriptRequest != nil, let id = shownTranscript else { return }
                 try? await Task.sleep(nanoseconds: 80_000_000)
-                withAnimation { proxy.scrollTo(HistoryEntry.ID.transcript(id), anchor: .center) }
+                withAnimation(reduceMotion ? nil : .default) { proxy.scrollTo(HistoryEntry.ID.transcript(id), anchor: .center) }
                 try? await Task.sleep(nanoseconds: 120_000_000)
                 // The review sheet owns focus while open. Returning to the
                 // list leaves this exact row outlined without moving selection.
@@ -471,7 +488,7 @@ struct HistoryView: View {
                 }
                 if !notes.missingTranscripts.isEmpty {
                     HStack {
-                        Text("\(notes.missingTranscripts.count) selected transcripts are no longer available.").font(.caption).foregroundStyle(.orange)
+                        WorkbenchStatusBadge(text: "\(notes.missingTranscripts.count) selected transcripts are no longer available", tone: .attention)
                         Button("Remove missing references") { library.removeReferences(kind: .transcript, ids: notes.missingTranscripts) }.font(.caption)
                     }
                 }
@@ -517,7 +534,7 @@ struct HistorySnapRow: View {
     var saveImageToLibrary: ((SnapItem) -> Void)? = nil
     var body: some View {
         let reference = WorkbenchItemReference(kind: .snap, id: item.id)
-        let time = item.createdAt.formatted(date: .abbreviated, time: .shortened)
+        let time = HistoryDate.text(item.createdAt)
         let archived = item.archivedAt != nil
         HStack(alignment: .top, spacing: 12) {
             Toggle("", isOn: Binding(get: { library.selected.contains(reference) }, set: { include in
@@ -528,7 +545,11 @@ struct HistorySnapRow: View {
                 .accessibilityLabel("Select Snap, \(item.title), \(item.source.title), \(time)" + (archived ? ", archived" : ""))
             // The image opens read-only, archived or not; Edit… is its own action.
             CapturePreviewButton("View \(item.title)", item: { .snap(item, store: snap.store) }, collection: { images }) {
-                SnapThumbnail(model: snap, item: item).frame(width: 120, height: 76)
+                // Filled and clipped to the row's corner shape, so every Snap is the same tile
+                // whatever its proportions; the picture itself opens whole.
+                HistorySnapThumbnail(model: snap, item: item).frame(width: 120, height: 76)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Workbench.border))
             }
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
@@ -537,7 +558,7 @@ struct HistorySnapRow: View {
                     Spacer()
                     if item.edit != SnapEdit() { Image(systemName: "pencil").font(.caption).accessibilityLabel("Edited; original preserved") }
                 }
-                Text("Snap · \(item.source.title) · \(time)" + (archived ? " · Archived" : "")).font(.caption).foregroundStyle(.secondary)
+                Text("Snap · \(item.source.title) · \(time)" + (archived ? " · Archived" : "")).font(.subheadline).foregroundStyle(.secondary)
                 if !item.tags.isEmpty { Text(item.tags.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
                 HStack(spacing: 12) {
                     Button("Copy") { snap.copy(item.id) }.accessibilityLabel("Copy \(item.title)")
@@ -550,9 +571,9 @@ struct HistorySnapRow: View {
                     Spacer()
                     Button(archived ? "Restore" : "Archive") { snap.archive([item.id], archived: !archived) }
                         .accessibilityLabel((archived ? "Restore " : "Archive ") + item.title)
-                }.buttonStyle(.borderless).font(.system(size: 11))
+                }.buttonStyle(.borderless).font(.callout)
             }
-        }.padding(14).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 10))
+        }.workbenchCard()
             .contextMenu { Button("View image") { CaptureImagePreview.shared.show(.snap(item, store: snap.store), collection: images) } }
     }
 }
@@ -575,7 +596,7 @@ struct HistoryMadeFrom: View {
 
     @ViewBuilder private func madeFrom(_ inputs: HandoffJobInputs) -> some View {
         if let problem = inputs.problem {
-            Label(problem, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.orange)
+            WorkbenchNote(problem)
         } else if !inputs.items.isEmpty {
             let shown = showingAll ? inputs.items : Array(inputs.items.prefix(6))
             VStack(alignment: .leading, spacing: 6) {
@@ -626,8 +647,12 @@ private struct HistoryInputChip: View {
                 }
                 VStack(alignment: .leading, spacing: 1) {
                     Text(item.title).font(.caption.weight(.medium)).lineLimit(1)
-                    Text(availability.label ?? kind).font(.caption2).lineLimit(1)
-                        .foregroundStyle(availability == .inHistory ? Color.secondary : Color.orange)
+                    HStack(spacing: 3) {
+                        if availability != .inHistory {
+                            Image(systemName: "exclamationmark.circle.fill").foregroundStyle(Workbench.attention).accessibilityHidden(true)
+                        }
+                        Text(availability.label ?? kind).lineLimit(1).foregroundStyle(.secondary)
+                    }.font(.caption2)
                 }
                 Spacer(minLength: 0)
             }.padding(6).background(Workbench.background, in: RoundedRectangle(cornerRadius: 6))
@@ -642,7 +667,7 @@ private struct HistoryInputChip: View {
     private var savedCopy: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(item.title).font(.headline)
-            Text("\(kind) · \(item.capturedAt.formatted(date: .abbreviated, time: .shortened)) · \(item.role.title)")
+            Text("\(kind) · \(HistoryDate.text(item.capturedAt)) · \(item.role.title)")
                 .font(.caption).foregroundStyle(.secondary)
             Text(availability.label ?? "Still in History. This is the copy the task used.").font(.caption)
             ScrollView {
@@ -656,8 +681,7 @@ private struct HistoryInputChip: View {
                                 FrozenThumbnail(url: url, maximumPixels: 720).frame(maxWidth: 380, maxHeight: 240)
                             }
                         } else {
-                            Label("This saved image is missing from the task’s folder.", systemImage: "exclamationmark.triangle")
-                                .font(.caption).foregroundStyle(.orange)
+                            WorkbenchNote("This saved image is missing from the task’s folder.")
                         }
                     }
                 }
@@ -691,6 +715,30 @@ private struct FrozenThumbnail: View {
                 return NSImage(cgImage: image, size: .zero)
             }.value
             image = decoded
+        }
+    }
+}
+
+/// A Snap's picture as History's row shows it: filled to its tile rather than letterboxed. Decoded
+/// away from the main thread, as the Snap page's thumbnail is, and read again when the Snap is edited.
+private struct HistorySnapThumbnail: View {
+    let model: SnapModel
+    let item: SnapItem
+    @State private var image: NSImage?
+    var body: some View {
+        ZStack {
+            Workbench.background
+            if let image { Image(nsImage: image).resizable().scaledToFill() }
+            else { Image(systemName: "photo").font(.title2).foregroundStyle(.secondary) }
+        }.task(id: item.revision) {
+            let root = model.store.root, id = item.id
+            image = await Task.detached(priority: .utility) { () -> NSImage? in
+                guard let url = try? SnapStore(root: root).imageURL(id),
+                      let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+                      let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true,
+                        kCGImageSourceThumbnailMaxPixelSize: 512, kCGImageSourceCreateThumbnailWithTransform: true] as CFDictionary) else { return nil }
+                return NSImage(cgImage: cgImage, size: .zero)
+            }.value
         }
     }
 }

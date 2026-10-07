@@ -52,7 +52,10 @@ final class SnapModel: ObservableObject {
     }
     /// Problems and partial results that stay until something replaces them.
     /// A newer notice also ends a success confirmation still showing.
-    @Published var notice: String? { didSet { if notice != nil { clearConfirmation() } } }
+    @Published var notice: String? { didSet { if notice != nil { clearConfirmation() }; failureCode = nil } }
+    /// The typed code of a recoverable problem the notice shows, for Report a problem (#296). Any
+    /// other notice clears it; it is set only where the failure happens, never read from words.
+    @Published private(set) var failureCode: String?
     @Published private(set) var lastOutcome: SnapOutcome?
     /// ✓ Saved to History, Saved and copied or Image exported, gone after four
     /// seconds. Expiry clears only this; no timer closes an editor or save panel.
@@ -436,7 +439,7 @@ final class SnapModel: ObservableObject {
             // Asked from the person's own action: the first request lists Workbench
             // in System Settings. Nothing is hidden, and the Snap page explains.
             _ = screenAccess.request()
-            notice = Self.screenAccessOff
+            failed(Self.screenAccessOff, code: "snap.screen_access_off")
             onRestoreAfterCapture?(.failed); return
         }
         let request = UUID(); captureRequest = request
@@ -451,7 +454,7 @@ final class SnapModel: ObservableObject {
             guard captureRequest == request else { return }
             outcome = .draft(try beginDraft(bytes, source: mode.source, title: "\(mode.title) \(Date().formatted(date: .abbreviated, time: .shortened))"))
             notice = nil
-        } catch { notice = error.localizedDescription; outcome = .failed }
+        } catch { failed(error.localizedDescription, code: "snap.capture_failed"); outcome = .failed }
     }
 
     func cancelCapture() { captureRequest = nil; captureService.cancel(); notice = "Capture cancelled. Nothing was added to history." }
@@ -526,17 +529,19 @@ final class SnapModel: ObservableObject {
             closingWithCopy = copied; self.draft = nil; closingWithCopy = false
             refresh()
             let outcome: SnapOutcome = copyAfterSaving ? (copied ? .savedAndCopied : .savedButCopyFailed) : .saved
-            finish(outcome, notice: outcome == .savedButCopyFailed ? "Saved to History. Copy failed; use Copy from History to try again." : nil)
+            finish(outcome, notice: outcome == .savedButCopyFailed ? "Saved to History. Copy failed; use Copy from History to try again." : nil,
+                   code: outcome == .savedButCopyFailed ? "snap.copy_failed" : nil)
             didSave?(saved)
             return true
-        } catch { finish(.failed, notice: "Snap was not saved. \(error.localizedDescription)"); return false }
+        } catch { finish(.failed, notice: "Snap was not saved. \(error.localizedDescription)", code: "snap.save_failed"); return false }
     }
 
     /// One place classifies each save or export: a success gets its four-second
     /// confirmation, anything else keeps a notice that stays.
-    private func finish(_ outcome: SnapOutcome, notice: String?) {
+    private func finish(_ outcome: SnapOutcome, notice: String?, code: String? = nil) {
         lastOutcome = outcome
         self.notice = notice
+        if notice != nil, let code { failureCode = code }
         guard let kind = outcome.confirmation else { clearConfirmation(); return }
         let confirmation = LocalConfirmation(kind, at: clock())
         self.confirmation = confirmation
@@ -550,6 +555,12 @@ final class SnapModel: ObservableObject {
         guard let confirmation, confirmation.lifetime.event == event else { return }
         if confirmation.lifetime.isDue(at: clock()) { self.confirmation = nil }
         else { confirmationExpiry.schedule(confirmation.lifetime) { [weak self] event in self?.expireConfirmation(event) } }
+    }
+
+    /// A recoverable problem: its words for the Snap page and its code for Report a problem.
+    private func failed(_ message: String, code: String) {
+        notice = message
+        failureCode = code
     }
 
     private func clearConfirmation() {
@@ -574,7 +585,7 @@ final class SnapModel: ObservableObject {
             panel.allowedContentTypes = [.png]; panel.nameFieldStringValue = snapshot.item.title + ".png"
             guard panel.runModal() == .OK, let url = panel.url else { return }
             export(id, to: url)
-        } catch { finish(.failed, notice: error.localizedDescription) }
+        } catch { finish(.failed, notice: error.localizedDescription, code: "snap.export_failed") }
     }
 
     /// The export the person chose; confirmed only once the file is written.
@@ -583,7 +594,7 @@ final class SnapModel: ObservableObject {
             let snapshot = try store.snapshot(id)
             try snapshot.imagePNG.write(to: url, options: .atomic)
             finish(.exported, notice: nil)
-        } catch { finish(.failed, notice: error.localizedDescription) }
+        } catch { finish(.failed, notice: error.localizedDescription, code: "snap.export_failed") }
     }
 
     func archive(_ ids: Set<UUID>, archived: Bool) {

@@ -14,7 +14,9 @@ test('human and agent views preserve every capability status and evidence bounda
   }
   for (const item of contract.events) for (const key of ['stops', 'keeps', 'check']) assert.ok(brief.includes(item[key]));
   for (const item of contract.acceptance) assert.ok(brief.includes(item.test));
-  assert.equal(contract.capabilities.find(item=>item.id==='wallpaper-motion').status,'implemented');
+  assert.equal(contract.capabilities.find(item=>item.id==='wallpaper-motion').status,'retired');
+  assert.ok(html.includes('<span class="status retired">Retired</span>'));
+  assert.equal(contract.capabilities.find(item=>item.id==='phone-link')?.status,'implemented');
   assert.equal(contract.capabilities.find(item=>item.id==='wallpaper-entry').status,'proposed');
   assert.ok(!/<!-- [A-Z_]+ -->/.test(html));
 });
@@ -23,6 +25,8 @@ test('contract rejects ambiguous IDs and unsupported status instead of silently 
   assert.throws(()=>validateContract(duplicate), /duplicate/);
   const status = structuredClone(contract); status.capabilities[0].status='released-everywhere';
   assert.throws(()=>validateContract(status), /Unknown status/);
+  const retiredEvent = structuredClone(contract); retiredEvent.events[0].status='retired';
+  assert.throws(()=>validateContract(retiredEvent), /Unknown status/);
 });
 test('rendered records escape contributed text and source links stay repository relative', () => {
   const unsafe = structuredClone(contract); unsafe.capabilities[0].name='<img src=x onerror=alert(1)>';

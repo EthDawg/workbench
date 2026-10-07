@@ -24,7 +24,7 @@ enum FloatingToolbarSurface: Equatable {
 
     /// Hide toolbar is authoritative for the tools (#155). Drawing, a presentation and
     /// personas are deliberately not consulted: they carry on without the tools, reachable
-    /// by their keys and the menu-bar panel, and Show floating toolbar brings the tools back
+    /// by their keys and the menu-bar panel, and Show Floating Toolbar brings the tools back
     /// with their live state. A prompt insertion keeps the tools until it ends, because its
     /// Stop is there. Recording, processing, narration and their results keep the
     /// same host up, at rest as the compact mark, until they end.

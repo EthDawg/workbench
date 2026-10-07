@@ -23,7 +23,7 @@ enum Action: String, CaseIterable, Codable, Identifiable {
         case .clear: return "Clear & return to demo"
         case .whiteboard: return "Whiteboard"
         case .blackboard: return "Blackboard"
-        case .pointer: return "Cursor highlight"
+        case .pointer: return "Pointer"
         case .fade: return "Auto-fade"
         case .timer: return "Timer"
         case .controls: return "Open Draw"

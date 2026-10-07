@@ -55,7 +55,13 @@ public enum SceneSyncError: LocalizedError, Equatable {
     @Published public private(set) var error: String?
     @Published public private(set) var isBusy = false
     @Published public private(set) var isEnabled = false
-    @Published public private(set) var status = "Saved on this device"
+    /// Where an unsynced scene lives, in the words the rest of the app uses on this platform.
+    #if os(macOS)
+    public static let savedLocally = "Saved on this Mac"
+    #else
+    public static let savedLocally = "Saved on this device"
+    #endif
+    @Published public private(set) var status = SceneLibraryModel.savedLocally
     public let isConfigured: Bool
     public let directory: URL
     public var isStorageBlocked: Bool { storageBlocked }
@@ -84,7 +90,7 @@ public enum SceneSyncError: LocalizedError, Equatable {
     }
     private func publish() {
         records = archive.records; isEnabled = archive.syncEnabled && isConfigured && !storageBlocked
-        if !isBusy { status = isEnabled ? (archive.records.contains(where: { $0.isDirty }) ? "Waiting to sync" : "In iCloud") : "Saved on this device" }
+        if !isBusy { status = isEnabled ? (archive.records.contains(where: { $0.isDirty }) ? "Waiting to sync" : "In iCloud") : Self.savedLocally }
     }
     private func commit(_ next: SceneLibraryArchive) throws {
         guard !storageBlocked else { throw SceneDocumentError.storageBlocked }
@@ -177,7 +183,7 @@ public enum SceneSyncError: LocalizedError, Equatable {
         try commit(next)
     }
     public func statusLabel(for record: SavedSceneRecord) -> String {
-        guard record.account != nil else { return "Saved on this device" }
+        guard record.account != nil else { return Self.savedLocally }
         return record.isDirty ? "Waiting to sync" : "In iCloud"
     }
     /// Backgrounding suspends both queued timers and in-flight work. The next

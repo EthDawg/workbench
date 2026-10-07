@@ -2,30 +2,20 @@ import AppKit
 import AVFoundation
 
 final class PhonePresentationTests {
-    func testRestrictedCameraGuidanceDoesNotOfferUserPermissionToggle() {
-        let restricted = CaptureVideoAccess.unavailableMessage(for: .restricted) ?? ""
-        let denied = CaptureVideoAccess.unavailableMessage(for: .denied) ?? ""
-        XCTAssertTrue(restricted.contains("restricted"))
-        XCTAssertTrue(restricted.contains("approved presentation route"))
-        XCTAssertFalse(restricted.contains("System Settings"), "A restriction cannot be removed by the user Camera toggle")
-        XCTAssertTrue(denied.contains("System Settings"))
-        XCTAssertTrue(denied.contains("Camera"))
-        XCTAssertTrue(CaptureVideoAccess.unavailableMessage(for: .authorized) == nil)
-        XCTAssertTrue(CaptureVideoAccess.unavailableMessage(for: .notDetermined) == nil)
-    }
-
-    func testFirstCaptureRequiresExplicitSelectionEvenForMuxedHint() {
-        let muxed = DemoSource(id: "muxed-source", name: "External AV source", isScreen: true)
+    func testOnePhoneScreenIsAdoptedAndALostDeviceNeverSwitches() {
+        let muxed = DemoSource(id: "muxed-source", name: "Ethan’s iPhone", isScreen: true)
         let camera = DemoSource(id: "camera", name: "Camera", isScreen: false)
         var recovery = CaptureRecovery()
-        XCTAssertTrue(recovery.candidate(in: [muxed]) == nil, "Muxed metadata does not establish a phone screen identity")
-        XCTAssertTrue(recovery.candidate(in: [camera]) == nil)
-        XCTAssertTrue(recovery.candidate(in: [muxed, camera]) == nil)
+        XCTAssertEqual(recovery.candidate(in: [muxed]), muxed.id, "The one phone screen shows and is remembered")
+        XCTAssertTrue(recovery.candidate(in: [camera]) == nil, "A plain video device still needs a choice")
+        XCTAssertEqual(recovery.candidate(in: [muxed, camera]), muxed.id, "A camera beside the phone does not make it a choice")
+        XCTAssertTrue(recovery.candidate(in: [muxed, DemoSource(id: "second", name: "iPad", isScreen: true)]) == nil, "Two screens need a choice")
         _ = recovery.select(muxed.id)
         XCTAssertEqual(recovery.candidate(in: [camera, muxed]), muxed.id)
         recovery.invalidateSession()
-        XCTAssertEqual(recovery.candidate(in: [muxed]), muxed.id, "An explicit saved choice may reconnect without choosing again")
-        XCTAssertTrue(recovery.candidate(in: [camera]) == nil, "Loss of the selected source never opens another device")
+        XCTAssertEqual(recovery.candidate(in: [muxed]), muxed.id, "A remembered choice reconnects without choosing again")
+        XCTAssertTrue(recovery.candidate(in: [camera]) == nil, "Loss of the remembered source never opens another device")
+        XCTAssertTrue(recovery.candidate(in: [DemoSource(id: "other", name: "Other iPhone", isScreen: true)]) == nil, "Not even another phone")
     }
 
     func testNativeHandoffWaitsForBothCaptureAndWindowInEitherOrder() {

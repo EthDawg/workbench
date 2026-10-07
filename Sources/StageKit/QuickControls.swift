@@ -42,8 +42,12 @@ struct QuickControlsView: View {
                         }.foregroundStyle(.secondary)
                     }
                     if !app.shortcutFailures.isEmpty {
-                        Button("Resolve \(app.shortcutFailures.count) shortcut conflicts…") { app.showControls(tab: "Shortcuts") }
-                            .font(.system(size: 11)).foregroundStyle(.orange).buttonStyle(.link)
+                        // Orange words fail contrast: only the symbol carries attention.
+                        Button { app.showControls(tab: "Shortcuts") } label: {
+                            Label {
+                                Text("Resolve \(app.shortcutFailures.count) shortcut conflicts…").foregroundStyle(.primary)
+                            } icon: { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange) }
+                        }.font(.caption).buttonStyle(.borderless)
                     }
                     switch app.quickTab {
                     case .draw: drawing
@@ -56,13 +60,13 @@ struct QuickControlsView: View {
             Divider()
             Button { app.showDemoScenes() } label: {
                 HStack {
-                    Label("Demo scenes", systemImage: "iphone.and.landscape")
+                    Label("Demo scenes", systemImage: "iphone.landscape")
                     Spacer()
                     Text(settings.value.shortcut(for: .scenes).label).foregroundStyle(.secondary)
                 }
             }.buttonStyle(.plain).help("Saved customer backdrops and phone layouts")
             HStack {
-                Button("All Settings…") { app.showControls(tab: "Drawing") }.buttonStyle(.link)
+                Button("All Settings…") { app.showControls(tab: "Drawing") }.buttonStyle(.borderless).foregroundStyle(Workbench.accent)
                 Spacer()
                 if app.isDrawing || !app.boards.isEmpty {
                     Button("Return to demo") { app.hideQuickControls(); app.escape() }
@@ -175,9 +179,9 @@ struct QuickControlsView: View {
     private var cursor: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Label("Cursor highlight", systemImage: "cursorarrow.rays").fontWeight(.medium)
+                Label("Pointer", systemImage: "cursorarrow.rays").fontWeight(.medium)
                 Spacer()
-                Toggle("Cursor highlight", isOn: Binding(get: { app.pointerEnabled }, set: { value in
+                Toggle("Pointer", isOn: Binding(get: { app.pointerEnabled }, set: { value in
                     if value != app.pointerEnabled { app.perform(.pointer) }
                 })).labelsHidden().toggleStyle(.switch)
             }
@@ -201,7 +205,7 @@ struct QuickControlsView: View {
             Text("Each style keeps its own settings. Highlights hide while you draw.")
                 .font(.system(size: 11)).foregroundStyle(.secondary)
             Divider()
-            Button("macOS Zoom settings…") { app.openZoomSettings() }.buttonStyle(.link)
+            Button("macOS Zoom settings…") { app.openZoomSettings() }.buttonStyle(.borderless).foregroundStyle(Workbench.accent)
         }
     }
 

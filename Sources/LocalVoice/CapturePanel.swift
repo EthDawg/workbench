@@ -1099,8 +1099,11 @@ struct DictationResultView: View {
 
     private func failureState(_ failure: String, mirrored: Bool) -> some View {
         let message = VStack(alignment: .leading, spacing: 7) {
-            Label("Dictation needs attention", systemImage: "exclamationmark.triangle")
-                .font(.system(size: 12, weight: .semibold)).foregroundStyle(.orange)
+            // The words say what happened; orange marks only the symbol, so the title stays readable
+            // on a light panel (Fit rule 2: "Needs attention" is not a label).
+            Label { Text("Dictation stopped").foregroundStyle(.primary) } icon: {
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange).accessibilityHidden(true)
+            }.font(.system(size: 12, weight: .semibold))
             Text(failure).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true).help(failure)
         }.frame(maxWidth: .infinity, alignment: .leading).accessibilitySortPriority(3)
@@ -1230,7 +1233,7 @@ struct ClipboardCueHUD: View {
 
 /// Keyboard for a result's own controls (#211 F1). Keyboard entry keeps the launcher row, so a
 /// result shows only for the pointer's reveal; a person who then takes the keyboard, by the
-/// click on the mark or Window › Focus floating toolbar, lands on the result's first command,
+/// click on the mark or Window › Focus Floating Toolbar, lands on the result's first command,
 /// and Escape leaves as it does from the launcher row (`.onExitCommand` on each result, and
 /// `CapturePanel.escape` for a key nothing inside handled).
 extension View {

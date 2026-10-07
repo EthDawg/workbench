@@ -5,7 +5,11 @@ export function validateContract(contract) {
     const ids = contract[group].map(item => item.id);
     if (new Set(ids).size !== ids.length || ids.some(id => !/^[a-z][a-z0-9-]+$/.test(id))) throw new Error(`Invalid or duplicate ${group} IDs`);
   }
-  for (const item of [...contract.capabilities, ...contract.events]) {
+  // A capability can be retired and keep its record; lifecycle events describe current behaviour only.
+  for (const item of contract.capabilities) {
+    if (!['implemented', 'proposed', 'retired'].includes(item.status)) throw new Error(`Unknown status: ${item.id}`);
+  }
+  for (const item of contract.events) {
     if (!['implemented', 'proposed'].includes(item.status)) throw new Error(`Unknown status: ${item.id}`);
   }
   for (const source of contract.sources) if (new URL(source.url).protocol !== 'https:') throw new Error('Evidence links must use HTTPS');
@@ -13,7 +17,8 @@ export function validateContract(contract) {
   for (const item of contract.acceptance) if (!item.capabilities?.length || item.capabilities.some(id => !capabilities.has(id))) throw new Error(`Acceptance gate has an unknown capability: ${item.id}`);
   return contract;
 }
-function badge(item) { return `<span class="status ${escape(item.status)}">${item.status === 'proposed' ? 'Proposed' : 'Implemented'}</span>`; }
+const statusLabels = { proposed: 'Proposed', retired: 'Retired' };
+function badge(item) { return `<span class="status ${escape(item.status)}">${statusLabels[item.status] ?? 'Implemented'}</span>`; }
 export function renderEvent(event) {
   return `<div class="event-result"><h3>${escape(event.label)}</h3>${badge(event)}<div class="event-columns"><div><h4>Stops or changes</h4><p>${escape(event.stops)}</p></div><div><h4>Keeps</h4><p>${escape(event.keeps)}</p></div></div><p class="event-check">${escape(event.check)}</p></div>`;
 }

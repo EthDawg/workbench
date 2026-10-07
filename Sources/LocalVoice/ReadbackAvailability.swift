@@ -14,11 +14,11 @@ enum ReadbackAvailability {
             manifest.removeAllCachedResourceValues()
             guard try manifest.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true,
                   FileManager.default.isReadableFile(atPath: manifest.path) else {
-                return "This folder's session.json is unavailable or cannot be read."
+                return "Workbench can’t open this session’s files. They may have been moved, renamed or disconnected."
             }
             return nil
         } catch {
-            return "The session folder or session.json is unavailable. It may have been moved, removed, disconnected or access may be restricted."
+            return "Workbench can’t open this session’s files. They may have been moved, renamed or disconnected, or access may be restricted."
         }
     }
 }

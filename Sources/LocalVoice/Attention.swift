@@ -23,6 +23,16 @@ struct Attention: Equatable {
     }
     let message: String
     let page: Page
+    /// A typed problem code for Report a problem (#296), chosen where the problem is raised. It is
+    /// never read from the message; a raise without one names only its page.
+    var code: String
+
+    init(message: String, page: Page, code: String? = nil) {
+        self.message = message; self.page = page
+        // The manifest's error_code pattern; this file is also compiled alone by scripts/test-clean-draft.py.
+        let valid = code.flatMap { $0.range(of: "^[a-z][a-z0-9_.]{0,63}$", options: .regularExpression) != nil ? $0 : nil }
+        self.code = valid ?? "\(page.route).problem"
+    }
 }
 
 /// A named door's request to show and focus one section of its page (#134). Each request is

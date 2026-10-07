@@ -1,0 +1,89 @@
+/* Workbench sample deck: the deck Snap & Talk would hand back after a short tour of the app.
+   Same tokens as the website (site/site.css, site/share/card.css). Static on purpose:
+   render.sh prints it with headless Chrome, so nothing here may animate.
+
+   Chrome's PDF printer turns soft gradients and blurred shadows into large images, so the
+   walls and window shadows are drawn once by backdrop.html (the .bake rules at the end),
+   saved as backdrops/*.jpg by render.sh, and laid under the slides. Everything else stays
+   vector: text, ink, and the screenshots as the images they are. */
+@font-face{font-family:"Bricolage Grotesque";font-style:normal;font-weight:400 800;font-display:block;src:url(../../site/assets/fonts/bricolage-grotesque-latin.woff2) format("woff2")}
+@font-face{font-family:"Caveat";font-style:normal;font-weight:700;font-display:block;src:url(../../site/assets/fonts/caveat-bold-latin.woff2) format("woff2")}
+:root{
+  --ink:#12282e; --muted:#3f565b; --soft:#6b8186; --mint:#9af0c6; --mint-ink:#17714f; --mark:#ff5446;
+  --wall-a:#c4f1dc; --wall-b:#e8f1f4; --wall-c:#f8e6bd;
+  --night-a:#1b4740; --night-b:#0f252d; --night-c:#3a301e; --night-ink:#eef6f4; --night-muted:#b3c6c8; --night-mint:#86e6b9;
+  --display:"Bricolage Grotesque",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+  --body:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;
+  --hand:"Caveat","Bradley Hand",cursive;
+}
+@page{size:1920px 1080px;margin:0}
+*{box-sizing:border-box}
+html{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+html,body{margin:0;background:var(--wall-b)}
+body{width:1920px;font-family:var(--body);color:var(--ink);-webkit-font-smoothing:antialiased;font-synthesis:none}
+
+/* one slide = one 1920×1080 page; render.sh shows one at a time with #s1…#s6 */
+.slide{position:relative;width:1920px;height:1080px;overflow:hidden;break-after:page;background:var(--wall-b) url(backdrops/wide.jpg) 0 0/1920px 1080px no-repeat}
+.slide.low{background-image:url(backdrops/low.jpg)}
+.slide:last-child{break-after:auto}
+body:has(.slide:target) .slide:not(:target){display:none}
+
+.brand{position:absolute;right:120px;top:76px;margin:0;display:flex;align-items:center;gap:12px;font-weight:760;font-size:22px;letter-spacing:-.01em;color:var(--ink)}
+.brand svg{width:32px;height:32px;border-radius:9px}
+
+/* the copy band: headline and line sit on one baseline just above the window */
+.head{position:absolute;left:120px;right:120px;bottom:770px;display:grid;grid-template-columns:minmax(0,1fr) 470px;column-gap:96px;align-items:end}
+.eyebrow{margin:0 0 22px;font-size:19px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--mint-ink)}
+.eyebrow .n{color:var(--soft);font-variant-numeric:tabular-nums;margin-right:14px}
+h1,h2{margin:0;font-family:var(--display);font-weight:780;font-variation-settings:"opsz" 96;letter-spacing:-.045em}
+h2{font-size:92px;line-height:.98}
+.lede{margin:0 0 4px;font-size:26px;line-height:1.42;color:var(--muted);text-wrap:pretty}
+.lede kbd{font:inherit;font-weight:650;color:var(--ink)}
+
+/* a real Workbench window, 0.58 CSS px per screenshot pixel, rising out of the bottom edge */
+.win{position:absolute;top:352px;border-radius:13px;overflow:hidden;background:#fff;box-shadow:0 0 0 1px rgba(18,40,46,.12)}
+.win img{display:block;width:100%;height:auto}
+.wide{left:276px;width:1369px}
+.mid{left:351px;width:1218px}
+.low .win,.low .ink{top:372px}
+
+/* ink drawn over the window, in Draw's own coral, in the window's coordinates */
+.ink{position:absolute;top:352px;height:728px;overflow:visible;pointer-events:none}
+.ink path{fill:none;stroke:var(--mark);stroke-linecap:round;stroke-linejoin:round}
+.ink .loop{stroke-width:4.6}
+.ink .arrow{stroke-width:3.6}
+.ink text{fill:var(--mark);font-family:var(--hand);font-weight:700;font-size:44px;letter-spacing:.005em}
+
+/* persona card with its voice ring, as on the website */
+.persona{position:absolute;width:236px;height:236px}
+.persona img{position:absolute;inset:0;width:100%;height:100%}
+.persona .ring{position:absolute;left:4.6%;top:-1.4%;width:90.8%;height:90.8%;overflow:visible}
+.persona .ring line{stroke:#45d395;stroke-width:2.2;stroke-linecap:round}
+
+/* ---------- cover ---------- */
+.slide.cover{color:var(--night-ink);background:var(--night-b) url(backdrops/cover.jpg) 0 0/1920px 1080px no-repeat}
+.cover .brand{left:120px;right:auto;color:var(--night-ink)}
+.cover .copy{position:absolute;left:120px;top:236px;width:760px}
+.cover .eyebrow{color:var(--night-mint);margin-bottom:34px}
+.cover h1{font-size:144px;line-height:1.02}
+.cover h1 span{display:block;white-space:nowrap}
+.cover h1 .mk{position:relative;display:inline-block}
+.cover h1 .mk svg{position:absolute;left:-10%;top:-14%;width:118%;height:136%;overflow:visible}
+.cover h1 span:last-child{margin-top:18px}
+.cover h1 .mk path{fill:none;stroke:var(--mint);stroke-width:6.5;stroke-linecap:round;stroke-linejoin:round}
+.cover .lede{margin-top:46px;font-size:30px;line-height:1.4;color:var(--night-muted);max-width:21em}
+.cover .fine{position:absolute;left:120px;bottom:80px;margin:0;font-size:19px;color:var(--night-muted)}
+.cover .fine span+span:before{content:"·";margin:0 10px}
+/* three windows stacked down and to the left: only the front one shows below its title strip */
+.cover .win{width:1100px;box-shadow:0 0 0 1px rgba(255,255,255,.08)}
+.cover .w1{left:1216px;top:150px}
+.cover .w2{left:1088px;top:285px}
+.cover .w3{left:960px;top:420px}
+/* the front windows' shadows fall on the windows behind them, so they cannot be baked */
+.cover .w2,.cover .w3{box-shadow:0 -1px 0 rgba(0,0,0,.10),0 -3px 0 rgba(0,0,0,.05),0 -6px 0 rgba(0,0,0,.03),0 0 0 1px rgba(255,255,255,.08)}
+
+/* ---------- baked backdrops (backdrop.html only) ---------- */
+.bake{background:radial-gradient(52% 64% at 6% 4%,var(--wall-a) 0,transparent 72%),radial-gradient(46% 56% at 98% 100%,var(--wall-c) 0,transparent 72%),var(--wall-b)}
+.bake.cover{background:radial-gradient(58% 74% at 8% 16%,var(--night-a) 0,transparent 72%),radial-gradient(50% 62% at 96% 100%,var(--night-c) 0,transparent 72%),var(--night-b)}
+.bake .win{background:#fff;height:960px;box-shadow:0 1px 2px rgba(18,40,46,.06),0 18px 40px rgba(18,40,46,.12),0 50px 110px rgba(18,40,46,.16)}
+.bake.cover .win{height:760px;box-shadow:0 30px 70px rgba(0,0,0,.45),0 8px 18px rgba(0,0,0,.2)}

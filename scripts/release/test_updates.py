@@ -66,6 +66,23 @@ class UpdatesTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             build_info.stamp({}, 'staging', source='a'*40, dirty=False)
 
+    def test_only_the_stable_release_carries_the_report_dsn(self):
+        stable = build_info.stamp({}, 'production', released=True, source='a'*40, dirty=False, build='3')
+        config = json.loads((build_info.ROOT/'scripts/release/reporting.json').read_text())['production']
+        self.assertEqual(stable['WorkbenchReportDSN'], config['dsn'])
+        self.assertEqual('WorkbenchReportVerifierURL' in stable, bool(config['verifier']))
+        # Preview, local builds and a Preview restamped from the production component carry none.
+        for info in [build_info.stamp({}, 'preview', released=True, source='a'*40, dirty=False, build='4'),
+                     build_info.stamp({}, 'production', source='a'*40, dirty=True, build='5'),
+                     build_info.stamp(dict(stable), 'preview', released=True, source='a'*40, dirty=False, build='6')]:
+            for key in build_info.REPORTING_KEYS:
+                self.assertNotIn(key, info)
+        for bad in [{'dsn': 'http://key@example.com/1'}, {'dsn': 'https://example.com/1'}, {'dsn': ''},
+                    {'dsn': config['dsn'], 'verifier': 'http://example.com'}, {'dsn': config['dsn'], 'verifier': 'https://u:p@example.com'}]:
+            with self.subTest(bad=bad), self.assertRaises(RuntimeError):
+                build_info.reporting(bad)
+        self.assertEqual(build_info.reporting({'dsn': config['dsn'], 'verifier': 'https://verify.example.com'})[1], 'https://verify.example.com')
+
     def test_receipt_cannot_relabel_or_change_archive(self):
         config = json.loads((build_info.ROOT/'scripts/release/updates.json').read_text())
         with tempfile.TemporaryDirectory() as directory:

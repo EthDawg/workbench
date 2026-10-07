@@ -40,16 +40,14 @@ struct StateStore {
 @MainActor enum TextDelivery {
     static func copy(_ text: String) -> Int? { fatalError("The fixture must inject its private Copy action") }
 }
-struct FixtureShortcut { var label = "⌃⌥J" }
+struct FixtureShortcut { var label = "⌃⌥J"; var enabled = true }
 struct FixturePreferences { func shortcut(_ id: UInt32) -> FixtureShortcut { FixtureShortcut() } }
 @MainActor final class AppModel: ObservableObject {
     @Published var transcript = "A synthetic transcript for this disposable app."
     @Published var page = "library"
     @Published var libraryFocusToken = UUID()
     @Published var preferences = FixturePreferences()
-    let photoHandoff = FixturePhotoHandoff()
     let presenter = FixturePresenter()
-    var onUsePhotoAsBackdrop: ((URL, String) -> Void)?
 }
 // The separate Saved Prompts panel is covered by production --check-core and
 // the integrated gallery/native pass. This isolated resource-row harness does
@@ -58,23 +56,19 @@ struct LibraryPromptButton: View {
     let model: AppModel
     var body: some View { EmptyView() }
 }
-// Photo arrival is covered by its own shared-module and UI checks. This recall
-// fixture deliberately keeps cloud and handoff dependencies out of its scope.
-final class FixturePhotoHandoff {}
 final class FixturePresenter {}
 struct ChromeConnectionView: View {
     let presenter: FixturePresenter
     var body: some View { EmptyView() }
 }
-struct PhotoHandoffView: View {
-    let handoff: FixturePhotoHandoff
-    var onUseAsBackdrop: ((URL, String) -> Void)?
-    var body: some View { Text("Photo handoff is outside this recall fixture.") }
-}
 enum Workbench {
     static let accent = Color.accentColor
     static let surface = Color(nsColor: .controlBackgroundColor)
     static let border = Color(nsColor: .separatorColor)
+    static let attention = Color.orange
+    static let bodyText = Font.body
+    static let tileRadius: CGFloat = 12
+    static let tilePadding: CGFloat = 16
 }
 extension View { func workbenchTheme() -> some View { self } }
 '''
@@ -272,12 +266,14 @@ def compile_fixture(directory: Path, main: str, binary: Path) -> None:
     dependencies = directory / "FixtureDependencies.swift"
     preference_types = [
         "enum WorkbenchHome {\n" + SwiftFile(PROJECT / "Sources/LocalVoice/WorkbenchHome.swift").type("WorkbenchHome").extract([
-            "navItems", "sections", "subpages", "destination"]) + "\n}",
+            "navItems", "sections", "subpages", "retiredRoutes", "destination"]) + "\n}",
         SwiftFile(PROJECT / "Sources/LocalVoice/Core.swift").extract(["AtomicPrivateFile"]),
         SwiftFile(PROJECT / "Sources/LocalVoice/VoicePreferences.swift").extract([
             "CaptureMode", "DeliveryMode", "FirstDictationGuide", "VoiceShortcut", "VoicePreferences"]),
         SwiftFile(PROJECT / "Sources/LocalVoice/DictationCleanup.swift").extract(["CleanupStyle"]),
         SwiftFile(PROJECT / "Sources/StageKit/Hotkeys.swift").extract(["GlobalShortcutCombination", "GlobalShortcutRule"]),
+        # The page kit's status, wrapping note and empty state, as Resources draws them.
+        SwiftFile(PROJECT / "Sources/LocalVoice/WorkbenchPageStyle.swift").extract(["WorkbenchTone", "WorkbenchStatusBadge", "WorkbenchNote", "WorkbenchEmptyState"]),
     ]
     dependencies.write_text(DEPENDENCIES + "\n" + "\n".join(preference_types))
     checks = directory / "FixtureMain.swift"

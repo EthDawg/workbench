@@ -85,7 +85,9 @@ final class DemoModeTests {
         var state = CaptureRecovery()
         XCTAssertTrue(state.candidate(in: [camera]) == nil, "Never auto-open a webcam")
         XCTAssertTrue(state.candidate(in: [phone, other]) == nil, "Ambiguous devices require selection")
-        XCTAssertTrue(state.candidate(in: [phone, camera]) == nil, "First use requires an explicit source choice; muxed media is not phone identity")
+        // The one phone screen is shown and remembered beside a camera (lead decision on #285, 7 October 2026);
+        // the screen flag is a display hint, never proof of whose phone it is, and a webcam is never opened.
+        XCTAssertEqual(state.candidate(in: [phone, camera]), phone.id, "The one screen beside a webcam is adopted, never the webcam")
         let first = state.select(phone.id)
         XCTAssertTrue(state.candidate(in: [other, camera]) == nil, "Disconnect cannot switch to another person's device")
         XCTAssertEqual(state.candidate(in: [phone, other]), "phone")

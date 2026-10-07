@@ -1,0 +1,37 @@
+{
+  "title": "Say it. Snap it. Show it.",
+  "subtitle": "A short tour of Workbench",
+  "pdf": "Workbench sample deck.pdf",
+  "slides": [
+    {
+      "file": "slide-1.jpg",
+      "title": "Say it. Snap it. Show it.",
+      "narration": "This is a quick tour of Workbench: a set of small tools that sit on top of every app on my Mac. Say it, snap it, show it."
+    },
+    {
+      "file": "slide-2.jpg",
+      "title": "Talk, and it types where you are.",
+      "narration": "This is Dictate. I press Option V wherever I'm typing, say what I mean, and the words land right there. If I lose track of it, the same text is waiting in History."
+    },
+    {
+      "file": "slide-3.jpg",
+      "title": "Leave every call with the words.",
+      "narration": "Here's a call that's just finished. I started it once at the beginning and didn't touch it again. One click on Copy transcript and every word is on my clipboard, ready for the follow-up."
+    },
+    {
+      "file": "slide-4.jpg",
+      "title": "Snap a few screens. Talk. Get a deck.",
+      "narration": "This is a Snap & Talk session: each screenshot keeps what I said beside it, so the assistant knows what matters. When the order's right, I hand it off and the assistant builds the deck."
+    },
+    {
+      "file": "slide-5.jpg",
+      "title": "Mark it up mid-demo.",
+      "narration": "When I'm presenting I hold Option D, draw over whatever's on screen, then let go and carry on. Option X clears it."
+    },
+    {
+      "file": "slide-6.jpg",
+      "title": "Nothing gets lost.",
+      "narration": "And nothing gets lost. Every dictation, meeting, Snap and result lands in History on this Mac, newest first, and I can search all of it."
+    }
+  ]
+}

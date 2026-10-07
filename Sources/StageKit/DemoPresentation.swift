@@ -7,9 +7,17 @@ final class DemoPresentation: NSObject, NSWindowDelegate {
     let sessionIdentity = UUID()
     var onEnd: (() -> Void)?
     var onRevealSharedControls: (() -> Void)?
+    /// Hands the shared capture back to its owner at the end. The owner lets go of the
+    /// device either way (End is final; a handoff keeps it free for the Apple app) and
+    /// the completion runs once the device is released.
+    var releaseCapture: ((_ forHandoff: Bool, _ completion: @escaping () -> Void) -> Void)?
+    /// Reconnect and Show go through the capture's owner, which may have released it.
+    var reconnect: (() -> Void)?
+    var showSource: ((String) -> Void)?
     private let sharedControls: Bool
     private var window: DemoStageWindow?
     private let capture: DemoCapture
+    private let phoneLink: PhoneLinkMonitor
     private let controls: PresentationControlsModel
     private let scene: DemoScene
     private let backdrop: NSImage
@@ -22,13 +30,17 @@ final class DemoPresentation: NSObject, NSWindowDelegate {
     private var lifecycle = PresentationLifecycle()
     private let handoff = PresentationHandoff()
     private var keepAwake: NSObjectProtocol?
-    init(scene: DemoScene, image: NSImage, logo: NSImage?, hand: NSImage?, persona: NSImage? = nil, ambience: AmbientSceneImages? = nil, screen: NSScreen?, root: URL, mode: PresentationMode = .fullScreen, sharedControls: Bool = false) {
+    /// False only under a check's synthetic capture: the stage window is built and ended as
+    /// usual but never ordered on screen, so the check neither shows a window nor activates the app.
+    private let onScreen: Bool
+    init(scene: DemoScene, image: NSImage, logo: NSImage?, hand: NSImage?, persona: NSImage? = nil, ambience: AmbientSceneImages? = nil, screen: NSScreen?, root: URL, capture: DemoCapture, phoneLink: PhoneLinkMonitor, mode: PresentationMode = .windowed, sharedControls: Bool = false, onScreen: Bool = true) {
         self.scene = scene; backdrop = image; self.logo = logo; self.hand = hand; self.persona = persona; self.screen = screen
-        self.mode = mode; self.ambience = ambience; self.sharedControls = sharedControls
-        capture = DemoCapture(root: root)
+        self.mode = mode; self.ambience = ambience; self.sharedControls = sharedControls; self.phoneLink = phoneLink; self.onScreen = onScreen
+        self.capture = capture
         controls = PresentationControlsModel(root: root)
         super.init()
     }
+    var showsPhone: Bool { scene.showsPhone }
     func start() {
         keepAwake = ProcessInfo.processInfo.beginActivity(options: [.userInitiated, .idleDisplaySleepDisabled], reason: "Presenting a Workbench demo")
         let visible = screen?.visibleFrame ?? CGRect(x: 80, y: 80, width: 1100, height: 720)
@@ -36,7 +48,7 @@ final class DemoPresentation: NSObject, NSWindowDelegate {
             size: CGSize(width: min(1100, visible.width - 64), height: min(720, visible.height - 64)),
             visibleFrame: visible, inset: 32)
         let window = DemoStageWindow(contentRect: frame, styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-        window.title = scene.name + " · Demo"
+        window.title = scene.name + " · Present"
         window.titleVisibility = mode == .fullScreen ? .hidden : .visible; window.titlebarAppearsTransparent = false
         window.minSize = NSSize(width: 480, height: 320)
         window.collectionBehavior = [.fullScreenPrimary]
@@ -46,33 +58,50 @@ final class DemoPresentation: NSObject, NSWindowDelegate {
             guard let self else { return }
             if !self.controls.handleEscape() { self.end() }
         }
-        window.onReconnect = { [weak self] in self?.capture.reconnect() }
+        window.onReconnect = { [weak self] in self?.reconnectCapture() }
         window.onRevealControls = { [weak self] in
             guard let self else { return }
             if self.sharedControls { self.onRevealSharedControls?() } else { self.controls.revealForKeyboard() }
         }
-        window.contentView = NSHostingView(rootView: DemoStageContent(scene: scene, backdrop: backdrop, logo: logo, hand: hand, persona: persona, ambience: ambience, capture: capture, controls: controls, sharedControls: sharedControls,
-            endAndOpen: { [weak self] in self?.endAndOpen($0) }, end: { [weak self] in self?.end() }))
+        window.contentView = NSHostingView(rootView: DemoStageContent(scene: scene, backdrop: backdrop, logo: logo, hand: hand, persona: persona, ambience: ambience, capture: capture, phoneLink: phoneLink, controls: controls, sharedControls: sharedControls,
+            perform: { [weak self] in self?.perform($0) }, endAndOpen: { [weak self] in self?.endAndOpen($0) }, end: { [weak self] in self?.end() }))
         self.window = window
+        guard onScreen else { return }
         NSApp.activate(ignoringOtherApps: true); window.makeKeyAndOrderFront(nil)
         if mode == .fullScreen { lifecycle.willEnter(); window.toggleFullScreen(nil) }
-        if scene.showsPhone { capture.start() }
     }
+    /// The one next step the status names, wherever it is shown. Once End is under way the
+    /// stage takes no step, so a late click or ⌘R cannot take the phone back from End.
+    func perform(_ step: PhoneLinkStatus.Step) {
+        guard !lifecycle.ending, !lifecycle.finished else { return }
+        switch step {
+        case .showSource(let id, _): if let showSource { showSource(id) } else { capture.select(id) }
+        case .chooseSource: controls.close(); controls.choosingSource = true; bringForward()
+        case .reconnect: reconnectCapture()
+        case .openCameraSettings: NSWorkspace.shared.open(PhoneConnectionSupport.cameraSettingsURL)
+        }
+    }
+    func reconnectCapture() {
+        guard !lifecycle.ending, !lifecycle.finished else { return }
+        if let reconnect { reconnect() } else { capture.reconnect() }
+    }
+    var status: PhoneLinkStatus { MainActor.assumeIsolated { phoneLink.status } }
     func makeControlsMenu() -> NSMenu {
         let menu = NSMenu(title: "Present"); menu.autoenablesItems = false
         if scene.showsPhone {
-            menu.addItem(StageMenuAction(capture.live ? "Device Connected" : capture.message, enabled: false) {})
-            if !capture.sources.isEmpty { menu.addSubmenu("Source", items: capture.sources.map { source in
-                StageMenuAction(source.name, checked: source.id == capture.selectedID) { [weak self] in self?.capture.select(source.id) }
+            let status = self.status
+            menu.addItem(StageMenuAction(status.title, enabled: false) {})
+            if let step = status.step { menu.addItem(StageMenuAction(step.title) { [weak self] in self?.perform(step) }) }
+            if capture.sources.count > 1 { menu.addSubmenu("Choose screen", items: capture.sources.map { source in
+                StageMenuAction(source.name, checked: source.id == capture.selectedID) { [weak self] in self?.perform(.showSource(id: source.id, title: source.name)) }
             }) }
-            menu.addItem(StageMenuAction("Source & Connection Help…") { [weak self] in
-                self?.controls.choosingSource = true; self?.bringForward()
-            })
+            if status.offersReconnect {
+                menu.addItem(StageMenuAction("Reconnect") { [weak self] in self?.reconnectCapture() })
+            }
             menu.addItem(StageMenuAction("Match Device Proportions", checked: controls.fitToSource) { [weak self] in self?.controls.fitToSource.toggle() })
-            menu.addItem(StageMenuAction("Reconnect") { [weak self] in self?.capture.reconnect() })
-        }
-        if scene.gentleMotion == true {
-            menu.addItem(StageMenuAction(controls.motionPaused ? "Play Background Motion" : "Pause Background Motion") { [weak self] in self?.controls.motionPaused.toggle() })
+            if status.offersHelp {
+                menu.addItem(StageMenuAction("Can’t See Your Phone?…") { [weak self] in self?.showHelp() })
+            }
         }
         menu.addItem(StageMenuAction("Show Presentation Window") { [weak self] in self?.bringForward() })
         let fullScreen = window?.styleMask.contains(.fullScreen) == true
@@ -94,18 +123,15 @@ final class DemoPresentation: NSObject, NSWindowDelegate {
             })
         }
         menu.addItem(.separator())
-        for app in NativePresentationApp.allCases {
-            menu.addItem(StageMenuAction("End Preview & Open \(app.title)", enabled: app.isAvailable) { [weak self] in self?.endAndOpen(app) })
-        }
         menu.addItem(StageMenuAction("End Presentation") { [weak self] in self?.end() })
         return menu
     }
     /// The pill's View control contains only this live window and source. Ending is
-    /// already a direct action; external-player handoffs remain in connection help.
+    /// already a direct action.
     func makeViewMenu() -> NSMenu {
         let menu = makeControlsMenu()
-        // Like the panel, the pill's menu holds only actions: the connection status line is not one.
-        for item in menu.items where item.title == "End Presentation" || item.title.hasPrefix("End Preview & Open ")
+        // Like the panel, the pill's menu holds only actions: the status line is not one.
+        for item in menu.items where item.title == "End Presentation"
             || !item.isEnabled && !item.isSeparatorItem && item.submenu == nil {
             menu.removeItem(item)
         }
@@ -115,10 +141,11 @@ final class DemoPresentation: NSObject, NSWindowDelegate {
     /// The device this presentation's capture holds; another camera owner reports
     /// a conflict instead of taking it.
     var heldDeviceID: String? { capture.heldDeviceID }
-    var liveSettingsView: some View { LiveSettings(presentation: self, capture: capture, controls: controls) }
+    var liveSettingsView: some View { LiveSettings(presentation: self, capture: capture, phoneLink: phoneLink, controls: controls) }
     private struct LiveSettings: View {
         let presentation: DemoPresentation
         @ObservedObject var capture: DemoCapture
+        @ObservedObject var phoneLink: PhoneLinkMonitor
         @ObservedObject var controls: PresentationControlsModel
         var body: some View {
             VStack(alignment: .leading, spacing: 10) {
@@ -135,16 +162,9 @@ final class DemoPresentation: NSObject, NSWindowDelegate {
                 }))
                 HStack { submenu("Window Size"); submenu("Window Position") }.disabled(controls.fullScreen)
                 if presentation.scene.showsPhone {
-                    Text(capture.live ? "Device connected" : capture.message).font(.caption).foregroundStyle(.secondary)
-                    HStack {
-                        if !capture.sources.isEmpty { submenu("Source") }
-                        Button("Reconnect") { capture.reconnect() }
-                        Button("Source & connection help…") { controls.choosingSource = true; presentation.bringForward() }
-                    }
-                    Toggle("Match device proportions", isOn: $controls.fitToSource)
-                }
-                if presentation.scene.gentleMotion == true {
-                    Toggle("Pause background motion", isOn: $controls.motionPaused)
+                    PhoneLinkStatusRow(status: phoneLink.status, perform: { presentation.perform($0) }, help: { presentation.showHelp() },
+                                       reconnect: { presentation.reconnectCapture() })
+                    if capture.sources.count > 1 { submenu("Choose screen") }
                 }
             }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
                 .background(Workbench.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
@@ -159,19 +179,22 @@ final class DemoPresentation: NSObject, NSWindowDelegate {
         }
     }
     func bringForward() { NSApp.activate(ignoringOtherApps: true); window?.makeKeyAndOrderFront(nil) }
+    func showHelp() { controls.close(); controls.choosingSource = false; controls.showingHelp = true; bringForward() }
     func end() {
         guard !lifecycle.ending, !lifecycle.finished else { return }
         let operation = handoff
-        capture.stop { operation.captureDidStop() }
+        let forHandoff = handoff.requested
+        if let releaseCapture { releaseCapture(forHandoff) { operation.captureDidStop() } }
+        else { capture.stop { operation.captureDidStop() } }
         releaseKeepAwake()
         apply(lifecycle.requestEnd())
     }
-    private func endAndOpen(_ app: NativePresentationApp) {
+    func endAndOpen(_ app: NativePresentationApp) {
         guard !lifecycle.ending, !lifecycle.finished else { return }
         guard handoff.request({
             app.open { message in
-                // The source sheet and its parent are now closed, so a message
-                // on that former capture model would be invisible.
+                // The sheet and its parent are now closed, so a message on
+                // that former capture model would be invisible.
                 let alert = NSAlert()
                 alert.messageText = "Could not open \(app.title)"
                 alert.informativeText = message
@@ -221,6 +244,38 @@ final class DemoPresentation: NSObject, NSWindowDelegate {
     }
     func windowDidFailToExitFullScreen(_ window: NSWindow) { apply(lifecycle.failedToExit()) }
     func windowShouldClose(_ sender: NSWindow) -> Bool { end(); return false }
+
+    /// The stage's content for an offscreen render: the same view the window hosts,
+    /// with its own controls and no window, capture session or app launch.
+    static func offscreenStage(scene: DemoScene, image: NSImage, capture: DemoCapture, phoneLink: PhoneLinkMonitor, root: URL) -> AnyView {
+        AnyView(DemoStageContent(scene: scene, backdrop: image, logo: nil, hand: nil, persona: nil, ambience: nil, capture: capture, phoneLink: phoneLink,
+                                 controls: PresentationControlsModel(root: root), sharedControls: false, perform: { _ in }, endAndOpen: { _ in }, end: {}))
+    }
+}
+
+/// The status, its one next step and Reconnect, as the Present page's live
+/// settings and the stage controls show them.
+struct PhoneLinkStatusRow: View {
+    let status: PhoneLinkStatus
+    let perform: (PhoneLinkStatus.Step) -> Void
+    let help: () -> Void
+    let reconnect: () -> Void
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: status.toneSymbol).foregroundStyle(status.toneColor).frame(width: 18).accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(status.title).font(.callout.weight(.semibold))
+                    if let detail = status.detail { Text(detail).font(.caption).foregroundStyle(.secondary) }
+                }.fixedSize(horizontal: false, vertical: true)
+            }
+            HStack(spacing: 8) {
+                if let step = status.step { Button(step.title) { perform(step) } }
+                if status.offersReconnect { Button("Reconnect", action: reconnect).help("Reconnect device · ⌘R in the presentation") }
+                if status.offersHelp { Button("Can’t see your phone?", action: help).buttonStyle(.workbenchLink) }
+            }.controlSize(.small)
+        }
+    }
 }
 
 private final class DemoStageWindow: NSWindow {
@@ -257,8 +312,10 @@ private final class PresentationControlsModel: ObservableObject {
     @Published var fullScreen = false
     @Published private(set) var policy = PresentationControlsPolicy()
     @Published var fitToSource = true
-    @Published var motionPaused = false
     @Published var choosingSource = false
+    @Published var showingHelp = false
+    /// Set while the source sheet closes so the help opens after it, not in the same update.
+    var helpAfterSource = false
     @Published private(set) var focusRequest = 0
     @Published private(set) var placement = PresentationControlPlacement()
     @Published private(set) var dragFrame: CGRect?
@@ -329,7 +386,7 @@ private final class PresentationControlsModel: ObservableObject {
 }
 
 private struct DemoStageContent: View {
-    private enum Control: Hashable { case tile, source, reconnect, position, close, end, deviceSource, deviceReconnect }
+    private enum Control: Hashable { case tile, step, reconnect, source, position, close, end, deviceStep, deviceHelp }
     let scene: DemoScene
     let backdrop: NSImage
     let logo: NSImage?
@@ -337,14 +394,26 @@ private struct DemoStageContent: View {
     let persona: NSImage?
     let ambience: AmbientSceneImages?
     @ObservedObject var capture: DemoCapture
+    @ObservedObject var phoneLink: PhoneLinkMonitor
     @ObservedObject var controls: PresentationControlsModel
     let sharedControls: Bool
+    let perform: (PhoneLinkStatus.Step) -> Void
     let endAndOpen: (NativePresentationApp) -> Void
     let end: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var pendingNativeApp: NativePresentationApp?
     @FocusState private var focusedControl: Control?
+    /// The phone has been on this stage. After that the device frame never carries words:
+    /// a stall keeps the last frame and a disconnect leaves the clean scene, while the
+    /// controls, the menu, the page and the toolbar say what happened.
+    @State private var phoneHasShown = false
+    /// The stage is shared in a call, so its words name devices by kind, never by the
+    /// person's own device name.
+    private var status: PhoneLinkStatus { phoneLink.sharedStatus }
+    private var sourceNames: [String: String] {
+        Dictionary(phoneLink.signals.anonymised.sources.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+    }
     private var liveScene: DemoScene {
         var value = scene
         if controls.fitToSource, capture.dimensions.height > 0 {
@@ -356,8 +425,7 @@ private struct DemoStageContent: View {
     }
     private var sourceName: String {
         guard scene.showsPhone else { return "Saved scene" }
-        return capture.sources.first(where: { $0.id == capture.selectedID })?.name
-            ?? (capture.selectedID == nil ? "Choose a source" : "Selected device")
+        return capture.selectedID.flatMap { sourceNames[$0] } ?? "Phone"
     }
     private var inwardChevron: String {
         switch controls.placement.anchor {
@@ -371,19 +439,27 @@ private struct DemoStageContent: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                DemoStageSurface(scene: liveScene, image: backdrop, logo: logo, hand: hand, persona: persona, ambience: ambience, previewLayer: capture.previewLayer, live: capture.live, motion: scene.gentleMotion == true && !controls.motionPaused && !reduceMotion)
+                DemoStageSurface(scene: liveScene, image: backdrop, logo: logo, hand: hand, persona: persona, ambience: ambience, capture: capture, live: capture.live)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .onTapGesture { if controls.policy.isExpanded { controls.close() } }
-                if scene.showsPhone && !capture.live {
+                if scene.showsPhone && !capture.live && !phoneHasShown {
+                    // The device frame says what is true and the one next step, where the phone will appear.
                     let viewport = ViewportGeometry(scene: liveScene, size: geometry.size).screen
-                    VStack(spacing: 14) {
-                        Image(systemName: "cable.connector").font(.largeTitle)
-                        Text(capture.message).font(.body).multilineTextAlignment(.center)
-                        Button("Choose source…", action: openSource).focused($focusedControl, equals: .deviceSource)
-                        Button("Reconnect") { capture.reconnect() }.focused($focusedControl, equals: .deviceReconnect)
+                    VStack(spacing: 12) {
+                        Image(systemName: status.symbol).font(.largeTitle)
+                        Text(status.title).font(.headline).multilineTextAlignment(.center)
+                        if let detail = status.detail { Text(detail).font(.callout).multilineTextAlignment(.center).opacity(0.85) }
+                        if let step = status.step {
+                            Button(step.title) { perform(step) }.focused($focusedControl, equals: .deviceStep)
+                                .buttonStyle(.borderedProminent)
+                        }
+                        if status.offersHelp {
+                            Button("Can’t see your phone?") { openHelp() }.focused($focusedControl, equals: .deviceHelp).buttonStyle(.workbenchLink)
+                        }
                     }.padding(20).frame(width: max(120, viewport.width - 20))
                         .foregroundStyle(.white)
                         .position(x: viewport.midX, y: geometry.size.height - viewport.midY)
+                        .accessibilityElement(children: .contain).accessibilityLabel("Phone status")
                 }
                 if !sharedControls {
                 if let dragFrame = controls.dragFrame {
@@ -408,20 +484,33 @@ private struct DemoStageContent: View {
                 .animation(reduceMotion || controls.dragFrame != nil ? nil : .easeOut(duration: 0.16), value: controls.policy.isExpanded)
                 }
             }.background(.black).coordinateSpace(name: "presentation-controls")
-                .onAppear { controls.start() }
+                .onAppear { controls.start(); if capture.live { phoneHasShown = true } }
+                .onChange(of: capture.live) { _, live in if live { phoneHasShown = true } }
                 .onDisappear { controls.stop() }
                 .onChange(of: geometry.size) { _, _ in controls.stop() }
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in
                     controls.stop()
                 }
                 .onChange(of: controls.focusRequest) { _, _ in
-                    focusedControl = controls.policy.isExpanded ? (scene.showsPhone ? .source : .close) : .tile
+                    focusedControl = controls.policy.isExpanded
+                        ? (scene.showsPhone ? (status.step != nil ? .step : status.offersReconnect ? .reconnect : .position) : .close) : .tile
                 }
                 .sheet(isPresented: $controls.choosingSource, onDismiss: {
+                    guard controls.helpAfterSource else { return }
+                    controls.helpAfterSource = false
+                    controls.showingHelp = true
+                }) { sourceSheet }
+                .sheet(isPresented: $controls.showingHelp, onDismiss: {
                     guard let app = pendingNativeApp else { return }
                     pendingNativeApp = nil
                     endAndOpen(app)
-                }) { sourceSheet }
+                }) {
+                    PhoneConnectionHelp(status: status, diagnostic: { phoneLink.diagnostic(build: Workbench.buildLabel) }, endsPresentation: true) { app in
+                        guard pendingNativeApp == nil else { return }
+                        pendingNativeApp = app
+                        controls.showingHelp = false
+                    }
+                }
         }.ignoresSafeArea()
     }
     private func dragGesture(in size: CGSize) -> some Gesture {
@@ -448,8 +537,8 @@ private struct DemoStageContent: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
                 HStack(spacing: 8) {
-                    Image(systemName: scene.showsPhone ? "iphone" : "photo")
-                    Text(sourceName).font(.callout.weight(.semibold)).lineLimit(1)
+                    Image(systemName: scene.showsPhone ? status.symbol : "photo")
+                    Text(scene.showsPhone ? status.title : "Saved scene").font(.callout.weight(.semibold)).lineLimit(1)
                     Spacer(minLength: 0)
                 }.contentShape(Rectangle()).gesture(dragGesture(in: size))
                     .help("Drag to move, or choose Position")
@@ -457,21 +546,22 @@ private struct DemoStageContent: View {
                     .buttonStyle(.plain).frame(width: 24, height: 24).focused($focusedControl, equals: .close)
                     .accessibilityLabel("Close presentation controls").help("Close controls · Esc")
             }
-            Text(scene.showsPhone ? (capture.live ? "Use your phone for taps, typing and Dictation." : capture.message) : "Showing your saved scene.")
+            Text(scene.showsPhone ? (status.detail ?? sourceName) : "Showing your saved scene.")
                 .font(.caption).foregroundStyle(.secondary).lineLimit(2).frame(height: 30, alignment: .topLeading)
             HStack {
                 if scene.showsPhone {
-                    Button("Source…", action: openSource).focused($focusedControl, equals: .source)
-                    Button("Reconnect") { capture.reconnect() }
-                        .focused($focusedControl, equals: .reconnect).help("Reconnect device · ⌘R")
+                    if let step = status.step {
+                        Button(step.title) { perform(step) }.focused($focusedControl, equals: .step)
+                    }
+                    if status.offersReconnect {
+                        Button("Reconnect") { perform(.reconnect) }
+                            .focused($focusedControl, equals: .reconnect).help("Reconnect device · ⌘R")
+                    }
+                    if capture.sources.count > 1, status.step != .chooseSource {
+                        Button("Choose screen…") { perform(.chooseSource) }.focused($focusedControl, equals: .source)
+                    }
                 }
                 Spacer()
-                if scene.gentleMotion == true {
-                    Button { controls.motionPaused.toggle() } label: {
-                        Image(systemName: controls.motionPaused ? "play.fill" : "pause.fill")
-                    }.accessibilityLabel(controls.motionPaused ? "Play background motion" : "Pause background motion")
-                        .help(controls.motionPaused ? "Play background motion" : "Pause background motion")
-                }
             }.frame(height: 28)
             Divider()
             HStack {
@@ -493,45 +583,48 @@ private struct DemoStageContent: View {
         }.padding(12)
             .accessibilityElement(children: .contain).accessibilityLabel("Presentation controls")
     }
-    private func openSource() {
+    private func openHelp() {
         controls.close()
-        controls.choosingSource = true
+        controls.showingHelp = true
     }
+    /// Which screen to show, only when the Mac offers more than one or the
+    /// remembered one is away. Choosing is explicit and remembered.
     private var sourceSheet: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack {
-                Text("Device screen").font(.title2.bold())
+                Text("Which screen?").font(.title2.bold())
                 Spacer()
                 Button("Done") { controls.choosingSource = false }.keyboardShortcut(.defaultAction)
             }
-            Text("Connect an unlocked iPhone or iPad by USB and trust this Mac. External video sources also work; Android needs a compatible video feed.").foregroundStyle(.secondary)
-            if capture.sources.isEmpty { Text("No external sources found.") }
-            if !capture.sources.isEmpty {
+            Text(status.title).font(.headline)
+            if let detail = status.detail { Text(detail).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+            if capture.sources.isEmpty {
+                Text("No screen sources yet.").foregroundStyle(.secondary)
+            } else {
                 ScrollView {
                     VStack(spacing: 8) {
                         ForEach(capture.sources) { source in
+                            let name = sourceNames[source.id] ?? (source.isScreen ? "Phone" : "Video device")
                             Button {
-                                capture.select(source.id); controls.choosingSource = false
+                                perform(.showSource(id: source.id, title: name)); controls.choosingSource = false
                             } label: {
-                                HStack { Image(systemName: "video"); Text(source.name); Spacer(); if capture.selectedID == source.id { Image(systemName: "checkmark") } }
+                                HStack { Image(systemName: source.isScreen ? "iphone" : "video"); Text(name); Spacer(); if capture.selectedID == source.id { Image(systemName: "checkmark") } }
                             }.buttonStyle(.bordered)
                         }
                     }
                 }.frame(height: min(CGFloat(capture.sources.count) * 36, 160))
             }
-            Text(capture.message).font(.caption).foregroundStyle(.secondary)
             Toggle("Match device proportions", isOn: $controls.fitToSource).toggleStyle(.checkbox)
             if capture.dimensions.width > 0 && capture.dimensions.height > 0 {
                 Text("Video size: \(Int(capture.dimensions.width)) × \(Int(capture.dimensions.height))")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            Button("Refresh devices") { capture.refresh() }
             Divider()
-            NativePresentationApps(onEndAndOpen: { app in
-                guard pendingNativeApp == nil else { return }
-                pendingNativeApp = app
-                controls.choosingSource = false
-            }) { capture.reportNotice($0) }
+            HStack {
+                Button("Can’t see your phone?") { controls.helpAfterSource = true; controls.choosingSource = false }.buttonStyle(.workbenchLink)
+                Spacer()
+                Button("Look again") { capture.refresh() }
+            }
         }.padding(24).frame(width: 460).onExitCommand { controls.choosingSource = false }
     }
 }
@@ -543,27 +636,25 @@ private struct DemoStageSurface: NSViewRepresentable {
     let hand: NSImage?
     let persona: NSImage?
     let ambience: AmbientSceneImages?
-    let previewLayer: AVCaptureVideoPreviewLayer
+    let capture: DemoCapture
     let live: Bool
-    let motion: Bool
-    func makeNSView(context: Context) -> DemoStageSurfaceView { DemoStageSurfaceView(previewLayer: previewLayer) }
+    func makeNSView(context: Context) -> DemoStageSurfaceView { DemoStageSurfaceView(previewLayer: capture.makePreviewLayer(for: .stage)) }
     func updateNSView(_ view: DemoStageSurfaceView, context: Context) {
         view.configure(scene: scene, backdrop: image, logo: logo, hand: hand, persona: persona, ambience: ambience)
         view.viewportScene = scene; view.isLive = live
-        view.motionRequested = motion; view.needsLayout = true
+        view.needsLayout = true
     }
-    static func dismantleNSView(_ view: DemoStageSurfaceView, coordinator: ()) { view.motionRequested = false }
 }
 
 /// Device video remains between its stationary frame and foreground branding.
+/// The backdrop is a still: motion is never requested on the stage.
 final class DemoStageSurfaceView: MovingSceneView {
     var viewportScene: DemoScene?
-    private let videoLayer: AVCaptureVideoPreviewLayer
+    private let videoLayer: CALayer
     var isLive = false { didSet { videoLayer.isHidden = !isLive || viewportScene?.showsPhone != true } }
-    init(previewLayer: AVCaptureVideoPreviewLayer) {
+    init(previewLayer: CALayer) {
         videoLayer = previewLayer
         super.init(frame: .zero)
-        videoLayer.videoGravity = .resizeAspect; videoLayer.masksToBounds = true
         videoLayer.backgroundColor = NSColor.black.cgColor
         insertVideoLayer(videoLayer)
     }

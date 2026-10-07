@@ -333,7 +333,7 @@ struct ProfileCameraView: View {
                 Spacer()
                 if case .failed(let issue) = camera.state {
                     if issue == .denied {
-                        Button("Open Camera settings") {
+                        Button("Camera Settings…") {
                             if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Camera") { NSWorkspace.shared.open(url) }
                         }
                     }

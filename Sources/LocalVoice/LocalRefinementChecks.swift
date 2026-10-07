@@ -263,7 +263,7 @@ extension LocalRefinementChecks {
         defer { pull.stop() }
         manager.download(config(pull))
         await manager.operation?.value
-        try check(manager.failure == nil && manager.status.contains("Save refinement choice to use it for Natural"), "a model that is not the saved choice asks for Save, never opting anyone in")
+        try check(manager.failure == nil && manager.status.contains("Save it under Text style to use it for Natural"), "a model that is not the saved choice asks for Save, never opting anyone in")
         try store.save(config(pull))
         manager.download(config(pull))
         await manager.operation?.value

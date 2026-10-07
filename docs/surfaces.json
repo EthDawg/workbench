@@ -1,5 +1,226 @@
 [
   {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.add-screenshot",
+    "surface": "report a problem window",
+    "label": "Add screenshot",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. Region capture hides only this window; Snap's own draft and host are untouched."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.add-to-description",
+    "surface": "report a problem window",
+    "label": "Add to description",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. Appends the reviewed transcript to the description; typed words are never replaced."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.choose-image",
+    "surface": "report a problem window",
+    "label": "Choose image…",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. The fallback when capture is refused or fails: a chosen PNG or JPEG, re-encoded without metadata."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.choose-image.2",
+    "surface": "report a problem window",
+    "label": "Choose image…",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. With Screen Recording off, the fallback beside Open System Settings…: a chosen PNG or JPEG, re-encoded without metadata."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.keep",
+    "surface": "report a problem window",
+    "label": "Keep",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. Cancels the removal question and keeps the report."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.microphone-settings",
+    "surface": "report a problem window",
+    "label": "Microphone Settings…",
+    "kind": "action",
+    "belongsTo": "app",
+    "aliasOf": "LocalVoice.CapturePanel.DictationResultView.Button.microphone-settings",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. The same words as Dictate's refusal, opening the same Privacy & Security pane beside the refused voice note (Fit rule 2)."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.open-system-settings",
+    "surface": "report a problem window",
+    "label": "Open System Settings…",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. Beside Screen Recording off when adding a screenshot: the same words as Snap's, opening Privacy & Security › Screen Recording. The composer never prompts for access mid-report."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.record-voice-note",
+    "surface": "report a problem window",
+    "label": "Record voice note",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. Explicit Record through the shared microphone admission; up to 60 seconds; a busy or refused microphone leaves words and the screenshot usable."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.remove",
+    "surface": "report a problem window",
+    "label": "Remove",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. Removes the screenshot from the draft."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.remove-from-this-mac",
+    "surface": "report a problem window",
+    "label": "Remove from this Mac",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. Confirms removal of the local copy; the dialog says the team keeps a delivered report for 30 days and how to ask for deletion."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.remove.2",
+    "surface": "report a problem window",
+    "label": "Remove",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. Removes the voice note from the draft."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.remove.e2d57943",
+    "surface": "report a problem window",
+    "label": "Remove…",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. Asks before removing a report or receipt from this Mac."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.replace",
+    "surface": "report a problem window",
+    "label": "Replace",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. Captures again and replaces the report's screenshot."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.retry",
+    "surface": "report a problem window",
+    "label": "Retry",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. After Couldn't deliver: the same bytes and event ID, once more, by the person's choice."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.runtime-c04f66588c7c",
+    "surface": "report a problem window",
+    "label": null,
+    "expression": "model . playing ? \"Pause\" : \"Play\"",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. Play or Pause the voice note on this Mac. Runtime label: Play, or Pause while playing. Runtime label from model . playing ? \"Pause\" : \"Play\"; no rendered text assumed.",
+    "kind": "action",
+    "belongsTo": "app"
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.save-a-copy",
+    "surface": "report a problem window",
+    "label": "Save a copy…",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. Save a copy of the draft when Send was refused for room: a new folder with context.json, screenshot.png and voice.wav."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.save-a-copy.2",
+    "surface": "report a problem window",
+    "label": "Save a copy…",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. Replaces Send report in a build without a reporting inbox (Preview and local builds without the developer override)."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.save-a-copy.3",
+    "surface": "report a problem window",
+    "label": "Save a copy…",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. Save a copy of a frozen report from its receipt."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.send-again",
+    "surface": "report a problem window",
+    "label": "Send again",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. After Couldn't confirm delivery: the same report under a new event ID, only when chosen."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.send-attachments-again",
+    "surface": "report a problem window",
+    "label": "Send attachments again",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. After Sent · words only (Sentry's 200 limited the attachment category): sends the whole report again under a new event ID with the same report ID, only when chosen."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.send-report",
+    "surface": "report a problem window",
+    "label": "Send report",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. The primary action: freezes this report in the outbox, then delivers it automatically. It authorises this report's upload and retries only."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.stop-recording",
+    "surface": "report a problem window",
+    "label": "Stop recording",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. Stops and keeps the voice note; the same words as stopping any recording."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Button.transcribe",
+    "surface": "report a problem window",
+    "label": "Transcribe",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. Shown only when the selected speech engine is already ready and idle; never downloads or switches engines, and Send never waits for it."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.DisclosureGroup.details",
+    "surface": "report a problem window",
+    "label": "Details",
+    "kind": "action",
+    "belongsTo": "app",
+    "aliasOf": "LocalVoice.DemoLibraryView.DemoLibraryView.DisclosureGroup.details",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. Shared wording for revealing exact details: here, the context.json that is sent."
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.Label.runtime-64041f706138",
+    "surface": "report a problem window",
+    "label": null,
+    "expression": "model . available ? \"This report goes privately to the Workbench team.\" : \"Nothing is sent from this build.\"",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. The inclusion summary's heading: This report goes privately to the Workbench team, or Nothing is sent from this build. Runtime label from model . available ? \"This report goes privately to the Workbench team.\" : \"Nothing is sent from this build.\"; no rendered text assumed.",
+    "kind": "status",
+    "belongsTo": "app"
+  },
+  {
+    "id": "LocalVoice.BugReportView.BugReportView.TextField.your-email-address",
+    "surface": "report a problem window",
+    "label": "Your email address",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. Email me about this (optional): a reply address inside this report only."
+  },
+  {
+    "id": "LocalVoice.BugReportView.ReportProblemButton.Button.report-a-problem",
+    "surface": "problem recovery",
+    "label": "Report a problem…",
+    "kind": "action",
+    "belongsTo": "app",
+    "aliasOf": "LocalVoice.main.AppDelegate.addItem.report-a-problem",
+    "note": "The same door and name, in sentence case as a button (the Help item is title case as a menu item), beside a recoverable Dictate problem banner and a Snap failure notice (#296). It opens the same window with the problem's typed code, never its words, and is not shown on timed success notices."
+  },
+  {
     "id": "LocalVoice.CaptureHistoryView.TranscriptHistoryRow.Button.open-in-dictate",
     "surface": "history page",
     "label": "Open in Dictate",
@@ -118,15 +339,15 @@
     "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
   },
   {
-    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Button.save-refinement-choice",
+    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Button.save",
     "surface": "settings page",
-    "label": "Save refinement choice",
+    "label": "Save",
     "kind": "setting",
     "belongsTo": "settings",
-    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134). Renamed from Save refinement choice under the section's Text style heading, Dictate's name for the choice (#279)."
   },
   {
-    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Link.browse-models",
+    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Button.browse-models",
     "surface": "settings page",
     "label": "Browse models",
     "kind": "action",
@@ -134,7 +355,7 @@
     "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
   },
   {
-    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Link.disable-ollama-cloud",
+    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Button.disable-ollama-cloud",
     "surface": "settings page",
     "label": "Disable Ollama Cloud",
     "kind": "action",
@@ -142,7 +363,7 @@
     "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
   },
   {
-    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Link.get-ollama",
+    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Button.get-ollama",
     "surface": "settings page",
     "label": "Get Ollama",
     "kind": "action",
@@ -158,12 +379,12 @@
     "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
   },
   {
-    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Picker.natural-cleanup-model",
+    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Picker.natural-style-model",
     "surface": "settings page",
-    "label": "Natural cleanup model",
+    "label": "Natural style model",
     "kind": "setting",
     "belongsTo": "settings",
-    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134). Renamed from Natural cleanup model so the Natural text style has one name, as on Dictate (#279)."
   },
   {
     "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.TextField.model-name",
@@ -304,7 +525,7 @@
     "belongsTo": "settings"
   },
   {
-    "id": "LocalVoice.HistorySelectionControls.SubscriptionSettingsView.Link.claude",
+    "id": "LocalVoice.HistorySelectionControls.SubscriptionSettingsView.Button.claude",
     "surface": "settings page",
     "label": "Install or sign in with Claude Code",
     "case": "claude",
@@ -312,7 +533,7 @@
     "belongsTo": "settings"
   },
   {
-    "id": "LocalVoice.HistorySelectionControls.SubscriptionSettingsView.Link.codex",
+    "id": "LocalVoice.HistorySelectionControls.SubscriptionSettingsView.Button.codex",
     "surface": "settings page",
     "label": "Install or sign in with Codex",
     "case": "codex",
@@ -555,30 +776,7 @@
     "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
   },
   {
-    "id": "LocalVoice.PhotoHandoffView.PhotoHandoffArrivalCue.Button.from-iphone",
-    "surface": "proactive offer PhotoHandoffArrivalCue",
-    "label": "From iPhone",
-    "kind": "action",
-    "belongsTo": "library"
-  },
-  {
-    "id": "LocalVoice.PhotoHandoffView.PhotoHandoffSettings.Button.enable-photo-handoff",
-    "surface": "settings page",
-    "label": "Enable photo handoff",
-    "kind": "setting",
-    "belongsTo": "library"
-  },
-  {
-    "id": "LocalVoice.PhotoHandoffView.PhotoHandoffSettings.Button.turn-off",
-    "surface": "settings page",
-    "label": "Turn off",
-    "kind": "setting",
-    "belongsTo": "library",
-    "aliasOf": "library",
-    "note": "Existing contextual \"Turn off\" label inside library; shared wording, not a separate capability."
-  },
-  {
-    "id": "LocalVoice.LibraryPromptButton.LibraryPromptButton.button-title.view",
+    "id": "LocalVoice.LibraryPromptButton.LibraryPromptButton.Button.saved-prompts",
     "surface": "Library",
     "label": "Saved Prompts…",
     "kind": "action",
@@ -1066,11 +1264,13 @@
     "note": "Returns to the current Dictate draft without replacing it."
   },
   {
-    "id": "LocalVoice.Workbench.WorkbenchAppearancePicker.Picker.suite-appearance",
+    "id": "LocalVoice.Workbench.WorkbenchAppearancePicker.Picker.appearance",
     "surface": "settings page",
-    "label": "Suite appearance",
+    "label": "Appearance",
     "kind": "setting",
-    "belongsTo": "settings"
+    "belongsTo": "settings",
+    "aliasOf": "settings",
+    "note": "Renamed from Suite appearance to Appearance, macOS's own word for System, Light or Dark (7 Oct 2026, Settings › General as a grouped form). Shares the word with Persona's card Appearance by intent: each sits in its own owner's settings and means that owner's look."
   },
   {
     "id": "LocalVoice.WorkbenchControlTool.WorkbenchControlState.hover-title.operation",
@@ -1238,7 +1438,7 @@
     "page": "connections",
     "kind": "option",
     "belongsTo": "settings",
-    "note": "Quality: Settings' assistant connections and photo handoff move into its Connections section, opened by the route connections (#134). History's Connections… shows the same settings over History."
+    "note": "Quality: Settings' assistant connections move into its Connections section, opened by the route connections (#134). History's Connections… shows the same settings over History."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.section.library",
@@ -1266,15 +1466,6 @@
     "kind": "option",
     "belongsTo": "library",
     "note": "Quality: the Packs sidebar item becomes the Packs section of Library, on the same route, packs, so pack links and Snap & Talk's Manage packs… land there (#134)."
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.section.photos",
-    "surface": "page sections",
-    "label": "From iPhone",
-    "page": "photos",
-    "kind": "option",
-    "belongsTo": "library",
-    "note": "Quality: From iPhone, the segment Saved resources already had beside Resources, becomes a section of Library's one switcher instead of a switcher inside a section (#134). Home's Saved from iPhone link opens it."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.section.settings",
@@ -1404,23 +1595,6 @@
     "note": "Option: the first dictation on Home copies your words (#134 W9)."
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.copy.2",
-    "surface": "window home",
-    "label": "Copy",
-    "kind": "action",
-    "belongsTo": "dictate",
-    "note": "Option: Copy beside a recent transcript in Home's Recent work, the same copy and receipt as History's (#134 H1)."
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.copy.3",
-    "surface": "window home",
-    "label": "Copy",
-    "kind": "action",
-    "belongsTo": "snap",
-    "note": "Existing contextual \"Copy\" label inside snap; shared wording, not a separate capability. Copies a recent Snap from Home's Recent work (#134 H1).",
-    "aliasOf": "snap"
-  },
-  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.done",
     "surface": "window home",
     "label": "Done",
@@ -1435,6 +1609,14 @@
     "kind": "action",
     "belongsTo": "present",
     "note": "Option: live strip action, the one way to end what is running from Home (#134 W9)."
+  },
+  {
+    "id": "LocalVoice.main.AppDelegate.addItem.report-a-problem",
+    "surface": "app menu bar",
+    "label": "Report a Problem…",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Option of the app's Help menu, decided by the Report a problem build brief (docs/bug-reporting.md, #296): opens the one modeless Report a Problem window. Not a toolbar tool, sidebar place or captured-work library; its draft and outbox are the brief's deliberate exception to History."
   },
   {
     "id": "StageKit.PersonaLibraryView.PersonaLibraryView.Button.me",
@@ -1462,14 +1644,6 @@
     "note": "Quality: was Speech settings; the door names the Settings section it opens, Models (Fit rule 6; 1 Oct)."
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.open-history",
-    "surface": "window home",
-    "label": "Open History",
-    "kind": "action",
-    "belongsTo": "history",
-    "note": "Quality: All history becomes Open History below Home's Recent work, the five newest History entries (#134 H1). It opens History on All."
-  },
-  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.open-in-history",
     "surface": "window home",
     "label": "Open in History",
@@ -1494,15 +1668,6 @@
     "note": "Quality: the live strip's Persona action (was Button.hide-persona), with its label and click now from the shared Persona action: Hide persona, Hide personas, or Show personas for a hidden prepared set, as the toolbar and panel read (#134).",
     "kind": "action",
     "belongsTo": "persona"
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.runtime-d81c55f49c5b",
-    "surface": "window home",
-    "label": null,
-    "expression": "saved",
-    "kind": "action",
-    "belongsTo": "library",
-    "note": "Runtime label from HomeRecentWork.savedFromIPhone: Saved from iPhone with the photo count and the newest photo's stored date, a quiet link to Library › From iPhone (#134 H1). Photos are Library's, so they are not Recent work, and nothing calls them new."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.set-up-automatic-paste",
@@ -1561,57 +1726,12 @@
     "note": "Option: Current work's action for a running Hand off task, the same Stop task as History's running strip (#134 H1)."
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.CapturePreviewButton.view-snap",
-    "surface": "window home",
-    "label": "View Snap",
-    "kind": "action",
-    "belongsTo": "snap",
-    "note": "Quality: a recent Snap's thumbnail and title open its read-only preview, where editing stays an explicit action (#134 H1). Was View latest Snap."
-  },
-  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.NativeControlMenu.timer",
     "surface": "window home",
     "label": "Timer",
     "kind": "action",
     "belongsTo": "timer",
     "note": "Option: live strip action, the one way to end what is running from Home (#134 W9). Reuses the Timer menu (Pause, Stop, Reset)."
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.workspaceCard.dictate",
-    "surface": "window home",
-    "label": "Dictate",
-    "page": "dictate",
-    "kind": "capability",
-    "belongsTo": "dictate",
-    "note": "Opens the prepared workspace only; never starts capture, playback, processing or a new session. Desktop cohesion requested 30 September 2026."
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.workspaceCard.meetings",
-    "surface": "window home",
-    "label": "Meetings",
-    "page": "meeting",
-    "kind": "workflow",
-    "belongsTo": "dictate",
-    "note": "Opens the prepared workspace only; never starts capture, playback, processing or a new session. Desktop cohesion requested 30 September 2026."
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.workspaceCard.present",
-    "surface": "window home",
-    "label": "Present",
-    "page": "present",
-    "kind": "action",
-    "belongsTo": "present",
-    "aliasOf": "present",
-    "note": "Foundation A (#279): compact Home route to existing Present preparation. Navigation starts nothing; Snap remains in the sidebar and toolbar."
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.workspaceCard.snap-talk",
-    "surface": "window home",
-    "label": "Snap & Talk",
-    "page": "readback",
-    "kind": "workflow",
-    "belongsTo": "snapAndTalk",
-    "note": "Opens the prepared workspace only; never starts capture, playback, processing or a new session. Desktop cohesion requested 30 September 2026."
   },
   {
     "id": "LocalVoice.WorkbenchQuickPanel.PanelRecoveryRow.Button.runtime-27f7b4321a3d",
@@ -1649,7 +1769,7 @@
     "note": "Quality: Draw's options end with the one door to its page, as Snap, Present and Persona's do (#134). Its tools and boards stay above it."
   },
   {
-    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-dictate-options.Button.history",
+    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-dictate-options.ToolbarMenuAction.history",
     "surface": "quick panel dictate options",
     "label": "History…",
     "kind": "action",
@@ -1657,7 +1777,7 @@
     "note": "Quality: Dictate's recent-transcripts option in the same slot, renamed to the place it opens. It opens History on Transcripts (#137)."
   },
   {
-    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-dictate-options.Button.meetings",
+    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-dictate-options.ToolbarMenuAction.meetings",
     "surface": "quick panel dictate options",
     "label": "Meetings…",
     "kind": "workflow",
@@ -1665,14 +1785,14 @@
     "note": "Existing meeting/call transcription workflow promoted to a visible Meetings destination by the desktop redesign. Navigation starts no recording."
   },
   {
-    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-dictate-options.Button.open-dictate",
+    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-dictate-options.ToolbarMenuAction.open-dictate",
     "surface": "quick panel dictate options",
     "label": "Open Dictate…",
     "kind": "action",
     "belongsTo": "dictate"
   },
   {
-    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-dictate-options.Button.set-up-automatic-paste",
+    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-dictate-options.ToolbarMenuAction.set-up-automatic-paste",
     "surface": "quick panel dictate options",
     "label": "Set up automatic paste…",
     "kind": "action",
@@ -1680,7 +1800,7 @@
     "note": "Option of Dictate: the Dictate page's Set up automatic paste… beside the delivery choice it serves, so the panel, Home and Dictate agree. Shown only while Paste automatically waits for Accessibility approval, under a header saying transcripts are copied for ⌘V until then (#165)."
   },
   {
-    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-dictate-options.Menu.options",
+    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-dictate-options.NativeControlMenu.options",
     "surface": "quick panel dictate options",
     "label": "Options",
     "kind": "option",
@@ -1851,11 +1971,12 @@
     "note": "The same updater action as the sidebar; native review is retained for exceptional releases."
   },
   {
-    "id": "LocalVoice.WorkbenchUpdates.WorkbenchUpdateSettings.Link.release-notes-and-downloads",
+    "id": "LocalVoice.WorkbenchUpdates.WorkbenchUpdateSettings.Button.release-notes-and-downloads",
     "surface": "settings page",
     "label": "Release notes and downloads",
     "kind": "action",
-    "belongsTo": "settings"
+    "belongsTo": "settings",
+    "note": "A Workbench-coloured link button rather than a system-blue Link (7 Oct 2026); same destination."
   },
   {
     "id": "LocalVoice.WorkbenchUpdates.WorkbenchUpdateSettings.Toggle.check-for-updates-automatically",
@@ -1919,7 +2040,7 @@
   {
     "id": "LocalVoice.main.AppDelegate.addItem.copy-build-details",
     "surface": "app menu bar",
-    "label": "Copy build details",
+    "label": "Copy Build Details",
     "kind": "action",
     "belongsTo": "settings"
   },
@@ -1933,7 +2054,7 @@
   {
     "id": "LocalVoice.main.AppDelegate.addItem.focus-floating-toolbar",
     "surface": "app menu bar",
-    "label": "Focus floating toolbar",
+    "label": "Focus Floating Toolbar",
     "kind": "action",
     "belongsTo": "app"
   },
@@ -1943,6 +2064,22 @@
     "label": "Hide Workbench",
     "kind": "action",
     "belongsTo": "app"
+  },
+  {
+    "id": "LocalVoice.main.AppDelegate.addItem.hide-others",
+    "surface": "app menu bar",
+    "label": "Hide Others",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Quality: the standard Mac app-menu item (⌥⌘H); changes nothing in Workbench."
+  },
+  {
+    "id": "LocalVoice.main.AppDelegate.addItem.show-all",
+    "surface": "app menu bar",
+    "label": "Show All",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Quality: the standard Mac app-menu item that unhides other apps; changes nothing in Workbench."
   },
   {
     "id": "LocalVoice.main.AppDelegate.addItem.open-workbench",
@@ -1970,7 +2107,7 @@
   {
     "id": "LocalVoice.main.AppDelegate.addItem.restore-menu-bar-icon",
     "surface": "app menu bar",
-    "label": "Restore menu-bar icon",
+    "label": "Restore Menu Bar Icon",
     "kind": "action",
     "belongsTo": "app"
   },
@@ -1981,7 +2118,7 @@
     "expression": "Self . floatingToolbarTitle ( visible : model . floatingToolbarVisible )",
     "kind": "action",
     "belongsTo": "app",
-    "note": "Runtime label: Show floating toolbar while the saved preference is off and Hide floating toolbar while it is on, the same switch as the panel and Settings (#134 H3). Focus floating toolbar stays beside it."
+    "note": "Runtime label: Show Floating Toolbar while the saved preference is off and Hide Floating Toolbar while it is on, in the menus' title case; the same switch as the panel and Settings (#134 H3). Focus Floating Toolbar stays beside it."
   },
   {
     "id": "LocalVoice.main.AppDelegate.addItem.select-all",
@@ -1998,6 +2135,15 @@
     "belongsTo": "app",
     "aliasOf": "app",
     "note": "Existing contextual \"Undo\" label inside app; shared wording, not a separate capability."
+  },
+  {
+    "id": "LocalVoice.main.AppDelegate.addItem.redo",
+    "surface": "app menu bar",
+    "label": "Redo",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Existing contextual \"Redo\" label inside app, the standard Mac Edit › Redo (⇧⌘Z) for the focused text field; shared wording with Draw's Redo, not a separate capability.",
+    "aliasOf": "app"
   },
   {
     "id": "LocalVoice.main.AppDelegate.addItem.workbench-guide",
@@ -2233,27 +2379,9 @@
     "aliasOf": "present"
   },
   {
-    "id": "StageKit.DemoPresentation.DemoPresentation.LiveSettings.Button.reconnect",
-    "surface": "Present live window",
-    "label": "Reconnect",
-    "kind": "action",
-    "belongsTo": "present",
-    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
-    "aliasOf": "present"
-  },
-  {
     "id": "StageKit.DemoPresentation.DemoPresentation.LiveSettings.Button.show-presentation-window",
     "surface": "Present live window",
     "label": "Show presentation window",
-    "kind": "action",
-    "belongsTo": "present",
-    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
-    "aliasOf": "present"
-  },
-  {
-    "id": "StageKit.DemoPresentation.DemoPresentation.LiveSettings.Button.source-connection-help",
-    "surface": "Present live window",
-    "label": "Source & connection help…",
     "kind": "action",
     "belongsTo": "present",
     "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
@@ -2269,31 +2397,12 @@
     "aliasOf": "present"
   },
   {
-    "id": "StageKit.DemoPresentation.DemoPresentation.LiveSettings.Toggle.match-device-proportions",
+    "id": "StageKit.DemoPresentation.DemoPresentation.LiveSettings.submenu.choose-screen",
     "surface": "Present live window",
-    "label": "Match device proportions",
-    "kind": "setting",
-    "belongsTo": "present",
-    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
-    "aliasOf": "present"
-  },
-  {
-    "id": "StageKit.DemoPresentation.DemoPresentation.LiveSettings.Toggle.pause-background-motion",
-    "surface": "Present live window",
-    "label": "Pause background motion",
-    "kind": "setting",
-    "belongsTo": "present",
-    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
-    "aliasOf": "present"
-  },
-  {
-    "id": "StageKit.DemoPresentation.DemoPresentation.LiveSettings.submenu.source",
-    "surface": "Present live window",
-    "label": "Source",
+    "label": "Choose screen",
     "kind": "option",
     "belongsTo": "present",
-    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
-    "aliasOf": "present"
+    "note": "Quality (#276): the running presentation’s screens, listed only when the Mac offers more than one; choosing one shows and remembers it through the capture’s owner. The same words as the status’s Choose screen… step and the stage’s Which screen? sheet."
   },
   {
     "id": "StageKit.DemoPresentation.DemoPresentation.LiveSettings.submenu.window-position",
@@ -2312,6 +2421,14 @@
     "belongsTo": "present",
     "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
     "aliasOf": "present"
+  },
+  {
+    "id": "StageKit.DemoPresentation.DemoPresentation.StageMenuAction.can-t-see-your-phone",
+    "surface": "Present menu",
+    "label": "Can’t See Your Phone?…",
+    "kind": "action",
+    "belongsTo": "present",
+    "note": "Quality (#276): replaces Source & Connection Help… and the two End Preview & Open items with one help sheet: the live status, three checks, Check in QuickTime Player while the picture is missing for a reason the Mac might explain, the ways to show a phone in a call without the stage, and Copy connection details. Shown only while the phone is not on the stage; the page, the stage controls and the source sheet use the same words, in sentence case."
   },
   {
     "id": "StageKit.DemoPresentation.DemoPresentation.StageMenuAction.compact",
@@ -2335,14 +2452,6 @@
     "belongsTo": "present"
   },
   {
-    "id": "StageKit.DemoPresentation.DemoPresentation.StageMenuAction.iPhoneMirroring",
-    "surface": "Present menu",
-    "label": "End Preview & Open iPhone Mirroring",
-    "case": "iPhoneMirroring",
-    "kind": "action",
-    "belongsTo": "present"
-  },
-  {
     "id": "StageKit.DemoPresentation.DemoPresentation.StageMenuAction.large",
     "surface": "Present menu",
     "label": "Large",
@@ -2353,22 +2462,15 @@
     "id": "StageKit.DemoPresentation.DemoPresentation.StageMenuAction.match-device-proportions",
     "surface": "Present menu",
     "label": "Match Device Proportions",
-    "kind": "action",
-    "belongsTo": "present"
+    "kind": "setting",
+    "belongsTo": "present",
+    "note": "Quality (#276): the live frame follows the phone’s own proportions, on by default; kept in the Present menu so it stays reachable with one screen, when no Which screen? sheet opens. It changes only the running presentation, never the saved scene."
   },
   {
     "id": "StageKit.DemoPresentation.DemoPresentation.StageMenuAction.medium",
     "surface": "Present menu",
     "label": "Medium",
     "kind": "option",
-    "belongsTo": "present"
-  },
-  {
-    "id": "StageKit.DemoPresentation.DemoPresentation.StageMenuAction.quickTime",
-    "surface": "Present menu",
-    "label": "End Preview & Open QuickTime Player",
-    "case": "quickTime",
-    "kind": "action",
     "belongsTo": "present"
   },
   {
@@ -2381,13 +2483,13 @@
     "note": "Existing contextual \"Reconnect\" label inside present; shared wording, not a separate capability."
   },
   {
-    "id": "StageKit.DemoPresentation.DemoPresentation.StageMenuAction.runtime-f4f4aad1a8e8",
+    "id": "StageKit.DemoPresentation.DemoPresentation.StageMenuAction.runtime-79dc140e1be9",
     "surface": "Present menu",
     "label": null,
-    "expression": "controls . motionPaused ? \"Play Background Motion\" : \"Pause Background Motion\"",
+    "expression": "step . title",
+    "note": "Quality (#276): the phone status’s one next step from PhoneLink (Show and the source’s name, Choose screen…, Reconnect or Camera Settings…), the same step the Present page and the stage controls offer. Camera Settings… only opens System Settings; nothing is changed for the person.",
     "kind": "action",
-    "belongsTo": "present",
-    "note": "Runtime label from controls . motionPaused ? \"Play Background Motion\" : \"Pause Background Motion\"; no rendered text assumed."
+    "belongsTo": "present"
   },
   {
     "id": "StageKit.DemoPresentation.DemoPresentation.StageMenuAction.show-presentation-window",
@@ -2397,18 +2499,12 @@
     "belongsTo": "present"
   },
   {
-    "id": "StageKit.DemoPresentation.DemoPresentation.StageMenuAction.source-connection-help",
+    "id": "StageKit.DemoPresentation.DemoPresentation.addSubmenu.choose-screen",
     "surface": "Present menu",
-    "label": "Source & Connection Help…",
-    "kind": "action",
-    "belongsTo": "present"
-  },
-  {
-    "id": "StageKit.DemoPresentation.DemoPresentation.addSubmenu.source",
-    "surface": "Present menu",
-    "label": "Source",
+    "label": "Choose screen",
     "kind": "option",
-    "belongsTo": "present"
+    "belongsTo": "present",
+    "note": "Quality (#276): the Present menu’s screens, listed only when the Mac offers more than one; choosing one shows and remembers it through the capture’s owner. The same words as the status’s Choose screen… step and the stage’s Which screen? sheet."
   },
   {
     "id": "StageKit.DemoPresentation.DemoPresentation.addSubmenu.window-position",
@@ -2448,6 +2544,15 @@
     "belongsTo": "persona",
     "note": "Existing contextual dismissal wording inside the local Persona profile; it closes the draft or sheet without creating a capability.",
     "aliasOf": "persona"
+  },
+  {
+    "id": "StageKit.LocalPersonaProfile.LocalPersonaProfileView.Button.done.2",
+    "surface": "local profile",
+    "label": "Done",
+    "kind": "action",
+    "belongsTo": "persona",
+    "aliasOf": "StageKit.LocalPersonaProfile.LocalPersonaProfileView.Button.done",
+    "note": "The same Done, bound to Escape while the visible Done takes Return, so Escape closes the profile even when no control has keyboard focus (docs/workbench.md Fit rule 5)."
   },
   {
     "id": "StageKit.LocalPersonaProfile.LocalPersonaProfileView.Button.edit-appearance",
@@ -2803,13 +2908,13 @@
     "note": "Option of Persona: releases the camera at once and keeps the bubble's place for Show camera again. The same words as Hide elsewhere in Persona."
   },
   {
-    "id": "StageKit.PersonaCamera.PersonaCameraPanel.Button.open-camera-settings",
+    "id": "StageKit.PersonaCamera.PersonaCameraPanel.Button.camera-settings",
     "surface": "Persona live camera",
-    "label": "Open Camera settings",
+    "label": "Camera Settings…",
     "kind": "action",
     "belongsTo": "persona",
     "aliasOf": "persona",
-    "note": "The same refused-access recovery the profile camera offers, beside the explanation."
+    "note": "The same refused-access recovery the profile camera offers, beside the explanation. Named Camera Settings… like Microphone Settings…, and like Present’s step for the same refusal."
   },
   {
     "id": "StageKit.PersonaCamera.PersonaCameraPanel.Button.show-camera-again",
@@ -3189,13 +3294,13 @@
     "note": "Quality: the existing local file choice stays reachable while the camera starts or fails. It stops camera capture before opening the file picker."
   },
   {
-    "id": "StageKit.ProfileCamera.ProfileCameraView.Button.open-camera-settings",
+    "id": "StageKit.ProfileCamera.ProfileCameraView.Button.camera-settings",
     "surface": "local profile",
-    "label": "Open Camera settings",
+    "label": "Camera Settings…",
     "kind": "action",
     "belongsTo": "persona",
     "aliasOf": "persona",
-    "note": "Quality: moved the existing Camera settings recovery beside the denied-access explanation."
+    "note": "Quality: moved the existing Camera settings recovery beside the denied-access explanation. Named Camera Settings… like Microphone Settings…, and like Present’s step for the same refusal."
   },
   {
     "id": "StageKit.ProfileCamera.ProfileCameraView.Button.take-photo",
@@ -4212,10 +4317,11 @@
   {
     "id": "shortcut.stage.pointer",
     "surface": "global shortcuts",
-    "label": "Cursor highlight",
+    "label": "Pointer",
     "case": "pointer",
     "kind": "action",
-    "belongsTo": "draw"
+    "belongsTo": "draw",
+    "note": "Quality: named Pointer, as Draw's Pointer tab and tile name it, so one tool has one name on every surface (Names rule; 7 October)."
   },
   {
     "id": "shortcut.stage.rectangle",
@@ -4485,31 +4591,31 @@
     "note": "Existing scene chooser callback, now included by the Persona route scanner while registering Me. Uses the selected saved Persona in the preparing scene and starts nothing."
   },
   {
-    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.add-a-file",
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.add-local-file.2",
     "surface": "Library Resources",
-    "label": "Add a file…",
+    "label": "Add local file…",
     "kind": "action",
     "belongsTo": "library",
-    "aliasOf": "library",
-    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+    "aliasOf": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.add-local-file",
+    "note": "Quality: the empty Library's door to the same editor as the Add menu's item, in the Add menu's words (renamed from “Add a file…” so one action has one name, with … because it opens an editor)."
   },
   {
-    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.add-a-link",
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.new-link.2",
     "surface": "Library Resources",
-    "label": "Add a link",
+    "label": "New link…",
     "kind": "action",
     "belongsTo": "library",
-    "aliasOf": "library",
-    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+    "aliasOf": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.new-link",
+    "note": "Quality: the empty Library's door to the same editor as the Add menu's item, in the Add menu's words (renamed from “Add a link” so one action has one name, with … because it opens an editor)."
   },
   {
-    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.add-a-prompt",
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.new-prompt.3",
     "surface": "Library Resources",
-    "label": "Add a prompt",
+    "label": "New prompt…",
     "kind": "action",
     "belongsTo": "library",
-    "aliasOf": "library",
-    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+    "aliasOf": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.new-prompt",
+    "note": "Quality: the empty Library's door to the same editor as the Add menu's item, in the Add menu's words (renamed from “Add a prompt” so one action has one name, with … because it opens an editor)."
   },
   {
     "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.add-local-file",
@@ -4568,11 +4674,11 @@
   {
     "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.edit",
     "surface": "Library Resources",
-    "label": "Edit",
+    "label": "Edit…",
     "kind": "action",
     "belongsTo": "library",
     "aliasOf": "library",
-    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text. Ends in … since 7 Oct: it opens an editor (docs/desktop.md § Words)."
   },
   {
     "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.export-library",
@@ -4613,29 +4719,29 @@
   {
     "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.new-link",
     "surface": "Library Resources",
-    "label": "New link",
+    "label": "New link…",
     "kind": "action",
     "belongsTo": "library",
     "aliasOf": "library",
-    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text. Ends in … since 7 Oct: it opens an editor (docs/desktop.md § Words)."
   },
   {
     "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.new-prompt",
     "surface": "Library Resources",
-    "label": "New prompt",
+    "label": "New prompt…",
     "kind": "action",
     "belongsTo": "library",
     "aliasOf": "library",
-    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text. Ends in … since 7 Oct: it opens an editor (docs/desktop.md § Words)."
   },
   {
     "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.new-prompt.2",
     "surface": "Library Resources",
-    "label": "New prompt",
+    "label": "New prompt…",
     "kind": "action",
     "belongsTo": "library",
     "aliasOf": "library",
-    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text."
+    "note": "Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text. Ends in … since 7 Oct: it opens an editor (docs/desktop.md § Words)."
   },
   {
     "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.quick-look",
@@ -4757,16 +4863,6 @@
     "belongsTo": "library",
     "aliasOf": "library",
     "note": "Option of Library recovery: reveals the retained storage diagnostic while saved data and original files remain untouched."
-  },
-  {
-    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Label.runtime-138bf0706676",
-    "surface": "Library Resources",
-    "label": null,
-    "expression": "item . fileAvailable ? \"File found\" : \"File needs attention\"",
-    "note": "Runtime label from item . fileAvailable ? \"File found\" : \"File needs attention\"; no rendered text assumed. Foundation A2/L1: existing Library resource control now covered by the page-local scanner; uses the same resource owner and never starts a tool or submits text.",
-    "kind": "status",
-    "belongsTo": "library",
-    "aliasOf": "library"
   },
   {
     "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Label.runtime-610dbe83b810",
@@ -5151,16 +5247,6 @@
     "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
   },
   {
-    "id": "LocalVoice.PackLibraryView.PackLibraryView.Label.runtime-ab530a13e459",
-    "surface": "Library Packs",
-    "label": null,
-    "expression": "message",
-    "note": "Runtime label from message; no rendered text assumed. Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission.",
-    "kind": "status",
-    "belongsTo": "library",
-    "aliasOf": "library"
-  },
-  {
     "id": "LocalVoice.PackLibraryView.PackLibraryView.Label.workspace-appearance",
     "surface": "Library Packs",
     "label": "Workspace appearance",
@@ -5170,7 +5256,7 @@
     "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
   },
   {
-    "id": "LocalVoice.PackLibraryView.PackLibraryView.Link.pack-owner-setup",
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.pack-owner-setup",
     "surface": "Library Packs",
     "label": "Pack owner setup",
     "kind": "action",
@@ -5179,7 +5265,7 @@
     "note": " Foundation A2/L2: contextual control in existing Library Packs; content remains usable offline and preparation never starts capture or submission."
   },
   {
-    "id": "LocalVoice.PackLibraryView.PackLibraryView.Link.runtime-89df3f808764",
+    "id": "LocalVoice.PackLibraryView.PackLibraryView.Button.runtime-89df3f808764",
     "surface": "Library Packs",
     "label": null,
     "expression": "pack . repository",
@@ -5275,6 +5361,255 @@
     "aliasOf": "LocalVoice.FounderIntroduction.FounderIntroductionCard.Button.not-now"
   },
   {
+    "id": "LocalVoice.HomePermissions.HomePermissionsPanel.Button.runtime-90b2ee8a5505",
+    "surface": "window home",
+    "label": null,
+    "expression": "action . title",
+    "kind": "setting",
+    "belongsTo": "app",
+    "note": "Ethan 7 Oct 2026 (docs/desktop.md decisions): a permission row's Allow… shows macOS's request for that one approval through the owner its tool already uses; Open Settings… opens Privacy & Security at that approval. Nothing is requested by looking, and no tool waits on it."
+  },
+  {
+    "id": "LocalVoice.HomePermissions.HomePermissionsPanel.Button.show-details",
+    "surface": "window home",
+    "label": "Show details",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Quality: shows each approval when the panel is folded; local to the panel (docs/desktop.md § Home)."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeMeetingTile.Button.copy-transcript",
+    "surface": "window home",
+    "label": "Copy transcript",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "aliasOf": "dictate",
+    "note": "Option: Copy transcript on Home's Last meeting copies the saved meeting's complete current text through the same owner as Meetings' Copy transcript (MeetingTranscriptCopy); same words, same result (Fit rule 6)."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeMeetingTile.Button.open-meetings",
+    "surface": "window home",
+    "label": "Open Meetings",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Option: a door to Meetings from the Last meeting tile while a meeting records or finishes; it starts nothing."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeMeetingTile.Button.open-meetings.2",
+    "surface": "window home",
+    "label": "Open Meetings",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Option: the empty Last meeting tile's one next step; opening Meetings starts nothing (Start stays explicit)."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeMeetingTile.Button.prepare-follow-up",
+    "surface": "window home",
+    "label": "Prepare follow-up…",
+    "kind": "action",
+    "belongsTo": "history",
+    "aliasOf": "history",
+    "note": "Option: the same reviewed follow-up handoff that Meetings' Prepare follow-up… opens for that transcript; nothing is sent until the review (Fit rule 6)."
+  },
+  {
+    "id": "LocalVoice.HomePermissions.HomePermissionsPanel.Button.runtime-fe289c1404ed",
+    "surface": "window home",
+    "label": null,
+    "expression": "snapshot . isComplete ? \"Hide details\" : \"Done for now\"",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Quality: the Permissions panel's fold, Done for now (saved) or Hide details once all is allowed; something turning off opens it again (docs/desktop.md § Home)."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeDecksTile.Button.make-your-own",
+    "surface": "window home",
+    "label": "Make your own",
+    "kind": "action",
+    "belongsTo": "snapAndTalk",
+    "note": "Option: beside the sample deck, opens Snap & Talk; nothing starts until New session."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeDecksTile.Button.open",
+    "surface": "window home",
+    "label": "Open",
+    "kind": "action",
+    "belongsTo": "snapAndTalk",
+    "note": "Ethan 7 Oct 2026: shows the bundled sample deck, a tour of Workbench, in Quick Look; read-only, never in History."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeDecksTile.Button.open-deck",
+    "surface": "window home",
+    "label": "Open deck",
+    "kind": "action",
+    "belongsTo": "snapAndTalk",
+    "note": "Option: opens the newest deck file a session's assistant left in outputs/, in its own app (docs/desktop.md § Your decks)."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeDecksTile.Button.open-in-snap-talk",
+    "surface": "window home",
+    "label": "Open in Snap & Talk",
+    "kind": "action",
+    "belongsTo": "snapAndTalk",
+    "note": "Option: opens that session in Snap & Talk through the same switch as Sessions…, so busy and unsaved-edit admission applies; nothing records."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeDecksTile.Button.open-snap-talk",
+    "surface": "window home",
+    "label": "Open Snap & Talk",
+    "kind": "action",
+    "belongsTo": "snapAndTalk",
+    "note": "Option: the empty Your decks tile's one next step, when no sample deck ships; opening Snap & Talk starts nothing."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeDecksTile.Button.runtime-0e33a436af9f",
+    "surface": "window home",
+    "label": null,
+    "expression": "deck . title",
+    "kind": "action",
+    "belongsTo": "snapAndTalk",
+    "note": "Option: an earlier session's one line (its title) opens it in Snap & Talk through the same switch as Sessions…."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeDecksTile.Button.sample-deck",
+    "surface": "window home",
+    "label": "Sample deck",
+    "kind": "action",
+    "belongsTo": "snapAndTalk",
+    "note": "Option: once the person has a deck, the sample deck stays one link away in the tile header; Quick Look only."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeDecksTile.Button.show-in-finder",
+    "surface": "window home",
+    "label": "Show in Finder",
+    "kind": "action",
+    "belongsTo": "snapAndTalk",
+    "note": "Option: reveals the newest deck file, or the session folder when there is none."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeDecksTile.CapturePreviewButton.runtime-391cae7adcdf",
+    "surface": "window home",
+    "label": null,
+    "expression": "\"View the first screen of \" + deck . title",
+    "kind": "action",
+    "belongsTo": "snapAndTalk",
+    "note": "Quality: a session's first screen opens as a read-only picture (Fit rule 3)."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeDecksTile.CapturePreviewButton.view-the-sample-deck-s-slides",
+    "surface": "window home",
+    "label": "View the sample deck's slides",
+    "kind": "action",
+    "belongsTo": "snapAndTalk",
+    "note": "Quality: the sample deck's cover opens its slides as read-only pictures (Fit rule 3)."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeKeysTile.Button.cancel",
+    "surface": "window home",
+    "label": "Cancel",
+    "kind": "action",
+    "belongsTo": "settings",
+    "aliasOf": "settings",
+    "note": "Option: cancels recording new keys started from Your keys, keeping the old ones; the Grammar's Cancel (discards), shared with other Cancel buttons by meaning, owned by the Keyboard coach."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeKeysTile.Button.change",
+    "surface": "window home",
+    "label": "Change…",
+    "kind": "setting",
+    "belongsTo": "settings",
+    "note": "Ethan 7 Oct 2026 (Your keys: discover, set, muscle memory): Change… on a key records new keys through the Keyboard coach, its conflict check and macOS registration probe, as Settings › Keyboard does."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeKeysTile.Button.open-keyboard",
+    "surface": "window home",
+    "label": "Open Keyboard…",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Option: Your keys' door to Settings › Keyboard, by that page's name."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeKeysTile.Button.practice",
+    "surface": "window home",
+    "label": "Practice",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Option: Practice from a key's popover runs the Keyboard coach's three-press practice in the tile; disabled while anything records."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeKeysTile.Button.practice.2",
+    "surface": "window home",
+    "label": "Practice",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Option: Practice beside one of the next three keys to learn; the same coach practice."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeKeysTile.Button.runtime-25fed8e0d267",
+    "surface": "window home",
+    "label": null,
+    "expression": "\"Put \\(HomeKeys.name(entry)) on \\(shortcut.label)\"",
+    "kind": "setting",
+    "belongsTo": "settings",
+    "note": "Ethan 7 Oct 2026: Put Snap on ⌥G (or the next free left-hand key, never ⌥E) assigns a key to a core tool that ships without one, through the Keyboard coach's conflict check and registration probe."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeKeysTile.Button.stop-practice",
+    "surface": "window home",
+    "label": "Stop practice",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Option: stops a practice started from Your keys; the Keyboard coach's own stop."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeMeetingTile.Button.open-follow-up",
+    "surface": "window home",
+    "label": "Open follow-up",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Option: once a follow-up was made from the newest meeting, opens that task in History, where Copy result copies it."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeMeetingTile.Button.review-transcript",
+    "surface": "window home",
+    "label": "Review transcript",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Option: Review transcript opens that exact transcript in History, as Meetings' Review transcript does; nothing is selected or loaded into Dictate."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeMeetingTile.Button.runtime-fec7ab1d0f54",
+    "surface": "window home",
+    "label": null,
+    "expression": "meeting . heading",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Option: an earlier meeting's one line (its heading) opens that transcript in History."
+  },
+  {
+    "id": "LocalVoice.main.AppDelegate.addItem.minimize",
+    "surface": "app menu bar",
+    "label": "Minimize",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Quality: the standard Mac Window › Minimize (⌘M) for the Workbench window; it ends nothing."
+  },
+  {
+    "id": "LocalVoice.main.AppDelegate.addItem.zoom",
+    "surface": "app menu bar",
+    "label": "Zoom",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Quality: the standard Mac Window › Zoom for the Workbench window, which Full Keyboard Access relies on; it ends nothing."
+  },
+  {
+    "id": "LocalVoice.main.AppDelegate.addItem.bring-all-to-front",
+    "surface": "app menu bar",
+    "label": "Bring All to Front",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Quality: the standard Mac Window › Bring All to Front for Workbench's own windows; it starts nothing."
+  },
+  {
     "id": "LocalVoice.ModelSettingsView.ModelSettingsView.DisclosureGroup.details",
     "surface": "settings page",
     "label": "Details",
@@ -5282,5 +5617,13 @@
     "belongsTo": "settings",
     "aliasOf": "LocalVoice.DemoLibraryView.DemoLibraryView.DisclosureGroup.details",
     "note": "Quality (#15): contextual speech-model failure detail under the useful recovery message; no separate settings place or setup gate."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Button.open-login-items",
+    "surface": "settings page",
+    "label": "Open Login Items…",
+    "kind": "setting",
+    "belongsTo": "settings",
+    "note": "Quality: Open Workbench at login could register but stay off until approved in System Settings › General › Login Items; the switch now says so and opens that list (docs/desktop.md)."
   }
 ]

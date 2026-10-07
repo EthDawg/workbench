@@ -85,6 +85,7 @@ struct TranscriptHistoryRow: View {
         let metadata = library.metadata(for: item.id)
         let ref = WorkbenchItemReference(kind: .transcript, id: item.id)
         let words = TextRules.wordCount(item.text)
+        let hasRecording = metadata.purpose == .meeting || metadata.purpose == .call || model.meetings.hasRecording(for: item.id)
         HStack(alignment: .top, spacing: 12) {
             Toggle("", isOn: Binding(get: { library.selected.contains(ref) }, set: { include in
                 var refs = library.selected
@@ -94,50 +95,72 @@ struct TranscriptHistoryRow: View {
                 .accessibilityLabel(CaptureHistoryAccessibility.label("Select transcript, " + metadata.purpose.title, context: context))
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    Image(systemName: "mic").foregroundStyle(Workbench.accent).accessibilityHidden(true)
-                    Text(item.date, format: .dateTime.month(.abbreviated).day().hour().minute())
+                    // Meetings and calls carry the Meetings symbol, so a recording reads as one at a glance.
+                    Image(systemName: metadata.purpose == .meeting || metadata.purpose == .call ? WorkbenchHome.symbol(of: "meeting") : "mic")
+                        .foregroundStyle(Workbench.accent).accessibilityHidden(true)
+                    Text(HistoryDate.text(item.date))
                     Text(metadata.purpose.title).fontWeight(.medium)
                     Spacer(); Text("\(words) words")
-                }.font(.system(size: 11)).foregroundStyle(.secondary)
+                }.font(.subheadline).foregroundStyle(.secondary)
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel(CaptureHistoryAccessibility.label("Transcript, " + metadata.purpose.title, context: context) + ", \(words) words")
                     .focusable(shown).focused(focus, equals: item.id)
                     .accessibilityFocused(voiceOverFocus, equals: item.id)
                 let fields = [metadata.person, metadata.company] + metadata.tags.map { "#" + $0 }
                 if fields.contains(where: { !$0.isEmpty }) { Text(fields.filter { !$0.isEmpty }.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary) }
-                Text(item.text).font(.system(size: 14)).lineLimit(8)
+                Text(item.text).font(Workbench.bodyText).lineLimit(8)
                     .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
                 if !metadata.captureNotes.isEmpty {
-                    Label(metadata.captureNotes.joined(separator: " "), systemImage: "exclamationmark.triangle")
-                        .font(.caption).foregroundStyle(.orange)
+                    WorkbenchNote(metadata.captureNotes.joined(separator: " "))
                 }
-                if metadata.purpose == .meeting || metadata.purpose == .call || model.meetings.hasRecording(for: item.id) {
+                if hasRecording {
                     HStack {
                         Label("Original recording", systemImage: "waveform").foregroundStyle(.secondary)
                         Spacer()
                         Button("Review recording") { recording = item }
                             .accessibilityLabel(CaptureHistoryAccessibility.label("Review original recording", context: context))
-                    }.font(.caption).buttonStyle(.borderless)
+                    }.font(.callout).buttonStyle(.borderless)
                 }
+                // One row font for links and the More menu, so a menu title cannot render larger
+                // than the links beside it. Review transcript's Wording switch shows the original
+                // words, so the row needs no separate Original link.
                 HStack(spacing: 12) {
                     Button("Copy") { model.copyCapture(item) }.accessibilityLabel(CaptureHistoryAccessibility.label("Copy", context: context))
                     Button("Review transcript") { review = TranscriptReview(transcript: item) }
                         .accessibilityLabel(CaptureHistoryAccessibility.label("Review transcript", context: context))
-                    Button("Details…") { details = item }.accessibilityLabel(CaptureHistoryAccessibility.label("Edit details", context: context))
-                    Button("Original") { review = TranscriptReview(transcript: item, version: .original) }.accessibilityLabel(CaptureHistoryAccessibility.label("Show original", context: context))
-                    Menu("More…") {
-                        Button("Open in Dictate") { model.openTranscript(item) }
-                        Button("Save prompt") { model.savePrompt(item.text) }
-                        Button("Export cleaned text…") { model.exportCapture(item, version: .cleaned) }
-                        Button("Export original wording…") { model.exportCapture(item, version: .original) }
-                    }.menuStyle(.borderlessButton).fixedSize().accessibilityLabel(CaptureHistoryAccessibility.label("More transcript actions", context: context))
+                    Button("Details…") { details = item }.accessibilityLabel(CaptureHistoryAccessibility.label("Details", context: context))
+                    Menu {
+                        moreActions
+                    } label: { Text("More").font(.callout) }
+                        .menuStyle(.borderlessButton).fixedSize().accessibilityLabel(CaptureHistoryAccessibility.label("More transcript actions", context: context))
                     Spacer()
                     Button {
                         removal = TranscriptRemoval(transcript: item, includesRecording: model.meetings.hasRecording(for: item.id))
                     } label: { Image(systemName: "trash") }
                         .accessibilityLabel(CaptureHistoryAccessibility.label("Remove transcript", context: context))
-                }.buttonStyle(.borderless).font(.system(size: 11))
+                        .help("Remove transcript…")
+                }.buttonStyle(.borderless).font(.callout)
             }
-        }.padding(18).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 10))
+        }.workbenchCard(outlined: shown)
+            // The row's whole action set, where a Mac person looks for it first.
+            .contextMenu {
+                Button("Copy") { model.copyCapture(item) }
+                Button("Review transcript") { review = TranscriptReview(transcript: item) }
+                Button("Details…") { details = item }
+                if hasRecording { Button("Review recording") { recording = item } }
+                Divider()
+                moreActions
+                Divider()
+                Button("Remove transcript…", role: .destructive) {
+                    removal = TranscriptRemoval(transcript: item, includesRecording: model.meetings.hasRecording(for: item.id))
+                }
+            }
+    }
+
+    @ViewBuilder private var moreActions: some View {
+        Button("Open in Dictate") { model.openTranscript(item) }
+        Button("Save prompt") { model.savePrompt(item.text) }
+        Button("Export cleaned text…") { model.exportCapture(item, version: .cleaned) }
+        Button("Export original wording…") { model.exportCapture(item, version: .original) }
     }
 }

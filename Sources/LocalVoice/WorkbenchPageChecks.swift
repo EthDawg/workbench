@@ -50,16 +50,21 @@ enum WorkbenchPageChecks {
             try check(pages.contains(WorkbenchHome.destination(route).page), "\(route) lands on a sidebar page")
         }
 
-        // Home's photo arrival cue opens From iPhone by its own route, and nothing else holds the
-        // section, so the Library doors that follow it (the Library shortcut, Window › Library, the
-        // sidebar item and Switch to › Set up, all "library") open Resources. The cue used to open
-        // "library" with a separate flag those doors never cleared (#198 review).
-        let cue = WorkbenchHome.destination(WorkbenchHome.photoArrivals)
-        try check(cue.page == "library" && cue.section == "photos", "Home's photo cue opens Library on From iPhone by its own route")
-        try check(WorkbenchHome.photoArrivals != "library", "the photo cue does not share the Library doors' route")
+        // From iPhone left Library with the iPhone photo sync's other doors (#276). Its route is
+        // retired, not forgotten: it opens Library on Resources, as every Library door (the Library
+        // shortcut, Window › Library, the sidebar item and Switch to › Set up, all "library") does,
+        // rather than falling through to Dictate.
+        try check(!WorkbenchHome.sections.contains { $0.id == "photos" || $0.title == "From iPhone" }, "Library has no From iPhone section")
+        let retired = WorkbenchHome.destination("photos")
+        try check(retired.page == "library" && retired.section == "library", "the retired From iPhone route opens Library on Resources")
+        for (route, replacement) in WorkbenchHome.retiredRoutes {
+            try check(!(pages + WorkbenchHome.sections.map(\.id) + WorkbenchHome.subpages.map(\.id)).contains(route),
+                      "the retired route \(route) is not also a live page, section or subpage")
+            try check(WorkbenchHome.destination(route) == WorkbenchHome.destination(replacement), "the retired route \(route) lands where \(replacement) does")
+        }
         for route in [WorkbenchHome.navItems.first { $0.title == "Library" }?.id ?? "", "library"] {
             let landing = WorkbenchHome.destination(route)
-            try check(landing.page == "library" && landing.section == "library", "after the photo cue, a Library door (\(route)) opens Resources")
+            try check(landing.page == "library" && landing.section == "library", "a Library door (\(route)) opens Resources")
         }
 
         try check(WorkbenchHome.name(of: "settings") == "Settings" && WorkbenchHome.name(of: "library") == "Library",
@@ -104,7 +109,7 @@ enum WorkbenchPageChecks {
         // The floating toolbar's one switch reads the same everywhere (#134 H3).
         try check(WorkbenchHome.floatingToolbarHelp == "Show between actions. Recording and recovery controls still appear when needed.",
                   "the switch explains itself in the contract's words")
-        try check(AppDelegate.floatingToolbarTitle(visible: true) == "Hide floating toolbar" && AppDelegate.floatingToolbarTitle(visible: false) == "Show floating toolbar",
+        try check(AppDelegate.floatingToolbarTitle(visible: true) == "Hide Floating Toolbar" && AppDelegate.floatingToolbarTitle(visible: false) == "Show Floating Toolbar",
                   "the Window menu names what its item will do")
         // Named doors land on their section (#134 H2): Keyboard… on Settings › Keyboard.
         let keyboard = WorkbenchHome.destination("shortcuts")

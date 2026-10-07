@@ -75,13 +75,13 @@ struct MeetingWorkspaceView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     HStack(spacing: 14) {
                         Image(systemName: showsCompletedResult ? "checkmark.circle" : model.voiceSession.phase == .paused ? "pause.circle" : model.isRecording ? "record.circle.fill" : "person.2.wave.2")
-                            .font(.system(size: 26)).foregroundStyle(model.isRecording && model.voiceSession.phase != .paused ? .red : Workbench.accent)
+                            .font(.largeTitle).foregroundStyle(model.isRecording && model.voiceSession.phase != .paused ? .red : Workbench.accent)
                             .frame(width: 48, height: 48).accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: 4) {
+                            // The same status form as Dictate: a section title, then one caption line.
                             Text(showsCompletedResult ? "Transcript saved" : model.isRecording ? model.voiceSession.recordingTitle : model.isProcessing ? "Finishing transcript" : model.isStarting ? "Starting recording" : model.admission.title)
-                                .font(.title3.weight(.semibold))
-                            Text(showsCompletedResult ? "Copy the complete transcript to use it in your next task." : model.isRecording ? time(model.elapsed) : model.isProcessing ? "Finishing your transcript." : "Start once. Follow the words as the conversation happens.")
-                                .font(.callout).foregroundStyle(.secondary).monospacedDigit()
+                                .font(Workbench.sectionTitle)
+                            Text(statusLine).font(.caption).foregroundStyle(.secondary).monospacedDigit()
                         }
                         Spacer()
                     }
@@ -90,16 +90,17 @@ struct MeetingWorkspaceView: View {
                             Button("Copy transcript") {
                                 if let problem = copyTranscript(id) { copyFeedback.finish(nil, problem: problem) }
                                 else { copyFeedback.finish("Copied transcript") }
-                            }.buttonStyle(.borderedProminent)
+                            }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+                                .help("Copy transcript (Return)")
                                 .accessibilityIdentifier("meeting.copy-transcript")
                             Button("Review transcript") { openHistory(id) }
                             Button("Prepare follow-up…") { prepareFollowUp(id) }
                             Spacer()
                             Button("New recording…") { showingNewRecording = true }
-                        }
+                        }.controlSize(.large)
+                        // Confirmed under its control, in space kept for it, so the row never shifts (Fit rule 7).
                         if let problem = copyFeedback.problem {
-                            Text(problem).font(.caption).foregroundStyle(.red).textSelection(.enabled)
-                                .fixedSize(horizontal: false, vertical: true)
+                            WorkbenchNote(problem, font: .caption)
                         } else {
                             ConfirmationLabel(text: copyFeedback.confirmation?.kind, reserving: ["Copied transcript"])
                         }
@@ -126,7 +127,6 @@ struct MeetingWorkspaceView: View {
                         HStack(spacing: 12) {
                             transport
                             Spacer()
-                            Text("Up to 2 hours").font(.caption).foregroundStyle(.secondary)
                         }.controlSize(.large)
                     }
                     if let seconds = model.autoFinishSeconds {
@@ -135,7 +135,7 @@ struct MeetingWorkspaceView: View {
                                 .font(.callout).monospacedDigit()
                             Spacer()
                             Button("Keep recording") { model.keepRecording() }
-                        }.padding(12).background(Workbench.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+                        }.padding(12).background(Workbench.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: Workbench.tileRadius))
                             .accessibilityIdentifier("meeting.auto-finish")
                     }
                     if (model.isBusy && (!model.isProcessing || !model.voiceSession.segments.isEmpty)) || model.completedTranscriptID != nil {
@@ -150,15 +150,15 @@ struct MeetingWorkspaceView: View {
                     }
                     HStack(spacing: 8) {
                         Label(engineName, systemImage: "waveform").font(.caption).foregroundStyle(.secondary)
-                        Button("Models…", action: openModels).buttonStyle(.link).font(.caption)
+                        Button("Models…", action: openModels).buttonStyle(.workbenchLink).font(.caption)
+                            .help("Choose the speech model in Settings › Models")
                     }
-                }.padding(22).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 16))
+                }.workbenchCard()
                     .accessibilityIdentifier("meeting.recording")
 
                 if let problem = model.problem ?? (model.isBusy ? nil : model.admission.captureProblem) {
                     HStack(alignment: .top, spacing: 10) {
-                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange).accessibilityHidden(true)
-                        Text(problem.message).font(.callout).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                        WorkbenchNote(problem.message)
                         Spacer()
                         VStack(alignment: .trailing, spacing: 8) {
                             if problem.opensMicrophoneSettings {
@@ -180,10 +180,10 @@ struct MeetingWorkspaceView: View {
                             }
                         }
                         if model.problem != nil {
-                            Button { model.dismissError() } label: { Image(systemName: "xmark") }
+                            Button { model.dismissError() } label: { Image(systemName: "xmark").frame(width: 24, height: 24).contentShape(Rectangle()) }
                                 .buttonStyle(.plain).accessibilityLabel("Dismiss meeting problem")
                         }
-                    }.padding(14).background(Color.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
+                    }.workbenchCard()
                 }
                 if !model.isBusy, let kept = model.keptWithoutSpeech {
                     HStack(alignment: .top, spacing: 12) {
@@ -197,9 +197,9 @@ struct MeetingWorkspaceView: View {
                             }.controlSize(.small).padding(.top, 4)
                         }
                         Spacer()
-                        Button { model.dismissKeptWithoutSpeech() } label: { Image(systemName: "xmark") }
+                        Button { model.dismissKeptWithoutSpeech() } label: { Image(systemName: "xmark").frame(width: 24, height: 24).contentShape(Rectangle()) }
                             .buttonStyle(.plain).accessibilityLabel("Dismiss")
-                    }.padding(16).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 12))
+                    }.workbenchCard()
                 }
                 if !model.recoveries.isEmpty {
                     keptForLater
@@ -215,13 +215,13 @@ struct MeetingWorkspaceView: View {
                         }.pickerStyle(.segmented).fixedSize().disabled(model.isBusy)
                         MeetingDetectionSettings(model: model)
                         MeetingFinishSettings(model: model)
-                        Button("Open Sound settings") { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Sound-Settings.extension")!) }
+                        Button("Sound Settings…") { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Sound-Settings.extension")!) }
                         Text("Audio is kept on this Mac for recovery. Try a short sample before an important call. Calls that stay on your phone cannot be captured here.")
                             .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }.padding(.top, 12)
                 }.font(.callout)
-            }.padding(Workbench.pagePadding).frame(maxWidth: 960, alignment: .leading)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
+            // No width cap: the page fills the window like Dictate (docs/desktop.md § Page plan).
+            }.padding(Workbench.pagePadding).frame(maxWidth: .infinity, alignment: .topLeading)
         }.onAppear { if !model.isBusy { model.refreshApps() } }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in model.refreshAdmission() }
             .onChange(of: model.completedTranscriptID) { value in
@@ -230,9 +230,18 @@ struct MeetingWorkspaceView: View {
             }
     }
 
+    /// One caption under the status title, carrying the limit as Dictate's does.
+    private var statusLine: String {
+        if showsCompletedResult { return "Copy the complete transcript to use it in your next task." }
+        if model.isRecording { return time(model.elapsed) + " · Up to 2 hours" }
+        if model.isProcessing { return "Finishing your transcript." }
+        return "Start once and follow the words as they happen · Up to 2 hours"
+    }
+
     private var transcriptSnapshot: LiveVoiceSnapshot {
         var value = model.voiceSession
-        if model.completedTranscriptID != nil { value.phase = .completed; value.message = "Saved in History." }
+        // "Transcript saved" above already says where it is; the completed view adds no status line.
+        if model.completedTranscriptID != nil { value.phase = .completed }
         else if model.isProcessing { value.message = "Finishing your transcript." }
         return value
     }
@@ -297,7 +306,7 @@ struct MeetingWorkspaceView: View {
                     }
                     Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([entry.session]) }
                     Button("Move to Trash") { Task { await model.moveRecordingToTrash(entry.session) } }.disabled(model.isBusy)
-                }.controlSize(.small).padding(12).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 10))
+                }.controlSize(.small).workbenchCard()
                     .accessibilityElement(children: .contain).accessibilityLabel(Self.title(entry))
             }
         }

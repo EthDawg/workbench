@@ -39,7 +39,7 @@ struct CleanupConfigurationStore {
     }
     func snapshot() -> CleanupConfiguration {
         do { return try load() }
-        catch { return .init(settingsIssue: "Refinement settings need attention. Save them again in Settings › Models.") }
+        catch { return .init(settingsIssue: "Refinement settings could not be read. Save them again in Settings › Models.") }
     }
     func save(_ configuration: CleanupConfiguration) throws {
         defaults.set(try JSONEncoder().encode(configuration.validated()), forKey: Self.key)
@@ -397,7 +397,7 @@ final class CleanupModelManager: ObservableObject {
                     let saved = store.snapshot()
                     status = saved.naturalProvider == .ollama && saved.model == configuration.model
                         ? "\(configuration.model) downloaded and verified · ready for the Natural text style."
-                        : "\(configuration.model) downloaded and verified. Save refinement choice to use it for Natural."
+                        : "\(configuration.model) downloaded and verified. Save it under Text style to use it for Natural."
                 }
             } catch {
                 guard operationID == id else { return }

@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import SceneSyncKit
 
 final class SceneMediaTests {
@@ -131,25 +132,25 @@ final class SceneMediaTests {
         XCTAssertEqual(state(power: true), .lowPower)
         XCTAssertEqual(state(thermal: .serious), .thermal)
         XCTAssertEqual(state(thermal: .critical), .thermal)
-        let canvas = SceneCanvasView(frame: CGRect(x: 0, y: 0, width: 600, height: 400))
+        // The editor's canvas is the stage's renderer with the page's drag handling; motion is
+        // never requested on the Mac, whatever a saved scene still says.
+        let canvas = SceneCanvasView(previewLayer: AVCaptureVideoPreviewLayer())
+        canvas.frame = CGRect(x: 0, y: 0, width: 600, height: 400)
         var scene = DemoScene(background: "synthetic.png", gentleMotion: true, showsPhone: false)
         canvas.receive(scene); canvas.image = NSImage(data: try LogoImport.normalizedPNG(Self.webP))!
-        XCTAssertTrue(canvas.subviews.first is MovingSceneView, "The editor must use the actual motion renderer")
-        canvas.previewPaused = true; XCTAssertEqual(canvas.motionState, .paused)
-        canvas.previewPaused = false; canvas.layoutEditing = true; XCTAssertEqual(canvas.motionState, .editing)
-        canvas.layoutEditing = false; canvas.previewCovered = true; XCTAssertEqual(canvas.motionState, .covered)
-        canvas.previewCovered = false
+        guard let preview = canvas.subviews.first as? MovingSceneView else { XCTAssertTrue(false, "The editor must use the actual scene renderer"); return }
+        XCTAssertFalse(preview.isAnimating)
+        XCTAssertEqual(preview.motionState, .off)
         func event(_ kind: NSEvent.EventType) -> NSEvent {
             NSEvent.mouseEvent(with: kind, location: CGPoint(x: 50, y: 80), modifierFlags: [], timestamp: 0,
                 windowNumber: 0, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
         }
         canvas.mouseDown(with: event(.leftMouseDown))
-        XCTAssertTrue(canvas.isDragging); XCTAssertEqual(canvas.motionState, .editing)
+        XCTAssertTrue(canvas.isDragging)
         canvas.mouseUp(with: event(.leftMouseUp)); XCTAssertFalse(canvas.isDragging)
-        XCTAssertTrue(canvas.motionState != .editing)
         canvas.mouseDown(with: event(.leftMouseDown)); scene.id = UUID(); canvas.receive(scene)
         XCTAssertFalse(canvas.isDragging)
-        canvas.stopPreview(); XCTAssertEqual(canvas.motionState, .off)
+        XCTAssertEqual(preview.motionState, .off)
     }
 }
 

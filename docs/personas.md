@@ -40,7 +40,7 @@ The Persona workspace uses the existing saved library and overlay session. Openi
 
 Present’s compact **Persona…** control sits beside the scene name above the preview. Add or change a card, set its size and position, or remove only its scene placement. A card placed in a scene is rendered into that presentation; a floating Persona is a separate window. Both use the same saved artwork without silently changing each other’s placements or live image snapshots.
 
-Present keeps **Full screen**, **Window**, **Connection & audio…** and **More** below the editor. At narrower widths these actions wrap into two rows. **Scene details** contains logo, crop, device-shape and hand adjustments. The connection button opens the existing route guide, including QuickTime and iPhone Mirroring launch actions; device capture, audio limits and native fallback ownership are unchanged.
+Present keeps one **Present** button and **Options** (Start full screen, Export image…) in a fixed footer below the editor. **Scene options**, folded under the preview, holds logo, crop, device-shape and hand adjustments. The phone's status sits under the preview, and **Can’t see your phone?** opens the help sheet with its QuickTime check and iPhone Mirroring. A persona placed in a scene changes nothing about device capture or the handoff to Apple apps.
 
 `StageKitController.personasView` supplies the standalone workspace. The host routes **Prepare Personas…** with `onOpenPersonas`; a host without that callback retains the existing preparation sheet. Scene-specific selection always uses its own sheet and keeps the original scene binding.
 

@@ -84,7 +84,7 @@ final class BoardPresentationFixture: NSObject, NSApplicationDelegate {
                 .draw(in: CGRect(x: 300, y: 350, width: 1320, height: 270), withAttributes: [.font: NSFont.systemFont(ofSize: 36), .foregroundColor: NSColor.white, .paragraphStyle: paragraph])
             return true
         }
-        let value = DemoPresentation(scene: scene, image: image, logo: nil, hand: nil, screen: NSScreen.main, root: root, mode: mode)
+        let value = DemoPresentation(scene: scene, image: image, logo: nil, hand: nil, screen: NSScreen.main, root: root, capture: app.demoScenes.capture, phoneLink: app.demoScenes.phoneLink, mode: mode)
         value.onEnd = { [weak self] in self?.presenter = nil; self?.window?.makeKeyAndOrderFront(nil) }
         presenter = value; window?.orderOut(nil); value.start()
     }

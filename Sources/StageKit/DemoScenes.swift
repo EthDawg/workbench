@@ -222,7 +222,7 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
     @Published private(set) var selection = SceneListSelection()
     var selectedID: UUID? {
         get { selection.primaryID }
-        set { selection = SceneListSelection(ids: Set(newValue.map { [$0] } ?? []), primaryID: newValue) }
+        set { selection = SceneListSelection(ids: Set(newValue.map { [$0] } ?? []), primaryID: newValue); reconsiderCapture() }
     }
     @Published var notice: String?
     @Published var choosingPersonas = false
@@ -241,15 +241,132 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
     func makeViewMenu() -> NSMenu { presentation?.makeViewMenu() ?? NSMenu() }
     var usesSharedControls = false
     var onFocusSharedControls: (() -> Void)?
-    let desktopMotion = MainActor.assumeIsolated { DesktopMotionController() }
+    /// One capture session for Present: the page's preview shows the phone before
+    /// Present is pressed, and the stage shows the same session. It runs while the
+    /// page is on screen with a device scene, or while a presentation runs.
+    let capture: DemoCapture
+    /// The live owner of the phone's state, mirroring that capture.
+    let phoneLink: PhoneLinkMonitor
+    private var pageVisible = false
+    /// The page left the screen less than `pageHideGrace` ago. Its preview keeps the session
+    /// meanwhile, so covering the window or pressing Present from elsewhere does not restart
+    /// the phone's ten-second handshake. End still lets go at once.
+    private var pageLingering = false
+    private var pageLinger: DispatchWorkItem?
+    /// How long the page's preview keeps the phone after the page leaves the screen. Checks shorten it.
+    var pageHideGrace: TimeInterval = 60
+    private var pageInUse: Bool { pageVisible || pageLingering }
+    /// Workbench let go of the phone: the presentation ended, or an Apple app was opened for
+    /// it. Capture stays off, whatever the page shows, until a deliberate action takes it back:
+    /// Present, Reconnect or showing a screen; after End also a fresh visit to the Present page
+    /// or plugging the phone in again. Covering or uncovering the page and a late permission,
+    /// discovery or frame callback never do.
+    private var released: PhoneLinkSignals.Release?
+    /// End reopens the scenes window when the stage has its own controls; an opening within
+    /// `endReopenWindow` of End is End's own, not the person returning to the page. It expires
+    /// rather than waiting for an opening: when End's reopen shows no new page (the window was
+    /// on another Space or already up), the person's next visit must still count (7 October 2026).
+    private var endReopenUntil: Date?
+    var endReopenWindow: TimeInterval = 2
+    /// Present starts in a window unless the person chose full screen, kept with the scenes.
+    @Published private(set) var startsFullScreen = false
+    private var presentPreferencesURL: URL { root.appendingPathComponent("present-preferences.json") }
     var onOpen: (() -> Void)?
     var onBeginPresentation: (() -> Void)?
+    /// With shared controls, the host restores what the presentation hid when it ends.
+    var onEndPresentation: (() -> Void)?
+    /// Called just before a presentation hides the host's surfaces.
+    var onWillBeginPresentation: (() -> Void)?
     var mayBeginInteraction: (() -> Bool)?
     var isPresenting: Bool { presentation != nil }
+    /// The running presentation shows a device frame, so the phone's status belongs beside it.
+    var presentationShowsPhone: Bool { presentation?.showsPhone ?? false }
     var presentationIdentity: UUID? { presentation?.sessionIdentity }
-    /// The camera a running device presentation holds. Persona's camera reports
-    /// it as a conflict rather than taking the device from the presentation.
-    var heldDeviceID: String? { presentation?.heldDeviceID }
+    /// The camera Present's capture holds. Persona's camera reports it as a conflict
+    /// rather than taking the device from the page or the presentation.
+    var heldDeviceID: String? { capture.heldDeviceID }
+    /// The Present page is on screen (its preview is visible), so the phone can show there.
+    /// Leaving the screen keeps the preview's session for `pageHideGrace` before letting go.
+    func setPageVisible(_ visible: Bool) {
+        guard pageVisible != visible else { return }
+        pageVisible = visible
+        pageLinger?.cancel(); pageLinger = nil
+        if visible {
+            pageLingering = false
+        } else {
+            endReopenUntil = nil
+            pageLingering = true
+            let linger = DispatchWorkItem { [weak self] in
+                guard let self else { return }
+                pageLingering = false; pageLinger = nil; reconsiderCapture()
+            }
+            pageLinger = linger
+            DispatchQueue.main.asyncAfter(deadline: .now() + pageHideGrace, execute: linger)
+        }
+        reconsiderCapture()
+    }
+    /// The person opened the Present page (a fresh visit, not the window being uncovered):
+    /// after End, the preview may show the phone again.
+    func presentPageOpened() {
+        if let until = endReopenUntil { endReopenUntil = nil; if Date() < until { return } }
+        guard released == .ended else { return }
+        setReleased(nil); reconsiderCapture()
+    }
+    /// The phone was plugged in again after End, which is as deliberate as Reconnect.
+    private func phoneConnectedAgain() {
+        guard released == .ended else { return }
+        setReleased(nil); reconsiderCapture()
+    }
+    private func setReleased(_ value: PhoneLinkSignals.Release?) {
+        guard released != value else { return }
+        released = value
+        MainActor.assumeIsolated { phoneLink.setReleased(value) }
+    }
+    /// Asked for explicitly: the capture may hold the device again after End or a handoff.
+    /// A release ends only here, with a shown source or with Present, never by the page
+    /// being covered or opened again, so End stays final and an Apple app keeps the phone.
+    func reconnectPhone() {
+        let wasReleased = released != nil
+        setReleased(nil); reconsiderCapture()
+        // A released capture starts afresh above; a running one looks again for its device.
+        if !wasReleased { capture.reconnect() }
+    }
+    /// Opens QuickTime Player or iPhone Mirroring from the page. A running presentation
+    /// ends first through its own handoff; otherwise the capture releases the phone, and
+    /// stays released until the person reconnects.
+    func openNativeApp(_ app: NativePresentationApp) {
+        if let presentation { presentation.endAndOpen(app); return }
+        setReleased(.forAnotherApp)
+        reconsiderCapture { [weak self] in app.open { message in self?.notice = message } }
+    }
+    /// The one next step the status names, from the page.
+    func performPhoneStep(_ step: PhoneLinkStatus.Step, chooseSource: () -> Void) {
+        switch step {
+        case .showSource(let id, _): setReleased(nil); reconsiderCapture(); capture.select(id)
+        case .chooseSource: chooseSource()
+        case .reconnect: reconnectPhone()
+        case .openCameraSettings: NSWorkspace.shared.open(PhoneConnectionSupport.cameraSettingsURL)
+        }
+    }
+    private var captureWanted: Bool {
+        guard released == nil, !shuttingDown, captureEnabled else { return false }
+        return presentation?.showsPhone == true || (pageInUse && selected?.showsPhone == true)
+    }
+    /// The capture runs only in the app, or under a check's synthetic hardware.
+    private let captureEnabled: Bool
+    /// A check drives the capture with synthetic hardware; its stage stays off screen.
+    private let syntheticCapture: Bool
+    private var shuttingDown = false
+    /// Starts or stops the one session to match where Present is in use. A completion
+    /// runs once the session is released, or at once when it keeps running.
+    private func reconsiderCapture(completion: (() -> Void)? = nil) {
+        let wanted = captureWanted
+        MainActor.assumeIsolated {
+            phoneLink.setCapturing(wanted)
+            phoneLink.setActive(!shuttingDown && (wanted || presentation != nil || (pageInUse && selected?.showsPhone == true)))
+        }
+        if wanted { capture.start(); completion?() } else { capture.stop(completion: completion) }
+    }
     @Published private(set) var myDevice: DeviceViewport?
     @Published private(set) var savedLogos: [SavedSceneLogo] = []
     @Published private(set) var starterPreferences = StarterPreferences()
@@ -263,21 +380,39 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
     var selected: DemoScene? { selection.ids.count == 1 ? matches.first { $0.id == selectedID } : nil }
     func selectScenes(_ ids: Set<UUID>) {
         selection = SceneListSelection(ids: ids, primaryID: selectedID).reconciled(with: matches.map(\.id))
+        reconsiderCapture()
     }
     private func reconcileSelection() {
         selection = selection.reconciled(with: matches.map(\.id))
+        reconsiderCapture()
     }
     private var archiveURL: URL { root.appendingPathComponent("scenes.json") }
     private var snapshotURL: URL { root.appendingPathComponent("desktop-restore.json") }
     /// `personaPanels` stands in for prepared overlay windows in checks, and
     /// `personaCamera` for the live camera.
+    /// `captureHardware` stands in for AVFoundation in checks, so the capture, the page and the
+    /// stage run their real callbacks against synthetic devices, permission answers and frames.
     init(root: URL? = nil, readOnlyReason: String? = nil, systemIntegrationEnabled: Bool = true, personaVoice: PersonaVoiceAccess? = nil,
-         personaPanels: (() -> any PersonaSessionDisplaying)? = nil, personaCamera: PersonaLiveCamera? = nil) {
-        self.root = root ?? Workbench.supportDirectory(component: "StageMark").appendingPathComponent("Scenes")
+         personaPanels: (() -> any PersonaSessionDisplaying)? = nil, personaCamera: PersonaLiveCamera? = nil, captureHardware: CaptureHardware? = nil,
+         usbWatch: USBWatching? = nil) {
+        let root = root ?? Workbench.supportDirectory(component: "StageMark").appendingPathComponent("Scenes")
+        self.root = root
         self.systemIntegrationEnabled = systemIntegrationEnabled
+        captureEnabled = systemIntegrationEnabled || captureHardware != nil
+        syntheticCapture = captureHardware != nil
+        capture = captureHardware.map { DemoCapture(root: root, hardware: $0) } ?? DemoCapture(root: root)
+        phoneLink = MainActor.assumeIsolated { usbWatch.map { PhoneLinkMonitor(usb: $0) } ?? PhoneLinkMonitor() }
+        if let data = try? Data(contentsOf: self.root.appendingPathComponent("present-preferences.json")),
+           let preferences = try? JSONDecoder().decode(PresentPreferences.self, from: data) {
+            startsFullScreen = preferences.fullScreen
+        }
         self.personas = PersonaLibrary(root: self.root, readOnlyReason: readOnlyReason, sessionPanelFactory: personaPanels,
                                        sessionHUDEnabled: personaPanels == nil, voice: personaVoice, camera: personaCamera)
         super.init()
+        MainActor.assumeIsolated {
+            phoneLink.mirror(capture)
+            phoneLink.onNewConnection = { [weak self] in self?.phoneConnectedAgain() }
+        }
         // Persona's camera keeps clear of the device a presentation is showing.
         personas.camera.deviceInUse = { [weak self] in self?.heldDeviceID }
         if let readOnlyReason {
@@ -364,22 +499,52 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
             myDevice = profile; notice = "My device saved. Use it in any scene."
         } catch { notice = error.localizedDescription }
     }
-    func startDemo(mode: PresentationMode = .fullScreen) {
-        guard systemIntegrationEnabled else { return }
+    func setStartsFullScreen(_ value: Bool) {
+        startsFullScreen = value
+        try? JSONEncoder().encode(PresentPreferences(fullScreen: value)).write(to: presentPreferencesURL, options: .atomic)
+    }
+    /// Starts the selected scene. Without a mode, the saved choice applies: a window
+    /// to share in a call, or full screen for a projector.
+    func startDemo(mode: PresentationMode? = nil) {
+        guard captureEnabled else { return }
+        let mode = mode ?? (startsFullScreen ? .fullScreen : .windowed)
         guard mayBeginInteraction?() != false else { notice = "Finish your current recording or keyboard practice before presenting."; return }
         guard let scene = selected, let image = image(for: scene) else { return }
         if scene.logo != nil && logoImage(for: scene) == nil { notice = SceneError.missingLogo.localizedDescription; return }
         if scene.hand != nil && handImage(for: scene) == nil { notice = SceneError.missingHand.localizedDescription; return }
         if scene.persona != nil && personaImage(for: scene) == nil { notice = SceneError.missingPersona.localizedDescription; return }
         if presentation != nil { presentation?.bringForward(); return }
+        onWillBeginPresentation?()
         onBeginPresentation?()
-        let presenter = DemoPresentation(scene: scene, image: image, logo: logoImage(for: scene), hand: handImage(for: scene), persona: personaImage(for: scene), ambience: ambienceImages(for: scene), screen: targetScreen, root: root, mode: mode, sharedControls: usesSharedControls)
+        // Present is a deliberate action: it takes the phone back after End or a handoff.
+        setReleased(nil)
+        let presenter = DemoPresentation(scene: scene, image: image, logo: logoImage(for: scene), hand: handImage(for: scene), persona: personaImage(for: scene), ambience: ambienceImages(for: scene), screen: targetScreen, root: root, capture: capture, phoneLink: phoneLink, mode: mode, sharedControls: usesSharedControls,
+                                        onScreen: !syntheticCapture)
         presenter.onRevealSharedControls = { [weak self] in self?.onFocusSharedControls?() }
-        presenter.onEnd = { [weak self] in self?.presentation = nil; self?.objectWillChange.send(); if self?.usesSharedControls != true { self?.show() } }
+        // The stage's Reconnect and Show go through the owner, so a capture released for an
+        // Apple app comes back when asked from any surface.
+        presenter.reconnect = { [weak self] in self?.reconnectPhone() }
+        presenter.showSource = { [weak self] id in self?.performPhoneStep(.showSource(id: id, title: ""), chooseSource: {}) }
+        presenter.releaseCapture = { [weak self] forHandoff, completion in
+            guard let self else { completion(); return }
+            // End revokes the capture's admission before the stage closes, whatever the page
+            // shows: the stop completes, outstanding work is invalidated, and only Present,
+            // Reconnect or showing a screen starts it again. Nothing held, nothing to let go.
+            if forHandoff { setReleased(.forAnotherApp) } else if captureWanted { setReleased(.ended) }
+            reconsiderCapture(completion: completion)
+        }
+        presenter.onEnd = { [weak self] in
+            guard let self else { return }
+            presentation = nil; objectWillChange.send()
+            reconsiderCapture()
+            if usesSharedControls != true { endReopenUntil = released == .ended ? Date().addingTimeInterval(endReopenWindow) : nil; show() }
+            else { onEndPresentation?() }
+        }
         presentation = presenter
         objectWillChange.send()
         window?.orderOut(nil)
         presenter.start()
+        reconsiderCapture()
     }
     func makeControlsMenu() -> NSMenu {
         if let presentation { return presentation.makeControlsMenu() }
@@ -387,7 +552,7 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
         for scene in scenes {
             menu.addItem(StageMenuAction(scene.name, checked: scene.id == selectedID) { [weak self] in
                 guard let self, self.presentation == nil, self.mayBeginInteraction?() != false else { return }
-                self.selectedID = scene.id; self.startDemo(mode: .windowed)
+                self.selectedID = scene.id; self.startDemo()
             })
         }
         if scenes.isEmpty { menu.addItem(StageMenuAction("Prepare a scene in Workbench first.", enabled: false) {}) }
@@ -396,8 +561,12 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
     func endPresentation() { presentation?.end() }
     func shutdown() {
         personas.shutdown()
-        MainActor.assumeIsolated { desktopMotion.stop(); sceneSync?.shutdown() }
+        shuttingDown = true; pageVisible = false
+        pageLinger?.cancel(); pageLinger = nil; pageLingering = false
+        MainActor.assumeIsolated { sceneSync?.shutdown() }
         presentation?.onEnd = nil; presentation?.end(); presentation = nil
+        capture.stop()
+        MainActor.assumeIsolated { phoneLink.setActive(false) }
         window?.orderOut(nil); window?.contentView = nil; window?.delegate = nil; window = nil
         imageCache.removeAllObjects()
     }
@@ -541,7 +710,7 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
                 let detail = try adapter.library.importAsset(Data(contentsOf: assets.appendingPathComponent(starter.detailFilename)))
                 var scene = DemoScene(name: starter.name, background: filename)
                 scene.ambience = SceneAmbience(preset: preset, cleanPlate: plate, detail: detail)
-                scene.gentleMotion = true; scene.showsPhone = false; scene.viewport = myDevice ?? .phone
+                scene.viewport = myDevice ?? .phone
                 try persist(scenes + [scene]); query = ""; selectedID = scene.id; notice = nil
             }
         } catch { try? FileManager.default.removeItem(at: root.appendingPathComponent(filename)); throw error }
@@ -805,65 +974,9 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
         }
     }
     #if !APP_STORE
-    func applyDesktop(animate: Bool = false) {
-        guard systemIntegrationEnabled else { return }
-        guard !desktopBusy else { return }
-        desktopBusy = true
-        do {
-            guard let scene = selected, let image = image(for: scene), let screen = targetScreen else { throw SceneError.noScene }
-            let logo = logoImage(for: scene), hand = handImage(for: scene), persona = personaImage(for: scene)
-            let ambientImages = ambienceImages(for: scene)
-            let workspace = NSWorkspace.shared
-            let screenID = AppCoordinator.displayID(screen)
-            let output = root.appendingPathComponent("desktop-\(UUID().uuidString).png")
-            try renderPNG(scene, image: image, size: outputSize).write(to: output, options: .atomic)
-            var snapshots: [DesktopSnapshot] = FileManager.default.fileExists(atPath: snapshotURL.path)
-                ? try JSONDecoder().decode([DesktopSnapshot].self, from: Data(contentsOf: snapshotURL)) : []
-            let current = workspace.desktopImageURL(for: screen)
-            guard let current else { throw SceneError.desktopUnavailable }
-            let options = workspace.desktopImageOptions(for: screen) ?? [:]
-            let color = (options[.fillColor] as? NSColor)?.usingColorSpace(.deviceRGB)
-            let original = DesktopSnapshot(screenID: screenID, originalURL: current, appliedURL: output,
-                scaling: (options[.imageScaling] as? NSNumber)?.intValue,
-                clipping: (options[.allowClipping] as? NSNumber)?.boolValue,
-                fill: color.map { [Double($0.redComponent), Double($0.greenComponent), Double($0.blueComponent), Double($0.alphaComponent)] })
-            snapshots = DesktopRecovery.preparing(snapshots, screenID: screenID, current: current, output: output, original: original)
-            // Save recovery before changing anything outside the app.
-            try JSONEncoder().encode(snapshots).write(to: snapshotURL, options: .atomic)
-            hasDesktopSnapshot = true
-            notice = "Applying the scene to this display…"
-            MainActor.assumeIsolated { desktopMotion.stop() }
-            try workspace.setDesktopImageURL(output, for: screen, options: [.imageScaling: NSImageScaling.scaleAxesIndependently.rawValue])
-            DesktopImageVerification.confirm(output, read: { workspace.desktopImageURL(for: screen) }) { [weak self] confirmed in
-                guard let self else { return }
-                defer { self.desktopBusy = false }
-                guard confirmed else {
-                    self.notice = "macOS hasn’t confirmed the desktop change yet. Recovery details are saved; try Restore desktop or export the scene."
-                    return
-                }
-                do {
-                    if let index = snapshots.lastIndex(where: { $0.screenID == screenID && $0.owns(output) }) {
-                        snapshots[index].appliedURL = output; snapshots[index].pendingURL = nil
-                        try JSONEncoder().encode(snapshots).write(to: self.snapshotURL, options: .atomic)
-                    }
-                    if animate {
-                        let started = MainActor.assumeIsolated {
-                            self.desktopMotion.start(scene: scene, backdrop: image, logo: logo, hand: hand, persona: persona,
-                                                     screen: screen, expectedStill: output, ambience: ambientImages)
-                        }
-                        self.notice = started ? "Gentle desktop motion is on. Stop motion or quit Workbench to keep the still picture."
-                            : "The still picture is applied. Motion could not start on this display."
-                    } else {
-                        self.notice = "\(scene.name) is on this display. Restore desktop brings your previous picture back."
-                    }
-                } catch { self.notice = error.localizedDescription }
-            }
-        } catch { desktopBusy = false; notice = error.localizedDescription }
-    }
     func restoreDesktop() {
         guard systemIntegrationEnabled else { return }
         guard !desktopBusy else { return }
-        MainActor.assumeIsolated { desktopMotion.stop() }
         desktopBusy = true
         do {
             let snapshots = try JSONDecoder().decode([DesktopSnapshot].self, from: Data(contentsOf: snapshotURL))
@@ -908,4 +1021,9 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
         } catch { notice = error.localizedDescription }
     }
     #endif
+}
+
+/// How Present starts, kept beside the scenes so a fixture root isolates it.
+struct PresentPreferences: Codable, Equatable {
+    var fullScreen = false
 }

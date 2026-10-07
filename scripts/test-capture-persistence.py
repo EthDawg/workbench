@@ -258,6 +258,7 @@ enum AudioRenderer { static func remove(_ url: URL?) {} }
     var removedTranscripts: [UUID] = []
     func transcriptRemoved(_ id: UUID) { removedTranscripts.append(id) }
     func shutdown() { shutdownCount += 1 }
+    func refreshAdmission() {}
     func hasRecording(for id: UUID) -> Bool { false }
     func removeCompletedRecording(for id: UUID, commit: () throws -> Void) throws -> String? { try commit(); return nil }
 }
@@ -317,7 +318,7 @@ struct FixtureVoicePreferences { var capture = CaptureMode.hold; var dictationSh
     var captureFailure: String?, status = "", captureProcessingLabel = ""
     var attention: Attention?
     var error: String? { attention?.message }
-    func report(_ message: String, on page: Attention.Page) { attention = Attention(message: message, page: page) }
+    func report(_ message: String, on page: Attention.Page, code: String? = nil) { attention = Attention(message: message, page: page, code: code) }
     var previewingPanel = false, canRetry = false, accessibilityGranted = false, ready = true
     var preparing = false, modelMessage = "", modelFailure: String? = nil
     var recognition = RecognitionSnapshot()
@@ -326,8 +327,8 @@ struct FixtureVoicePreferences { var capture = CaptureMode.hold; var dictationSh
     var liveDictation: LiveDictationDelivery?
     var voiceSession = LiveVoiceSnapshot()
     var peakPower: Float = -160, recordingSettings: CaptureSettings?
-    var photoHandoffRefresh: Task<Void, Never>?, readingTask: Task<Void, Never>?
-    var photoHandoffActivation: AnyCancellable?, audioURL: URL?
+    var readingTask: Task<Void, Never>?, audioURL: URL?
+    var appActivation: AnyCancellable?
     var onPhaseChange: (() -> Void)?
     var waitingForDrawing = false
     var shouldDeferDelivery: (() -> Bool)?

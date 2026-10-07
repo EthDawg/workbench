@@ -48,6 +48,10 @@ public final class StageKitController: ObservableObject {
     public var onShortcutsChanged: (() -> Void)? {
         didSet { coordinator.onShortcutsChanged = onShortcutsChanged }
     }
+    /// Each pressed Draw, Persona or overlay shortcut, by its catalogue id.
+    public var onShortcutUsed: ((String) -> Void)? {
+        didSet { coordinator.onShortcutUsed = onShortcutUsed }
+    }
     public var mayBeginInteraction: (() -> Bool)? {
         didSet {
             coordinator.mayBeginInteraction = mayBeginInteraction; coordinator.demoScenes.mayBeginInteraction = mayBeginInteraction
@@ -64,6 +68,15 @@ public final class StageKitController: ObservableObject {
         didSet { coordinator.onDrawingChanged = onDrawingChanged }
     }
     /// Hide the shell before drawing, starting a timer or presenting a scene.
+    /// A presentation ended. The host brings back what starting it hid, without that counting
+    /// as a fresh visit to Present, so End stays final.
+    public var onPresentationEnded: (() -> Void)? {
+        didSet { coordinator.demoScenes.onEndPresentation = onPresentationEnded }
+    }
+    /// A presentation is about to start and hide the host's window.
+    public var onPresentationWillBegin: (() -> Void)? {
+        didSet { coordinator.demoScenes.onWillBeginPresentation = onPresentationWillBegin }
+    }
     public var onBeginActivity: (() -> Void)? {
         didSet {
             coordinator.onBeginActivity = onBeginActivity
@@ -203,6 +216,9 @@ public final class StageKitController: ObservableObject {
         return menu
     }
     public func makePresentationMenu() -> NSMenu { coordinator.demoScenes.makeControlsMenu() }
+    /// The host reopened its closed or hidden window on the Present page: a fresh visit, which
+    /// after End may show the phone again. Uncovering a visible window never calls this.
+    public func presentPageReopened() { coordinator.demoScenes.presentPageOpened() }
     public func makePresentationViewMenu() -> NSMenu { coordinator.demoScenes.makeViewMenu() }
     public struct PersonaCycle: Equatable {
         let generation: UUID
@@ -421,11 +437,28 @@ public final class StageKitController: ObservableObject {
     public func presentSelectedScene() {
         if coordinator.demoScenes.selected == nil { onOpenScenes?() }
         else {
-            coordinator.demoScenes.startDemo(mode: .windowed)
+            coordinator.demoScenes.startDemo()
             if !coordinator.demoScenes.isPresenting { onOpenScenes?() }
         }
     }
     public func endDeviceScene() { coordinator.demoScenes.endPresentation() }
+    /// The phone's one status and next step, for Home's live row and any surface that
+    /// names the running presentation. Observe `phoneLink` for changes.
+    public var phoneLinkStatus: PhoneLinkStatus { coordinator.demoScenes.phoneLink.status }
+    public var phoneLink: PhoneLinkMonitor { coordinator.demoScenes.phoneLink }
+    /// The running presentation shows a device frame; a scene-only stage has no phone status.
+    public var presentationShowsPhone: Bool { coordinator.demoScenes.presentationShowsPhone }
+    /// Performs the status's next step from any surface; choosing a screen opens the Present page.
+    public func performPhoneStep(_ step: PhoneLinkStatus.Step) {
+        coordinator.demoScenes.performPhoneStep(step) { showScenes() }
+    }
+    /// Pins the phone's signals for an offscreen render; nil follows the Mac again.
+    public func setPhoneLinkFixture(_ signals: PhoneLinkSignals?) { coordinator.demoScenes.phoneLink.fixture = signals }
+    /// Adds a bundled starter as a scene, for renders and checks with no saved scenes.
+    public func addStarterScene(_ id: String) throws {
+        guard let starter = SceneStarters.all.first(where: { $0.id == id }) else { throw SceneError.noScene }
+        try coordinator.demoScenes.useStarter(starter)
+    }
     public var hasOverlaySession: Bool { coordinator.demoScenes.personas.sessionState.phase != .idle }
     public var areOverlaysPaused: Bool { coordinator.demoScenes.personas.sessionState.phase == .paused }
     public var canStepOverlays: Bool { coordinator.demoScenes.personas.sessionState.groups.count > 1 }
@@ -570,7 +603,7 @@ struct PhotoBackdropChooser: View {
                         }
                     }
                     if model.storageBlocked {
-                        ContentUnavailableView("Saved scenes need attention", systemImage: "exclamationmark.folder",
+                        ContentUnavailableView("Saved scenes need attention", systemImage: "folder.badge.questionmark",
                             description: Text("The scene library could not be read. Its original files are preserved. You can still save a separate copy of this photo."))
                     } else if model.scenes.isEmpty && preparedImage != nil {
                         Label("Your image stays unchanged. Creating a scene saves an independent copy.", systemImage: "photo.on.rectangle")

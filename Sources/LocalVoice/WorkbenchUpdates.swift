@@ -170,8 +170,12 @@ final class WorkbenchUpdates: NSObject, ObservableObject {
         offerReply = nil; requestedVersion = nil; requestedBuildNumber = nil; availableBuildNumber = nil
         #endif
         if !restartWaiting {
+            let hadOffer = availableVersion != nil
             availableVersion = nil; releaseSummary = nil; downloaded = false; installing = false
             if wasUpdating { status = "Update paused. Check again when you’re ready." }
+            // A dismissed offer takes its "is ready" line with it, so Settings never says an update
+            // is ready beside a disabled Check for Updates… with nothing on offer.
+            else if hadOffer { status = "Updates stay on the \(build.edition) edition." }
         }
     }
     func canTerminate(saveSession: () -> Bool) -> Bool {
@@ -256,21 +260,23 @@ struct WorkbenchUpdateSettings: View {
     @ObservedObject private var updates = WorkbenchUpdates.shared
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            WorkbenchSectionTitle("Workbench updates")
             Text(updates.build.label)
             Text("Build \(updates.build.number) · Source \(updates.build.revision.prefix(8))")
                 .font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
             if let summary = updates.releaseSummary { Text(summary).font(.callout).fixedSize(horizontal: false, vertical: true) }
-            Text(updates.status).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            if !updates.status.isEmpty {
+                Text(updates.status).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
             if updates.build.released {
-                Toggle("Check for updates automatically", isOn: Binding(get: { updates.automaticChecks }, set: updates.setAutomaticChecks))
-                Toggle("Download updates automatically", isOn: Binding(get: { updates.automaticDownloads }, set: updates.setAutomaticDownloads))
+                Toggle("Check for updates automatically", isOn: Binding(get: { updates.automaticChecks }, set: updates.setAutomaticChecks)).toggleStyle(.switch)
+                Toggle("Download updates automatically", isOn: Binding(get: { updates.automaticDownloads }, set: updates.setAutomaticDownloads)).toggleStyle(.switch)
                 Text("Updates wait for your recording or presentation to finish. You can restart when ready or let a downloaded update install when you quit.").font(.caption).foregroundStyle(.secondary)
             }
             HStack {
                 Button(updates.buttonTitle) { updates.checkForUpdates() }.disabled(!updates.canCheck)
                 Button("Copy build details") { updates.copyDetails() }
-                Link("Release notes and downloads", destination: URL(string: "https://github.com/Ship-Work/workbench/releases")!)
+                Button("Release notes and downloads") { NSWorkspace.shared.open(URL(string: "https://github.com/Ship-Work/workbench/releases")!) }
+                    .buttonStyle(.workbenchLink)
             }
         }
     }

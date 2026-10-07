@@ -19,7 +19,7 @@ enum ReadbackSectionStatus: String, Codable, CaseIterable {
         case .queued: "Queued"
         case .transcribing: "Transcribing"
         case .ready: "Ready"
-        case .failed: "Needs attention"
+        case .failed: "Transcription stopped"
         }
     }
 }

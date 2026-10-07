@@ -521,7 +521,7 @@ struct PersonaCameraPanel: View {
                 Button("Try again") { camera.perform(ifCurrent: visit) { library.retryCamera() } }.buttonStyle(.borderedProminent)
             }
             if failure.offersCameraSettings {
-                Button("Open Camera settings") {
+                Button("Camera Settings…") {
                     if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Camera") {
                         NSWorkspace.shared.open(url)
                     }

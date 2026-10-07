@@ -27,10 +27,10 @@
 <!-- menubar -->
 <main id="main" class="wrap">
   <header class="page-head">
-    <p class="eyebrow">Privacy · Updated 1 October 2026</p>
+    <p class="eyebrow">Privacy · Updated 7 October 2026</p>
     <h1 class="page-title">Your work stays yours.</h1>
     <p class="page-lede">Workbench is a free Mac app published by Ethan Harley. The everyday tools need no account. Your recordings, text and images stay on your Mac unless you turn on or start something that needs them.</p>
-    <ul class="jump"><li><a href="#on-your-mac">On your Mac</a></li><li><a href="#leaves">What can leave</a></li><li><a href="#permissions">Permissions</a></li><li><a href="#files">Your files</a></li><li><a href="#updates">Updates</a></li><li><a href="#accounts">GitHub and iCloud</a></li><li><a href="#website">This website</a></li><li><a href="#contact">Contact</a></li></ul>
+    <ul class="jump"><li><a href="#on-your-mac">On your Mac</a></li><li><a href="#leaves">What can leave</a></li><li><a href="#reports">Problem reports</a></li><li><a href="#permissions">Permissions</a></li><li><a href="#files">Your files</a></li><li><a href="#updates">Updates</a></li><li><a href="#accounts">GitHub and iCloud</a></li><li><a href="#website">This website</a></li><li><a href="#contact">Contact</a></li></ul>
   </header>
 
   <div class="doc">
@@ -38,7 +38,7 @@
       <div><p class="tool-name">The short version</p><h2 id="short-title">Five promises.</h2></div>
       <ul>
         <li>No analytics, advertising, tracking or Workbench account.</li>
-        <li>No developer server receives your work.</li>
+        <li>Your work reaches the Workbench team only in a problem report you choose to send.</li>
         <li>Built-in speech recognition runs on your Mac and works offline after the first model download.</li>
         <li>Anything that leaves your Mac is something you turned on or started.</li>
         <li>We can’t access or remotely erase the files on your Mac.</li>
@@ -70,6 +70,7 @@
       <div>
         <ul>
           <li><strong>Model downloads.</strong> The host sees normal request information, such as your IP address.</li>
+          <li><strong>Problem reports</strong>, only when you choose Help › Report a Problem… and press Send report. See <a href="#reports">Problem reports</a>.</li>
           <li><strong>Assistant tasks.</strong> Only when you start a reviewed task, the official Codex or Claude Code app you installed sends the selected text, supported images and chosen skill instructions, under that provider’s sign-in and policies. Workbench never extracts credentials or falls back to paid API billing. Cancelling stops local work, but anything already submitted may have been processed. Results are never sent to colleagues, suggested transcript details are never applied automatically, and meeting audio never goes to an assistant automatically.</li>
           <li><strong>Team packs.</strong> GitHub requests, including an update check at launch and every six hours.</li>
           <li><strong>iCloud photo hand-off and scene sync</strong>, if you turn them on, go to your own iCloud.</li>
@@ -85,12 +86,25 @@
       </div>
     </section>
 
+    <section class="topic" id="reports" aria-labelledby="reports-title">
+      <div><p class="tool-name">Problem reports</p><h2 id="reports-title">Sent only when you press Send.</h2><p class="lead">Help › Report a Problem… lets you tell the Workbench team what went wrong. Nothing is collected until you write, capture or record it, and nothing is sent until you press Send report.</p></div>
+      <div>
+        <ul>
+          <li><strong>What is sent:</strong> your words, the screenshot and voice note if you add them, and safe details about this copy of Workbench: its edition, version, build and source revision, the macOS version, which tool you were using, whether Workbench has microphone, screen and Accessibility access, and a problem code. Details shows these before you send. If you add your email, the team sees it with your report, and can search for it in their private inbox, so they can reply.</li>
+          <li><strong>What is never sent:</strong> window or document titles, file paths, your clipboard, history, other recordings, device names or logs.</li>
+          <li><strong>Who receives it:</strong> the Workbench team, in a private inbox at Sentry (sentry.io) that only the team can open. Sentry sees normal request information, such as your IP address; storing it is turned off. Workbench’s own check service then asks Sentry whether the report and its files arrived, using only the report’s numbers, file sizes and fingerprints.</li>
+          <li><strong>How long:</strong> the team keeps reports for up to 90 days. A report that hasn’t been sent yet waits on your Mac and sends by itself when you’re online. Remove from this Mac deletes your copy. To have the team delete a sent report sooner, send a report that asks and quotes its number.</li>
+          <li><strong>Which builds:</strong> reports are sent from the released Workbench app. Test and development builds offer Save a copy instead, which puts the report in a folder you choose.</li>
+        </ul>
+      </div>
+    </section>
+
     <section class="topic" id="permissions" aria-labelledby="permissions-title">
       <div><p class="tool-name">Permissions</p><h2 id="permissions-title">Asked for only when you need them.</h2><p class="lead">Nothing is requested at first launch. You can change any of these in macOS System Settings.</p></div>
       <div>
         <ul>
-          <li><strong>Microphone:</strong> when you start dictation, narration or a meeting recording, and while a persona’s React to my voice is on. React to my voice measures loudness and records nothing.</li>
-          <li><strong>Screen Recording:</strong> for Snap and Snap &amp; Talk. Capture happens only when you start Region, Window or Screen, use a shortcut, or choose Replace screenshot.</li>
+          <li><strong>Microphone:</strong> when you start dictation, narration, a meeting recording or a problem report’s voice note, and while a persona’s React to my voice is on. React to my voice measures loudness and records nothing.</li>
+          <li><strong>Screen Recording:</strong> for Snap, Snap &amp; Talk and a problem report’s screenshot. Capture happens only when you start Region, Window or Screen, use a shortcut, or choose Replace screenshot or Add screenshot.</li>
           <li><strong>Accessibility</strong> (optional): to paste automatically into your chosen field. Workbench doesn’t press Return.</li>
           <li><strong>Audio Recording:</strong> to capture another app’s audio for a meeting or call. App audio can include other tabs in the same browser.</li>
           <li><strong>Camera:</strong> only for a profile photo, Persona’s live camera bubble, or device video in a presentation. The bubble is a mirrored live picture: it records no audio or video, saves no photo and streams nowhere. Hide, End, Quit and sleep release the camera.</li>
@@ -106,7 +120,7 @@
     <section class="topic" id="files" aria-labelledby="files-title">
       <div><p class="tool-name">Your files</p><h2 id="files-title">Where things live.</h2></div>
       <ul>
-        <li>Saved work: <code>~/Library/Application Support/Workbench</code>, and <code>~/Library/Application Support/Workbench Preview</code> for the test edition.</li>
+        <li>Saved work: <code>~/Library/Application Support/Workbench</code>, and <code>~/Library/Application Support/Workbench Preview</code> for the test edition. An unfinished problem report and reports waiting to send are in its <code>Reports</code> folder.</li>
         <li>The speech model: the shared FluidAudio folder in Application Support.</li>
         <li>Collected screenshots: <code>~/Pictures/Workbench Screenshots</code>. Snap &amp; Talk sessions: the folder you choose.</li>
         <li>Importing Voice or StageMark data makes a copy and leaves the original in place.</li>

@@ -133,13 +133,13 @@ final class ImageWorkspaceCanvasView: NSView {
         }
     }
     private func selection(_ rect: CGRect) {
-        NSColor.controlAccentColor.setStroke(); let outline = NSBezierPath(rect: rect); outline.lineWidth = 1.5 / zoom; outline.stroke()
+        NSColor(Workbench.accent).setStroke(); let outline = NSBezierPath(rect: rect); outline.lineWidth = 1.5 / zoom; outline.stroke()
         handles(corners(rect))
     }
     private func handles(_ points: [CGPoint]) {
         for p in points {
             let handle = NSBezierPath(roundedRect: CGRect(x: p.x - 4 / zoom, y: p.y - 4 / zoom, width: 8 / zoom, height: 8 / zoom), xRadius: 1 / zoom, yRadius: 1 / zoom)
-            NSColor.white.setFill(); handle.fill(); NSColor.controlAccentColor.setStroke(); handle.lineWidth = 1 / zoom; handle.stroke()
+            NSColor.white.setFill(); handle.fill(); NSColor(Workbench.accent).setStroke(); handle.lineWidth = 1 / zoom; handle.stroke()
         }
     }
     private func corners(_ rect: CGRect) -> [CGPoint] { [CGPoint(x: rect.minX, y: rect.minY), CGPoint(x: rect.maxX, y: rect.maxY), CGPoint(x: rect.minX, y: rect.maxY), CGPoint(x: rect.maxX, y: rect.minY)] }

@@ -1,5 +1,7 @@
 # Backgrounds that preserve the scene
 
+**Superseded in part · 6 October 2026.** Change backdrop… still works as specified below. Gentle photo motion (ranked item 5), the app-owned desktop layer and the explicit desktop apply named among the scene's outputs are retired from the Mac app; Restore desktop remains for pictures applied by earlier versions. [Phone presenting](phone-presenting.md) now owns Present's phone link, and the [rebuild ledger](research/2026-10-06-present-rebuild.md) records what was retired and what would bring it back.
+
 Decision and specification · 13 September 2026. This record covers **scene preparation**, within Present. The broader product now also recognises persistent wallpaper as a separate job: see the [visual-experience contract](../site/handbook/contract.json). macOS provides its native baseline; a dedicated Workbench wallpaper experience is proposed. The useful Workbench promise is to prepare a composition once, then change its setting without rebuilding it.
 
 ## What the comparison changed

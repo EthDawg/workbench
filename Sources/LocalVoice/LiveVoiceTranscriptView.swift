@@ -47,7 +47,7 @@ struct LiveVoiceSourcesView: View {
                     .font(.caption).foregroundStyle(.secondary)
             } icon: {
                 Image(systemName: source.source == .microphone ? "mic" : "speaker.wave.2")
-                    .foregroundStyle(source.health == .unavailable ? Color.orange : Workbench.accent)
+                    .foregroundStyle(source.health == .unavailable ? Workbench.attention : Workbench.accent)
             }.help(source.message ?? source.name).accessibilityElement(children: .combine)
         }
     }
@@ -87,22 +87,28 @@ struct LiveVoiceTranscriptView: View {
                     Text(snapshot.phase == .paused ? "Your transcript will continue here." : "Listening for your words…")
                         .font(.body).foregroundStyle(.secondary)
                     Text(snapshot.transcriptStatus).font(.caption).foregroundStyle(.secondary)
-                }.frame(maxWidth: .infinity, minHeight: 190, alignment: .topLeading).padding(.top, 8)
+                }.frame(maxWidth: .infinity, minHeight: LiveTranscriptText.minimumHeight, alignment: .topLeading).padding(.top, 8)
             } else {
                 LiveTranscriptText(segments: snapshot.segments, conversation: conversation,
                                    completedText: completedText, latestRequest: latestRequest,
                                    atLatest: $atLatest)
                     .id(snapshot.sessionID)
-                    .frame(height: 240)
                     .accessibilityIdentifier("voice.live-transcript")
-                Text(snapshot.transcriptStatus).font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                // A saved transcript's page already says so in its status title.
+                if snapshot.phase != .completed {
+                    Text(snapshot.transcriptStatus).font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
     }
 }
 
 private struct LiveTranscriptText: NSViewRepresentable {
+    /// Short transcripts take only their own height; long ones scroll inside, keeping the
+    /// newest words in view without pushing the page's controls away.
+    static let minimumHeight: CGFloat = 120
+    static let maximumHeight: CGFloat = 360
     var segments: [LiveVoiceSegment]
     var conversation: Bool
     var completedText: String?
@@ -156,13 +162,21 @@ private struct LiveTranscriptText: NSViewRepresentable {
             text.scrollToEndOfDocument(nil)
         }
     }
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSScrollView, context: Context) -> CGSize? {
+        let width = proposal.width ?? nsView.bounds.width
+        guard width > 0, width.isFinite else { return nil }
+        let used = attributedText().boundingRect(with: NSSize(width: width, height: .greatestFiniteMagnitude),
+                                                 options: [.usesLineFragmentOrigin, .usesFontLeading]).height
+        return CGSize(width: width, height: min(Self.maximumHeight, max(Self.minimumHeight, ceil(used) + 8)))
+    }
     private static func isAtLatest(_ scroll: NSScrollView) -> Bool {
         guard let document = scroll.documentView else { return true }
         return document.bounds.height - scroll.contentView.bounds.maxY < 30
     }
     private func attributedText() -> NSAttributedString {
         let paragraph = NSMutableParagraphStyle(); paragraph.lineSpacing = 5; paragraph.paragraphSpacing = 12
-        let body: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 14), .foregroundColor: NSColor.labelColor,
+        // Dictate's editor reads at the title 3 size (15 pt standard); both grow with larger text.
+        let body: [NSAttributedString.Key: Any] = [.font: NSFont.preferredFont(forTextStyle: .title3), .foregroundColor: NSColor.labelColor,
                                                    .paragraphStyle: paragraph]
         if let completedText { return NSAttributedString(string: completedText, attributes: body) }
         let result = NSMutableAttributedString()
@@ -171,7 +185,8 @@ private struct LiveTranscriptText: NSViewRepresentable {
             if conversation {
                 let minutes = max(0, Int(segment.start)) / 60, seconds = max(0, Int(segment.start)) % 60
                 result.append(NSAttributedString(string: "\(segment.source.label)  ·  \(minutes):\(String(format: "%02d", seconds))\n",
-                    attributes: [.font: NSFont.systemFont(ofSize: 11, weight: .medium), .foregroundColor: NSColor.secondaryLabelColor]))
+                    attributes: [.font: NSFont.systemFont(ofSize: NSFont.preferredFont(forTextStyle: .subheadline).pointSize, weight: .medium),
+                                 .foregroundColor: NSColor.secondaryLabelColor]))
             }
             var style = body
             if !segment.isFinal { style[.foregroundColor] = NSColor.secondaryLabelColor }

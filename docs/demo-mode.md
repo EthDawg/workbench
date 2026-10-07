@@ -1,5 +1,7 @@
 # Demo mode: Preview 1.4
 
+**Superseded · 6 October 2026.** This record of the 9 and 10 September device stage is history. [Phone presenting](phone-presenting.md) now owns how Present finds, shows and explains the phone: the Present page shows it before Present is pressed, every surface shows one status with one next step, and one help sheet replaces the route guide. The desktop wallpaper apply described below has no door in the app; Restore desktop remains for recovery records written by earlier versions. The [rebuild ledger](research/2026-10-06-present-rebuild.md) records what was removed and why.
+
 ## Presenter polish checked on 10 September 2026
 
 The editor now keeps the scene, size and branding together. Detailed layout

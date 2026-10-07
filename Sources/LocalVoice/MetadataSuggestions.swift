@@ -89,7 +89,7 @@ struct MetadataSuggestionView: View {
                     if library.error == nil { dismiss() }
                 }.keyboardShortcut(.defaultAction)
             }
-            if let error = library.error { Text(error).foregroundStyle(.red).font(.caption) }
+            if let error = library.error { WorkbenchNote(error, font: .caption) }
         }.padding(24).frame(width: 500)
             .onAppear { purpose = review.metadata.purpose; person = review.metadata.person; company = review.metadata.company; tags = review.metadata.tags.joined(separator: ", ") }
     }

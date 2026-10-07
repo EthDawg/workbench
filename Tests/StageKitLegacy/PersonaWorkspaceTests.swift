@@ -175,6 +175,24 @@ final class PersonaWorkspaceTests {
             for (name, size) in [("present-small", CGSize(width: 834, height: 730)), ("present-normal", CGSize(width: 1085, height: 780)), ("present-narrow", CGSize(width: 620, height: 650))] {
                 try render(DemoScenesView(model: scenes), size: size, to: directory.appendingPathComponent(name + ".png"))
             }
+            // The phone's status inside the frame and under the preview, from pinned signals; no capture runs offscreen.
+            var onUSB = PhoneLinkSignals(); onUSB.usb = [.init(name: "iPhone", kind: .iPhone, productID: 0x12A8)]
+            var restricted = PhoneLinkSignals(); restricted.access = .restricted
+            var twoScreens = PhoneLinkSignals()
+            // Two phone screens: a camera beside one phone is no longer a choice (#285, 7 October 2026).
+            twoScreens.sources = [.init(id: "a", name: "Sample iPhone", isScreen: true), .init(id: "b", name: "Sample iPad", isScreen: true)]
+            for (name, signals) in [("present-phone-none", PhoneLinkSignals()), ("present-phone-on-usb", onUSB), ("present-phone-restricted", restricted), ("present-phone-choose", twoScreens)] {
+                scenes.phoneLink.fixture = signals
+                try render(DemoScenesView(model: scenes), size: CGSize(width: 1085, height: 780), to: directory.appendingPathComponent(name + ".png"))
+            }
+            // The stage itself, windowed size, with the status inside the device frame.
+            guard let stageScene = scenes.selected, let stageImage = scenes.image(for: stageScene) else { throw PersonaError.unreadableImage }
+            for (name, signals) in [("stage-phone-none", PhoneLinkSignals()), ("stage-phone-choose", twoScreens)] {
+                scenes.phoneLink.fixture = signals
+                try render(DemoPresentation.offscreenStage(scene: stageScene, image: stageImage, capture: scenes.capture, phoneLink: scenes.phoneLink, root: root.appendingPathComponent("Scenes")),
+                           size: CGSize(width: 1100, height: 720), to: directory.appendingPathComponent(name + ".png"))
+            }
+            scenes.phoneLink.fixture = nil
             for (name, size) in [("persona-small", CGSize(width: 620, height: 650)), ("persona-normal", CGSize(width: 834, height: 730))] {
                 try render(PersonaLibraryView(library: library, mode: .workspace), size: size, to: directory.appendingPathComponent(name + ".png"))
             }
