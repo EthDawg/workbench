@@ -86,7 +86,7 @@ struct FounderIntroductionCard: View {
                         Button("Copy addresses") { model.copy(addressesOnly: true) }
                         Button("Copy email draft") { model.copy(addressesOnly: false) }
                     }.menuStyle(.borderlessButton).fixedSize().accessibilityLabel("Copy founder email addresses or draft")
-                    if canDismiss { Button("Not now") { model.dismiss() }.buttonStyle(.link) }
+                    if canDismiss { Button("Not now") { model.dismiss() }.buttonStyle(.workbenchLink) }
                 }
                 if let message = model.message {
                     Text(message).font(.caption).foregroundStyle(model.hasError ? Color.orange : Color.secondary)
