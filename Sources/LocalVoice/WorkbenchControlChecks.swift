@@ -214,7 +214,7 @@ enum WorkbenchControlChecks {
         try check(surface() == .hidden && surface(drawing: true) == .hidden && surface(presenting: true) == .hidden && surface(persona: true) == .hidden
                   && surface(drawing: true, presenting: true, persona: true) == .hidden, "Hide toolbar hides the tools while drawing, presenting or showing a persona")
         try check(surface(shown: true) == .tools && surface(shown: true, drawing: true, presenting: true, persona: true) == .tools,
-                  "Show floating toolbar brings the tools back over live work")
+                  "Show Floating Toolbar brings the tools back over live work")
         // Recording, narration and their results share the tools' host (#134 T4): it stays
         // up while they run even with the tools hidden, and only the no-speech cue has its own view.
         try check(surface(drawing: true, dictation: true) == .tools && surface(presenting: true, narration: true) == .tools

@@ -1316,7 +1316,7 @@ private struct HistoryNativeAcceptanceView: View {
         settingsSwitches("settings.toolbar.keepOpen").first?.performClick(nil)
         try agree(visibilityBeforeKeepOpen, after: "restoring Keep open")
         return ["Keep open and Floating toolbar are separately named controls; changing either preserves the other preference.",
-                "The panel's switch, Settings › General's switch and the Window menu each turned the floating toolbar off or on, and every other door then showed the same: the switches' states and Show or Hide floating toolbar.",
+                "The panel's switch, Settings › General's switch and the Window menu each turned the floating toolbar off or on, and every other door then showed the same: the switches' states and Show or Hide Floating Toolbar.",
                 "In the panel header, a click on the words Floating toolbar, the gap beside the switch, the row above and below the words, the row above the switch and the switch itself each toggled it once; a click 3 points above the 32 point row missed it.",
                 "The header switch is the one accessibility element, named Floating toolbar with its On or Off value; VoiceOver's press and Space on the focused switch each toggled it once.",
                 "The toolbar's context-menu Hide toolbar, as that menu builds it, turned it off, and every other door then showed the same; the panel's switch turned it back on. Which surface shows during drawing, presenting, personas, recording and insertion is checked by CaptureHUDChecks (#155)."]
@@ -3571,7 +3571,7 @@ private struct HistoryNativeAcceptanceView: View {
     /// drawing choices; Persona's More opens Persona's page instead; and with a session open,
     /// Snap & Talk's Review opens that session's review.
     /// Keyboard entry's traversal in the production host (#223). The gallery never takes the
-    /// person's keyboard: the toolbar's keyboard hold stands in for Focus floating toolbar, and the
+    /// person's keyboard: the toolbar's keyboard hold stands in for Focus Floating Toolbar, and the
     /// host's own focus closure gives the launcher the window's focus, as that command does; the
     /// window is never made key. Tab and Shift-Tab go through the window's event dispatch to
     /// whatever is first responder, and the focus is read after every key: Draw's row with Tools,
@@ -3677,8 +3677,10 @@ private struct HistoryNativeAcceptanceView: View {
         if model.toolbarControls == nil { model.toolbarControls = toolbarSettingsControls }
         let window = offscreenWindow(size: size, styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], hostsSheets: hostsSheets)
         window.titlebarAppearsTransparent = true; window.titleVisibility = .hidden
+        // Rendered as the front window, as a person sees it: offscreen gallery windows are never key,
+        // and a prominent button in an inactive window draws grey, hiding each page's primary action.
         window.contentViewController = NSHostingController(rootView: WorkbenchHome(model: model, stage: stage ?? self.stage, keyboard: keyboard, readback: readback, snap: snap, packs: packs)
-            .environment(\.pageSectionFrames, sectionFrames))
+            .environment(\.pageSectionFrames, sectionFrames).environment(\.controlActiveState, .key))
         window.setContentSize(size)
         if hostsSheets {
             window.alphaValue = 0
@@ -3764,7 +3766,7 @@ private struct HistoryNativeAcceptanceView: View {
     /// are run with recording callbacks to learn their destination; other StageKit items are listed only.
     func menus() -> [SurfaceGallery.Listing] {
         let panel = quickPanel(readback)
-        var listings = [SurfaceGallery.Listing(title: "Dictate · Options (SwiftUI menu, listed from its source)", lines:
+        var listings = [SurfaceGallery.Listing(title: "Dictate · Options (native menu, listed from its source so Set up automatic paste… never runs)", lines:
             ["Delivery"] + DeliveryMode.allCases.map { "  " + $0.rawValue }
             + ["Copies for ⌘V until automatic paste is approved (while Paste automatically waits for Accessibility approval)", "  Set up automatic paste…"]
             + ["Text style"] + CleanupStyle.allCases.map { "  " + $0.rawValue }
@@ -4006,10 +4008,10 @@ extension SurfacePass {
     /// or belong to macOS.
     func appMenuEntries(surface: String) -> [SurfaceGallery.Entry] {
         let actions = ["About Workbench": "Shows the About panel", "Check for Updates…": "Page: settings, and checks for updates",
-                       "Copy build details": "Copies build details", "Hide Workbench": "Hides Workbench", "Quit Workbench": "Quits Workbench",
-                       "Close Window": "Closes the front window", "Open Workbench": "Opens Home on its current page",
-                       "Show floating toolbar": "Shows the toolbar between actions", "Hide floating toolbar": "Hides the toolbar between actions", "Focus floating toolbar": "Moves keyboard focus to the toolbar",
-                       "Restore menu-bar icon": "Shows the icon and the toolbar", "Workbench Guide": "Opens the web guide",
+                       "Copy Build Details": "Copies build details", "Hide Workbench": "Hides Workbench", "Hide Others": "Hides other apps", "Show All": "Shows every app", "Quit Workbench": "Quits Workbench",
+                       "Close Window": "Closes the front window", "Minimize": "Minimizes the front window", "Zoom": "Zooms the front window", "Bring All to Front": "Brings Workbench's windows forward", "Open Workbench": "Opens Home on its current page",
+                       "Show Floating Toolbar": "Shows the toolbar between actions", "Hide Floating Toolbar": "Hides the toolbar between actions", "Focus Floating Toolbar": "Moves keyboard focus to the toolbar",
+                       "Restore Menu Bar Icon": "Shows the icon and the toolbar", "Workbench Guide": "Opens the web guide",
                        "Report a problem…": "Opens the Report a problem window"]
         return shell.makeMainMenu().main.items.compactMap(\.submenu).filter { ["Workbench", "Window", "Help"].contains($0.title) }.flatMap { menu in
             menu.items.filter { !$0.isSeparatorItem && $0.submenu == nil }.map { item in

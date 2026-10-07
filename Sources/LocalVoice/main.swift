@@ -459,29 +459,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let main = NSMenu(); let application = NSMenuItem(); let appMenu = NSMenu(title: "Workbench")
         appMenu.addItem(withTitle: "About Workbench", action: #selector(showAbout), keyEquivalent: "")
         appMenu.addItem(withTitle: "Check for Updates…", action: #selector(showUpdates), keyEquivalent: "")
-        appMenu.addItem(withTitle: "Copy build details", action: #selector(copyBuildDetails), keyEquivalent: "")
+        appMenu.addItem(withTitle: "Copy Build Details", action: #selector(copyBuildDetails), keyEquivalent: "")
+        appMenu.addItem(.separator())
         appMenu.addItem(pageItem("settings", more: true, key: ","))
         appMenu.addItem(pageItem("shortcuts", more: true))
+        appMenu.addItem(.separator())
         let services = NSMenu(title: "Services")
         let servicesItem = NSMenuItem(title: "Services", action: nil, keyEquivalent: "")
         servicesItem.submenu = services; appMenu.addItem(servicesItem)
         appMenu.addItem(.separator())
+        // The standard Mac app menu: Hide, Hide Others and Show All, then Quit on its own.
         appMenu.addItem(withTitle: "Hide Workbench", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        let hideOthers = appMenu.addItem(withTitle: "Hide Others", action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")
+        hideOthers.keyEquivalentModifierMask = [.command, .option]
+        appMenu.addItem(withTitle: "Show All", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
+        appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Quit Workbench", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         application.submenu = appMenu; main.addItem(application)
         let edit = NSMenuItem(); edit.title = "Edit"; let editMenu = NSMenu(title: "Edit")
-        for (title, action, key) in [("Undo", "undo:", "z"), ("Cut", "cut:", "x"), ("Copy", "copy:", "c"), ("Paste", "paste:", "v"), ("Select All", "selectAll:", "a")] { editMenu.addItem(withTitle: title, action: Selector(action), keyEquivalent: key) }
+        // Redo is Shift-Command-Z, as in every Mac text field; without the item the key does nothing.
+        editMenu.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+        editMenu.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "z").keyEquivalentModifierMask = [.command, .shift]
+        editMenu.addItem(.separator())
+        for (title, action, key) in [("Cut", "cut:", "x"), ("Copy", "copy:", "c"), ("Paste", "paste:", "v"), ("Select All", "selectAll:", "a")] { editMenu.addItem(withTitle: title, action: Selector(action), keyEquivalent: key) }
         edit.submenu = editMenu; main.addItem(edit)
         let draw = NSMenuItem(title: "Draw", action: nil, keyEquivalent: "")
         draw.submenu = stage.makeAnnotationMenu(); main.addItem(draw)
         let windows = NSMenuItem(); windows.title = "Window"; let menu = NSMenu(title: "Window")
         menu.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         menu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        menu.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
+        menu.addItem(.separator())
         menu.addItem(withTitle: "Open Workbench", action: #selector(showWindow), keyEquivalent: "0")
         // Show or Hide by the saved preference, through the same switch as the panel and Settings (#134).
         menu.addItem(withTitle: Self.floatingToolbarTitle(visible: model.floatingToolbarVisible), action: #selector(toggleFloatingToolbar), keyEquivalent: "")
-        menu.addItem(withTitle: "Focus floating toolbar", action: #selector(focusFloatingToolbar), keyEquivalent: "")
-        menu.addItem(withTitle: "Restore menu-bar icon", action: #selector(restoreMenuBarIcon), keyEquivalent: "")
+        menu.addItem(withTitle: "Focus Floating Toolbar", action: #selector(focusFloatingToolbar), keyEquivalent: "")
+        menu.addItem(withTitle: "Restore Menu Bar Icon", action: #selector(restoreMenuBarIcon), keyEquivalent: "")
         menu.addItem(.separator())
         // Every sidebar page, in the sidebar's order and by its name, so the Window menu's doors never
         // differ from the window's own list (#134).
@@ -490,6 +503,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         menu.addItem(pageItem("present")); menu.addItem(pageItem("personas"))
         menu.addItem(.separator())
         menu.addItem(pageItem("history")); menu.addItem(pageItem("library", key: "l"))
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Bring All to Front", action: #selector(NSApplication.arrangeInFront(_:)), keyEquivalent: "")
         windows.submenu = menu; main.addItem(windows)
         let help = NSMenuItem(); help.title = "Help"
         let helpMenu = NSMenu(title: "Help")
@@ -537,7 +552,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
     @objc func toggleFloatingToolbar() { model.floatingToolbarVisible.toggle() }
     /// The Window menu's toolbar item names what choosing it does now.
-    static func floatingToolbarTitle(visible: Bool) -> String { visible ? "Hide floating toolbar" : "Show floating toolbar" }
+    static func floatingToolbarTitle(visible: Bool) -> String { visible ? "Hide Floating Toolbar" : "Show Floating Toolbar" }
     @objc func focusFloatingToolbar() { capturePanel.focusToolbar() }
     @objc func restoreMenuBarIcon() {
         statusItem.isVisible = true

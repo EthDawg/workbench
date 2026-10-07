@@ -103,7 +103,7 @@ enum WorkbenchPageChecks {
         // The floating toolbar's one switch reads the same everywhere (#134 H3).
         try check(WorkbenchHome.floatingToolbarHelp == "Show between actions. Recording and recovery controls still appear when needed.",
                   "the switch explains itself in the contract's words")
-        try check(AppDelegate.floatingToolbarTitle(visible: true) == "Hide floating toolbar" && AppDelegate.floatingToolbarTitle(visible: false) == "Show floating toolbar",
+        try check(AppDelegate.floatingToolbarTitle(visible: true) == "Hide Floating Toolbar" && AppDelegate.floatingToolbarTitle(visible: false) == "Show Floating Toolbar",
                   "the Window menu names what its item will do")
         // Named doors land on their section (#134 H2): Keyboard… on Settings › Keyboard.
         let keyboard = WorkbenchHome.destination("shortcuts")

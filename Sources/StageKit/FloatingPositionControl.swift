@@ -53,7 +53,7 @@ public struct FloatingPositionControl: View {
             .frame(width: Self.pitch.width * 2 + Self.cellSize.width, height: Self.pitch.height * 2 + Self.cellSize.height,
                    alignment: .topLeading)
             if let reset { Button("Reset position", action: reset).controlSize(.small) }
-            Text(hint).font(.system(size: 11)).foregroundStyle(.secondary)
+            Text(hint).font(.caption).foregroundStyle(.secondary)
         }
         .padding(12)
         .fixedSize()

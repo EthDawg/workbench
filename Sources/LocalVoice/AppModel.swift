@@ -244,7 +244,7 @@ final class AppModel: NSObject, ObservableObject {
             let removalIssues = MeetingTranscriptRemoval.reconcile(
                 root: Workbench.supportDirectory(component: "Meetings"), history: store)
             if !removalIssues.isEmpty {
-                report("A recording removal needs attention. " + removalIssues.joined(separator: " "), on: .history)
+                report("A recording couldn’t be removed completely. " + removalIssues.joined(separator: " "), on: .history)
             }
         } catch {
             let backup = store.url.deletingLastPathComponent().appendingPathComponent("state-unreadable-\(UUID().uuidString).json")
