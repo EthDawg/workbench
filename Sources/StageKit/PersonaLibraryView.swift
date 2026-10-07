@@ -385,10 +385,12 @@ struct PersonaLibraryView: View {
                         .disabled(library.selected.flatMap { library.renderedImage(for: $0) } == nil)
                     Text("Separate from Present").font(.caption).foregroundStyle(.secondary)
                 }
-                // My Profile, one click from whatever card shows, in its place.
+                // My Profile, one click from whatever card or Live Camera shows, in its place. It
+                // sits with the page's other Show actions, so it is there whichever source is prepared.
                 if library.profileID != nil, !library.showsProfile {
                     Button("Show My Profile") { requestLaunch(.profile) }
-                        .help("Shows your profile photo as the floating persona, in the shown card’s place")
+                        .help(library.cameraOwnsSlot ? "Shows your profile photo in Live Camera’s place and ends Live Camera"
+                                                     : "Shows your profile photo as the floating persona, in the shown card’s place")
                 }
             } else {
                 if library.sessionState.phase == .paused {

@@ -5647,15 +5647,6 @@
     "note": "Option of Persona (Ethan, 8 Oct 2026: My Profile and Live Camera are first-class and one click apart). Shows the local profile photo (the persona persona.me.id.v1 names) as the one floating card in the slot's place and size; from Live Camera it fades in while the bubble fades out and ends the camera. Listed only while a profile photo is saved; the photo is not listed again among the cards. Revalidates the live state it was drawn for."
   },
   {
-    "id": "StageKit.PersonaCamera.PersonaCameraPanel.Button.show-my-profile",
-    "surface": "Persona live camera",
-    "label": "Show My Profile",
-    "kind": "action",
-    "belongsTo": "persona",
-    "aliasOf": "StageKit.Persona.PersonaLibrary.StageMenuAction.my-profile",
-    "note": "The same My Profile switch on the Persona page's Live Camera panel: one click back to the photo in the bubble's place, ending Live Camera. The artwork panel offers it too while another card or nothing shows."
-  },
-  {
     "id": "StageKit.PersonaCamera.PersonaCameraPanel.Button.video-effects",
     "surface": "Persona live camera",
     "label": "Video Effects…",

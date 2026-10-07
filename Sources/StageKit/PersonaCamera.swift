@@ -675,12 +675,6 @@ struct PersonaCameraPanel: View {
             Button("End Live Camera") { camera.perform(ifCurrent: visit) { library.endCamera() } }
                 .help("Releases the camera and this visit. Saved personas and layouts are untouched.")
         }
-        // One click back to the photo, in the bubble's place; it ends Live Camera.
-        if library.profileID != nil, camera.isActive, !camera.isStarting {
-            Button("Show My Profile") { camera.perform(ifCurrent: visit) { library.showProfile() } }
-                .disabled(library.hasPreparedSession)
-                .help("Shows your profile photo in the bubble’s place and ends Live Camera")
-        }
     }
 
     /// What this camera offers a presenter: Center Stage where it can frame you, and the
