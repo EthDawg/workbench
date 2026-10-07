@@ -795,10 +795,12 @@ class PinnedPublicationTests(ReleaseHistoryFixture, unittest.TestCase):
         policy=config['acceptance']
         policy['claim']='bounded-slice'
         policy['impact']={'packages':['C'],'reason':'Only manual saved-transcript handoff is promoted.'}
-        policy['journeys']=[row for row in policy['journeys'] if row['id']=='H1']
+        # One affected candidate journey from the configured policy, whatever it currently holds.
+        chosen=next(row['id'] for row in policy['journeys'] if row['phase']=='candidate')
+        policy['journeys']=[row for row in policy['journeys'] if row['id']==chosen and row['phase']=='candidate']
         policy_path.write_text(json.dumps(config))
         self.acceptance['policySHA256']=prepare_update.policy_digest(policy)
-        self.acceptance['journeys']=[row for row in self.acceptance['journeys'] if row['id']=='H1']
+        self.acceptance['journeys']=[row for row in self.acceptance['journeys'] if row['id']==chosen and row['variant']==policy['journeys'][0]['variant']]
         self.save_acceptance()
         files=prepare_update.validate_acceptance(self.prepared,self.receipt,self.verified_info,self.checkout)
         self.assertIn(prepare_update.ACCEPTANCE_NAME,files)
