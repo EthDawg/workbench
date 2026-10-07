@@ -118,16 +118,26 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     /// clear of it instead of taking it away. nil whenever no session is open.
     @Published private(set) var heldDeviceID: String?
     @Published private(set) var dimensions = CGSize.zero
-    /// Every surface showing this session draws through its own layer: the Present
-    /// page's preview and the stage. Newest first, so a stage opened later is wired
-    /// before the preview behind it; if macOS refuses a second connection, the surface
-    /// in front keeps the picture. Touched only on the capture queue.
+    /// Every surface showing this session draws through its own display layer: the
+    /// Present page's preview and the stage. Each is fed the frames the session's data
+    /// output already receives, so a phone screen that delivers frames is drawn on every
+    /// surface at once. Preview-layer connections to the iPhone's muxed screen device
+    /// stayed black on hardware (7 October 2026) while the data output had frames.
+    /// Stages first, newest first. Touched only on the capture queue.
     private final class LayerSlot {
-        weak var layer: AVCaptureVideoPreviewLayer?
+        weak var layer: AVSampleBufferDisplayLayer?
         let surface: PreviewSurface
-        init(_ layer: AVCaptureVideoPreviewLayer, surface: PreviewSurface) { self.layer = layer; self.surface = surface }
+        init(_ layer: AVSampleBufferDisplayLayer, surface: PreviewSurface) { self.layer = layer; self.surface = surface }
     }
     private var layers: [LayerSlot] = []
+    /// Frames drawn on each surface since the last session started; checks read it.
+    private(set) var drawnFrames: [PreviewSurface: Int] = [:]
+    /// The running session's latest accepted frame. A phone on a still screen may send nothing
+    /// new for a while, so a surface that opens later (Present pressed on a still Home Screen)
+    /// draws this at once instead of opening black. Cleared whenever the session stops.
+    private var lastDrawn: CMSampleBuffer?
+    /// The headless phone receipt reads accepted frames here (on the capture queue); the app never sets it.
+    var frameProbe: ((CMSampleBuffer) -> Void)?
     /// Every capture change runs here. Checks reach it to deliver a synthetic frame as AVFoundation would.
     let queue = DispatchQueue(label: "StageMark.device-preview", qos: .userInitiated)
     private let hardware: CaptureHardware
@@ -165,36 +175,45 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
             recovery.desiredID = id; selectedID = id
         }
     }
-    /// A layer for one surface. It shows the running session at once and every
+    /// A layer for one surface. It draws the running session's next frame and every
     /// later one; a surface that goes away releases it.
-    func makePreviewLayer(for surface: PreviewSurface) -> AVCaptureVideoPreviewLayer {
-        let layer = AVCaptureVideoPreviewLayer()
+    func makePreviewLayer(for surface: PreviewSurface) -> AVSampleBufferDisplayLayer {
+        let layer = AVSampleBufferDisplayLayer()
         layer.videoGravity = .resizeAspect; layer.masksToBounds = true
         queue.async { [weak self] in
             guard let self else { return }
             layers.removeAll { $0.layer == nil }
             layers.insert(LayerSlot(layer, surface: surface), at: PreviewSurface.insertionIndex(for: surface, among: layers.map(\.surface)))
-            guard let session, let port = session.inputs.first?.ports.first(where: { $0.mediaType == .video }) else { return }
-            session.beginConfiguration()
-            attach(layer, surface: surface, to: session, port: port)
-            session.commitConfiguration()
+            if let lastDrawn { enqueue(lastDrawn, on: layer, surface: surface) }
         }
         return layer
     }
-    /// On the capture queue. A layer already on this session is left alone. When macOS
-    /// refuses another connection, a stage layer takes it from the page's preview, never
-    /// the other way round, so the window shared in a call keeps the phone.
-    private func attach(_ layer: AVCaptureVideoPreviewLayer, surface: PreviewSurface, to session: AVCaptureSession, port: AVCaptureInput.Port) {
-        guard layer.session !== session else { return }
-        layer.setSessionWithNoConnection(session)
-        let connection = AVCaptureConnection(inputPort: port, videoPreviewLayer: layer)
-        if connection.isVideoMirroringSupported {
-            connection.automaticallyAdjustsVideoMirroring = false; connection.isVideoMirrored = false
+    /// On the capture queue: draws one accepted frame on every live surface at once.
+    private func draw(_ sampleBuffer: CMSampleBuffer) {
+        if let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: true),
+           CFArrayGetCount(attachments) > 0 {
+            let dictionary = unsafeBitCast(CFArrayGetValueAtIndex(attachments, 0), to: CFMutableDictionary.self)
+            CFDictionarySetValue(dictionary, Unmanaged.passUnretained(kCMSampleAttachmentKey_DisplayImmediately).toOpaque(),
+                                 Unmanaged.passUnretained(kCFBooleanTrue).toOpaque())
         }
-        if session.canAddConnection(connection) { session.addConnection(connection); return }
-        guard surface == .stage else { layer.session = nil; return }
-        for slot in layers where slot.surface == .page && slot.layer !== layer && slot.layer?.session === session { slot.layer?.session = nil }
-        if session.canAddConnection(connection) { session.addConnection(connection) } else { layer.session = nil }
+        lastDrawn = sampleBuffer
+        // Strong copies, so a surface's final release never happens on this queue mid-loop.
+        let surfaces = layers.compactMap { slot in slot.layer.map { ($0, slot.surface) } }
+        layers.removeAll { $0.layer == nil }
+        for (layer, surface) in surfaces { enqueue(sampleBuffer, on: layer, surface: surface) }
+    }
+    /// A renderer that is busy skips this frame rather than queueing it; the next one follows.
+    private func enqueue(_ sampleBuffer: CMSampleBuffer, on layer: AVSampleBufferDisplayLayer, surface: PreviewSurface) {
+        let renderer = layer.sampleBufferRenderer
+        if renderer.status == .failed || renderer.requiresFlushToResumeDecoding { renderer.flush() }
+        guard renderer.isReadyForMoreMediaData else { return }
+        renderer.enqueue(sampleBuffer)
+        drawnFrames[surface, default: 0] += 1
+    }
+    /// On the capture queue: a stopped session leaves no picture behind on any surface.
+    private func clearSurfaces() {
+        for slot in layers { slot.layer?.sampleBufferRenderer.flush(removingDisplayedImage: true, completionHandler: nil) }
+        drawnFrames = [:]; lastDrawn = nil
     }
     /// Lets this process see iPhone and iPad screens as capture devices. Process-wide
     /// and idempotent; it requests no permission.
@@ -363,9 +382,13 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         }
         retryAfter = Date().addingTimeInterval(retryDelay); retryDelay = min(30, retryDelay * 2)
         publish(.connecting(id))
-        // Frames arrive in the device's own format: only their size is read, from the format
-        // description, so nothing is converted per frame.
+        // Frames are drawn on the page and the stage by display layers, so ask for 4:2:0 video
+        // range, which they render directly; their size is read from the format description.
         let output = AVCaptureVideoDataOutput()
+        let videoRange = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+        if output.availableVideoPixelFormatTypes.contains(videoRange) {
+            output.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: videoRange]
+        }
         output.alwaysDiscardsLateVideoFrames = true
         output.setSampleBufferDelegate(self, queue: queue)
         // The token and output are set before the session runs, so its first frame is accepted.
@@ -373,11 +396,8 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         deliveryLock.lock(); deliveryToken = activeToken; deliveryLock.unlock()
         lastFrame = .distantPast; startedAt = Date()
         do {
-            let opened = try hardware.openSession(id, output: output) { [self] session, port in
-                layers.removeAll { $0.layer == nil }
-                // Stages first, so the window shared in a call is wired before any page preview.
-                for slot in layers { if let layer = slot.layer { attach(layer, surface: slot.surface, to: session, port: port) } }
-            }
+            // Surfaces draw this output's frames (`draw`), so the session wires no preview connections.
+            let opened = try hardware.openSession(id, output: output) { _, _ in }
             guard let opened else { stopSession(); publish(.failed(id, .couldNotStart)); return }
             session = opened
             DispatchQueue.main.async { [weak self] in self?.heldDeviceID = id }
@@ -392,7 +412,7 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         // another selection. Its new session must never reuse an old frame token.
         recovery.invalidateSession()
         deliveryLock.lock(); deliveryToken = -1; deliveryLock.unlock()
-        session?.stopRunning(); layers.forEach { $0.layer?.session = nil }; session = nil; activeID = nil; activeOutput = nil
+        session?.stopRunning(); clearSurfaces(); session = nil; activeID = nil; activeOutput = nil
         sessionInterrupted = false
         DispatchQueue.main.async { [weak self] in self?.live = false; self?.dimensions = .zero; self?.heldDeviceID = nil }
     }
@@ -414,19 +434,26 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         }
     }
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        deliver(sampleBuffer, from: output)
+    }
+    /// One frame from `output`, on the capture queue: the running session's frames are drawn on
+    /// every surface; any other is dropped, as `frameArrived` decides.
+    func deliver(_ sampleBuffer: CMSampleBuffer, from output: AVCaptureOutput) {
         guard let description = CMSampleBufferGetFormatDescription(sampleBuffer) else { return }
         let size = CMVideoFormatDescriptionGetDimensions(description)
-        frameArrived(CGSize(width: Int(size.width), height: Int(size.height)), from: output)
+        if frameArrived(CGSize(width: Int(size.width), height: Int(size.height)), from: output) { frameProbe?(sampleBuffer); draw(sampleBuffer) }
     }
     /// One frame from `output`, on the capture queue, where AVFoundation delivers it. Only the
     /// current session's output, in the current generation, while the capture runs, can make
     /// the phase live; a frame that lands after End or a newer selection is dropped.
-    func frameArrived(_ nextSize: CGSize, from output: AVCaptureOutput) {
-        guard enabled, let id = activeID, recovery.accepts(activeToken, source: id), output === activeOutput else { return }
+    /// Returns whether the frame belongs to the running session, so the caller draws it.
+    @discardableResult
+    func frameArrived(_ nextSize: CGSize, from output: AVCaptureOutput) -> Bool {
+        guard enabled, let id = activeID, recovery.accepts(activeToken, source: id), output === activeOutput else { return false }
         lastFrame = Date(); retryDelay = 2
-        guard lastFrame.timeIntervalSince(lastPublish) >= 0.2 else { return }
+        guard lastFrame.timeIntervalSince(lastPublish) >= 0.2 else { return true }
         deliveryLock.lock()
-        if pendingDelivery { deliveryLock.unlock(); return }
+        if pendingDelivery { deliveryLock.unlock(); return true }
         pendingDelivery = true; deliveryLock.unlock()
         lastPublish = lastFrame
         let token = activeToken
@@ -441,5 +468,6 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
             if dimensions != nextSize { dimensions = nextSize }
             if !live || phase != .live(id, nextSize) { live = true; phase = .live(id, nextSize) }
         }
+        return true
     }
 }

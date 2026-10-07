@@ -650,9 +650,9 @@ private struct DemoStageSurface: NSViewRepresentable {
 /// The backdrop is a still: motion is never requested on the stage.
 final class DemoStageSurfaceView: MovingSceneView {
     var viewportScene: DemoScene?
-    private let videoLayer: AVCaptureVideoPreviewLayer
+    private let videoLayer: CALayer
     var isLive = false { didSet { videoLayer.isHidden = !isLive || viewportScene?.showsPhone != true } }
-    init(previewLayer: AVCaptureVideoPreviewLayer) {
+    init(previewLayer: CALayer) {
         videoLayer = previewLayer
         super.init(frame: .zero)
         videoLayer.backgroundColor = NSColor.black.cgColor

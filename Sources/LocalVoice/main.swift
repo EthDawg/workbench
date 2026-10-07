@@ -340,7 +340,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             self.updateRecordingUI()
         }
         readback.onHideForEditorCapture = { [weak self] in self?.window.orderOut(nil) }
-        readback.onRestoreAfterEditorCapture = { [weak self] in self?.showWindow() }
+        readback.onRestoreAfterEditorCapture = { [weak self] in self?.showWindow(countsAsVisit: false) }
         navigationObserver = NotificationCenter.default.addObserver(forName: .workbenchNavigate, object: nil, queue: .main) { [weak self] notification in
             guard let page = notification.object as? String else { return }
             Task { @MainActor in self?.navigate(page) }
@@ -355,7 +355,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 timer: self.stage.hasActiveTimer,
                 interaction: self.shortcutsSuspended || NSApp.modalWindow != nil || NSApp.windows.contains(where: { $0.attachedSheet != nil }))
         }
-        WorkbenchUpdates.shared.showUpdate = { [weak self] in self?.showWindow() }
+        WorkbenchUpdates.shared.showUpdate = { [weak self] in self?.showWindow(countsAsVisit: false) }
         bugReports = makeBugReports()
         bugReportObserver = NotificationCenter.default.addObserver(forName: BugReportRequest.name, object: nil, queue: .main) { [weak self] notification in
             guard let origin = (notification.object as? BugReportRequest.Box)?.origin else { return }
@@ -490,7 +490,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         menu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
         menu.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Open Workbench", action: #selector(showWindow), keyEquivalent: "0")
+        menu.addItem(withTitle: "Open Workbench", action: #selector(showWindow as () -> Void), keyEquivalent: "0")
         // Show or Hide by the saved preference, through the same switch as the panel and Settings (#134).
         menu.addItem(withTitle: Self.floatingToolbarTitle(visible: model.floatingToolbarVisible), action: #selector(toggleFloatingToolbar), keyEquivalent: "")
         menu.addItem(withTitle: "Focus Floating Toolbar", action: #selector(focusFloatingToolbar), keyEquivalent: "")
@@ -688,7 +688,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         guard BrowserIntegration.isAvailable, model.phase == .idle, !shortcutsSuspended else { return }
         stage.escape(); closeControls(); presenterPanel.show()
     }
-    @objc func showWindow() { closeControls(); if window.isMiniaturized { window.deminiaturize(nil) }; window.makeKeyAndOrderFront(nil); statusItem?.isVisible = true; NSApp.activate(ignoringOtherApps: true) }
+    @objc func showWindow() { showWindow(countsAsVisit: true) }
+    /// The window persists when closed, so Present's page sees no new appearance; the person
+    /// reopening it on Present is a fresh visit (after End, the phone may show again). Restores
+    /// nobody asked for, such as after a Snap & Talk capture or for an update, pass false.
+    func showWindow(countsAsVisit: Bool) {
+        let reopening = !window.isVisible || window.isMiniaturized
+        closeControls(); if window.isMiniaturized { window.deminiaturize(nil) }; window.makeKeyAndOrderFront(nil); statusItem?.isVisible = true; NSApp.activate(ignoringOtherApps: true)
+        if countsAsVisit, reopening, model.page == "present" { stage.presentPageReopened() }
+    }
     @objc func showAbout() { NSApp.orderFrontStandardAboutPanel(options: [.applicationName: Workbench.displayName, .applicationVersion: WorkbenchUpdates.shared.build.label, .credits: NSAttributedString(string: "\(WorkbenchUpdates.shared.build.details)\n\nEveryday tools for speaking, explaining and presenting.\nSpeech powered by Parakeet, FluidAudio and your selected recognition provider.")]) }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showWindow(); return true }
     /// The saved size and position of the Workbench window, kept per edition with its preferences.

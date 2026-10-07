@@ -262,9 +262,12 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
     /// or plugging the phone in again. Covering or uncovering the page and a late permission,
     /// discovery or frame callback never do.
     private var released: PhoneLinkSignals.Release?
-    /// End reopens the scenes window when the stage has its own controls; that opening is
-    /// End's own, not the person returning to the page.
-    private var endIsReopeningPage = false
+    /// End reopens the scenes window when the stage has its own controls; an opening within
+    /// `endReopenWindow` of End is End's own, not the person returning to the page. It expires
+    /// rather than waiting for an opening: when End's reopen shows no new page (the window was
+    /// on another Space or already up), the person's next visit must still count (7 October 2026).
+    private var endReopenUntil: Date?
+    var endReopenWindow: TimeInterval = 2
     /// Present starts in a window unless the person chose full screen, kept with the scenes.
     @Published private(set) var startsFullScreen = false
     private var presentPreferencesURL: URL { root.appendingPathComponent("present-preferences.json") }
@@ -287,7 +290,7 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
         if visible {
             pageLingering = false
         } else {
-            endIsReopeningPage = false
+            endReopenUntil = nil
             pageLingering = true
             let linger = DispatchWorkItem { [weak self] in
                 guard let self else { return }
@@ -301,7 +304,7 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
     /// The person opened the Present page (a fresh visit, not the window being uncovered):
     /// after End, the preview may show the phone again.
     func presentPageOpened() {
-        if endIsReopeningPage { endIsReopeningPage = false; return }
+        if let until = endReopenUntil { endReopenUntil = nil; if Date() < until { return } }
         guard released == .ended else { return }
         setReleased(nil); reconsiderCapture()
     }
@@ -529,7 +532,7 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
             guard let self else { return }
             presentation = nil; objectWillChange.send()
             reconsiderCapture()
-            if usesSharedControls != true { endIsReopeningPage = released == .ended; show() }
+            if usesSharedControls != true { endReopenUntil = released == .ended ? Date().addingTimeInterval(endReopenWindow) : nil; show() }
         }
         presentation = presenter
         objectWillChange.send()
