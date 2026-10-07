@@ -150,7 +150,7 @@ struct DemoScenesView: View {
                                 var reset = scene; reset.backgroundX = 0.5; reset.backgroundY = 0.5; reset.zoom = 1
                                 reset.phoneX = 0.5; reset.phoneY = 0.5; reset.phoneHeight = 0.88; reset.viewport = .phone
                                 model.update(reset)
-                            }.buttonStyle(.link)
+                            }.buttonStyle(.workbenchLink)
                         }.font(.caption)
                         handControls(scene)
                         }.padding(.top, 10)
@@ -352,7 +352,7 @@ struct DemoScenesView: View {
             }
             Divider()
             HStack {
-                Button("Can’t see your phone?") { helpAfterSource = true; choosingSource = false }.buttonStyle(.link)
+                Button("Can’t see your phone?") { helpAfterSource = true; choosingSource = false }.buttonStyle(.workbenchLink)
                 Spacer()
                 Button("Look again") { capture.refresh() }
             }
@@ -427,7 +427,7 @@ struct DemoScenesView: View {
                     }.fixedSize()
                     Button("Rotate") { var value = scene.viewport ?? .legacy; value.aspect = 1 / value.aspect; setViewport(value) }
                     Spacer()
-                    Button("Save as my device") { model.saveMyDevice() }.buttonStyle(.link)
+                    Button("Save as my device") { model.saveMyDevice() }.buttonStyle(.workbenchLink)
                 }.font(.caption)
                 Text(capture.live ? "While the phone is live, the frame follows its own proportions." : "The frame follows the phone’s proportions once it is live.")
                     .font(.caption).foregroundStyle(.secondary)

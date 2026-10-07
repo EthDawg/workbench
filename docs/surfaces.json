@@ -227,7 +227,7 @@
     "kind": "action",
     "belongsTo": "app",
     "aliasOf": "LocalVoice.main.AppDelegate.addItem.report-a-problem",
-    "note": "The same door, under the same name, beside a recoverable Dictate problem banner and a Snap failure notice (#296). It opens the same window with the problem's typed code, never its words, and is not shown on timed success notices."
+    "note": "The same door and name, in sentence case as a button (the Help item is title case as a menu item), beside a recoverable Dictate problem banner and a Snap failure notice (#296). It opens the same window with the problem's typed code, never its words, and is not shown on timed success notices."
   },
   {
     "id": "LocalVoice.CaptureHistoryView.TranscriptHistoryRow.Button.open-in-dictate",
@@ -1622,10 +1622,10 @@
   {
     "id": "LocalVoice.main.AppDelegate.addItem.report-a-problem",
     "surface": "app menu bar",
-    "label": "Report a problem…",
+    "label": "Report a Problem…",
     "kind": "action",
     "belongsTo": "app",
-    "note": "Option of the app's Help menu, decided by the Report a problem build brief (docs/bug-reporting.md, #296): opens the one modeless Report a problem window. Not a toolbar tool, sidebar place or captured-work library; its draft and outbox are the brief's deliberate exception to History."
+    "note": "Option of the app's Help menu, decided by the Report a problem build brief (docs/bug-reporting.md, #296): opens the one modeless Report a Problem window. Not a toolbar tool, sidebar place or captured-work library; its draft and outbox are the brief's deliberate exception to History."
   },
   {
     "id": "StageKit.PersonaLibraryView.PersonaLibraryView.Button.me",

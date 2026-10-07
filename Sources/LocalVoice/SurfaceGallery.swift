@@ -4082,7 +4082,7 @@ extension SurfacePass {
                        "Close Window": "Closes the front window", "Minimize": "Minimizes the front window", "Zoom": "Zooms the front window", "Bring All to Front": "Brings Workbench's windows forward", "Open Workbench": "Opens Home on its current page",
                        "Show Floating Toolbar": "Shows the toolbar between actions", "Hide Floating Toolbar": "Hides the toolbar between actions", "Focus Floating Toolbar": "Moves keyboard focus to the toolbar",
                        "Restore Menu Bar Icon": "Shows the icon and the toolbar", "Workbench Guide": "Opens the web guide",
-                       "Report a problem…": "Opens the Report a problem window"]
+                       "Report a Problem…": "Opens the Report a Problem window"]
         return shell.makeMainMenu().main.items.compactMap(\.submenu).filter { ["Workbench", "Window", "Help"].contains($0.title) }.flatMap { menu in
             menu.items.filter { !$0.isSeparatorItem && $0.submenu == nil }.map { item in
                 let label = "\(menu.title) › \(item.title)"
@@ -4194,7 +4194,7 @@ private struct SurfaceIndex {
                 + (index < dark.pickers.count ? figure(dark.pickers[index], "Dark") : "") + "</div>"
         }
         if !light.reports.isEmpty {
-            html += "<h2>Report a problem</h2><p>Help › Report a problem… and the same door beside a Dictate or Snap problem open this window (#296). Drawn from a synthetic report folder with a stubbed network session that is never started: nothing is captured, recorded or sent.</p>"
+            html += "<h2>Report a problem</h2><p>Help › Report a Problem… and the same door beside a Dictate or Snap problem open this window (#296). Drawn from a synthetic report folder with a stubbed network session that is never started: nothing is captured, recorded or sent.</p>"
             for (index, shot) in light.reports.enumerated() {
                 html += "<h3>\(esc(shot.title))</h3><p>\(esc(shot.detail))</p><div class=\"row report\">" + figure(shot, "Light")
                     + (index < dark.reports.count ? figure(dark.reports[index], "Dark") : "") + "</div>"
@@ -4372,7 +4372,7 @@ extension SurfacePass {
             let view = NSHostingView(rootView: BugReportView(model: model, scrolls: false, expandDetails: details).frame(width: 480))
             let height = max(360, ceil(view.fittingSize.height))
             let window = offscreenWindow(size: NSSize(width: 480, height: height), styleMask: [.titled, .closable, .miniaturizable])
-            window.title = "Report a problem"
+            window.title = "Report a Problem"
             window.contentView = view
             defer { window.contentView = nil; window.close() }
             settle(view)
@@ -4442,7 +4442,7 @@ extension SurfacePass {
         defer { window.contentViewController = nil; window.close() }
         let (rep, drawn) = try renderPage("dictate", in: window)
         return try save(rep, id: "problem-door", title: "Dictate problem with Report a problem…, \(Int(drawn.width)) × \(Int(drawn.height)) pt",
-                        detail: "The same door as Help › Report a problem…, beside a recoverable problem; it opens the composer with dictate.recording_stopped.",
+                        detail: "The same door as Help › Report a Problem…, beside a recoverable problem; it opens the composer with dictate.recording_stopped.",
                         file: "page-dictate-problem-door-\(theme).png", to: output)
     }
 }

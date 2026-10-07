@@ -509,7 +509,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let help = NSMenuItem(); help.title = "Help"
         let helpMenu = NSMenu(title: "Help")
         helpMenu.addItem(withTitle: "Workbench Guide", action: #selector(showGuide), keyEquivalent: "")
-        helpMenu.addItem(withTitle: "Report a problem…", action: #selector(reportProblem), keyEquivalent: "")
+        helpMenu.addItem(withTitle: "Report a Problem…", action: #selector(reportProblem), keyEquivalent: "")
         help.submenu = helpMenu; main.addItem(help)
         return (main, services, menu, helpMenu)
     }
@@ -562,7 +562,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         showFloatingToolbar()
     }
     @objc func showGuide() { NSWorkspace.shared.open(URL(string: "https://workbench-mac.vercel.app/guide/")!) }
-    /// Help › Report a problem… (#296). With the Workbench window in front, the report names its
+    /// Help › Report a Problem… (#296). With the Workbench window in front, the report names its
     /// page; otherwise it names Help. The page is read now, before the composer takes focus.
     @objc func reportProblem() {
         let surface = window != nil && NSApp.keyWindow === window ? BugReportSurface.page(model.page) : .help

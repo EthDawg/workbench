@@ -272,7 +272,7 @@ struct PhoneLinkStatusRow: View {
             HStack(spacing: 8) {
                 if let step = status.step { Button(step.title) { perform(step) } }
                 if status.offersReconnect { Button("Reconnect", action: reconnect).help("Reconnect device · ⌘R in the presentation") }
-                if status.offersHelp { Button("Can’t see your phone?", action: help).buttonStyle(.link) }
+                if status.offersHelp { Button("Can’t see your phone?", action: help).buttonStyle(.workbenchLink) }
             }.controlSize(.small)
         }
     }
@@ -454,7 +454,7 @@ private struct DemoStageContent: View {
                                 .buttonStyle(.borderedProminent)
                         }
                         if status.offersHelp {
-                            Button("Can’t see your phone?") { openHelp() }.focused($focusedControl, equals: .deviceHelp).buttonStyle(.link)
+                            Button("Can’t see your phone?") { openHelp() }.focused($focusedControl, equals: .deviceHelp).buttonStyle(.workbenchLink)
                         }
                     }.padding(20).frame(width: max(120, viewport.width - 20))
                         .foregroundStyle(.white)
@@ -621,7 +621,7 @@ private struct DemoStageContent: View {
             }
             Divider()
             HStack {
-                Button("Can’t see your phone?") { controls.helpAfterSource = true; controls.choosingSource = false }.buttonStyle(.link)
+                Button("Can’t see your phone?") { controls.helpAfterSource = true; controls.choosingSource = false }.buttonStyle(.workbenchLink)
                 Spacer()
                 Button("Look again") { capture.refresh() }
             }

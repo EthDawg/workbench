@@ -104,6 +104,22 @@ enum Workbench {
     static let controlWidth: CGFloat = 370
 }
 
+/// A text link in Workbench's accent, the same as LocalVoice's page kit: `.buttonStyle(.link)`
+/// ignores the tint on macOS and draws system blue beside mint buttons. Internal, so the app
+/// module keeps its own `.workbenchLink` without ambiguity.
+struct WorkbenchLinkStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(isEnabled ? Workbench.accent : Color.secondary)
+            .opacity(configuration.isPressed ? 0.6 : 1)
+            .contentShape(Rectangle())
+    }
+}
+extension ButtonStyle where Self == WorkbenchLinkStyle {
+    static var workbenchLink: WorkbenchLinkStyle { .init() }
+}
+
 final class WorkbenchSettings: ObservableObject {
     enum Appearance: String, CaseIterable { case system = "System", light = "Light", dark = "Dark" }
     static let shared = WorkbenchSettings()

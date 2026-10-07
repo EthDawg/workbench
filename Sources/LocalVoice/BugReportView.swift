@@ -13,7 +13,7 @@ enum BugReportRequest {
     final class Box { let origin: BugReportOrigin; init(_ origin: BugReportOrigin) { self.origin = origin } }
 }
 
-/// The same door as Help › Report a problem…, beside a recoverable Dictate or Snap problem. It
+/// The same door as Help › Report a Problem…, beside a recoverable Dictate or Snap problem. It
 /// carries the problem's typed code, never its words.
 struct ReportProblemButton: View {
     let origin: BugReportOrigin
@@ -351,7 +351,7 @@ final class BugReportWindowController: NSWindowController, NSWindowDelegate {
         self.model = model
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 680),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-        window.title = "Report a problem"
+        window.title = "Report a Problem"
         window.isReleasedWhenClosed = false
         window.minSize = NSSize(width: 420, height: 460)
         window.contentViewController = NSHostingController(rootView: BugReportView(model: model))
