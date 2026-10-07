@@ -695,6 +695,7 @@ struct TestRunner {
             ("full-height frame persistence and edges", viewportFit.testFullHeightSurvivesSavingAndReachesBothEdges),
             ("maximum frame size across displays", viewportFit.testMaximumSizeFitsDisplayAndPreservesScreenShape),
             ("full-height export and live geometry", viewportFit.testExportAndLiveScreenUseFullHeightBorder),
+            ("the live picture is drawn above the frame's black screen", viewportFit.testTheLivePictureIsDrawnAboveTheFramesBlackScreen),
             ("logo native WebP decoding and alpha", logoImport.testWebPAndTransparentPadding),
             ("logo image orientation and rejection", logoImport.testOrientationAndInvalidImages),
             ("logo paste image and file persistence", logoImport.testPasteImageAndFilePersistence),

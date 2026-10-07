@@ -909,8 +909,8 @@ func runCLI(_ args: [String]) async -> Int32 {
             }
         // What this Mac shows of a phone, watched headless; the new folder is the receipt (#276).
         case "--phone-link":
-            let (folder, seconds, live) = try PhoneLinkChecks.arguments(args)
-            try await PhoneLinkChecks.run(folder: folder, seconds: seconds, live: live)
+            let (folder, seconds, live, stage) = try PhoneLinkChecks.stageArguments(args)
+            try await PhoneLinkChecks.run(folder: folder, seconds: seconds, live: live, stage: stage)
         case "--check-readback-pack":
             try await MainActor.run { try ReadbackPackChecks.run() }
             try await PackLibraryChecks.run()
@@ -933,7 +933,7 @@ func runCLI(_ args: [String]) async -> Int32 {
             guard args.count == 2 else { throw VoiceError.message("Usage: LocalVoice --transcribe AUDIO_FILE") }
             try await engine().prepareCached()
             print(try await engine().transcribe(URL(fileURLWithPath: args[1])))
-        default: throw VoiceError.message("Usage: LocalVoice [--prepare-model | --transcribe AUDIO_FILE | --check-core | --check-readback | --check-read-retirement | --check-library | --check-quick-look-panel FILE… | --render-surfaces OUTPUT_DIRECTORY | --phone-link NEW_FOLDER [SECONDS] [--live]]")
+        default: throw VoiceError.message("Usage: LocalVoice [--prepare-model | --transcribe AUDIO_FILE | --check-core | --check-readback | --check-read-retirement | --check-library | --check-quick-look-panel FILE… | --render-surfaces OUTPUT_DIRECTORY | --phone-link NEW_FOLDER [SECONDS] [--live] [--stage]]")
         }
         return 0
     } catch { fputs("Local Voice: \(error.localizedDescription)\n", stderr); return 1 }

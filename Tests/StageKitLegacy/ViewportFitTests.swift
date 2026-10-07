@@ -80,4 +80,40 @@ final class ViewportFitTests {
         XCTAssertEqual(previewLayer.cornerRadius, geometry.innerRadius)
         XCTAssertEqual(SceneRenderer.phoneRect(scene, in: size), geometry.outer)
     }
+
+    /// The live picture sits above the frame's black screen, as the window draws it (7 October
+    /// 2026: on a real iPhone the stage and the page stayed black while frames arrived, because
+    /// the hand-inserted video layer ended up under the frame's black screen fill).
+    func testTheLivePictureIsDrawnAboveTheFramesBlackScreen() throws {
+        var scene = DemoScene(background: "photo.png")
+        scene.viewport = .phone; scene.phoneHeight = 0.8
+        let size = CGSize(width: 800, height: 450)
+        let backdrop = NSImage(size: size, flipped: false) { rect in NSColor.blue.setFill(); rect.fill(); return true }
+        let geometry = ViewportGeometry(scene: scene, size: size)
+        let green = CGContext(data: nil, width: 4, height: 4, bitsPerComponent: 8, bytesPerRow: 16, space: CGColorSpaceCreateDeviceRGB(),
+                              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        green.setFillColor(CGColor(red: 0, green: 1, blue: 0, alpha: 1)); green.fill(CGRect(x: 0, y: 0, width: 4, height: 4))
+        let picture = CALayer()
+        let liveView = DemoStageSurfaceView(previewLayer: picture)
+        picture.contents = green.makeImage()
+        let window = NSWindow(contentRect: CGRect(origin: .zero, size: size), styleMask: [.borderless], backing: .buffered, defer: false)
+        defer { window.contentView = nil; window.close() }
+        window.contentView = liveView
+        liveView.configure(scene: scene, backdrop: backdrop, logo: nil, hand: nil, persona: nil)
+        liveView.viewportScene = scene; liveView.isLive = true
+        liveView.needsLayout = true; liveView.layoutSubtreeIfNeeded(); liveView.needsDisplay = true; liveView.displayIfNeeded()
+        let context = CGContext(data: nil, width: Int(size.width), height: Int(size.height), bitsPerComponent: 8, bytesPerRow: Int(size.width) * 4,
+                                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        try XCTUnwrapLayer(liveView.layer).render(in: context)
+        let image = context.makeImage()!
+        let bitmap = NSBitmapImageRep(cgImage: image)
+        let centre = bitmap.colorAt(x: Int(geometry.screen.midX), y: bitmap.pixelsHigh - Int(geometry.screen.midY))!
+        XCTAssertTrue(centre.greenComponent > 0.8 && centre.redComponent < 0.2 && centre.blueComponent < 0.2,
+                      "The phone's picture shows inside the frame, not the frame's black screen (got \(centre))")
+    }
+
+    private func XCTUnwrapLayer(_ layer: CALayer?) throws -> CALayer {
+        guard let layer else { throw NSError(domain: "ViewportFitTests", code: 1) }
+        return layer
+    }
 }

@@ -451,7 +451,8 @@ final class PhoneCaptureTests: PhoneOwnerFixture {
 
     private func sampleBuffer() -> CMSampleBuffer? {
         var pixels: CVPixelBuffer?
-        guard CVPixelBufferCreate(nil, 1320, 2868, kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange, nil, &pixels) == kCVReturnSuccess,
+        let attributes = [kCVPixelBufferIOSurfacePropertiesKey as String: [String: Any]()] as CFDictionary
+        guard CVPixelBufferCreate(nil, 1320, 2868, kCVPixelFormatType_32BGRA, attributes, &pixels) == kCVReturnSuccess,
               let pixels else { return nil }
         var format: CMVideoFormatDescription?
         guard CMVideoFormatDescriptionCreateForImageBuffer(allocator: nil, imageBuffer: pixels, formatDescriptionOut: &format) == noErr,
