@@ -16,6 +16,11 @@ class MovingSceneView: NSView {
     private var ambientImages: AmbientSceneImages?
     private var hasAmbience = false
     private let foreground = MovingSceneForeground()
+    /// The phone's picture, in a view of its own between the drawn frame and the branding. As a
+    /// sublayer of this view's own layer it sorted below every subview's layer once AppKit built
+    /// the window's tree, under the foreground's black-filled screen, so no capture layer of any
+    /// kind ever showed the phone (7 October 2026).
+    private let videoHost = MovingSceneVideoHost()
     private let branding = MovingSceneBranding()
     private var scene: DemoScene?
     private var backdrop: NSImage?
@@ -35,8 +40,8 @@ class MovingSceneView: NSView {
         photograph.contentsGravity = .resize; photograph.magnificationFilter = .linear
         layer?.addSublayer(photograph)
         ambient.isHidden = true; layer?.addSublayer(ambient)
-        foreground.wantsLayer = true; branding.wantsLayer = true
-        addSubview(foreground); addSubview(branding)
+        foreground.wantsLayer = true; videoHost.wantsLayer = true; branding.wantsLayer = true
+        addSubview(foreground); addSubview(videoHost); addSubview(branding)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
@@ -64,7 +69,7 @@ class MovingSceneView: NSView {
         updateMotion()
     }
     func insertVideoLayer(_ layer: CALayer) {
-        self.layer?.insertSublayer(layer, below: branding.layer)
+        videoHost.layer?.addSublayer(layer)
     }
     override func layout() {
         super.layout()
@@ -76,7 +81,7 @@ class MovingSceneView: NSView {
                                  y: (bounds.height - size.height) * scene.backgroundY,
                                  width: size.width, height: size.height)
         ambient.frame = photograph.frame; ambient.layoutIfNeeded()
-        foreground.frame = bounds; branding.frame = bounds
+        foreground.frame = bounds; videoHost.frame = bounds; branding.frame = bounds
         foreground.needsDisplay = true; branding.needsDisplay = true
         CATransaction.commit()
         updateMotion()
@@ -167,6 +172,12 @@ private final class MovingSceneForeground: NSView {
         guard let scene, let backdrop else { return }
         SceneRenderer.draw(scene, image: backdrop, size: bounds.size, handImage: hand, drawsBackground: false)
     }
+}
+
+/// Holds the phone's capture layer in the subview order, so AppKit keeps it above the drawn frame.
+private final class MovingSceneVideoHost: NSView {
+    override var isOpaque: Bool { false }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
 private final class MovingSceneBranding: NSView {
