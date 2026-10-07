@@ -3,6 +3,7 @@ import AVFoundation
 import Combine
 import CoreMediaIO
 import IOKit
+import ScreenCaptureKit
 
 // MARK: - Signals and status
 
@@ -667,6 +668,123 @@ public final class PhoneLinkMonitor: ObservableObject {
         monitor.setActive(false)
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in capture.stop { continuation.resume() } }
         return final
+    }
+
+    /// Like `observeLive`, and it also shows the stage: a small titled window draws the phone
+    /// in a device scene exactly as Present's stage does, then reads that window back through
+    /// ScreenCaptureKit and measures the picture inside the frame. This is the check that the
+    /// phone is drawn, not only received (7 October 2026: frames arrived while the stage stayed
+    /// black). It keeps no image unless WORKBENCH_PHONE_FRAME_PNG names a file.
+    @MainActor
+    public static func observeStage(seconds: TimeInterval, build: String, onChange: @escaping (String) -> Void) async -> (signals: PhoneLinkSignals, status: PhoneLinkStatus, report: String, firstFrame: TimeInterval?, size: CGSize) {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("workbench-phone-stage-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let capture = DemoCapture(root: root)
+        let monitor = PhoneLinkMonitor()
+        monitor.mirror(capture)
+        monitor.setCapturing(true)
+        var last: PhoneLinkStatus?
+        let subscription = monitor.$signals.map(PhoneLink.sharedStatus).sink { status in
+            guard status != last else { return }
+            last = status; onChange(status.title + (status.detail.map { " — " + $0 } ?? ""))
+        }
+        monitor.setActive(true)
+        let probe = PhoneFrameProbe()
+        capture.queue.sync { capture.frameProbe = { probe.take($0) } }
+
+        var scene = DemoScene(background: "phone-stage-check")
+        scene.viewport = .phone; scene.phoneHeight = 0.9
+        let size = CGSize(width: 420, height: 640)
+        let backdrop = NSImage(size: size, flipped: false) { rect in NSColor(white: 0.55, alpha: 1).setFill(); rect.fill(); return true }
+        let stageLayer = capture.makePreviewLayer(for: .stage)
+        let view = DemoStageSurfaceView(previewLayer: stageLayer)
+        let window = NSWindow(contentRect: CGRect(origin: CGPoint(x: 60, y: 60), size: size), styleMask: [.titled], backing: .buffered, defer: false)
+        window.title = "Workbench phone check"; window.isReleasedWhenClosed = false; window.level = .floating
+        window.contentView = view
+        view.configure(scene: scene, backdrop: backdrop, logo: nil, hand: nil, persona: nil)
+        view.viewportScene = scene
+        window.orderFrontRegardless()
+
+        // Control: a solid green picture in the phone's place, before any phone frame. It proves
+        // the stage and the measurement can show a picture at all, apart from the phone's feed.
+        view.isLive = true; view.needsLayout = true; view.layoutSubtreeIfNeeded()
+        let controlColour = CGColor(red: 0.1, green: 0.85, blue: 0.3, alpha: 1)
+        let original = stageLayer.backgroundColor
+        CATransaction.begin(); CATransaction.setDisableActions(true); stageLayer.backgroundColor = controlColour; CATransaction.commit()
+        try? await Task.sleep(nanoseconds: 700_000_000)
+        let controlGeometry = ViewportGeometry(scene: scene, size: view.bounds.size)
+        let control = await Self.measureStage(window: window, view: view, screen: controlGeometry.screen, suffix: "control")
+        CATransaction.begin(); CATransaction.setDisableActions(true); stageLayer.backgroundColor = original; CATransaction.commit()
+        view.isLive = false
+
+        let started = Date()
+        capture.start()
+        let deadline = started.addingTimeInterval(seconds)
+        var firstFrame: TimeInterval?
+        var dimensions = CGSize.zero
+        while Date() < deadline {
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            monitor.refresh()
+            view.isLive = capture.live; view.needsLayout = true
+            if case .live(_, let current) = capture.phase {
+                if firstFrame == nil { firstFrame = Date().timeIntervalSince(started) }
+                dimensions = current
+                if Date().timeIntervalSince(started) - (firstFrame ?? 0) >= 3 { break }
+            }
+        }
+        view.layoutSubtreeIfNeeded()
+        let geometry = ViewportGeometry(scene: scene, size: view.bounds.size)
+        let drawn = await Self.measureStage(window: window, view: view, screen: geometry.screen, suffix: "stage")
+        window.orderOut(nil)
+        subscription.cancel()
+        let frames = (firstFrame.map { String(format: "Frames: first after %.1f s, %d×%d", $0, Int(dimensions.width), Int(dimensions.height)) }
+            ?? "Frames: none within \(Int(seconds)) s") + "\n" + probe.summary + "\nStage control (green test picture): " + control + "\nStage picture: " + drawn
+        let final = (signals: monitor.signals, status: monitor.sharedStatus, report: monitor.diagnostic(build: build) + "\n" + frames, firstFrame: firstFrame, size: dimensions)
+        monitor.setActive(false)
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in capture.stop { continuation.resume() } }
+        return final
+    }
+
+    /// Reads the stage window back as the window server composites it and measures the phone's
+    /// screen area: a drawn phone is not uniformly black.
+    @MainActor
+    private static func measureStage(window: NSWindow, view: NSView, screen: CGRect, suffix: String) async -> String {
+        do {
+            let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+            guard let shared = content.windows.first(where: { $0.windowID == CGWindowID(window.windowNumber) }) else {
+                return "not measured (the window was not visible to ScreenCaptureKit)"
+            }
+            let filter = SCContentFilter(desktopIndependentWindow: shared)
+            let configuration = SCStreamConfiguration()
+            let scale = window.backingScaleFactor
+            configuration.width = Int(window.frame.width * scale); configuration.height = Int(window.frame.height * scale)
+            let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
+            if let path = ProcessInfo.processInfo.environment["WORKBENCH_PHONE_FRAME_PNG"], !path.isEmpty {
+                let stagePath = (path as NSString).deletingPathExtension + "-\(suffix).png"
+                try? NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: stagePath))
+            }
+            // The phone's screen in window coordinates (origin bottom left), then in image pixels (origin top left).
+            let inWindow = view.convert(screen, to: nil)
+            let pixelScale = CGFloat(image.width) / window.frame.width
+            let rect = CGRect(x: inWindow.minX * pixelScale, y: (window.frame.height - inWindow.maxY) * pixelScale,
+                              width: inWindow.width * pixelScale, height: inWindow.height * pixelScale).insetBy(dx: inWindow.width * pixelScale * 0.15, dy: inWindow.height * pixelScale * 0.15)
+            let bitmap = NSBitmapImageRep(cgImage: image)
+            var total = 0.0, samples = 0, bright = 0
+            for y in stride(from: Int(rect.minY), to: Int(rect.maxY), by: max(1, Int(rect.height) / 48)) {
+                for x in stride(from: Int(rect.minX), to: Int(rect.maxX), by: max(1, Int(rect.width) / 32)) {
+                    guard let colour = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else { continue }
+                    let value = (colour.redComponent + colour.greenComponent + colour.blueComponent) / 3
+                    total += value; samples += 1; if value > 0.16 { bright += 1 }
+                }
+            }
+            guard samples > 0 else { return "not measured (no samples)" }
+            let mean = Int(total / Double(samples) * 255)
+            let share = bright * 100 / samples
+            return "\(share > 2 ? "drawn" : "black") (mean \(mean)/255, \(share)% bright samples inside the frame)"
+        } catch {
+            return "not measured (\((error as NSError).domain) \((error as NSError).code))"
+        }
     }
 
     /// Runs the bus watch and the source discovery headless for a while and reports
