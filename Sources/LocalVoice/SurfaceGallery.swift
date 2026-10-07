@@ -2224,6 +2224,13 @@ private struct HistoryNativeAcceptanceView: View {
         try shot("first-dictation", "First dictation, beside earlier Snaps", "Nothing dictated yet but Snaps saved: the guide stays, with Skip for now, and recent work below it.")
         model.preferences.firstDictationGuide = .skipped
         try shot("guide-skipped", "Guide skipped", "After Skip for now: the ordinary Home, with Show me a first dictation until someone dictates.")
+        // Speech still preparing at launch, the guide skipped: Current work shows the setup. Home
+        // once asked the guide through current work and back, and every such launch overflowed.
+        let speech = (ready: model.ready, preparing: model.preparing, message: model.modelMessage)
+        try shot("speech-preparing", "Speech preparing at launch", "The on-device model is still preparing and the guide was skipped: Current work carries the setup line instead of an empty card.") { [self] in
+            model.ready = false; model.preparing = true; model.modelMessage = "Preparing speech · first setup may take a few minutes"
+        }
+        model.ready = speech.ready; model.preparing = speech.preparing; model.modelMessage = speech.message
         model.preferences.firstDictationGuide = .offered
         let first = SurfacePass.history[1]
         try shot("first-result", "First result", "Right after the first dictation: the words, their delivery controls and where they were saved.") { [self] in

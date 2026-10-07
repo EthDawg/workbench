@@ -624,6 +624,11 @@ struct WorkbenchHomePage: View {
         }
     }
     /// What Home shows, from its owners. Dictation alone ends the guide (#15).
+    /// Whether the first-dictation guide shows, from the same owners `journey` reads, without
+    /// current work (which depends on this).
+    private var guideShows: Bool {
+        HomeJourney(transcripts: model.history.count, guide: model.preferences.firstDictationGuide, stayInGuide: stayInGuide).showsGuide
+    }
     private var journey: HomeJourney {
         HomeJourney(transcripts: model.history.count, guide: model.preferences.firstDictationGuide,
                     hasCurrentWork: hasCurrentWork, stayInGuide: stayInGuide, permissionsFolded: !permissionsSnapshot.expanded(dismissed: permissionsDismissed))
@@ -659,7 +664,9 @@ struct WorkbenchHomePage: View {
     private var hasCurrentWork: Bool {
         // Preparing speech counts only where the card shows it: the first-dictation guide
         // shows the download itself, and a card holding only its title would be empty.
-        dictationLive || (model.preparing && !model.ready && !journey.showsGuide)
+        // The guide reads only History and the saved guide state, never this property: asking
+        // `journey` here recursed until the stack overflowed whenever speech was preparing.
+        dictationLive || (model.preparing && !model.ready && !guideShows)
             || readback.isRecording || readback.hasPendingTranscriptions || stage.isDrawing || stage.isPresenting
             || personaControl.isCurrentWork || stage.hasTimerSession || meetings.isBusy || jobs.isBusy
     }
