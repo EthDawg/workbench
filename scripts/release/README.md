@@ -255,8 +255,11 @@ review and the actual native observations remain required.
 
 The `acceptance` object in version-controlled `config.json` owns the release
 claim, slice impact, every required journey/route, and the persisted formats to
-assess. Its current scope is the foundation candidate, including L1–L4 and Read retirement X3, manual
-and connected Claude/Codex handoff, and separately observed USB Teams/Zoom routes.
+assess. The foundation candidate scope covers L1–L4 and Read retirement X3, manual
+and connected Claude/Codex handoff, and separately observed USB Teams/Zoom routes. 2.5.0 uses a bounded slice by the maintainer's recorded decision (#7, 8 October 2026):
+its impact is every package, yet it attests only the core smoke, D1 and the signed 2.4.1-to-2.5.0
+upgrade, because the maintainer tests the other journeys in production. Restore the
+foundation-candidate policy once those journeys are attested.
 These are acceptance targets, not claims that the held work already passes.
 An independently accepted bounded slice may instead use an explained, reviewed
 `bounded-slice` policy with core smoke and its affected journeys, narrower claims
