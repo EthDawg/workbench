@@ -106,7 +106,7 @@ final class ClipboardReceiptModel: ObservableObject {
         } else if ownsClipboard {
             // Copying is a supported result, whether chosen or waiting for
             // Accessibility approval. A changed or unreadable field keeps its reason.
-            title = "Copied"; detail = TextDelivery.copiedDetail(outcome.failure); symbol = "doc.on.clipboard"
+            title = "Copied"; detail = outcome.reason ?? TextDelivery.copiedDetail(outcome.failure); symbol = "doc.on.clipboard"
         } else {
             switch source {
             case .result: title = "Result ready"; detail = "Clipboard changed. Copy the saved result again from History."

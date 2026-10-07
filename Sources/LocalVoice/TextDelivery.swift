@@ -23,9 +23,11 @@ final class TextDelivery {
         static var live: System {
             System(pasteboard: .general, isTrusted: { AXIsProcessTrusted() }, isEligible: { TextDelivery.eligible($0) },
                    preparePaste: { target in
+                       // The key that types “v” with ⌘ in this layout, not always the US position (PasteKey).
+                       let key = PasteKey.current()
                        guard let source = CGEventSource(stateID: .privateState),
-                             let down = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: true),
-                             let up = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: false) else { return nil }
+                             let down = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: true),
+                             let up = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: false) else { return nil }
                        down.flags = .maskCommand; up.flags = .maskCommand
                        // Eligibility is checked immediately before posting. Addressing
                        // that process also prevents an intervening app switch from
@@ -54,6 +56,8 @@ final class TextDelivery {
         var destinationName: String?
         var failure: FailureKind? = nil
         var pasteWasAttempted: Bool = false
+        /// Replaces the copied detail once, where the person needs to learn why (`AutomaticPasteProblem.approvalReason`).
+        var reason: String? = nil
     }
     enum ClipboardRestoration { case notAttempted, restored, failed }
     struct Target {
@@ -366,4 +370,40 @@ final class TextDelivery {
                        ? "Paste sent · insertion could not be confirmed. The transcript remains copied."
                        : "Paste sent · insertion could not be confirmed, and the clipboard has since changed.", failure: .pasteUnconfirmed)
     }
+}
+
+/// Why an automatic paste didn't land, for Home's Accessibility row and Copy permission details.
+/// Only causes outside the person's control: a field they changed, or a delivery they stopped,
+/// is not a problem with automatic paste. Kept for this run only; nothing is saved.
+struct AutomaticPasteProblem: Equatable {
+    var failure: TextDelivery.FailureKind
+    var app: String?
+    var date: Date
+
+    init?(_ outcome: TextDelivery.Outcome, date: Date = Date()) {
+        guard !outcome.wasPasted, let failure = outcome.failure,
+              [.fieldUnreadable, .pasteUnavailable, .pasteUnconfirmed].contains(failure) else { return nil }
+        self.failure = failure; app = outcome.destinationName; self.date = date
+    }
+    /// The row's line while Accessibility reads Allowed.
+    var line: String {
+        let into = app.map { "The last automatic paste, into \($0)," } ?? "The last automatic paste"
+        switch failure {
+        case .fieldUnreadable: return "\(into) only copied: Workbench couldn’t read the text field there. Some web apps and remote desktops hide it."
+        case .pasteUnavailable: return "\(into) only copied: macOS didn’t let Workbench send ⌘V."
+        default: return "\(into) was sent, but Workbench couldn’t confirm it landed."
+        }
+    }
+    /// For Copy permission details: the kind, the app and when, never the words.
+    var summary: String {
+        "\(failure.rawValue) in \(app ?? "an app") at \(date.formatted(date: .omitted, time: .shortened))"
+    }
+    /// A result that was only copied because Accessibility isn't allowed says why the first time
+    /// in a run, so automatic paste reads as a permission someone can set up, then never again:
+    /// no repeated setup banner (mac-foundation.md § Accessibility unavailable for Dictate).
+    static func approvalReason(for outcome: TextDelivery.Outcome, alreadyExplained: Bool) -> String? {
+        guard !alreadyExplained, outcome.failure == .accessibilityUnavailable else { return nil }
+        return approvalReason
+    }
+    static let approvalReason = "Paste with ⌘V. Automatic paste needs Accessibility; set it up in Home › Permissions."
 }

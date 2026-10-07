@@ -355,6 +355,8 @@ final class MeetingModel: ObservableObject {
                         samples: audio.samples, sampleRate: audio.sampleRate, start: audio.startSeconds))
                 }))
             try check(token)
+            // macOS has no passive check for call audio, so Home's Permissions learns it here.
+            if app != nil { defaults.set(CallAudioRecord.allowed.rawValue, forKey: CallAudioRecord.key) }
             notice = "Recording. Your original audio is being saved."
             voiceSession.phase = .listening
             phase(recording: true)
@@ -379,6 +381,9 @@ final class MeetingModel: ObservableObject {
             }
             // A permission request can return after Cancel and a newer start.
             // It owns no capture then and must not change that newer operation.
+            if app != nil, let problem = error as? MeetingProblem, case .appAudioPermission = problem {
+                defaults.set(CallAudioRecord.refused.rawValue, forKey: CallAudioRecord.key)
+            }
             guard generation == token || activeSession == createdSession && createdSession != nil else { return }
             if !(error is CancellationError), self.error == nil { setProblem((error as? MeetingProblem) ?? .unknown(error.localizedDescription)) }
             activeCapture = nil; activeSession = nil; activeManifest = nil; operation = nil

@@ -638,9 +638,12 @@ enum MeetingChecks {
             guard purpose == "meeting" else { throw MeetingError.message("Purpose changed") }
             history = TranscriptHistory.adding(transcript, to: history)
         }
+        try expect(defaults.string(forKey: CallAudioRecord.key) == nil, "no call-audio record before Meetings starts app audio")
         await model.start()
         let firstRecording = model.recordingIdentity
         try expect(firstRecording != nil, "the live recording has an operation identity")
+        try expect(defaults.string(forKey: CallAudioRecord.key) == CallAudioRecord.allowed.rawValue,
+                   "app audio that starts records call audio as allowed for Home's Permissions")
         try expect(model.isRecording && model.isBusy && factories == 1 && permissions == 0 && recognition == 0,
                    "explicit app-only Start records without microphone access or concurrent recognition")
         model.selectAudioSource(nil)
@@ -712,6 +715,17 @@ enum MeetingChecks {
         permissionGate.resume(true); await lateStart.value
         try expect(lateFactories == 0 && !lateModel.isRecording, "late microphone grant cannot start stale capture")
         await lateModel.prepareForShutdown()
+
+        let refusedCapture = CaptureFixture(); refusedCapture.startError = MeetingProblem.appAudioPermission(-1)
+        let refusedModel = MeetingModel(directory: root.appendingPathComponent("refused-capture"), defaults: defaults,
+                                        processSource: source, transcribe: { _ in "unused" },
+                                        microphonePermission: { true }, captureFactory: { refusedCapture })
+        refusedModel.selectedAppID = 789; refusedModel.includeMicrophone = false
+        await refusedModel.start()
+        try expect(!refusedModel.isRecording && refusedModel.problem?.opensAudioSettings == true
+                   && defaults.string(forKey: CallAudioRecord.key) == CallAudioRecord.refused.rawValue,
+                   "a call-audio refusal is recorded, so Home's Permissions stops saying it will be asked")
+        await refusedModel.prepareForShutdown()
 
         let startGate = Gate<Bool>(), delayedCapture = CaptureFixture()
         delayedCapture.startGate = startGate
@@ -1204,6 +1218,8 @@ enum MeetingChecks {
 
     private final class CaptureFixture: MeetingCapture {
         var startGate: Gate<Bool>?
+        /// Thrown by start, as Core Audio's own refusal would be.
+        var startError: Error?
         var stopping = false
         var recorded = false
         var finished = 0
@@ -1215,6 +1231,7 @@ enum MeetingChecks {
         private var report = MeetingCaptureReport()
         func start(_ request: MeetingCaptureRequest) async throws {
             if let startGate { _ = await startGate.wait() }
+            if let startError { throw startError }
             guard !stopping else { throw CancellationError() }
             let session = request.tracksDirectory.deletingLastPathComponent()
             let source: MeetingTrackSource = request.includeMicrophone ? .local : .remote

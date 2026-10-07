@@ -80,45 +80,145 @@ enum HomeJourneyChecks {
         }
 
         // Permissions: each row says only what macOS reports, asks only from its own Set up…,
-        // is orange only when something a tool needs is off, and never claims All allowed falsely.
-        func row(_ permission: MacPermission, _ state: MacPermissionState) -> MacPermissionRow { .init(permission: permission, state: state) }
+        // is orange only when something the person can turn on is off, and never claims All allowed falsely.
+        func row(_ permission: MacPermission, _ state: MacPermissionState, administrator: Bool? = true) -> MacPermissionRow {
+            .init(permission: permission, state: state, administrator: administrator)
+        }
+        func rowIn(_ snapshot: MacPermissionSnapshot, _ permission: MacPermission) -> MacPermissionRow? { snapshot.rows.first { $0.permission == permission } }
         try check(row(.microphone, .notAsked).action == .request && row(.microphone, .notAsked).action?.title == "Set up…",
                   "an approval macOS has not asked about offers Set up…, never a custom Allow, and macOS asks")
         try check(row(.microphone, .notAsked).tone == .neutral && row(.camera, .notAllowed).tone == .attention,
                   "not asked yet is information; only an approval that is off asks for attention")
         try check(row(.camera, .notAllowed).action == .openSettings && row(.camera, .managed).action == .openSettings,
                   "an approval that is off or managed opens Settings rather than promising a grant")
-        try check(row(.microphone, .allowed).action == nil && row(.microphone, .allowed).detail == nil,
-                  "an allowed approval has nothing to press and nothing to explain")
-        try check(row(.callAudio, .checkedOnUse).action == nil && row(.callAudio, .checkedOnUse).detail?.contains("first time") == true,
+        try check(row(.microphone, .allowed).action == .change && row(.microphone, .allowed).action?.title == "Change…"
+                  && row(.microphone, .allowed).details.isEmpty && row(.microphone, .allowed).tone == .done,
+                  "an allowed approval has nothing to explain, and Change… is the way to turn it off")
+        try check(MacPermissionStep.of(.change, for: .accessibility) == .openSettings(MacPermission.accessibility.settingsURL)
+                  && MacPermissionStep.of(.change, for: .screenRecording) == .openSettings(MacPermission.screenRecording.settingsURL),
+                  "Change… only opens the list: nothing is asked of macOS when someone wants to turn something off")
+        try check(row(.microphone, .allowed).actionHelp?.contains("until it quits") == true
+                  && row(.screenRecording, .allowed).actionHelp?.contains("reopens") == true
+                  && row(.accessibility, .allowed).actionHelp?.contains("organisation") == true,
+                  "Change… says when macOS applies a change, and that an organisation's approval may not be listed")
+        try check(row(.callAudio, .checkedOnUse).action == nil && row(.callAudio, .checkedOnUse).details.first?.contains("first time") == true,
                   "call audio, which macOS lists only after Meetings asks, offers no empty Settings list")
-        try check(row(.accessibility, .notAllowed).detail?.contains("⌘V") == true,
+        try check(row(.accessibility, .notAllowed).details.contains { $0.contains("⌘V") },
                   "automatic paste that is off says the words are still copied for ⌘V")
-        try check(row(.screenRecording, .notAllowed).afterAllowing == MacPermissionRow.reopenAfterAllowing && row(.camera, .notAllowed).afterAllowing == nil,
+        try check(MacPermission.accessibility.purpose.hasPrefix("Automatic paste"),
+                  "the Accessibility row names automatic paste, so someone looking for it finds the permission")
+        try check(row(.accessibility, .notAllowed).details.contains { $0.contains("click +") }
+                  && !row(.camera, .notAllowed).details.contains { $0.contains("click +") },
+                  "an Off Accessibility or Screen Recording says how to bring back an entry a − removed; Camera's list has no +")
+        try check(row(.screenRecording, .notAllowed).afterAllowing == MacPermissionRow.reopenAfterAllowing && row(.camera, .notAllowed).afterAllowing == nil
+                  && row(.screenRecording, .allowed).afterAllowing == nil,
                   "Screen Recording that is off says to reopen Workbench once allowed")
         try check(row(.camera, .managed).status == "Managed" && row(.camera, .managed).tone == .neutral,
                   "a restricted approval is managed, never called a refusal")
+        try check(row(.screenRecording, .unsupported("Needs macOS 14.2 or later")).details.isEmpty == false,
+                  "an approval this Mac can't provide still says what works without it")
+
+        // A yes/no approval reads from Workbench's own record of asking, and from whether this
+        // account can switch on an approval macOS keeps for the whole Mac.
+        try check(MacPermissionReader.state(granted: false, asked: false, administrator: true) == .notSetUp
+                  && row(.screenRecording, .notSetUp).status == "Not set up" && row(.screenRecording, .notSetUp).action == .request,
+                  "with no record of asking, a yes/no approval reads Not set up, never Not asked yet, and Set up… still leads somewhere")
+        try check(MacPermissionReader.state(granted: false, asked: true, administrator: true) == .notAllowed
+                  && MacPermissionReader.state(granted: true, asked: false, administrator: false) == .allowed
+                  && MacPermissionReader.state(granted: false, asked: false, administrator: nil) == .notSetUp,
+                  "an approval asked for and not on is Off; one that is on is Allowed whoever the account is")
+        try check(MacPermissionReader.state(granted: false, asked: true, administrator: false) == .needsAdministrator(listed: true)
+                  && MacPermissionReader.state(granted: false, asked: false, administrator: false) == .needsAdministrator(listed: false),
+                  "on a standard account, a Mac-wide approval that isn't on needs an administrator")
+        let needsAdmin = row(.accessibility, .needsAdministrator(listed: true), administrator: false)
+        try check(needsAdmin.status == "Needs an administrator" && needsAdmin.tone == .neutral && needsAdmin.action == .openSettings
+                  && needsAdmin.details.first?.contains("administrator’s name and password") == true
+                  && needsAdmin.details.first?.contains("Copy permission details") == true,
+                  "Accessibility on a standard account says an administrator must switch it on, and how to ask IT, without orange")
+        try check(row(.screenRecording, .needsAdministrator(listed: false), administrator: false).status == "May need an administrator"
+                  && row(.screenRecording, .needsAdministrator(listed: false), administrator: false).action == .request,
+                  "Screen Recording hedges, because IT can let standard users switch it on, and a first press asks macOS so the list shows Workbench")
+        try check(row(.camera, .notAllowed, administrator: false).details.contains { $0.contains("may ask for an administrator") }
+                  && !row(.camera, .notAllowed).details.contains { $0.contains("administrator") },
+                  "a camera that is off on a standard account hedges that changing it may need an administrator")
+        try check(MacPermissionStep.of(.request, for: .microphone) == .requestMicrophone && MacPermissionStep.of(.request, for: .camera) == .requestCamera
+                  && MacPermissionStep.of(.request, for: .accessibility) == .setUpAccessibility && MacPermissionStep.of(.openSettings, for: .accessibility) == .setUpAccessibility
+                  && MacPermissionStep.of(.request, for: .screenRecording) == .setUpScreenRecording && MacPermissionStep.of(.openSettings, for: .screenRecording) == .setUpScreenRecording
+                  && MacPermissionStep.of(.openSettings, for: .camera) == .openSettings(MacPermission.camera.settingsURL)
+                  && MacPermissionStep.of(.openSettings, for: .callAudio) == .openSettings(MacPermission.callAudio.settingsURL),
+                  "each button reaches the owner its tool uses, and Off for Accessibility or Screen Recording asks again so a cleared list shows Workbench")
+
+        // Turned off while Workbench runs, and paste that fails while Accessibility is allowed.
+        let revoked = MacPermissionSnapshot([.microphone: .notAllowed, .accessibility: .notAllowed, .camera: .notAllowed],
+                                            allowedEarlier: [.microphone, .accessibility])
+        try check(rowIn(revoked, .microphone)?.details.first == "Workbench can still use it until it quits."
+                  && rowIn(revoked, .accessibility)?.keptUntilQuit == false && rowIn(revoked, .camera)?.keptUntilQuit == false,
+                  "a microphone turned off while Workbench runs says macOS lets it keep it until it quits; Accessibility applies at once")
+        let pasteFails = MacPermissionSnapshot([.accessibility: .allowed], pasteProblem: "The last automatic paste, into Chrome, only copied.")
+        try check(rowIn(pasteFails, .accessibility)?.details == ["The last automatic paste, into Chrome, only copied."]
+                  && rowIn(pasteFails, .accessibility)?.status == "Allowed" && rowIn(pasteFails, .accessibility)?.tone == .neutral,
+                  "Accessibility can be allowed while automatic paste still fails, and the row says why without calling it off")
+        try check(rowIn(MacPermissionSnapshot([.accessibility: .notAllowed], pasteProblem: "x"), .accessibility)?.pasteProblem == nil,
+                  "a paste problem shows only while Accessibility reads Allowed")
+        let untrusted = TextDelivery.Outcome(message: TextDelivery.copiedMessage, clipboardChangeCount: 1, wasPasted: false,
+                                             destinationName: "Notes", failure: .accessibilityUnavailable)
+        try check(AutomaticPasteProblem.approvalReason(for: untrusted, alreadyExplained: false)?.contains("needs Accessibility") == true
+                  && AutomaticPasteProblem.approvalReason(for: untrusted, alreadyExplained: true) == nil && AutomaticPasteProblem(untrusted) == nil,
+                  "a result only copied for want of Accessibility says why once per run, then never again, and is not a paste problem")
+        var unreadable = untrusted; unreadable.failure = .fieldUnreadable; unreadable.destinationName = "Chrome"
+        var changed = untrusted; changed.failure = .focusChanged
+        var pasted = untrusted; pasted.failure = nil; pasted.wasPasted = true
+        try check(AutomaticPasteProblem(unreadable)?.line.contains("into Chrome") == true && AutomaticPasteProblem(changed) == nil
+                  && AutomaticPasteProblem(pasted) == nil && AutomaticPasteProblem.approvalReason(for: unreadable, alreadyExplained: false) == nil,
+                  "only failures outside the person's control count against automatic paste")
+
         for permission in MacPermission.allCases {
             try check(permission.withoutIt.hasPrefix("Without it:"), "\(permission.name) says what still works without it")
             try check(permission.settingsURL.absoluteString.hasPrefix("x-apple.systempreferences:"), "\(permission.name) opens its own Settings list")
         }
-        let newMac = MacPermissionSnapshot([.microphone: .allowed, .accessibility: .notAsked, .screenRecording: .notAsked,
+
+        // The summary and folding.
+        let newMac = MacPermissionSnapshot([.microphone: .allowed, .accessibility: .notSetUp, .screenRecording: .notSetUp,
                                            .camera: .notAsked, .callAudio: .checkedOnUse])
-        try check(newMac.summary == "3 not asked yet" && newMac.tone == .neutral && !newMac.needsAttention,
-                  "a new Mac reads as not asked yet, never as a row of warnings")
+        try check(newMac.summary == "3 to set up" && newMac.tone == .neutral && !newMac.needsAttention,
+                  "a new Mac reads as things to set up, never as a row of warnings")
         try check(newMac.expanded(dismissed: false) && !newMac.expanded(dismissed: true),
                   "the panel opens to encourage setup and folds for good with Done for now")
-        let off = MacPermissionSnapshot([.microphone: .allowed, .accessibility: .notAsked, .screenRecording: .notAllowed,
+        let off = MacPermissionSnapshot([.microphone: .allowed, .accessibility: .notSetUp, .screenRecording: .notAllowed,
                                          .camera: .notAsked, .callAudio: .checkedOnUse])
-        try check(off.summary == "1 off" && off.tone == .attention && off.expanded(dismissed: true),
-                  "an approval that is off opens the panel, even after Done for now")
+        try check(off.summary == "1 off" && off.tone == .attention && off.expanded(dismissed: false),
+                  "an approval that is off opens the panel")
+        try check(!off.expanded(dismissed: true, offWhenDismissed: [.screenRecording]) && off.expanded(dismissed: true, offWhenDismissed: []),
+                  "Done for now folds the panel even with something off; only something newly off opens it again")
         let twoOff = MacPermissionSnapshot([.microphone: .notAllowed, .accessibility: .allowed, .screenRecording: .notAllowed,
                                             .camera: .allowed, .callAudio: .checkedOnUse])
-        try check(twoOff.summary == "2 off", "two approvals off read as 2 off")
-        let allowed = MacPermissionSnapshot([.microphone: .allowed, .accessibility: .allowed, .screenRecording: .allowed,
-                                             .camera: .allowed, .callAudio: .checkedOnUse])
-        try check(allowed.summary == "All allowed" && allowed.isComplete && allowed.tone == .done && !allowed.expanded(dismissed: false),
-                  "every checkable approval allowed reads All allowed and folds")
+        try check(twoOff.summary == "2 off" && twoOff.expanded(dismissed: true, offWhenDismissed: [.screenRecording])
+                  && twoOff.foldedLine.contains("Off: Microphone and"),
+                  "a second approval turning off after Done for now opens the panel again, and folded it is named")
+        let allSet = MacPermissionSnapshot([.microphone: .allowed, .accessibility: .allowed, .screenRecording: .allowed,
+                                            .camera: .allowed, .callAudio: .checkedOnUse])
+        try check(allSet.summary == "All set" && allSet.isComplete && allSet.tone == .done && !allSet.expanded(dismissed: false)
+                  && allSet.foldedLine.contains("call audio"),
+                  "every checkable approval allowed, with call audio still to be asked, reads All set and folds")
+        let allAllowed = MacPermissionSnapshot([.microphone: .allowed, .accessibility: .allowed, .screenRecording: .allowed,
+                                                .camera: .allowed, .callAudio: .allowed])
+        try check(allAllowed.summary == "All allowed" && !allAllowed.foldedLine.contains("call audio") && rowIn(allAllowed, .callAudio)?.action == .change,
+                  "All allowed only once call audio is known to be allowed, which can then be changed too")
+        let oldMac = MacPermissionSnapshot([.microphone: .allowed, .accessibility: .allowed, .screenRecording: .allowed,
+                                            .camera: .allowed, .callAudio: .unsupported("Needs macOS 14.2 or later")])
+        try check(oldMac.summary == "All allowed" && !oldMac.foldedLine.contains("macOS asks about call audio"),
+                  "on macOS 14.0–14.1 the folded line never promises a call-audio request macOS can't make")
+        let refused = MacPermissionSnapshot([.microphone: .allowed, .accessibility: .allowed, .screenRecording: .allowed,
+                                             .camera: .allowed, .callAudio: .notAllowed])
+        try check(refused.summary == "1 off" && rowIn(refused, .callAudio)?.action == .openSettings,
+                  "a call-audio refusal Meetings recorded reads Off with its Settings list, not All allowed")
+        let workMac = MacPermissionSnapshot([.microphone: .allowed, .accessibility: .needsAdministrator(listed: true),
+                                             .screenRecording: .needsAdministrator(listed: false), .camera: .allowed, .callAudio: .checkedOnUse],
+                                            administrator: false)
+        try check(workMac.summary == "2 need an administrator" && workMac.tone == .neutral && !workMac.needsAttention
+                  && workMac.expanded(dismissed: false) && !workMac.expanded(dismissed: true)
+                  && workMac.foldedLine.contains("Needs an administrator: Accessibility and"),
+                  "a standard account's work Mac reads as needing an administrator, never as warnings, and folds for good")
         let managed = MacPermissionSnapshot([.microphone: .allowed, .accessibility: .allowed, .screenRecording: .allowed,
                                              .camera: .managed, .callAudio: .checkedOnUse])
         try check(!managed.isComplete && !managed.needsAttention && managed.summary == "1 managed" && managed.tone == .neutral,
@@ -126,6 +226,21 @@ enum HomeJourneyChecks {
         try check(MacPermissionReader.state(.notDetermined) == .notAsked && MacPermissionReader.state(.restricted) == .managed
                   && MacPermissionReader.state(.denied) == .notAllowed && MacPermissionReader.state(.authorized) == .allowed,
                   "the camera and microphone keep the four answers macOS gives")
+
+        // Copy permission details: what IT should allow by macOS version, this edition, this Mac.
+        let facts = MacPermissionDetails.Facts(appName: "Workbench Preview", bundleID: "com.ethdawg.workbench.preview", version: "2.5.0", build: "1",
+                                               codeRequirement: "identifier \"com.ethdawg.workbench.preview\"", macOS: "macOS 26.5.1",
+                                               installedIn: "/Applications", administrator: false, enrolled: true, postEvent: false,
+                                               keyboardLayout: "com.apple.keylayout.Dvorak", pasteKeyCode: 47,
+                                               lastPasteProblem: "fieldUnreadable in Chrome at 14:02")
+        let copied = MacPermissionDetails.text(workMac, facts)
+        try check(copied.contains("PostEvent = Allow") && copied.contains("AllowStandardUserToSetSystemService") && copied.contains("macOS 27")
+                  && copied.contains("Identifier: com.ethdawg.workbench.preview") && copied.contains("Code requirement: identifier")
+                  && copied.contains("administrator: no") && copied.contains("Accessibility: Needs an administrator")
+                  && copied.contains("Post Event: no") && copied.contains("⌘V key 47") && copied.contains("fieldUnreadable in Chrome")
+                  && copied.contains(MacPermissionDetails.itPage),
+                  "Copy permission details names what IT should allow on each macOS, this edition's identity and what this Mac reports")
+
 
         // Your meetings: meetings and calls only, newest first, named by their saved details.
         let earlierCall = Transcript(date: Date(timeIntervalSince1970: 100), text: "Older call words here", seconds: 30)
@@ -227,5 +342,30 @@ enum HomeJourneyChecks {
         let newer = try JSONDecoder().decode(VoicePreferences.self, from: JSONSerialization.data(withJSONObject: older))
         try check(newer.firstDictationGuide == .offered && newer.cleanup == .natural, "an unknown guide value reads as offered without resetting other choices")
         print("HOME_JOURNEY_CHECKS_OK: \(passed) checks")
+    }
+
+    /// Text Input Sources must be read on the main thread, so the paste key's layouts are checked here.
+    @MainActor static func runPasteKey() throws {
+        var passed = 0
+        func check(_ condition: Bool, _ name: String) throws {
+            guard condition else { throw VoiceError.message("PASTE KEY CHECK FAILED: " + name) }
+            passed += 1
+        }
+        // ⌘V is the key that types “v” with ⌘ in the layout, read passively from installed layouts.
+        func pasteKey(_ id: String) -> CGKeyCode? {
+            let filter = [kTISPropertyInputSourceID as String: id] as CFDictionary
+            guard let source = (TISCreateInputSourceList(filter, true)?.takeRetainedValue() as? [TISInputSource])?.first else { return nil }
+            return PasteKey.keyCode(in: source)
+        }
+        var read = 0
+        for (layout, key) in [("com.apple.keylayout.US", 9), ("com.apple.keylayout.Dvorak", 47), ("com.apple.keylayout.DVORAK-QWERTYCMD", 9),
+                              ("com.apple.keylayout.Dvorak-Right", 43), ("com.apple.keylayout.Turkish", 8), ("com.apple.keylayout.Russian", 9)] {
+            guard let found = pasteKey(layout) else { continue }
+            read += 1
+            try check(found == CGKeyCode(key), "⌘V in \(layout) is key \(key), not always the US position")
+        }
+        try check(read >= 4, "the installed layouts were read, so the layout checks above ran")
+        try check(PasteKey.fallback == 9, "a layout that can't be read keeps the US position")
+        print("PASTE_KEY_CHECKS_OK: \(passed) checks; installed layouts read, none selected")
     }
 }

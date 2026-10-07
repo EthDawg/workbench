@@ -5367,7 +5367,7 @@
     "expression": "action . title",
     "kind": "setting",
     "belongsTo": "app",
-    "note": "Ethan 7 Oct 2026 (docs/desktop.md decisions): a permission row's Allow… shows macOS's request for that one approval through the owner its tool already uses; Open Settings… opens Privacy & Security at that approval. Nothing is requested by looking, and no tool waits on it."
+    "note": "Ethan 7 Oct 2026 (docs/desktop.md decisions): a permission row's Set up… shows macOS's request for that one approval through the owner its tool already uses; Open System Settings… opens Privacy & Security at that approval; Change… on an allowed row opens its list, where the person turns it off (8 Oct: macOS doesn't let an app revoke its own approval). Nothing is requested by looking, and no tool waits on it."
   },
   {
     "id": "LocalVoice.HomePermissions.HomePermissionsPanel.Button.show-details",
@@ -5418,7 +5418,16 @@
     "expression": "snapshot . isComplete ? \"Hide details\" : \"Done for now\"",
     "kind": "action",
     "belongsTo": "app",
-    "note": "Quality: the Permissions panel's fold, Done for now (saved) or Hide details once all is allowed; something turning off opens it again (docs/desktop.md § Home)."
+    "note": "Quality: the Permissions panel's fold, Done for now (saved) or Hide details once all is allowed; only something that turns off after folding opens it again (docs/desktop.md § Home)."
+  },
+  {
+    "id": "LocalVoice.HomePermissions.HomePermissionsPanel.Button.runtime-75e0f179ac0c",
+    "surface": "window home",
+    "label": null,
+    "expression": "copiedDetails ? \"Copied\" : \"Copy permission details\"",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Quality (8 Oct 2026, work-Mac permissions): copies what Workbench needs by macOS version (PPPC and macOS 27 App Settings), this edition's identity and what this Mac reports, for an IT team or a problem report; no words, files or names. Local to the panel (docs/desktop.md § Home)."
   },
   {
     "id": "LocalVoice.HomeTiles.HomeDecksTile.Button.make-your-own",

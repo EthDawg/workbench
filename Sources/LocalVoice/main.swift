@@ -820,6 +820,7 @@ func runCLI(_ args: [String]) async -> Int32 {
             try await WorkbenchControlChecks.run()
             try CorrectionRuleChecks.run()
             try HomeJourneyChecks.run()
+            try await MainActor.run { try HomeJourneyChecks.runPasteKey() }
             try PanelDestinationChecks.run()
             try await MainActor.run { try WorkbenchPageChecks.run() }
             try InsertionBoundaryChecks.run()

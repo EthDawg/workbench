@@ -7,7 +7,8 @@ import AppKit
 /// A first click while Workbench is not in front, and every later click, opens
 /// Privacy & Security › Accessibility at once, after asking again so a list
 /// cleared by a reset gets Workbench back. Workbench never grants, resets or
-/// bypasses the approval.
+/// bypasses the approval. Home's Screen Recording row takes the same route
+/// through Snap's request (`screenRecording`).
 @MainActor
 struct AccessibilitySetup {
     static let settingsURL = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
@@ -25,6 +26,8 @@ struct AccessibilitySetup {
     /// Calls back if Workbench gives up focus, until the returned stop is called.
     var watchResign: (@escaping () -> Void) -> () -> Void
     var after: (TimeInterval, @escaping () -> Void) -> Void
+    /// The list Settings opens at.
+    var settings: URL = AccessibilitySetup.settingsURL
 
     static var live: AccessibilitySetup {
         AccessibilitySetup(
@@ -43,6 +46,15 @@ struct AccessibilitySetup {
                 Task { @MainActor in try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000)); work() }
             })
     }
+    /// Screen Recording: macOS also shows its request once per app, and a running app keeps it
+    /// off until it reopens. The request records that Workbench asked (`ScreenCaptureAccess`).
+    static var screenRecording: AccessibilitySetup {
+        var setup = live
+        setup.request = { ScreenCaptureAccess.system.request() }
+        setup.isTrusted = { ScreenCaptureAccess.system.isGranted() }
+        setup.settings = ScreenCaptureAccess.settingsURL
+        return setup
+    }
 
     /// `asked` is the saved record that Workbench has already asked macOS.
     /// `unavailable` reports a Settings pane that could not be opened.
@@ -57,11 +69,11 @@ struct AccessibilitySetup {
             after(Self.requestWait) {
                 stop()
                 guard !resigned, !isTrusted() else { return }
-                if !openSettings(Self.settingsURL) { unavailable() }
+                if !openSettings(settings) { unavailable() }
             }
             return .askedMacOS
         }
-        if openSettings(Self.settingsURL) { return .openedSettings }
+        if openSettings(settings) { return .openedSettings }
         unavailable()
         return .settingsUnavailable
     }
@@ -125,6 +137,17 @@ enum AccessibilitySetupChecks {
 
         trusted = false; settingsOpen = false; opened = []
         try check(click(&asked) == .settingsUnavailable && unavailable == 1, "a Settings pane that cannot open is reported, not silent")
+
+        // Home's Screen Recording row takes the same route to its own list.
+        var screen = setup; screen.settings = ScreenCaptureAccess.settingsURL
+        settingsOpen = true; opened = []; requests = 0; scheduled = []; watching = []; frontmost = true
+        var screenAsked: Bool? = nil
+        try check(screen.run(asked: &screenAsked) == .askedMacOS && requests == 1 && opened.isEmpty,
+                  "Screen Recording's first Set up… asks macOS and waits")
+        resign(); wait()
+        try check(opened.isEmpty, "a Screen Recording request that took focus, even one declined at once, leaves Settings closed")
+        try check(screen.run(asked: &screenAsked) == .openedSettings && opened == [ScreenCaptureAccess.settingsURL] && requests == 2,
+                  "a later Screen Recording press asks again, so a cleared list can show Workbench, then opens its own list")
 
         // The saved record survives a reload, and older preferences without it still load.
         var preferences = VoicePreferences(); preferences.accessibilityRequested = true

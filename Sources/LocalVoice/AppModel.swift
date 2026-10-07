@@ -153,6 +153,11 @@ final class AppModel: NSObject, ObservableObject {
     @Published private(set) var pendingTranscript: Transcript?
 
     @Published var accessibilityGranted = AXIsProcessTrusted()
+    /// Why the last automatic paste didn't land, for Home's Accessibility row; the next paste
+    /// that lands clears it. Never saved.
+    @Published private(set) var lastPasteProblem: AutomaticPasteProblem?
+    /// Whether this run already said that automatic paste needs Accessibility.
+    private var explainedApproval = false
     @Published var canRetry = false
     var retryCaptureLabel: String { captureRecovery.pending?.capture == nil ? "Retry transcription" : "Retry saving" }
     var retryCaptureHelp: String { captureRecovery.pending?.capture == nil ? "Retry the captured audio" : "Save the recognized text without transcribing or pasting again" }
@@ -688,8 +693,9 @@ final class AppModel: NSObject, ObservableObject {
                         outcome = await TextDelivery.deliver(result, target: destination, mode: delivery, restoreClipboard: settings.preferences.restoreClipboard, fit: insertionContext)
                     }
                     guard transcriptionID == invocation else { return }
+                    let delivered = noteAutomaticPaste(outcome)
                     status = outcome.message
-                    clipboardReceipt.record(outcome: outcome, wordCount: TextRules.wordCount(result))
+                    clipboardReceipt.record(outcome: delivered, wordCount: TextRules.wordCount(result))
                     undelivered.note(outcome, text: result, from: .transcript(captureID), in: deliveryRecords)
                 }
                 phase = .idle; voiceSession.phase = .completed; onPhaseChange?()
@@ -957,15 +963,28 @@ final class AppModel: NSObject, ObservableObject {
     }
     /// Set up automatic paste: the first click may show macOS's request; later
     /// clicks open Privacy & Security › Accessibility, so none is a dead end.
-    func requestAccessibility() {
+    /// `unavailable` lets Home's Permissions panel say so beside its own row;
+    /// otherwise Dictate reports it.
+    func requestAccessibility(unavailable: (() -> Void)? = nil) {
         var asked = preferences.accessibilityRequested
         let step = AccessibilitySetup.live.run(asked: &asked) { [weak self] in
+            if let unavailable { unavailable(); return }
             self?.report("System Settings could not be opened. Open Privacy & Security › Accessibility and allow Workbench there.", on: .dictate)
         }
         if asked != preferences.accessibilityRequested { preferences.accessibilityRequested = asked }
         accessibilityGranted = step == .approved || AXIsProcessTrusted()
     }
     func refreshPermissions() { accessibilityGranted = AXIsProcessTrusted() }
+    /// Keeps Home's view of automatic paste current, and says once per run why a result was only
+    /// copied when Accessibility isn't allowed.
+    private func noteAutomaticPaste(_ outcome: TextDelivery.Outcome) -> TextDelivery.Outcome {
+        if outcome.wasPasted { lastPasteProblem = nil }
+        else if let problem = AutomaticPasteProblem(outcome) { lastPasteProblem = problem }
+        guard let reason = AutomaticPasteProblem.approvalReason(for: outcome, alreadyExplained: explainedApproval) else { return outcome }
+        explainedApproval = true
+        var explained = outcome; explained.reason = reason
+        return explained
+    }
     static func microphoneMessage(_ status: AVAuthorizationStatus) -> String {
         switch status {
         case .authorized: return "Microphone access is available."
