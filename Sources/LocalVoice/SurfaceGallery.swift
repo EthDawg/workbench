@@ -431,6 +431,7 @@ private struct HistoryNativeAcceptanceView: View {
         stage.onOpenControls = { [weak self] in self?.opened.append("annotate") }
         stage.onOpenScenes = { [weak self] in self?.opened.append("present") }
         stage.onOpenPersonas = { [weak self] in self?.opened.append("personas") }
+        stage.onEditProfile = { [weak self] in self?.opened.append("personas") }
         stage.onEditShortcuts = { [weak self] in self?.opened.append("shortcuts") }
     }
 

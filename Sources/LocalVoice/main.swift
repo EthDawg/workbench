@@ -132,6 +132,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         stage = StageKitController(onOpenControls: { [weak self] in self?.navigate("annotate") }, onOpenScenes: { [weak self] in self?.navigate("present") }, reserving: preferences.enabledCombinations)
         stage.useSharedActivityControls()
         stage.onOpenPersonas = { [weak self] in self?.navigate("personas") }
+        // My Profile… in Persona's live menus, before a profile photo is saved: the profile editor.
+        stage.onEditProfile = { [weak self] in
+            self?.model.focusRequest = PageFocusRequest(target: .profile); self?.navigate("personas")
+        }
         stage.onViewImages = { images, selected in
             let collection = images.map { CaptureImagePreviewItem(title: $0.title, detail: $0.detail, source: .generated($0.id), render: $0.png) }
             if let index = images.firstIndex(where: { $0.id == selected }) {

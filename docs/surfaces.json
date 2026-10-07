@@ -2598,10 +2598,10 @@
   {
     "id": "StageKit.Persona.PersonaLibrary.NSMenuItem.switch-camera",
     "surface": "Persona camera menu",
-    "label": "Switch camera",
+    "label": "Switch Camera",
     "kind": "option",
     "belongsTo": "persona",
-    "note": "Option of Persona: an explicit switch opens the chosen camera and releases the old one; a workspace source choice alone starts nothing."
+    "note": "Option of Persona: an explicit switch opens the chosen camera and releases the old one; a workspace source choice alone starts nothing. Title case and grouped as the card menu is (review, 8 Oct)."
   },
   {
     "id": "StageKit.Persona.PersonaLibrary.NSMenuItem.voice-colour",
@@ -2622,10 +2622,10 @@
   {
     "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.cancel-starting-live-camera",
     "surface": "Persona camera menu",
-    "label": "Cancel starting Live Camera",
+    "label": "Cancel Starting Live Camera",
     "kind": "action",
     "belongsTo": "persona",
-    "note": "Renamed 8 Oct 2026 (Ethan: the two first-class Persona sources are Live Camera and My Profile). Quality: cancellation ends only the current permission or startup request and drops late replies."
+    "note": "Renamed 8 Oct 2026 (Ethan: the two first-class Persona sources are Live Camera and My Profile). Quality: cancellation ends only the current permission or startup request and drops late replies. Title case and grouped as the card menu is (review, 8 Oct)."
   },
   {
     "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.choose-colour",
@@ -2669,10 +2669,10 @@
   {
     "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.lock-live-camera-clicks-pass-through",
     "surface": "Persona camera menu",
-    "label": "Lock Live Camera · clicks pass through",
+    "label": "Lock Live Camera · Clicks Pass Through",
     "kind": "action",
     "belongsTo": "persona",
-    "note": "Renamed 8 Oct 2026 (Ethan: the two first-class Persona sources are Live Camera and My Profile). Option of Persona: the existing click-through lock applies to the camera bubble, while its move and resize handles remain usable."
+    "note": "Renamed 8 Oct 2026 (Ethan: the two first-class Persona sources are Live Camera and My Profile). Option of Persona: the existing click-through lock applies to the camera bubble, while its move and resize handles remain usable. Title case and grouped as the card menu is (review, 8 Oct)."
   },
   {
     "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.microphone-settings",
@@ -2712,10 +2712,10 @@
   {
     "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.show-live-camera-again",
     "surface": "Persona camera menu",
-    "label": "Show Live Camera again",
+    "label": "Show Live Camera Again",
     "kind": "action",
     "belongsTo": "persona",
-    "note": "Renamed 8 Oct 2026 (Ethan: the two first-class Persona sources are Live Camera and My Profile). Option of Persona: explicitly restart the selected camera in the retained placement."
+    "note": "Renamed 8 Oct 2026 (Ethan: the two first-class Persona sources are Live Camera and My Profile). Option of Persona: explicitly restart the selected camera in the retained placement. Title case and grouped as the card menu is (review, 8 Oct)."
   },
   {
     "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.show-selected-persona",
@@ -2727,10 +2727,10 @@
   {
     "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.try-again",
     "surface": "Persona camera menu",
-    "label": "Try again",
+    "label": "Try Again",
     "kind": "action",
     "belongsTo": "persona",
-    "note": "Quality: contextual camera recovery opens only the prepared camera on explicit retry.",
+    "note": "Quality: contextual camera recovery opens only the prepared camera on explicit retry. Title case and grouped as the card menu is (review, 8 Oct).",
     "aliasOf": "persona"
   },
   {
@@ -5630,13 +5630,13 @@
     "note": "Quality: Open Workbench at login could register but stay off until approved in System Settings › General › Login Items; the switch now says so and opens that list (docs/desktop.md)."
   },
   {
-    "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.center-stage",
+    "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.centre-stage",
     "surface": "Persona camera menu",
-    "label": "Center Stage",
+    "label": "Centre Stage",
     "kind": "option",
     "belongsTo": "persona",
-    "aliasOf": "StageKit.PersonaCamera.PersonaCameraPanel.Toggle.center-stage",
-    "note": "The same Center Stage switch in the live Persona menu while Live Camera shows a camera that supports it."
+    "aliasOf": "StageKit.PersonaCamera.PersonaCameraPanel.Toggle.centre-stage",
+    "note": "The same Centre Stage switch in the live Persona menu while Live Camera shows a camera that supports it. en-AU spelling, as the menu bar's Video menu reads on an Australian Mac."
   },
   {
     "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.my-profile",
@@ -5647,6 +5647,15 @@
     "note": "Option of Persona (Ethan, 8 Oct 2026: My Profile and Live Camera are first-class and one click apart). Shows the local profile photo (the persona persona.me.id.v1 names) as the one floating card in the slot's place and size; from Live Camera it fades in while the bubble fades out and ends the camera. Listed only while a profile photo is saved; the photo is not listed again among the cards. Revalidates the live state it was drawn for."
   },
   {
+    "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.my-profile.95e85d83",
+    "surface": "Persona sources",
+    "label": "My Profile…",
+    "kind": "action",
+    "belongsTo": "persona",
+    "aliasOf": "StageKit.PersonaLibraryView.PersonaLibraryView.Button.my-profile",
+    "note": "My Profile is always the first row of Choose Persona (review, 8 Oct): while no profile photo is saved it reads My Profile… and opens the same profile editor as Home's My Profile and Persona's My Profile…; opening starts no camera."
+  },
+  {
     "id": "StageKit.PersonaCamera.PersonaCameraPanel.Button.video-effects",
     "surface": "Persona live camera",
     "label": "Video Effects…",
@@ -5655,11 +5664,11 @@
     "note": "Option of Persona's Live Camera: opens macOS's own Video menu (AVCaptureDevice.showSystemUserInterface(.videoEffects)) for Portrait, Studio Light, Reactions, Background and the rest. Workbench draws no effect itself; the live menu offers the same door while the bubble shows."
   },
   {
-    "id": "StageKit.PersonaCamera.PersonaCameraPanel.Toggle.center-stage",
+    "id": "StageKit.PersonaCamera.PersonaCameraPanel.Toggle.centre-stage",
     "surface": "Persona live camera",
-    "label": "Center Stage",
+    "label": "Centre Stage",
     "kind": "option",
     "belongsTo": "persona",
-    "note": "Option of Persona's Live Camera (Ethan, 8 Oct: Center Stage as a setting). Shown only while the bubble shows a camera with a Center Stage format (AVCaptureDevice.Format.isCenterStageSupported). Sets macOS's per-app switch in cooperative control, so the menu bar's Video menu changes it too and Workbench keeps no copy. See docs/research/2026-10-08-persona-live-camera-and-profile.md."
+    "note": "Option of Persona's Live Camera (Ethan, 8 Oct: Centre Stage as a setting). Shown only while the bubble shows a camera with a Center Stage format (AVCaptureDevice.Format.isCenterStageSupported). Sets macOS's per-app switch in cooperative control, so the menu bar's Video menu changes it too and Workbench keeps no copy. See docs/research/2026-10-08-persona-live-camera-and-profile.md. It applies to Workbench as a whole, including Take photo… in My Profile. en-AU spelling, as macOS's Video menu reads on Ethan's Mac; the API names keep Apple's spelling in code."
   }
 ]

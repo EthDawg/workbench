@@ -275,6 +275,14 @@ struct WorkbenchHome: View {
                 MetadataSuggestionView(review: suggestion, library: model.historyLibrary)
             }
             .sheet(isPresented: $showingProfile) { stage.localProfileView }
+            // Persona's My Profile… in a live menu, with no profile photo saved yet: the same editor.
+            .onChange(of: model.focusRequest) { _, _ in openRequestedProfile() }
+            .onAppear { openRequestedProfile() }
+    }
+    private func openRequestedProfile() {
+        guard model.focusRequest?.target == .profile else { return }
+        model.focusRequest = nil
+        keyboard.stopInteraction(); showingProfile = true
     }
     private var welcome: some View {
         WorkbenchHomePage(model: model, stage: stage, readback: readback, snap: snap, introduction: introduction,
