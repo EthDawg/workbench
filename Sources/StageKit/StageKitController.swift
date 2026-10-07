@@ -207,6 +207,9 @@ public final class StageKitController: ObservableObject {
         return menu
     }
     public func makePresentationMenu() -> NSMenu { coordinator.demoScenes.makeControlsMenu() }
+    /// The host reopened its closed or hidden window on the Present page: a fresh visit, which
+    /// after End may show the phone again. Uncovering a visible window never calls this.
+    public func presentPageReopened() { coordinator.demoScenes.presentPageOpened() }
     public func makePresentationViewMenu() -> NSMenu { coordinator.demoScenes.makeViewMenu() }
     public struct PersonaCycle: Equatable {
         let generation: UUID

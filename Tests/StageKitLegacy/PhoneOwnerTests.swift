@@ -425,14 +425,19 @@ final class PhoneCaptureTests: PhoneOwnerFixture {
         let (scenes, root) = try makeScenes(hardware)
         defer { scenes.shutdown(); try? FileManager.default.removeItem(at: root) }
         let capture = scenes.capture
-        let page = capture.makePreviewLayer(for: .page), stage = capture.makePreviewLayer(for: .stage)
+        let page = capture.makePreviewLayer(for: .page)
         scenes.setPageVisible(true)
         XCTAssertTrue(waitUntil { hardware.read(capture) { $0.opened.count } == 1 })
         guard let output = hardware.read(capture, { $0.outputs.last }) else { XCTAssertTrue(false, "The session has a frame output"); return }
         guard let buffer = sampleBuffer() else { XCTAssertTrue(false, "A synthetic frame"); return }
         capture.queue.async { capture.deliver(buffer, from: output) }
-        XCTAssertTrue(waitUntil { capture.queue.sync { capture.drawnFrames } == [.page: 1, .stage: 1] }, "One frame is drawn on both surfaces")
+        XCTAssertTrue(waitUntil { capture.queue.sync { capture.drawnFrames } == [.page: 1] }, "The frame is drawn on the page")
         XCTAssertTrue(waitUntil { self.words(scenes).phase == .live }, "and the phone is live")
+        // A still phone may send nothing new: the stage opened now draws the latest frame at once.
+        let stage = capture.makePreviewLayer(for: .stage)
+        XCTAssertTrue(waitUntil { capture.queue.sync { capture.drawnFrames } == [.page: 1, .stage: 1] }, "A stage opened on a still screen is not black")
+        capture.queue.async { capture.deliver(buffer, from: output) }
+        XCTAssertTrue(waitUntil { capture.queue.sync { capture.drawnFrames } == [.page: 2, .stage: 2] }, "The next frame reaches both surfaces")
         withExtendedLifetime((page, stage)) {}
 
         scenes.startDemo(mode: .windowed); scenes.endPresentation()

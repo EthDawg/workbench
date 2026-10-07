@@ -132,6 +132,10 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     private var layers: [LayerSlot] = []
     /// Frames drawn on each surface since the last session started; checks read it.
     private(set) var drawnFrames: [PreviewSurface: Int] = [:]
+    /// The running session's latest accepted frame. A phone on a still screen may send nothing
+    /// new for a while, so a surface that opens later (Present pressed on a still Home Screen)
+    /// draws this at once instead of opening black. Cleared whenever the session stops.
+    private var lastDrawn: CMSampleBuffer?
     /// Every capture change runs here. Checks reach it to deliver a synthetic frame as AVFoundation would.
     let queue = DispatchQueue(label: "StageMark.device-preview", qos: .userInitiated)
     private let hardware: CaptureHardware
@@ -178,6 +182,7 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
             guard let self else { return }
             layers.removeAll { $0.layer == nil }
             layers.insert(LayerSlot(layer, surface: surface), at: PreviewSurface.insertionIndex(for: surface, among: layers.map(\.surface)))
+            if let lastDrawn { enqueue(lastDrawn, on: layer, surface: surface) }
         }
         return layer
     }
@@ -189,19 +194,24 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
             CFDictionarySetValue(dictionary, Unmanaged.passUnretained(kCMSampleAttachmentKey_DisplayImmediately).toOpaque(),
                                  Unmanaged.passUnretained(kCFBooleanTrue).toOpaque())
         }
+        lastDrawn = sampleBuffer
+        // Strong copies, so a surface's final release never happens on this queue mid-loop.
+        let surfaces = layers.compactMap { slot in slot.layer.map { ($0, slot.surface) } }
         layers.removeAll { $0.layer == nil }
-        for slot in layers {
-            guard let layer = slot.layer else { continue }
-            let renderer = layer.sampleBufferRenderer
-            if renderer.status == .failed || renderer.requiresFlushToResumeDecoding { renderer.flush() }
-            renderer.enqueue(sampleBuffer)
-            drawnFrames[slot.surface, default: 0] += 1
-        }
+        for (layer, surface) in surfaces { enqueue(sampleBuffer, on: layer, surface: surface) }
+    }
+    /// A renderer that is busy skips this frame rather than queueing it; the next one follows.
+    private func enqueue(_ sampleBuffer: CMSampleBuffer, on layer: AVSampleBufferDisplayLayer, surface: PreviewSurface) {
+        let renderer = layer.sampleBufferRenderer
+        if renderer.status == .failed || renderer.requiresFlushToResumeDecoding { renderer.flush() }
+        guard renderer.isReadyForMoreMediaData else { return }
+        renderer.enqueue(sampleBuffer)
+        drawnFrames[surface, default: 0] += 1
     }
     /// On the capture queue: a stopped session leaves no picture behind on any surface.
     private func clearSurfaces() {
         for slot in layers { slot.layer?.sampleBufferRenderer.flush(removingDisplayedImage: true, completionHandler: nil) }
-        drawnFrames = [:]
+        drawnFrames = [:]; lastDrawn = nil
     }
     /// Lets this process see iPhone and iPad screens as capture devices. Process-wide
     /// and idempotent; it requests no permission.
@@ -373,7 +383,10 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         // Frames are drawn on the page and the stage by display layers, so ask for 4:2:0 video
         // range, which they render directly; their size is read from the format description.
         let output = AVCaptureVideoDataOutput()
-        output.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange]
+        let videoRange = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+        if output.availableVideoPixelFormatTypes.contains(videoRange) {
+            output.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: videoRange]
+        }
         output.alwaysDiscardsLateVideoFrames = true
         output.setSampleBufferDelegate(self, queue: queue)
         // The token and output are set before the session runs, so its first frame is accepted.
