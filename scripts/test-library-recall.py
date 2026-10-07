@@ -266,7 +266,7 @@ def compile_fixture(directory: Path, main: str, binary: Path) -> None:
     dependencies = directory / "FixtureDependencies.swift"
     preference_types = [
         "enum WorkbenchHome {\n" + SwiftFile(PROJECT / "Sources/LocalVoice/WorkbenchHome.swift").type("WorkbenchHome").extract([
-            "navItems", "sections", "subpages", "destination"]) + "\n}",
+            "navItems", "sections", "subpages", "retiredRoutes", "destination"]) + "\n}",
         SwiftFile(PROJECT / "Sources/LocalVoice/Core.swift").extract(["AtomicPrivateFile"]),
         SwiftFile(PROJECT / "Sources/LocalVoice/VoicePreferences.swift").extract([
             "CaptureMode", "DeliveryMode", "FirstDictationGuide", "VoiceShortcut", "VoicePreferences"]),
