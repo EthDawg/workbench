@@ -852,6 +852,25 @@ func runCLI(_ args: [String]) async -> Int32 {
             }
             print(try await PersonaVoiceNativeCheck.run(output: URL(fileURLWithPath: args[1]), speak: false))
             print(WorkbenchBuild().details)
+        // The voice ring around My Profile and Live Camera as the window server draws it, read back
+        // through ScreenCaptureKit with a synthetic photo, camera picture and voice. Run it from the
+        // signed app (open -n -W -a … --args) so its Screen Recording permission applies.
+        case "--persona-check":
+            guard args.count == 2 else { throw VoiceError.message("Usage: --persona-check NEW_OUTPUT_FOLDER") }
+            await MainActor.run {
+                _ = NSApplication.shared
+                NSApp.setActivationPolicy(.accessory)
+                NSApp.finishLaunching()
+            }
+            let folder = URL(fileURLWithPath: args[1])
+            do {
+                print(try await PersonaStageCheck.run(output: folder))
+            } catch {
+                // The folder is the receipt for a run through the signed app, failures included.
+                try? (error.localizedDescription + "\n" + WorkbenchBuild().details).write(to: folder.appendingPathComponent("error.txt"), atomically: true, encoding: .utf8)
+                throw error
+            }
+            print(WorkbenchBuild().details)
         case "--render-surfaces":
             guard args.count == 2 else { throw VoiceError.message("Usage: --render-surfaces OUTPUT_DIRECTORY") }
             try SurfaceGallery.run(output: URL(fileURLWithPath: args[1], isDirectory: true))
