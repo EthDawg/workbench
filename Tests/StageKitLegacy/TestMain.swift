@@ -611,6 +611,7 @@ struct TestRunner {
             ("presentation window and fullscreen lifecycle", presentationLifecycle.testModeChangesKeepPresentationAndEndClosesOnce),
             ("presentation transition interruption and failure recovery", presentationLifecycle.testEndDuringNativeTransitionsAndFailureRecovery),
             ("phone link: nothing on USB", phoneLink.testNothingAttachedNamesTheCableAndTheAccessoryPrompt),
+            ("phone link: a cold start looks before it says anything is wrong", phoneLink.testAColdStartLooksBeforeItSaysAnythingIsWrong),
             ("phone link: phone on the bus without a screen", phoneLink.testPhoneOnTheBusWithoutAScreenAsksForUnlockAndTrust),
             ("phone link: one phone screen adopted, video device waits", phoneLink.testOnePhoneScreenIsAdoptedAndAPlainVideoDeviceWaitsForAClick),
             ("phone link: several screens and a remembered absent phone", phoneLink.testSeveralScreensAskForAChoiceAndARememberedAbsentPhoneWaits),

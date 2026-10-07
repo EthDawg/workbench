@@ -52,7 +52,12 @@ public struct PhoneLinkSignals: Equatable {
     /// or a presentation with a device frame runs), so an available screen is about to
     /// be shown. Off in the headless receipt, where nothing ever connects.
     public var capturing = false
+    /// The capture has only just been allowed to run, so the bus and the screen list may not
+    /// have answered yet. For these first seconds the words say Workbench is looking, never
+    /// "No phone" or "Tap Trust", which the stage in a call would otherwise show at a cold start.
+    public var searching = false
     public init() {}
+    var usbProbeFailed: Bool { if case .failed = usbProbe { return true }; return false }
 
     /// The same facts with every device's own name replaced by its kind, so a report or the
     /// stage in a call never carries a personal name such as "Ethan’s iPhone", not even inside
@@ -116,7 +121,7 @@ public enum CapturePhase: Equatable {
 
 public struct PhoneLinkStatus: Equatable {
     public enum Phase: Equatable {
-        case noPhone, usbUnavailable, phoneOnUSB, screenFound, chooseScreen, waitingForRemembered, available, connecting, live, stalled,
+        case looking, noPhone, usbUnavailable, phoneOnUSB, screenFound, chooseScreen, waitingForRemembered, available, connecting, live, stalled,
              interrupted, busy, couldNotOpen, couldNotStart, accessPending, accessDenied, accessRestricted, released, ended
     }
     /// The one next action a surface renders beside the words. nil means the words
@@ -162,7 +167,7 @@ public struct PhoneLinkStatus: Equatable {
     /// the surface offers "Can't see your phone?".
     public var offersHelp: Bool {
         switch phase {
-        case .live, .connecting, .available, .screenFound, .accessPending, .released, .ended: return false
+        case .looking, .live, .connecting, .available, .screenFound, .accessPending, .released, .ended: return false
         default: return true
         }
     }
@@ -179,7 +184,7 @@ public struct PhoneLinkStatus: Equatable {
     public var symbol: String {
         switch phase {
         case .live: return "iphone"
-        case .connecting, .available, .accessPending: return "iphone.radiowaves.left.and.right"
+        case .looking, .connecting, .available, .accessPending: return "iphone.radiowaves.left.and.right"
         case .accessDenied, .accessRestricted: return "video.slash"
         case .noPhone: return "cable.connector.slash"
         default: return "cable.connector"
@@ -255,6 +260,10 @@ public enum PhoneLink {
             return .init(phase: .available, title: "\(Noun) ready", detail: "Present shows \(remembered.name).", step: nil)
         }
         if sources.isEmpty {
+            // Before the first look at the bus, or in the first seconds of a capture, nothing is known yet.
+            if signals.usbProbe == .notChecked || (signals.searching && !signals.usbProbeFailed) {
+                return .init(phase: .looking, title: "Looking for your \(Self.noun(for: nil, usb: signals.usb))…", detail: nil, step: nil)
+            }
             if case .failed = signals.usbProbe {
                 // A failed look at the bus says nothing about whether a phone is there.
                 return .init(phase: .usbUnavailable, title: "Workbench couldn’t check USB",
@@ -560,7 +569,21 @@ public final class PhoneLinkMonitor: ObservableObject {
     /// The capture was let go (the presentation ended, or an Apple app needed it), or taken back.
     func setReleased(_ released: PhoneLinkSignals.Release?) { update { $0.released = released } }
     /// A session is allowed to run now, so an available screen reads as connecting.
-    func setCapturing(_ capturing: Bool) { update { $0.capturing = capturing } }
+    func setCapturing(_ capturing: Bool) {
+        let starting = capturing && !signals.capturing
+        update { $0.capturing = capturing; if starting { $0.searching = true } else if !capturing { $0.searching = false } }
+        guard starting else { return }
+        searchingGeneration &+= 1
+        let generation = searchingGeneration
+        DispatchQueue.main.asyncAfter(deadline: .now() + searchingGrace) { [weak self] in
+            guard let self, searchingGeneration == generation else { return }
+            update { $0.searching = false }
+        }
+    }
+    /// How long a capture that has just been allowed reads as looking before the bus and screen
+    /// list are trusted to mean "no phone" or "tap Trust". Checks shorten it.
+    var searchingGrace: TimeInterval = 4
+    private var searchingGeneration = 0
     private func start() {
         running = true
         wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in self?.refresh() }

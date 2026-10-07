@@ -8,8 +8,33 @@ final class PhoneLinkTests {
     private let screen = PhoneLinkSignals.ScreenSource(id: "udid-1", name: "Ethan’s iPhone", isScreen: true)
     private let card = PhoneLinkSignals.ScreenSource(id: "cap-2", name: "Capture card", isScreen: false)
 
+    /// Signals after the bus has been looked at once, as on any Mac after the first second.
     private func signals(_ change: (inout PhoneLinkSignals) -> Void = { _ in }) -> PhoneLinkSignals {
-        var value = PhoneLinkSignals(); change(&value); return value
+        var value = PhoneLinkSignals(); value.usbProbe = .checked; change(&value); return value
+    }
+
+    /// A cold start never alarms the room: before the first look at the bus, and for the first
+    /// seconds of a capture, Present says it is looking, with no "No phone" words, no Trust advice
+    /// and no help link on the stage. After that the real answer shows.
+    func testAColdStartLooksBeforeItSaysAnythingIsWrong() {
+        let unchecked = PhoneLink.status(signals { $0.usbProbe = .notChecked; $0.capturing = true })
+        XCTAssertEqual(unchecked.phase, .looking)
+        XCTAssertEqual(unchecked.title, "Looking for your phone…")
+        XCTAssertTrue(unchecked.detail == nil && unchecked.step == nil)
+        XCTAssertFalse(unchecked.offersHelp, "No help link while nothing is known yet")
+        XCTAssertFalse(unchecked.suggestsQuickTimeCheck)
+        XCTAssertEqual(unchecked.tone, .neutral)
+
+        let searchingWithPhone = PhoneLink.status(signals { $0.usb = [phone]; $0.capturing = true; $0.searching = true })
+        XCTAssertEqual(searchingWithPhone.phase, .looking, "The screen list gets a moment before the Trust advice")
+        XCTAssertEqual(searchingWithPhone.title, "Looking for your iPhone…")
+
+        let settled = PhoneLink.status(signals { $0.usb = [phone]; $0.capturing = true; $0.searching = false })
+        XCTAssertEqual(settled.phase, .phoneOnUSB, "After the grace, the real advice shows")
+        let empty = PhoneLink.status(signals { $0.capturing = true; $0.searching = false })
+        XCTAssertEqual(empty.phase, .noPhone)
+        let failed = PhoneLink.status(signals { $0.usbProbe = .failed(-536870212); $0.capturing = true; $0.searching = true })
+        XCTAssertEqual(failed.phase, .usbUnavailable, "A failed look is said at once, never hidden as looking")
     }
 
     func testNothingAttachedNamesTheCableAndTheAccessoryPrompt() {
@@ -199,7 +224,7 @@ final class PhoneLinkTests {
         XCTAssertTrue(report.contains("USB: check failed (IOKit 0xE00002C7)"))
         XCTAssertFalse(report.contains("no iPhone or iPad on the bus"))
         XCTAssertTrue(PhoneLink.diagnostic(signals { $0.usbProbe = .checked }, build: "b").contains("USB: no iPhone or iPad on the bus"))
-        XCTAssertTrue(PhoneLink.diagnostic(signals(), build: "b").contains("USB: not checked"), "Never looked is not an empty bus either")
+        XCTAssertTrue(PhoneLink.diagnostic(signals { $0.usbProbe = .notChecked }, build: "b").contains("USB: not checked"), "Never looked is not an empty bus either")
         // A screen macOS offers is still there to show, whatever the USB check said.
         XCTAssertEqual(PhoneLink.status(signals { $0.usbProbe = .failed(code); $0.sources = [screen] }).phase, .available)
     }
@@ -359,11 +384,11 @@ final class PhoneLinkTests {
     /// A fixture pins the words for an offscreen render; clearing it returns to the Mac's facts.
     @MainActor func testMonitorFixtureAndMirrorAreIndependent() {
         let monitor = PhoneLinkMonitor()
-        XCTAssertEqual(monitor.status.phase, .noPhone)
+        XCTAssertEqual(monitor.status.phase, .looking, "A monitor that has not looked at the bus yet is looking, not reporting no phone")
         monitor.fixture = signals { $0.usb = [phone] }
         XCTAssertEqual(monitor.status.phase, .phoneOnUSB)
         monitor.fixture = nil
-        XCTAssertEqual(monitor.status.phase, .noPhone, "Nothing was mirrored, so the facts are empty again")
+        XCTAssertEqual(monitor.status.phase, .looking, "Nothing was mirrored, so the facts are empty again")
         XCTAssertEqual(monitor.diagnostic(build: "t").split(separator: "\n").count, 7)
     }
 }
