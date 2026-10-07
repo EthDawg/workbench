@@ -37,8 +37,17 @@ struct BugReportView: View {
     }
 
     var body: some View {
-        Group {
-            if scrolls { ScrollView { content } } else { content }
+        VStack(spacing: 0) {
+            if scrolls {
+                ScrollView { content }
+                // Outside the scroll area, so Send report stays in view however long the form grows
+                // (Details open, receipts above it) in the composer's fixed-height window.
+                Divider()
+                footer.padding(.horizontal, 20).padding(.vertical, 14)
+            } else {
+                content
+                footer.padding([.horizontal, .bottom], 20)
+            }
         }
         .frame(minWidth: 420)
         .background(Workbench.background)
@@ -64,7 +73,6 @@ struct BugReportView: View {
             if let note = model.note {
                 WorkbenchNote(note, tone: .done)
             }
-            footer
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -209,17 +217,25 @@ struct BugReportView: View {
             Label(model.available ? "This report goes privately to the Workbench team." : "Nothing is sent from this build.", systemImage: "lock")
                 .font(.callout.weight(.medium))
             Text(model.inclusionSummary).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            let details = model.detailsJSON
             DisclosureGroup("Details", isExpanded: $showDetails) {
                 VStack(alignment: .leading, spacing: 6) {
-                    ScrollView {
-                        Text(model.detailsJSON).font(.caption.monospaced()).textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading).padding(8)
+                    if details.isEmpty {
+                        // After Send the draft is gone; an empty box would read as a fault.
+                        Text("The details appear here once you start a report.").font(.caption).foregroundStyle(.secondary)
+                    } else {
+                        ScrollView {
+                            Text(details).font(.caption.monospaced()).textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading).padding(8)
+                        }
+                        .frame(height: 160)
+                        .reportCard(padding: 0)
+                        Text(detailsNote).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
-                    .frame(height: 160)
-                    .reportCard(padding: 0)
-                    Text(detailsNote).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }.padding(.top, 4)
             }.font(.caption)
+            // Send resets the composer; Details closes with it rather than staying open on nothing.
+            .onChange(of: details.isEmpty) { _, empty in if empty { showDetails = false } }
         }
     }
 
