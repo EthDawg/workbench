@@ -174,9 +174,11 @@ public enum PersonaStageCheck {
         init(root: URL, output: URL) {
             self.root = root; self.output = output
             let capture = capture
+            // Inert effects: the check never changes this Mac's Center Stage switch.
             camera = PersonaLiveCamera(capture: { capture }, authorize: { $0(.authorized) }, schedule: { _, _ in {} },
                                        list: { PersonaCameraList(devices: [PersonaCameraDevice(id: "synthetic", name: "Synthetic camera", inUseByAnotherApp: false)],
-                                                                 preferredID: "synthetic") })
+                                                                 preferredID: "synthetic") },
+                                       effects: .inert)
             var made: [SyntheticVoice] = []
             let access = PersonaVoiceAccess(permission: { .allowed }, requestPermission: { $0(true) },
                                             makeSource: { let voice = SyntheticVoice(); made.append(voice); return voice },
@@ -218,6 +220,8 @@ public enum PersonaStageCheck {
             try png.write(to: photo)
             let profile = try library.addImage(photo, name: "Synthetic profile")
             library.setShape(.circle, for: profile.id)
+            // It is My Profile, as the local profile names it in the app.
+            library.profilePersonaID = { profile.id }
             library.setVoiceRing(true)
             expect(library.voiceRing, "React to my voice is on (synthetic microphone, nothing opened)")
             receipt["voiceColour"] = [library.voiceColor.r, library.voiceColor.g, library.voiceColor.b]
@@ -245,6 +249,26 @@ public enum PersonaStageCheck {
                 expect(!camera.isActive && library.artworkVisible, "choosing the photo in the picker ends Live Camera and shows the photo")
                 try await examine("switch", name: "My Profile after Live Camera", picture: PersonaStageCheck.warm)
             } else { expect(false, "the picker offers the photo while Live Camera shows (\(picker.items.map(\.title)))") }
+
+            // And back to Live Camera from the photo in one click: the bubble takes the photo's place.
+            let photoFrame = personaWindow()?.frame
+            let back = library.makeToolbarPickerMenu()
+            receipt["pickerWithPhoto"] = back.items.map(\.title)
+            if let item = back.items.first(where: { $0.title == "Live Camera" || $0.title == "Camera" }), let action = item.action {
+                NSApp.sendAction(action, to: item.target, from: item)
+                await wait(0.8)
+                expect(camera.isLive && !library.artworkVisible, "choosing Live Camera in the picker shows the bubble in the photo's stead")
+                if let photoFrame, let bubbleFrame = personaWindow()?.frame {
+                    let moved = hypot(bubbleFrame.midX - photoFrame.midX, bubbleFrame.midY - photoFrame.midY)
+                    receipt["switchCentreDistance"] = moved
+                    expect(moved < 24 && abs(bubbleFrame.width - photoFrame.width) < 24,
+                           "Live Camera takes My Profile's place and size (centres \(Int(moved.rounded())) pt apart, \(Int(photoFrame.width)) and \(Int(bubbleFrame.width)) pt wide)")
+                }
+                try await examine("switchCamera", name: "Live Camera after My Profile", picture: PersonaStageCheck.blue)
+                library.hideCamera()
+                await wait(0.3)
+                expect(listening == nil, "Hide Live Camera closes the ring's microphone")
+            } else { expect(false, "the picker offers Live Camera while the photo shows (\(back.items.map(\.title)))") }
             library.endCamera()
             await wait(0.3)
         }

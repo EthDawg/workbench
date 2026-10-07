@@ -69,7 +69,10 @@ struct TestRunner {
                 ("camera Hide releases it and keeps its place", suite.testHideReleasesTheCameraAndKeepsItsPlaceForShowAgain),
                 ("camera live doors and cycling", suite.testLiveDoorsFollowTheCameraAndCyclingNeverReplacesIt),
                 ("camera and prepared sets never share the slot", suite.testPreparedSetsAndTheCameraNeverShareTheSlot),
-                ("camera neither listens nor writes", suite.testCameraNeitherListensNorWritesAnything),
+                ("camera and photo carry the voice ring and write nothing", suite.testTheRingFramesLiveCameraAndThePhotoAndWritesNothing),
+                ("My Profile and Live Camera are one click apart in the same place", suite.testMyProfileAndLiveCameraAreOneClickApartInTheSamePlace),
+                ("live menu offers the same sources in the same words", suite.testTheLiveMenuOffersTheSameSourcesInTheSameWords),
+                ("Center Stage follows the camera and the Video menu", suite.testCenterStageFollowsTheCameraAndTheVideoMenu),
                 ("camera bubble window moves, resizes and crops", suite.testTheBubbleWindowMovesResizesAndCropsLikeArtwork),
                 ("optional offscreen camera panel renders", suite.testOffscreenCameraPanelRenders)
             ]
@@ -739,7 +742,10 @@ struct TestRunner {
                 ("persona camera Hide releases it and keeps its place", personaCamera.testHideReleasesTheCameraAndKeepsItsPlaceForShowAgain),
                 ("persona camera live doors and cycling", personaCamera.testLiveDoorsFollowTheCameraAndCyclingNeverReplacesIt),
                 ("persona camera and prepared sets never share the slot", personaCamera.testPreparedSetsAndTheCameraNeverShareTheSlot),
-                ("persona camera neither listens nor writes", personaCamera.testCameraNeitherListensNorWritesAnything),
+                ("persona camera and photo carry the voice ring and write nothing", personaCamera.testTheRingFramesLiveCameraAndThePhotoAndWritesNothing),
+                ("persona My Profile and Live Camera are one click apart in the same place", personaCamera.testMyProfileAndLiveCameraAreOneClickApartInTheSamePlace),
+                ("persona live menu offers the same sources in the same words", personaCamera.testTheLiveMenuOffersTheSameSourcesInTheSameWords),
+                ("persona Center Stage follows the camera and the Video menu", personaCamera.testCenterStageFollowsTheCameraAndTheVideoMenu),
                 ("persona camera bubble window moves, resizes and crops", personaCamera.testTheBubbleWindowMovesResizesAndCropsLikeArtwork),
             ("profile reference and replacement keep identity and original artwork", personaCreation.testProfileReferenceAndPhotoReplacementPreserveIdentityAndOriginals),
             ("profile failed replacement keeps draft and files", personaCreation.testFailedProfileReplacementKeepsDraftAndFiles),

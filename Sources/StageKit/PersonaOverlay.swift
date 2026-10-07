@@ -19,6 +19,8 @@ final class PersonaOverlayController: NSWindowController, PersonaSessionDisplayi
     private let persistentLockedHandle: Bool
     private var pointerLocation: CGPoint?
     private var reveal: Timer?
+    /// A fade out under way, so a show that comes before it ends keeps the window.
+    private var fading: UUID?
     private lazy var handles = PersonaHandleSet(owner: self)
     /// A handle being dragged: where the artwork, its visible edge and its
     /// window started, and the widths it may take.
@@ -57,19 +59,17 @@ final class PersonaOverlayController: NSWindowController, PersonaSessionDisplayi
     }
 
     func show(image: NSImage, name: String, state: PersonaOverlayState, animated: Bool = false) -> PersonaOverlayState {
-        let wasVisible = window?.isVisible == true
+        // Shown again while fading out: it fades back in from where it is.
+        let reversing = fading != nil
+        let wasVisible = window?.isVisible == true && !reversing
+        fading = nil
         artwork.live = nil
         configure(image: image, name: name, state: state)
         let fade = animated && !wasVisible && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        window?.alphaValue = fade ? 0 : 1
+        if !reversing { window?.alphaValue = fade ? 0 : 1 }
         window?.orderFrontRegardless()
         artwork.resumeRing()
-        if fade {
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.16
-                window?.animator().alphaValue = 1
-            }
-        }
+        if fade || reversing { fadeIn() }
         pointer.add(self)
         pointerMoved(to: pointer.location)
         return self.state
@@ -90,14 +90,22 @@ final class PersonaOverlayController: NSWindowController, PersonaSessionDisplayi
     /// click-through are exactly the artwork's; only what is drawn, and who
     /// releases it, differ. No image is decoded, cached or saved for it.
     /// Returns the placement it was shown with.
+    /// `animated` fades it in over whatever it replaces in the same place, as a switch from
+    /// a shown card does; Reduce Motion shows it at once.
     func showLive(layer: CALayer, aspect: CGSize, outline: PersonaArtworkOutline?,
-                  name: String, help: String, state: PersonaOverlayState) -> PersonaOverlayState {
+                  name: String, help: String, state: PersonaOverlayState, animated: Bool = false) -> PersonaOverlayState {
+        let reversing = fading != nil
+        let wasVisible = window?.isVisible == true && !reversing
+        fading = nil
         artwork.image = nil
         artwork.outline = outline
         artwork.live = (layer, aspect)
         configureLive(name: name, help: help, state: state)
-        window?.alphaValue = 1
+        let fade = animated && !wasVisible && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        if !reversing { window?.alphaValue = fade ? 0 : 1 }
         window?.orderFrontRegardless()
+        artwork.resumeRing()
+        if fade || reversing { fadeIn() }
         pointer.add(self)
         pointerMoved(to: pointer.location)
         return self.state
@@ -112,7 +120,41 @@ final class PersonaOverlayController: NSWindowController, PersonaSessionDisplayi
     }
     /// Lets go of the owner's live layer. The owner stops the source itself.
     func releaseLive() { hide(); artwork.live = nil }
+    /// How long a switch between My Profile and Live Camera crossfades: the outgoing
+    /// picture fades out while the incoming one fades in, in the same place.
+    static let crossfade: TimeInterval = 0.2
+    private func fadeIn() {
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = Self.crossfade
+            window?.animator().alphaValue = 1
+        }
+    }
+    /// Fades the window out, then `completion` hides or releases it. It stops taking
+    /// the pointer at once. A show before the fade ends keeps the window and drops
+    /// `completion`. With Reduce Motion it goes at once.
+    func fadeOut(then completion: @escaping () -> Void) {
+        guard let window, window.isVisible, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { completion(); return }
+        artwork.cancelDragging(); manipulation = nil
+        reveal?.invalidate(); reveal = nil
+        handles.hide(); pointer.remove(self); pointerLocation = nil
+        window.ignoresMouseEvents = true
+        let token = UUID()
+        fading = token
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = Self.crossfade
+            window.animator().alphaValue = 0
+        }, completionHandler: { [weak self] in
+            guard let self, self.fading == token else { return }
+            self.fading = nil
+            completion()
+        })
+    }
+    /// Hide, fading out when another picture is taking its place.
+    func hide(fading: Bool) {
+        if fading { fadeOut { [weak self] in self?.hide() } } else { hide() }
+    }
     func hide() {
+        fading = nil
         artwork.cancelDragging(); manipulation = nil; artwork.pauseRing()
         reveal?.invalidate(); reveal = nil
         handles.hide(); pointer.remove(self); pointerLocation = nil
@@ -466,8 +508,12 @@ private final class PersonaArtworkView: NSView {
     /// The owner's layer joins this view, cropped to the visible edge; the
     /// previous one leaves without being stopped, which stays with its owner.
     private func liveChanged(from previous: CALayer?) {
-        previous?.mask = nil
-        previous?.removeFromSuperlayer()
+        // A layer another window has taken since, as a new camera visit does while this
+        // one fades out, stays where it is.
+        if let previous, previous.superlayer === layer {
+            if previous.mask === liveMask { previous.mask = nil }
+            previous.removeFromSuperlayer()
+        }
         artworkLayer.isHidden = live != nil
         guard let live else { needsLayout = true; return }
         live.layer.mask = liveMask

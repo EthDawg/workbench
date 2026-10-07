@@ -120,6 +120,12 @@ public final class StageKitController: ObservableObject {
         observe(coordinator)
     }
     private func observe(_ coordinator: AppCoordinator) {
+        // My Profile is the persona the local profile names, read from the same preference
+        // the profile editor writes, so the two never disagree.
+        let defaults = profileDefaults
+        coordinator.demoScenes.personas.profilePersonaID = {
+            defaults.string(forKey: LocalPersonaProfile.key).flatMap(UUID.init(uuidString:))
+        }
         coordinator.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &observations)
         coordinator.settings.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &observations)
         coordinator.demoScenes.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &observations)
@@ -190,8 +196,8 @@ public final class StageKitController: ObservableObject {
         if library.cameraOwnsSlot {
             switch library.camera.state {
             case .permission, .starting: return "Cancel"
-            case .live: return "Hide camera"
-            case .hidden: return "Show camera again"
+            case .live: return "Hide Live Camera"
+            case .hidden: return "Show Live Camera again"
             case .failed: return "Try again"
             case .off: break
             }
@@ -200,7 +206,7 @@ public final class StageKitController: ObservableObject {
     }
     /// End names the source it releases.
     public var personaEndTitle: String {
-        coordinator.demoScenes.personas.cameraOwnsSlot ? "End camera" : "End Persona"
+        coordinator.demoScenes.personas.cameraOwnsSlot ? "End Live Camera" : "End Persona"
     }
     public func togglePersona() {
         if case .failure = coordinator.demoScenes.personas.togglePersonaVisibility() { showPersonas() }

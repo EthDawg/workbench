@@ -8,6 +8,8 @@ enum PersonaLibraryMode { case sheet, workspace }
 struct PersonaLibraryLaunchState {
     enum Request {
         case oneCard
+        /// My Profile: the profile photo as the floating card.
+        case profile
         /// The hidden floating card, as it was.
         case showAgain
         case prepared(groupIDs: [UUID], softReveal: Bool)
@@ -16,6 +18,7 @@ struct PersonaLibraryLaunchState {
         func perform(in library: PersonaLibrary) -> Result<Void, Error> {
             switch self {
             case .oneCard: return library.showOverlay()
+            case .profile: return library.showProfile()
             case .showAgain: return library.showAgain()
             case .prepared(let groupIDs, let softReveal):
                 return Result {
@@ -82,9 +85,9 @@ struct PersonaLibraryView: View {
     private var liveSourceControl: some View {
         Picker("Live source", selection: $source) {
             Text("Artwork").tag(PersonaLiveSource.artwork)
-            Text("Camera").tag(PersonaLiveSource.camera)
+            Text("Live Camera").tag(PersonaLiveSource.camera)
         }.pickerStyle(.segmented).fixedSize()
-            .help("Prepare saved artwork or a camera bubble. Choosing a source starts nothing.")
+            .help("Prepare saved artwork or Live Camera. Choosing a source starts nothing.")
     }
 
     private func content(availableWidth: CGFloat) -> some View {
@@ -103,13 +106,13 @@ struct PersonaLibraryView: View {
                     Text(preparingPresentation ? "Arrange overlays" : onChoose != nil ? "Choose persona" : mode == .workspace ? "Persona" : "Personas")
                         .font(mode == .workspace && !preparingPresentation ? .title.weight(.semibold) : .title2.bold()).accessibilityAddTraits(.isHeader)
                     if !preparingPresentation {
-                        Text(onChoose == nil ? "Show saved artwork or a live camera bubble over your apps." : "Choose a persona card to place in this scene.")
+                        Text(onChoose == nil ? "Show My Profile, saved artwork or Live Camera over your apps." : "Choose a persona card to place in this scene.")
                             .font(.body).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 Spacer()
                 if !preparingPresentation, mode == .workspace, let editProfile {
-                    Button("Me…", action: editProfile).help("Edit your photo and Me persona")
+                    Button("My Profile…", action: editProfile).help("Take or choose your profile photo")
                         .accessibilityIdentifier("persona.profile")
                 }
                 if !preparingPresentation {
@@ -381,6 +384,11 @@ struct PersonaLibraryView: View {
                     Button("Show selected") { requestLaunch(.oneCard) }.buttonStyle(.borderedProminent)
                         .disabled(library.selected.flatMap { library.renderedImage(for: $0) } == nil)
                     Text("Separate from Present").font(.caption).foregroundStyle(.secondary)
+                }
+                // My Profile, one click from whatever card shows, in its place.
+                if library.profileID != nil, !library.showsProfile {
+                    Button("Show My Profile") { requestLaunch(.profile) }
+                        .help("Shows your profile photo as the floating persona, in the shown card’s place")
                 }
             } else {
                 if library.sessionState.phase == .paused {

@@ -76,7 +76,18 @@ enum PersonaCameraRefusal: LocalizedError, Equatable {
     case preparedSession
     var errorDescription: String? {
         switch self {
-        case .preparedSession: return "End the prepared overlay set before starting the camera."
+        case .preparedSession: return "End the prepared overlay set before starting Live Camera."
+        }
+    }
+}
+
+/// Why My Profile could not show: no profile photo is set, or a prepared set has the slot.
+enum PersonaProfileRefusal: LocalizedError, Equatable {
+    case noProfile, preparedSession
+    var errorDescription: String? {
+        switch self {
+        case .noProfile: return "Set a photo in My Profile first."
+        case .preparedSession: return "End the prepared overlay set before showing My Profile."
         }
     }
 }
@@ -107,15 +118,74 @@ enum PersonaCameraState: Equatable {
 protocol PersonaCameraDisplaying: AnyObject {
     var onPlacementChange: ((PersonaOverlayState) -> Void)? { get set }
     var frame: CGRect? { get }
+    /// `animated` fades the bubble in over the card it replaces in the same place.
     func showLive(layer: CALayer, aspect: CGSize, outline: PersonaArtworkOutline?,
-                  name: String, help: String, state: PersonaOverlayState) -> PersonaOverlayState
+                  name: String, help: String, state: PersonaOverlayState, animated: Bool) -> PersonaOverlayState
     func configureLive(name: String, help: String, state: PersonaOverlayState)
     func hide()
     func releaseLive()
     func shutdown()
+    /// React to my voice around the bubble, exactly as around a card.
+    func setVoiceRing(_ on: Bool)
+    func setVoiceColor(_ color: InkColor)
+    func showVoice(_ frames: [PersonaVoiceFrame])
+    /// Fades the bubble out while a card fades in over it, then `completion` releases it.
+    func fadeOut(then completion: @escaping () -> Void)
+}
+
+extension PersonaCameraDisplaying {
+    func setVoiceRing(_ on: Bool) {}
+    func setVoiceColor(_ color: InkColor) {}
+    func showVoice(_ frames: [PersonaVoiceFrame]) {}
+    func fadeOut(then completion: @escaping () -> Void) { completion() }
 }
 
 extension PersonaOverlayController: PersonaCameraDisplaying {}
+
+/// macOS's own camera effects for the app: Center Stage's per-app switch, which the menu
+/// bar's Video menu also changes, and that Video menu itself. Checks pass their own so no
+/// system state changes and nothing opens.
+struct PersonaCameraEffects {
+    /// `AVCaptureDevice.isCenterStageEnabled`: one switch per app, not per camera.
+    var centerStageEnabled: () -> Bool
+    /// Sets it in cooperative control, so the Video menu can still change it.
+    var setCenterStage: (Bool) -> Void
+    /// Calls back on the main thread when the switch changes anywhere; keep the token.
+    var observeCenterStage: (@escaping () -> Void) -> AnyObject?
+    /// `AVCaptureDevice.showSystemUserInterface(.videoEffects)`.
+    var showVideoEffects: () -> Void
+
+    static var system: PersonaCameraEffects {
+        PersonaCameraEffects(
+            centerStageEnabled: { AVCaptureDevice.isCenterStageEnabled },
+            setCenterStage: { on in
+                // User control, the default, throws on a set. Cooperative control lets
+                // Workbench set it while the Video menu keeps changing it too.
+                if AVCaptureDevice.centerStageControlMode != .cooperative { AVCaptureDevice.centerStageControlMode = .cooperative }
+                AVCaptureDevice.isCenterStageEnabled = on
+            },
+            observeCenterStage: { PersonaCenterStageObserver($0) },
+            showVideoEffects: { AVCaptureDevice.showSystemUserInterface(.videoEffects) })
+    }
+    /// Changes and opens nothing: renders and the window read-back check.
+    static let inert = PersonaCameraEffects(centerStageEnabled: { false }, setCenterStage: { _ in },
+                                            observeCenterStage: { _ in nil }, showVideoEffects: {})
+}
+
+/// Key-value observes the class-level Center Stage switch, as cooperative control asks.
+private final class PersonaCenterStageObserver: NSObject {
+    private let changed: () -> Void
+    init(_ changed: @escaping () -> Void) {
+        self.changed = changed
+        super.init()
+        AVCaptureDevice.self.addObserver(self, forKeyPath: "centerStageEnabled", options: [.new], context: nil)
+    }
+    deinit { AVCaptureDevice.self.removeObserver(self, forKeyPath: "centerStageEnabled") }
+    override func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey: Any]?, context: UnsafeMutableRawPointer?) {
+        let changed = changed
+        DispatchQueue.main.async { changed() }
+    }
+}
 
 /// Persona's local live camera: a mirrored circle of this Mac's own camera,
 /// floating over the apps beside the windows the presenter is demonstrating.
@@ -166,12 +236,26 @@ final class PersonaLiveCamera: ObservableObject {
     var onChange: (() -> Void)?
     /// The camera the app's own device capture holds, so Present keeps it.
     var deviceInUse: (() -> String?)?
+    /// What the camera now showing offers, read when it starts.
+    @Published private(set) var features = ProfileCameraFeatures()
+    /// Center Stage's per-app switch, as macOS keeps it.
+    @Published private(set) var centerStageOn = false
+    /// Center Stage is offered only while the bubble shows a camera that can frame you.
+    var offersCenterStage: Bool { isLive && features.centerStage }
+    /// React to my voice around the bubble. The library decides it and opens the microphone;
+    /// the bubble only draws it.
+    private(set) var voiceRing = false
+    private(set) var voiceColor = PersonaVoiceRingLayer.usualColor
 
     private let makeCapture: () -> ProfileCameraCapturing
     private let makePanel: () -> PersonaCameraDisplaying
     private let authorize: Authorize
     private let schedule: Schedule
     private let list: () -> PersonaCameraList
+    private let effects: PersonaCameraEffects
+    private var centerStageWatch: AnyObject?
+    /// The next bubble fades in over a card it replaces.
+    private var fadesIn = false
     private var capture: ProfileCameraCapturing?
     private var panel: PersonaCameraDisplaying?
     private var request = UUID()
@@ -185,9 +269,10 @@ final class PersonaLiveCamera: ObservableObject {
          panel: @escaping () -> PersonaCameraDisplaying = { PersonaOverlayController(persistentLockedHandle: true) },
          authorize: @escaping Authorize = PersonaLiveCamera.authorize,
          schedule: @escaping Schedule = PersonaLiveCamera.schedule,
-         list: @escaping () -> PersonaCameraList = PersonaCameraList.system) {
+         list: @escaping () -> PersonaCameraList = PersonaCameraList.system,
+         effects: PersonaCameraEffects = .system) {
         self.makeCapture = capture; self.makePanel = panel
-        self.authorize = authorize; self.schedule = schedule; self.list = list
+        self.authorize = authorize; self.schedule = schedule; self.list = list; self.effects = effects
     }
 
     var isLive: Bool { state == .live }
@@ -204,10 +289,10 @@ final class PersonaLiveCamera: ObservableObject {
         switch state {
         case .off: return ""
         case .permission: return "Waiting for camera access"
-        case .starting: return "Starting camera"
-        case .live: return "Camera"
-        case .hidden: return "Camera hidden"
-        case .failed: return "Camera stopped"
+        case .starting: return "Starting Live Camera"
+        case .live: return "Live Camera"
+        case .hidden: return "Live Camera hidden"
+        case .failed: return "Live Camera stopped"
         }
     }
     /// One sentence about where the visit is, shown where the visit is managed.
@@ -234,8 +319,17 @@ final class PersonaLiveCamera: ObservableObject {
     /// Start camera, the one door to the hardware. `deviceID` is an explicit
     /// choice from the list; without it the system's usual camera is used. A
     /// camera another owner holds is reported instead of taken.
-    func start(deviceID: String? = nil) {
+    /// `replacing` is the placement of a card on screen now: the bubble takes its place and
+    /// size, keeps its own lock, and fades in over it when the first frame arrives.
+    func start(deviceID: String? = nil, replacing card: PersonaOverlayState? = nil) {
         release()
+        if let card, !isLive {
+            var next = placement
+            next.x = card.x; next.y = card.y; next.width = card.width; next.screenID = card.screenID
+            if let valid = try? next.validated() { placement = valid }
+        }
+        fadesIn = card != nil
+        features = ProfileCameraFeatures()
         let token = request
         visit = UUID()
         let cameras = list()
@@ -288,14 +382,21 @@ final class PersonaLiveCamera: ObservableObject {
     }
     /// End camera, and Cancel while it is starting: the device goes, the bubble's
     /// window goes, and this visit is over. Saved artwork is untouched.
-    func end() {
+    /// `fading` lets the bubble fade out while a card fades in over it; the camera is
+    /// released at once either way.
+    func end(fading: Bool = false) {
         guard isActive else { return }
         release()
         visit = UUID()
+        if fading, isLive, let leaving = panel {
+            panel = nil
+            leaving.fadeOut { leaving.releaseLive(); leaving.shutdown() }
+        }
         move(to: .off)
     }
     func shutdown() {
         end()
+        centerStageWatch = nil
         disarmSleepWatch()
         panel?.shutdown(); panel = nil
         capture?.stop(); capture = nil
@@ -306,6 +407,37 @@ final class PersonaLiveCamera: ObservableObject {
     func perform(ifCurrent expected: UUID, _ action: () -> Void) {
         guard visit == expected else { return }
         action()
+    }
+
+    // MARK: React to my voice and camera effects
+
+    /// The ring follows the switch whether or not the bubble shows, so a bubble is placed
+    /// with the ring's room at once.
+    func setVoiceRing(_ on: Bool) {
+        guard voiceRing != on else { return }
+        voiceRing = on; panel?.setVoiceRing(on)
+    }
+    func setVoiceColor(_ color: InkColor) { voiceColor = color; panel?.setVoiceColor(color) }
+    func showVoice(_ frames: [PersonaVoiceFrame]) { if isLive { panel?.showVoice(frames) } }
+    /// Center Stage on or off for this app, while a camera that can frame you shows. A running
+    /// camera moves to a format that supports it.
+    func setCenterStage(_ on: Bool) {
+        guard offersCenterStage else { return }
+        effects.setCenterStage(on)
+        centerStageOn = effects.centerStageEnabled()
+        if on { capture?.conformToCenterStage() }
+        onChange?()
+    }
+    /// The menu bar's Video menu: Portrait, Studio Light, Reactions, Background and the rest.
+    func showVideoEffects() { if isLive { effects.showVideoEffects() } }
+    private func watchCenterStage() {
+        centerStageOn = effects.centerStageEnabled()
+        guard centerStageWatch == nil else { return }
+        centerStageWatch = effects.observeCenterStage { [weak self] in
+            guard let self else { return }
+            self.centerStageOn = self.effects.centerStageEnabled()
+            self.onChange?()
+        }
     }
 
     // MARK: The bubble's own placement
@@ -337,6 +469,10 @@ final class PersonaLiveCamera: ObservableObject {
             move(to: .live)
         case .failed(let issue):
             fail(.access(issue))
+        case .features(let features):
+            self.features = features
+            if features.centerStage { watchCenterStage() }
+            onChange?()
         }
     }
     private func fail(_ failure: PersonaCameraFailure) {
@@ -371,14 +507,20 @@ final class PersonaLiveCamera: ObservableObject {
             created.onPlacementChange = { [weak self] state in self?.placementChanged(state) }
             panel = created
         }
+        // The ring before the bubble shows, so it is placed with the ring's room at once.
+        panel?.setVoiceColor(voiceColor)
+        panel?.setVoiceRing(voiceRing)
         // The preview is cropped to the bubble's circle, not letterboxed, and
         // keeps the session's mirroring, so the presenter sees themselves as in
         // a mirror. The session owns the frames; this layer only draws them.
+        // The circle is the edge the ring and the handles follow.
         let preview = capture.previewLayer
         preview.videoGravity = .resizeAspectFill
+        let fade = fadesIn
+        fadesIn = false
         guard let kept = panel?.showLive(layer: preview, aspect: CGSize(width: 1, height: 1),
                                         outline: PersonaCircleRenderer.outline, name: Self.bubbleName,
-                                        help: Self.bubbleHelp(locked: placement.locked), state: placement) else { return }
+                                        help: Self.bubbleHelp(locked: placement.locked), state: placement, animated: fade) else { return }
         placement = (try? kept.validated()) ?? kept
     }
     private func apply(_ next: PersonaOverlayState) {
@@ -394,7 +536,7 @@ final class PersonaLiveCamera: ObservableObject {
         onChange?()
     }
 
-    private static let bubbleName = "Live camera"
+    private static let bubbleName = "Live Camera"
     private static func bubbleHelp(locked: Bool) -> String {
         locked ? "Your live camera. Clicks pass through it. Drag its top handle to move it, or a corner or edge to resize it."
                : "Drag to move your live camera, or drag a corner or edge to resize it. Lock it in Workbench to let clicks pass through."
@@ -456,7 +598,7 @@ struct PersonaCameraPanel: View {
             HStack(spacing: 8) {
                 Image(systemName: "video.circle").font(.title3).foregroundStyle(.secondary).accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Live camera").font(.headline)
+                    Text("Live Camera").font(.headline)
                     Text(camera.status.isEmpty ? "Not started" : camera.status)
                         .font(.caption).foregroundStyle(.secondary)
                 }
@@ -480,13 +622,14 @@ struct PersonaCameraPanel: View {
                 VStack(alignment: .leading) { actions }
             }
             if camera.isLive || camera.isHidden { placement }
+            if camera.isLive { effects }
             Text("Your saved personas stay unchanged. The bubble’s position resets when Workbench quits.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
         .padding(12)
         .background(Workbench.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Live camera · " + (camera.status.isEmpty ? "not started" : camera.status))
+        .accessibilityLabel("Live Camera · " + (camera.status.isEmpty ? "not started" : camera.status))
     }
 
     /// One row that always keeps the next useful action reachable: Start, Cancel
@@ -496,9 +639,9 @@ struct PersonaCameraPanel: View {
         let visit = camera.visit
         switch camera.state {
         case .off:
-            Button("Start camera") { camera.perform(ifCurrent: visit) { library.startCamera() } }
+            Button("Start Live Camera") { camera.perform(ifCurrent: visit) { library.startCamera() } }
                 .buttonStyle(.borderedProminent).disabled(library.hasPreparedSession)
-                .help("Opens this Mac’s camera and shows it in a floating bubble. Your saved card stays up until the picture arrives.")
+                .help("Opens this Mac’s camera and shows it in a floating bubble, in the shown card’s place. Your card stays up until the picture arrives.")
             if library.hasPreparedSession {
                 Text("End the prepared overlay set first.").font(.caption).foregroundStyle(.secondary)
             }
@@ -511,10 +654,10 @@ struct PersonaCameraPanel: View {
                     camera.perform(ifCurrent: visit) { library.startCamera(deviceID: camera.preparedID) }
                 }.buttonStyle(.borderedProminent)
             }
-            Button("Hide camera") { camera.perform(ifCurrent: visit) { library.hideCamera() } }.buttonStyle(.borderedProminent)
-                .help("Releases the camera and keeps the bubble’s place for Show camera again")
+            Button("Hide Live Camera") { camera.perform(ifCurrent: visit) { library.hideCamera() } }.buttonStyle(.borderedProminent)
+                .help("Releases the camera and keeps the bubble’s place for Show Live Camera again")
         case .hidden:
-            Button("Show camera again") { camera.perform(ifCurrent: visit) { library.showCameraAgain() } }.buttonStyle(.borderedProminent)
+            Button("Show Live Camera again") { camera.perform(ifCurrent: visit) { library.showCameraAgain() } }.buttonStyle(.borderedProminent)
                 .help("Starts the same camera again and returns the bubble to its place")
         case .failed(let failure):
             if failure.offersRetry {
@@ -529,8 +672,29 @@ struct PersonaCameraPanel: View {
             }
         }
         if camera.isLive || camera.isHidden || camera.failure != nil {
-            Button("End camera") { camera.perform(ifCurrent: visit) { library.endCamera() } }
+            Button("End Live Camera") { camera.perform(ifCurrent: visit) { library.endCamera() } }
                 .help("Releases the camera and this visit. Saved personas and layouts are untouched.")
+        }
+        // One click back to the photo, in the bubble's place; it ends Live Camera.
+        if library.profileID != nil, camera.isActive, !camera.isStarting {
+            Button("Show My Profile") { camera.perform(ifCurrent: visit) { library.showProfile() } }
+                .disabled(library.hasPreparedSession)
+                .help("Shows your profile photo in the bubble’s place and ends Live Camera")
+        }
+    }
+
+    /// What this camera offers a presenter: Center Stage where it can frame you, and the
+    /// system's Video menu for Portrait, Studio Light, Reactions and Background.
+    @ViewBuilder private var effects: some View {
+        let visit = camera.visit
+        HStack(spacing: 12) {
+            if camera.offersCenterStage {
+                Toggle("Center Stage", isOn: Binding(get: { camera.centerStageOn },
+                                                     set: { on in camera.perform(ifCurrent: visit) { camera.setCenterStage(on) } }))
+                    .help("Keeps you framed as you move. macOS remembers it for Workbench, and the Video menu in the menu bar changes it too.")
+            }
+            Button("Video Effects…") { camera.perform(ifCurrent: visit) { camera.showVideoEffects() } }
+                .help("Opens macOS’s Video menu: Portrait, Studio Light, Reactions, Background and more, for this camera")
         }
     }
 
@@ -550,7 +714,7 @@ struct PersonaCameraPanel: View {
                     }
                 }.fixedSize().accessibilityLabel("Position of the camera bubble")
             }
-            Toggle("Lock camera · clicks pass through", isOn: Binding(
+            Toggle("Lock Live Camera · clicks pass through", isOn: Binding(
                 get: { library.overlayLocked }, set: { if camera.visit == visit && library.cameraOwnsSlot { library.setOverlayLocked($0) } }))
                 .accessibilityLabel("Lock the camera bubble so clicks pass through")
         }
