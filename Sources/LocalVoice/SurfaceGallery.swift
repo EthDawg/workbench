@@ -4029,12 +4029,15 @@ extension SurfacePass {
         saved.onViewImages = { _, _ in }
         let window = homeWindow(size: SurfaceGallery.sizes[0].size, stage: saved)
         defer { window.contentViewController = nil; window.close(); saved.setPhoneLinkFixture(nil) }
-        var onUSB = PhoneLinkSignals()
+        // After the first look at the bus (and the first seconds of a capture), the real states show.
+        var noPhone = PhoneLinkSignals(); noPhone.usbProbe = .checked
+        var onUSB = PhoneLinkSignals(); onUSB.usbProbe = .checked
         onUSB.usb = [.init(name: "iPhone", kind: .iPhone, productID: 0x12A8)]
-        var restricted = PhoneLinkSignals()
+        var restricted = PhoneLinkSignals(); restricted.usbProbe = .checked
         restricted.access = .restricted
         let states: [(id: String, title: String, signals: PhoneLinkSignals)] = [
-            ("no-phone", "Present with a scene, no phone on USB", PhoneLinkSignals()),
+            ("looking", "Present with a scene, looking for the phone", PhoneLinkSignals()),
+            ("no-phone", "Present with a scene, no phone on USB", noPhone),
             ("phone-on-usb", "Present with a scene, iPhone on USB without its screen", onUSB),
             ("restricted", "Present with a scene, device video restricted", restricted)]
         return try states.map { state in
