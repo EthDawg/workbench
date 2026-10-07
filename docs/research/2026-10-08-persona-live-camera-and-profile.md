@@ -104,3 +104,13 @@ Not confirmed from a primary source: whether a value set in cooperative mode per
 | The camera choice | Unchanged | Switch camera, and the page's camera list, already appear when there are several cameras. Continuity Camera is one of them. | — |
 
 This is a deliberate exception to the Grammar's "freeze advanced Persona" rule, on Ethan's explicit request of 8 October. It adds two Options of Persona (Center Stage, Video Effects…) and one shared list. It adds no capability, place, setting group or saved preference.
+
+## Still needs Ethan's camera, microphone and eyes
+
+The source checks and the window read-back use a synthetic photo, picture and voice. These need the real thing on his Mac, with the installed Preview:
+
+1. **The ring with a real voice.** Turn on React to my voice and start Live Camera, then talk. The dots should rise into bars around the bubble. Do the same with My Profile. If the resting dots are too faint to notice, that is the decided look (34% opacity), not a fault, but say so.
+2. **Microphone and camera together.** While the bubble shows with the ring on, the menu bar should show both the camera and the microphone indicators. Hide Live Camera should turn both off, and End Live Camera too.
+3. **One-click switching.** In the pill's Choose Persona, switch from My Profile to Live Camera and back. Each should appear in the other's place and size with a short crossfade. The photo should stay up until the camera's first frame, with no empty or black circle in between.
+4. **Center Stage.** On the M4 MacBook Air's built-in camera, a Studio Display or an iPhone with Continuity Camera, Center Stage should appear in the bubble's menu and on the Persona page, and keep him framed as he moves. Changing it in the menu bar's Video menu should update Workbench's switch. Quit and relaunch, and check that it is remembered. On a camera without Center Stage it should not appear.
+5. **Video Effects….** It should open macOS's Video menu, and Portrait or Studio Light should show in the bubble.
