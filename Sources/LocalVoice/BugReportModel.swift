@@ -317,7 +317,8 @@ final class BugReportModel: ObservableObject {
         saveTask?.cancel(); saveTask = nil
         guard let draft = currentDraft() else { return }
         do {
-            if draft.isEmpty { try store.clearDraft() } else { try store.saveDraft(draft) }
+            // A voice note being recorded lives in the draft folder before it counts as content.
+            if draft.isEmpty { if !recording { try store.clearDraft() } } else { try store.saveDraft(draft) }
         } catch { problem = "Your draft couldn't be saved on this Mac. Keep this window open, or save a copy." }
     }
 
@@ -505,9 +506,12 @@ final class BugReportModel: ObservableObject {
                 envelopeSHA256: BugReportText.sha256(envelope), envelopeBytes: envelope.count,
                 files: BugReportEnvelope.verifierFiles(try BugReportEnvelope.parse(envelope).items), contents: draft.contents,
                 state: .waiting, nextAttemptAt: now, createdAt: now))
-            // The report is in the outbox; the draft is done.
+            // The report is in the outbox; the draft is done. The composer stays open on its
+            // receipt, so what the person writes next is a new report from the same place,
+            // without the first one's problem code.
             try? store.clearDraft()
-            self.draft = nil
+            let next = BugReportOrigin(surface: draft.origin.surface, errorCode: nil)
+            self.draft = BugReportDraft(origin: next, context: services.context(next), build: services.build(), createdAt: services.now())
             explanation = ""; replyEmail = ""; screenshot = nil; screenshotPreview = nil; voiceSeconds = nil; transcript = nil
             saveTask?.cancel(); saveTask = nil
             transport.added()

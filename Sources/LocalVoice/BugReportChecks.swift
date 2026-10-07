@@ -856,6 +856,19 @@ enum BugReportChecks {
         empty.explanation = "Typed"; empty.open(origin: BugReportOrigin(surface: .snap, errorCode: "snap.capture_failed"))
         try expect(empty.draft?.origin.errorCode == "dictate.failed", "a started draft keeps its own problem")
 
+        // The composer stays open after Send: the next words are a new report from the same place,
+        // saved as they are typed and sent like the first, without the first one's problem code.
+        let again = harness(root.appendingPathComponent("again"))
+        try fill(again.model, screenshot: false, voice: false)
+        again.model.send()
+        again.model.explanation = "A second problem, written in the same window."
+        again.model.persist()
+        try expect(again.store.loadDraft()?.explanation == again.model.explanation, "words typed after Send are saved")
+        try expect(again.model.canSend && again.model.draft?.origin == BugReportOrigin(surface: .snap, errorCode: nil),
+                   "the next report keeps the place, not the first one's problem code")
+        again.model.send()
+        try expect(again.store.deliveries().count == 2 && again.model.problem == nil, "a second Send from the open composer freezes a second report")
+
         // Over-limit text is kept and blocks Send with a reason; nothing is cut.
         let long = String(repeating: "y", count: 2_100)
         empty.explanation = long
@@ -997,7 +1010,7 @@ enum BugReportChecks {
         h.clock.advance(200 * 86_400)
         h.store.prune()
         try expect(h.store.delivery(unsent) != nil, "pruning never removes an unsent report")
-        return ["outbox: 0700/0600, draft resume and origin rules, over-limit text kept, Save a copy without overwrite, entry/byte/disk quota with the draft kept, only settled copies make room (with a verifier), refusal names only unsent reports, facts from the moment of reporting with fresh access and speech, older delivery.json loads, Screen Recording preflight, no-DSN build"]
+        return ["outbox: 0700/0600, draft resume and origin rules, a second report from the open composer, over-limit text kept, Save a copy without overwrite, entry/byte/disk quota with the draft kept, only settled copies make room (with a verifier), refusal names only unsent reports, facts from the moment of reporting with fresh access and speech, older delivery.json loads, Screen Recording preflight, no-DSN build"]
     }
 }
 

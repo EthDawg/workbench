@@ -47,6 +47,8 @@ final class BugReportTransport: ObservableObject {
     /// The time limit of the most recent Sentry request, for checks.
     private(set) var lastSendDeadline: TimeInterval?
     private var wake: Task<Void, Never>?
+    /// The wake task is mid-round: its uploads and checks finish, then it schedules the next.
+    private var waking = false
     private var running = false
     private var monitor: NWPathMonitor?
     private var online = true
@@ -127,13 +129,18 @@ final class BugReportTransport: ObservableObject {
     }
 
     private func scheduleWake() {
+        // A Send or a returning network never cancels a round already uploading or checking:
+        // that would abort a request mid-flight and count it as possibly arrived.
+        guard !waking else { return }
         wake?.cancel(); wake = nil
         guard running, let next = store.deliveries().filter(isScheduled).compactMap(\.nextAttemptAt).min() else { return }
         let delay = max(0.5, next.timeIntervalSince(now()))
         wake = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(min(delay, 3_600) * 1_000_000_000))
             guard !Task.isCancelled, let self else { return }
+            self.waking = true
             await self.runDue()
+            self.waking = false
             self.scheduleWake()
         }
     }
