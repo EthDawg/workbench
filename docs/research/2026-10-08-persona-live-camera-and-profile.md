@@ -53,7 +53,7 @@ A real microphone and his real photo still need his eyes. See the acceptance at 
 
 ## After the fix
 
-The same check at `b21e12e`, from a signed scratch Preview (build `20261007203454`, source `b21e12e`). It passes 25 checks and fails none:
+The same check at `b21e12e`, from a signed scratch Preview (build `20261007203454`, source `b21e12e`). It passes all 22 checks and fails none (before the fix: 12 passed, 3 failed, all three on Live Camera). Rerun at the final head `250c234` (build `20261007204853`) with the same 22 passes:
 
 ```
 PASS Live Camera: the ring listens while it shows (a synthetic microphone is open)
