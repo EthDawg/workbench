@@ -724,7 +724,8 @@ final class PersonaCameraTests {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try MainActor.assumeIsolated {
             for appearance in [NSAppearance.Name.aqua, .darkAqua] {
-                for name in ["off", "starting", "live", "switch", "missing-source", "hidden", "denied", "busy"] {
+                for name in ["off", "starting", "live", "switch", "missing-source", "hidden", "denied", "busy",
+                             "centre-stage-on", "centre-stage-off", "centre-stage-unsupported"] {
                     let f = Fixture(); defer { f.cleanup() }
                     switch name {
                     case "starting": f.library.startCamera(); f.permissionRequests.last?(.authorized)
@@ -751,6 +752,14 @@ final class PersonaCameraTests {
                         f.library.startCamera(deviceID: "disconnected"); f.permissionRequests.last?(.authorized)
                         f.capture.starts.last?.1(.failed(.unavailable))
                         XCTAssertTrue(f.camera.offersSourceChoice)
+                    case "centre-stage-on", "centre-stage-off", "centre-stage-unsupported":
+                        f.live()
+                        if name != "centre-stage-unsupported" {
+                            f.capture.starts.last?.1(.features(ProfileCameraFeatures(centerStage: true)))
+                            if name == "centre-stage-on" { f.camera.setCenterStage(true) }
+                        }
+                        XCTAssertEqual(f.camera.offersCenterStage, name != "centre-stage-unsupported")
+                        XCTAssertEqual(f.camera.centerStageOn, name == "centre-stage-on")
                     case "hidden": f.live(); f.library.hideCamera()
                     case "denied": f.library.startCamera(); f.permissionRequests.last?(.denied)
                     case "busy": f.camera.deviceInUse = { "built-in" }; f.library.startCamera()
@@ -781,6 +790,41 @@ final class PersonaCameraTests {
     }
     /// A hidden bubble whose camera has gone while another remains says which
     /// camera is missing, next to the list that offers the one that is there.
+    /// The pill's Choose Persona and the Live Camera menu as text, with and without a profile
+    /// photo, for the layout evidence folder: NSMenu has no offscreen render.
+    func testOffscreenPickerListings() throws {
+        guard let directory = ProcessInfo.processInfo.environment["WORKBENCH_LAYOUT_EVIDENCE"].map({ URL(fileURLWithPath: $0) }) else { return }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try MainActor.assumeIsolated {
+            func lines(_ menu: NSMenu, depth: Int = 0) -> [String] {
+                menu.items.flatMap { item -> [String] in
+                    let indent = String(repeating: "    ", count: depth)
+                    let line = item.isSeparatorItem ? indent + "———" : item.view != nil ? indent + "[Size slider]"
+                        : indent + (item.state == .on ? "✓ " : "  ") + item.title + (item.isEnabled ? "" : "  (disabled)")
+                    return [line] + (item.submenu.map { lines($0, depth: depth + 1) } ?? [])
+                }
+            }
+            for profile in [false, true] {
+                let f = Fixture(withArtwork: true); defer { f.cleanup() }
+                f.library.onEditProfile = {}
+                if profile {
+                    let url = f.root.appendingPathComponent("profile.png")
+                    try Fixture.png().write(to: url)
+                    let saved = try f.library.addImage(url, name: "Profile photo")
+                    f.library.profilePersonaID = { saved.id }
+                    try f.library.showProfile().get()
+                }
+                var text = ["Choose Persona, " + (profile ? "My Profile showing" : "no profile photo saved, nothing live")] + lines(f.library.makeToolbarPickerMenu())
+                f.live()
+                f.capture.starts.last?.1(.features(ProfileCameraFeatures(centerStage: true)))
+                text += ["", "Choose Persona, Live Camera showing"] + lines(f.library.makeToolbarPickerMenu())
+                text += ["", "Live Camera's menu (Persona Overlay)"] + lines(f.library.makeControlsMenu())
+                try text.joined(separator: "\n").write(to: directory.appendingPathComponent("persona-picker-\(profile ? "with" : "without")-profile.txt"),
+                                                      atomically: true, encoding: .utf8)
+            }
+        }
+    }
+
     /// Show camera again opens nothing in its place and asks for no access; only
     /// an explicit choice starts the remaining camera.
     func testShowAgainAfterTheChosenCameraHasGoneNamesItAndOpensNoOther() {

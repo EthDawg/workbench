@@ -345,6 +345,20 @@ public enum PersonaStageCheck {
         func save(_ image: CGImage, _ name: String) {
             try? NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])?
                 .write(to: output.appendingPathComponent(name + ".png"))
+            // The same read-back over a light and a dark desktop, as an audience sees it on
+            // white slides and a dark editor.
+            guard !name.hasSuffix("-offscreen") else { return }
+            for (theme, white) in [("light", 0.96), ("dark", 0.12)] {
+                guard let context = CGContext(data: nil, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: 0,
+                                              space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+                else { continue }
+                context.setFillColor(CGColor(gray: white, alpha: 1)); context.fill(CGRect(x: 0, y: 0, width: image.width, height: image.height))
+                context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+                if let composite = context.makeImage() {
+                    try? NSBitmapImageRep(cgImage: composite).representation(using: .png, properties: [:])?
+                        .write(to: output.appendingPathComponent("\(name)-on-\(theme).png"))
+                }
+            }
         }
     }
 }

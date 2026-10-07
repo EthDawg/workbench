@@ -81,7 +81,8 @@ struct TestRunner {
                 ("My Profile is always first and Live Camera checked only while it shows", suite.testMyProfileIsAlwaysTheFirstRowAndLiveCameraIsCheckedOnlyWhileItShows),
                 ("the Live Camera menu is grouped in title case", suite.testTheLiveCameraMenuIsGroupedInTitleCase),
                 ("camera bubble window moves, resizes and crops", suite.testTheBubbleWindowMovesResizesAndCropsLikeArtwork),
-                ("optional offscreen camera panel renders", suite.testOffscreenCameraPanelRenders)
+                ("optional offscreen camera panel renders", suite.testOffscreenCameraPanelRenders),
+                ("optional offscreen picker listings", suite.testOffscreenPickerListings)
             ]
             var skipped = 0
             for (name, test) in tests {
