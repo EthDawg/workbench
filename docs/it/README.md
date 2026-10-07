@@ -41,3 +41,11 @@ identifier "com.ethdawg.workbench" and anchor apple generic and certificate 1[fi
 ```
 
 It pins the bundle ID, Apple's Developer ID chain and the team, so it survives updates and certificate renewals. It doesn't match a locally built, ad hoc signed copy. Approve only notarized builds from the Workbench release feed.
+
+## Worth knowing
+
+- On macOS 14–26, approvals a profile grants don't appear in Privacy & Security's lists. Check them in System Settings, in the device-management profile's details.
+- macOS 27 and Accessibility profiles: Apple's 27.0 reference says a PPPC Accessibility grant still applies, with a notification, and the person can turn it off. During the 27 betas Apple DTS said the ability was removed, and testers saw the grant ignored unless PostEvent was also in the payload. Test on a macOS 27 Mac before relying on it, and keep PostEvent in the profile; the declarative replacement has no PostEvent key. On an unsupervised macOS 27 Mac there is no MDM route to pre-allow Accessibility.
+- Check that your MDM supports the macOS 27 `com.apple.configuration.app.settings` declaration before relying on it. Vendor support hasn't been confirmed here. Microsoft Intune's Settings catalog configures PPPC natively.
+- Updates: Workbench updates itself with Sparkle. A copy in `/Applications` that a standard account updates needs an administrator for each update, so deploy updates through your MDM there. A copy in the person's own `~/Applications` updates without one.
+- `WorkbenchBrowserHost`, the Chrome helper inside the app, needs no privacy entry.

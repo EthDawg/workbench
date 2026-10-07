@@ -841,7 +841,7 @@ struct WorkbenchHomePage: View {
                         Button("Done") { stayInGuide = false }.buttonStyle(.workbenchLink)
                     }.controlSize(.large)
                     if model.preferences.delivery == .paste && !model.accessibilityGranted {
-                        Text("Automatic paste needs Accessibility approval. Until then, transcripts are copied for ⌘V. Your organisation may need to approve this.")
+                        Text("Automatic paste needs Accessibility. Until then, transcripts are copied for ⌘V. " + MacAccount.automaticPasteApproval)
                             .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
                     WorkbenchClipboardShelf(receipts: model.clipboardReceipt, unresolved: model.unresolvedDelivery,

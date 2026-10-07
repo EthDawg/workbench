@@ -24,8 +24,7 @@ final class TextDelivery {
             System(pasteboard: .general, isTrusted: { AXIsProcessTrusted() }, isEligible: { TextDelivery.eligible($0) },
                    preparePaste: { target in
                        // The key that types “v” with ⌘ in this layout, not always the US position (PasteKey).
-                       let key = PasteKey.current()
-                       guard let source = CGEventSource(stateID: .privateState),
+                       guard let key = PasteKey.current(), let source = CGEventSource(stateID: .privateState),
                              let down = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: true),
                              let up = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: false) else { return nil }
                        down.flags = .maskCommand; up.flags = .maskCommand

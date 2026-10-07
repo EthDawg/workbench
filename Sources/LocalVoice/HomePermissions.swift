@@ -192,6 +192,8 @@ struct MacPermissionRow: Equatable, Identifiable {
                 lines.append("macOS may ask for an administrator’s name and password to change it.")
             }
             if permission.listHasAddButton { lines.append("If \(Self.appName) isn’t in the list, click + and choose it.") }
+            // A switch already on that macOS doesn't report yet: a stale entry, or the macOS 27 cache.
+            if permission == .accessibility { lines.append("If it’s already on there, quit and reopen \(Self.appName).") }
             return lines
         }
     }
@@ -318,6 +320,14 @@ enum CallAudioRecord: String {
 enum MacAccount {
     /// Membership of the admin group (gid 80), nested directory groups included, which is what
     /// macOS checks before it lets someone change a Mac-wide approval. Nil if macOS can't say.
+    /// Read once per run: membership rarely changes, and a directory lookup shouldn't run on every redraw.
+    static let administrator: Bool? = isAdministrator()
+    /// The one sentence every surface uses for who can switch on automatic paste.
+    static var automaticPasteApproval: String {
+        administrator == false
+            ? "On this account, macOS asks for an administrator’s name and password to turn it on; ask your IT team, or anyone with an admin account on this Mac."
+            : "On a work Mac, IT may need to allow it."
+    }
     static func isAdministrator() -> Bool? {
         var user = [UInt8](repeating: 0, count: 16), group = [UInt8](repeating: 0, count: 16), member: Int32 = 0
         guard mbr_uid_to_uuid(getuid(), &user) == 0, mbr_gid_to_uuid(80, &group) == 0,
@@ -347,7 +357,7 @@ struct MacPermissionReader {
         callAudioSupported: { if #available(macOS 14.2, *) { return true } else { return false } },
         screenRecordingAsked: { ScreenCaptureAccess.wasRequested },
         callAudio: { CallAudioRecord.saved },
-        administrator: { MacAccount.isAdministrator() })
+        administrator: { MacAccount.administrator })
     /// The surface gallery's fixed answers replace this; the app always reads macOS.
     static var current = live
     /// Approvals seen allowed during this run, so one switched off meanwhile can say Workbench
@@ -449,7 +459,7 @@ struct MacPermissionDetails {
             "\(facts.macOS) · administrator: \(yesNo(facts.administrator)) · MDM enrolled: \(yesNo(facts.enrolled)) · installed in \(facts.installedIn)"]
         lines.append(snapshot.rows.map { "\($0.permission.name): \($0.status)" }.joined(separator: " · "))
         lines.append("Post Event: \(yesNo(facts.postEvent)) · asked from Workbench: Accessibility \(yesNo(facts.accessibilityAsked)), Screen Recording \(yesNo(facts.screenRecordingAsked)) · call audio record: \(facts.callAudio?.rawValue ?? "none")")
-        lines.append("Delivery: \(facts.delivery) · keyboard layout \(facts.keyboardLayout), ⌘V key \(facts.pasteKeyCode.map(String.init) ?? "unknown")")
+        lines.append("Delivery: \(facts.delivery) · keyboard layout \(facts.keyboardLayout), ⌘V key \(facts.pasteKeyCode.map(String.init) ?? "none")")
         lines.append("Last automatic paste problem: \(facts.lastPasteProblem ?? "none this run")")
         return lines.joined(separator: "\n")
     }
@@ -468,14 +478,14 @@ struct MacPermissionDetails {
         facts.installedIn = bundle.hasPrefix("/Applications/") ? "/Applications"
             : bundle.hasPrefix(NSHomeDirectory() + "/Applications/") ? "~/Applications"
             : bundle.contains("/AppTranslocation/") ? "a translocated copy (open it from Applications)" : "another folder"
-        facts.administrator = MacAccount.isAdministrator()
+        facts.administrator = MacAccount.administrator
         facts.postEvent = CGPreflightPostEventAccess()
         facts.accessibilityAsked = accessibilityAsked
         facts.screenRecordingAsked = ScreenCaptureAccess.wasRequested
         facts.callAudio = CallAudioRecord.saved
         facts.delivery = delivery
         facts.keyboardLayout = PasteKey.currentLayoutID() ?? "unknown"
-        facts.pasteKeyCode = Int(PasteKey.current())
+        facts.pasteKeyCode = PasteKey.current().map(Int.init)
         facts.lastPasteProblem = lastPasteProblem
         facts.enrolled = await enrolled()
         return facts
@@ -511,14 +521,18 @@ struct MacPermissionDetails {
 }
 
 /// The key that types “v” while ⌘ is held in the current keyboard layout, so automatic paste
-/// sends ⌘V on Dvorak, Dvorak – QWERTY ⌘, Turkish F and every other layout, not the US key
-/// position. Key 9 is the US “V” and the answer when a layout can't be read.
+/// sends ⌘V on Dvorak, Dvorak Right-Handed, Turkish F and every other layout, not the US key
+/// position. Only the key code is chosen: setting the event's text stops AppKit's Paste menu
+/// item firing, and the receiving app translates the key with its own layout.
 enum PasteKey {
+    /// The US “V”, used when a layout's data can't be read.
     static let fallback: CGKeyCode = 9
 
-    static func current() -> CGKeyCode {
+    /// Nil when the layout has no key that types “v” with ⌘ (Turkmen): paste can't start, so the
+    /// words are copied, never sent as some other shortcut.
+    static func current() -> CGKeyCode? {
         guard let source = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue() else { return fallback }
-        return keyCode(in: source) ?? fallback
+        return keyCode(in: source)
     }
     static func currentLayoutID() -> String? {
         guard let source = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue(),
@@ -527,9 +541,9 @@ enum PasteKey {
     }
     /// Reads the layout's own data; it never selects or changes an input source.
     static func keyCode(in source: TISInputSource) -> CGKeyCode? {
-        guard let property = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else { return nil }
+        guard let property = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else { return fallback }
         let data = Unmanaged<CFData>.fromOpaque(property).takeUnretainedValue()
-        guard let bytes = CFDataGetBytePtr(data) else { return nil }
+        guard let bytes = CFDataGetBytePtr(data) else { return fallback }
         let layout = UnsafeRawPointer(bytes).assumingMemoryBound(to: UCKeyboardLayout.self)
         // Key equivalents match the characters typed with ⌘ held, which is how Dvorak – QWERTY ⌘
         // switches to QWERTY for shortcuts. The US position wins a tie, so nothing changes there.
@@ -540,7 +554,7 @@ enum PasteKey {
         var dead: UInt32 = 0, length = 0
         var characters = [UniChar](repeating: 0, count: 4)
         let status = UCKeyTranslate(layout, key, UInt16(kUCKeyActionDown), UInt32(cmdKey >> 8) & 0xFF, UInt32(LMGetKbdType()),
-                                    OptionBits(kUCKeyTranslateNoDeadKeysBit), &dead, characters.count, &length, &characters)
+                                    OptionBits(kUCKeyTranslateNoDeadKeysMask), &dead, characters.count, &length, &characters)
         return status == noErr && length > 0 ? String(utf16CodeUnits: characters, count: length).lowercased() : nil
     }
 }

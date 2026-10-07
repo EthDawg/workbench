@@ -138,7 +138,7 @@ struct DictateTaskOptions: View {
         switch model.preferences.delivery {
         case .clipboard: return "Your words are copied. Paste with ⌘V."
         case .paste where model.accessibilityGranted: return "Your words go back into the text field you started in."
-        case .paste: return "Until Accessibility is approved, your words are copied and you paste with ⌘V. On a work Mac, IT may need to approve it."
+        case .paste: return "Until Accessibility is allowed, your words are copied and you paste with ⌘V. " + MacAccount.automaticPasteApproval
         }
     }
 }

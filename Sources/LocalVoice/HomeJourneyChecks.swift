@@ -369,6 +369,10 @@ enum HomeJourneyChecks {
             read += 1
             try check(found == CGKeyCode(key), "⌘V in \(layout) is key \(key), not always the US position")
         }
+        let turkmenFilter = [kTISPropertyInputSourceID as String: "com.apple.keylayout.Turkmen"] as CFDictionary
+        if let turkmen = (TISCreateInputSourceList(turkmenFilter, true)?.takeRetainedValue() as? [TISInputSource])?.first {
+            try check(PasteKey.keyCode(in: turkmen) == nil, "a layout with no ⌘V key copies instead of sending some other shortcut")
+        }
         try check(read >= 4, "the installed layouts were read, so the layout checks above ran")
         try check(PasteKey.fallback == 9, "a layout that can't be read keeps the US position")
         print("PASTE_KEY_CHECKS_OK: \(passed) checks; installed layouts read, none selected")

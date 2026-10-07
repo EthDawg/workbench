@@ -7,9 +7,11 @@
     Workbench          com.ethdawg.workbench
     Workbench Preview  com.ethdawg.workbench.preview   (testing edition; delete its entries if you only deploy Workbench)
 
-  Deliver it through your MDM to the DEVICE channel. macOS ignores this payload type when it is
-  double-clicked or installed by hand. Apple requires user-approved MDM, and Apple's deployment
-  guide also says supervision.
+  Deliver it through your MDM to the DEVICE channel. It takes effect only when delivered by MDM; a
+  copy installed by hand won't grant anything. Apple requires user-approved MDM, and Apple's
+  deployment guide also says supervision. On macOS 14-26 the approvals it grants don't appear in
+  Privacy & Security's lists; check them in System Settings under the device-management profile's
+  details.
 
   What this grants:
     Accessibility              Allow. Automatic paste reads the focused text field and confirms the paste.
@@ -22,8 +24,8 @@
 
   Deliberately left out:
     Microphone, Camera   In PPPC these keys can only Deny. Users allow them in macOS's own prompt
-                         the first time they dictate or turn on a camera. A standard user can allow
-                         them. On macOS 27 (supervised), the declarative App Settings Privacy
+                         the first time they dictate or turn on a camera. A standard user normally
+                         allows them there. On macOS 27 (supervised), the declarative App Settings Privacy
                          PermissionDefaults can pre-set them instead.
     System audio         Meetings records the other side of a call through Core Audio process taps
                          (TCC service kTCCServiceAudioCapture). PPPC has no key for it, and macOS 26
@@ -33,9 +35,12 @@
                          Accessibility approval, which is covered above.
     AppleEvents, SpeechRecognition, Full Disk Access   Not used.
 
-  macOS 26.2 deprecated granting Accessibility by profile. On macOS 27 the grant still applies, but the
-  user sees a notification and can turn it off in System Settings. Apple's replacement there is the
-  declarative com.apple.configuration.app.settings Privacy key (Accessibility: Allow).
+  macOS 26.2 deprecated granting Accessibility by profile. Apple's 27.0 reference says the grant still
+  applies on macOS 27, with a notification, and the user can turn it off. During the 27 betas, Apple
+  DTS said the ability is removed, and testers saw it ignored unless PostEvent was also in the payload.
+  Test on a macOS 27 Mac before relying on it, and keep PostEvent here: the declarative replacement
+  (com.apple.configuration.app.settings Privacy, supervised Macs only) has no PostEvent key. Check
+  that your MDM supports that declaration type before relying on it.
 
   CodeRequirement values come from `codesign -dr -` on the shipping apps. They pin bundle ID, Apple's
   Developer ID chain and team GHVAAH9P5Z, so they survive updates and certificate renewals. They do
