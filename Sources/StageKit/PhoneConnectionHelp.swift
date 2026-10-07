@@ -63,12 +63,14 @@ struct PhoneConnectionHelp: View {
                 Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
             }
             HStack(alignment: .top, spacing: 10) {
-                Image(systemName: status.symbol).font(.title3).foregroundStyle(status.isLive ? Workbench.accent : .secondary).frame(width: 22)
+                Image(systemName: status.toneSymbol).font(.title3).foregroundStyle(status.toneColor).frame(width: 22).accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(status.title).font(.headline)
                     if let detail = status.detail { Text(detail).font(.callout).foregroundStyle(.secondary) }
                 }.fixedSize(horizontal: false, vertical: true)
-            }.padding(12).frame(maxWidth: .infinity, alignment: .leading).background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
+            }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
+                .background(Workbench.surface, in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Workbench.border))
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     VStack(alignment: .leading, spacing: 8) {
@@ -116,7 +118,7 @@ struct PhoneConnectionHelp: View {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 4, execute: lifetime)
                 }.help("Facts about the USB bus, screen sources and permissions, with no identifiers or device names, for IT or a report")
                 Spacer()
-                Link("Help online ↗", destination: PhoneConnectionSupport.guideURL)
+                Button("Help online ↗") { NSWorkspace.shared.open(PhoneConnectionSupport.guideURL) }.buttonStyle(.workbenchLink)
             }
             if endsPresentation {
                 Text("Opening an Apple app ends this presentation’s capture first. Saved scenes stay as they are.")

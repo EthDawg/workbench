@@ -62,7 +62,7 @@ struct BugReportView: View {
             inclusion
             if let problem = model.problem, !model.problemNearEvidence { problemRow(problem) }
             if let note = model.note {
-                Label(note, systemImage: "checkmark.circle").font(.callout).foregroundStyle(.secondary)
+                WorkbenchNote(note, tone: .done)
             }
             footer
         }
@@ -90,15 +90,16 @@ struct BugReportView: View {
             }
             .frame(height: 132)
             .background(Workbench.surface, in: RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(model.explanationProblem == nil ? Workbench.border : Color.red.opacity(0.7)))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(model.explanationProblem == nil ? Workbench.border : Workbench.attention.opacity(0.7)))
             HStack(alignment: .firstTextBaseline) {
                 if let problem = model.explanationProblem {
-                    Text(problem).font(.caption).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
+                    // Red is for recording and removal; a problem with the words is the kit's note.
+                    WorkbenchNote(problem, font: .caption)
                 }
                 Spacer(minLength: 8)
                 if let counter = model.counter {
                     Text(counter).font(.caption.monospacedDigit())
-                        .foregroundStyle(model.explanationProblem == nil ? Color.secondary : Color.red)
+                        .foregroundStyle(.secondary)
                         .accessibilityLabel("\(model.explanation.unicodeScalars.count) of 2,048 characters")
                 }
             }
@@ -199,7 +200,7 @@ struct BugReportView: View {
                 .accessibilityLabel("Email me about this (optional)")
             Text(Self.emailNote)
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            if let problem = model.emailProblem { Text(problem).font(.caption).foregroundStyle(.red) }
+            if let problem = model.emailProblem { WorkbenchNote(problem, font: .caption) }
         }
     }
 
@@ -211,7 +212,7 @@ struct BugReportView: View {
             DisclosureGroup("Details", isExpanded: $showDetails) {
                 VStack(alignment: .leading, spacing: 6) {
                     ScrollView {
-                        Text(model.detailsJSON).font(.system(size: 11, design: .monospaced)).textSelection(.enabled)
+                        Text(model.detailsJSON).font(.caption.monospaced()).textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading).padding(8)
                     }
                     .frame(height: 160)
@@ -234,10 +235,10 @@ struct BugReportView: View {
     // MARK: Problems and actions
 
     private func problemRow(_ problem: String) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.orange).accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 6) {
-                Text(problem).font(.callout).fixedSize(horizontal: false, vertical: true)
+        // The kit's card and note, as Snap's access card: one look for a problem on every page.
+        VStack(alignment: .leading, spacing: 8) {
+            WorkbenchNote(problem)
+            Group {
                 switch model.problemAction {
                 case .chooseImage: Button("Choose image…") { model.chooseImage() }.controlSize(.small)
                 case .screenAccess:
@@ -248,10 +249,9 @@ struct BugReportView: View {
                 case .microphoneSettings: Button("Microphone Settings…") { model.services.openMicrophoneSettings() }.controlSize(.small)
                 case .saveCopy, nil: EmptyView()
                 }
-            }
+            }.padding(.leading, 22)
         }
-        .padding(10).frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 8))
+        .workbenchCard()
     }
 
     private var footer: some View {
@@ -286,7 +286,7 @@ struct BugReportView: View {
             Group {
                 switch receipt.tone {
                 case .progress: ProgressView().controlSize(.small)
-                case .done: Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                case .done: Image(systemName: "checkmark.circle.fill").foregroundStyle(Workbench.accent)
                 case .problem: Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                 }
             }.frame(width: 18).accessibilityHidden(true)
@@ -337,8 +337,8 @@ private extension View {
     func reportCard(padding: CGFloat) -> some View {
         self.padding(padding)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Workbench.border))
+            .background(Workbench.surface, in: RoundedRectangle(cornerRadius: Workbench.tileRadius))
+            .overlay(RoundedRectangle(cornerRadius: Workbench.tileRadius).strokeBorder(Workbench.border))
     }
 }
 

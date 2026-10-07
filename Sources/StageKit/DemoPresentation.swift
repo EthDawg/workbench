@@ -263,7 +263,7 @@ struct PhoneLinkStatusRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .top, spacing: 8) {
-                Image(systemName: status.symbol).foregroundStyle(status.isLive ? Workbench.accent : .secondary).frame(width: 18)
+                Image(systemName: status.toneSymbol).foregroundStyle(status.toneColor).frame(width: 18).accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(status.title).font(.callout.weight(.semibold))
                     if let detail = status.detail { Text(detail).font(.caption).foregroundStyle(.secondary) }

@@ -695,7 +695,10 @@ struct WorkbenchHomePage: View {
                 // The phone's status from its one owner, which the stage's own observation does not
                 // forward, so the row follows it while the presentation runs.
                 PhoneLinkObserver(phoneLink: stage.phoneLink) { status in
-                    liveRow(stage.presentationShowsPhone ? "Presenting · " + status.title : "Presenting", "iphone") {
+                    // A phone failure takes the kit's triangle in orange, so the row never reads healthy.
+                    let failing = stage.presentationShowsPhone && status.tone == .attention
+                    liveRow(stage.presentationShowsPhone ? "Presenting · " + status.title : "Presenting",
+                            failing ? "exclamationmark.triangle.fill" : "iphone", attention: failing) {
                         Button("End presentation") { stage.endDeviceScene() }
                     }
                 }
@@ -732,9 +735,10 @@ struct WorkbenchHomePage: View {
             .perform(persona.operation)
     }
     /// A live row: red for a recording, as the toolbar's dot is, the accent for anything else.
-    private func liveRow<Action: View>(_ title: String, _ symbol: String, recording: Bool = false, @ViewBuilder action: () -> Action) -> some View {
+    private func liveRow<Action: View>(_ title: String, _ symbol: String, recording: Bool = false, attention: Bool = false, @ViewBuilder action: () -> Action) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: symbol).foregroundStyle(recording ? Color.red : Workbench.accent).frame(width: 20).accessibilityHidden(true)
+            Image(systemName: symbol).foregroundStyle(recording ? Color.red : attention ? Workbench.attention : Workbench.accent)
+                .frame(width: 20).accessibilityHidden(true)
             Text(title).font(.callout.weight(.medium)).monospacedDigit()
             Spacer()
             action()

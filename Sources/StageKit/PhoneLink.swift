@@ -131,7 +131,7 @@ public struct PhoneLinkStatus: Equatable {
             case .showSource(_, let title): return title
             case .chooseSource: return "Choose screen…"
             case .reconnect: return "Reconnect"
-            case .openCameraSettings: return "Open Camera settings"
+            case .openCameraSettings: return "Camera Settings…"
             }
         }
     }
@@ -140,6 +140,16 @@ public struct PhoneLinkStatus: Equatable {
     public var detail: String?
     public var step: Step?
     public var isLive: Bool { phase == .live }
+    /// How a surface colours the status: the phone live is done, a failure needs the person,
+    /// and the rest (no phone yet, a choice, connecting, let go) is information.
+    public enum Tone: Equatable { case done, attention, neutral }
+    public var tone: Tone {
+        switch phase {
+        case .live: return .done
+        case .stalled, .interrupted, .busy, .couldNotOpen, .couldNotStart, .accessDenied, .accessRestricted, .usbUnavailable: return .attention
+        default: return .neutral
+        }
+    }
     /// Reconnect is worth offering only where looking again can change something and
     /// the next step is not already Reconnect: a phone on the bus, a choice to make.
     public var offersReconnect: Bool {
@@ -212,7 +222,7 @@ public enum PhoneLink {
             return .init(phase: .couldNotStart, title: "The \(noun)’s screen didn’t start",
                          detail: "Unlock the phone, then Reconnect.", step: .reconnect)
         case .waitingForAccess:
-            return .init(phase: .accessPending, title: "Allow device video in the macOS prompt",
+            return .init(phase: .accessPending, title: "Allow Camera access in the macOS prompt",
                          detail: "Workbench shows the phone’s picture only. It never opens the phone’s microphone.", step: nil)
         case .idle:
             break
@@ -230,10 +240,10 @@ public enum PhoneLink {
         }
         switch signals.access {
         case .restricted:
-            return .init(phase: .accessRestricted, title: "Device video is restricted on this Mac",
+            return .init(phase: .accessRestricted, title: "Camera access is restricted on this Mac",
                          detail: "Use a route your organisation allows, or ask IT.", step: nil)
         case .denied:
-            return .init(phase: .accessDenied, title: "Workbench can’t use device video",
+            return .init(phase: .accessDenied, title: "Camera access is off for Workbench",
                          detail: "Allow Workbench under System Settings › Privacy & Security › Camera, then come back to Present.", step: .openCameraSettings)
         case .notDetermined, .authorized:
             break

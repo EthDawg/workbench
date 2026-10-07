@@ -54,7 +54,7 @@ struct ContentView: View {
                     if let attention = bannerAttention { ReportProblemButton(origin: BugReportOrigin(surface: .dictate, errorCode: attention.code)) }
                     Button { model.dismissError() } label: { Image(systemName: "xmark").frame(width: 24, height: 24).contentShape(Rectangle()) }
                         .buttonStyle(.plain).accessibilityLabel("Dismiss error")
-                }.padding(14).background(Workbench.attention.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
+                }.workbenchCard()
             }
             Group {
                 switch model.page {
@@ -621,8 +621,7 @@ struct DictionaryView: View {
                 }
             }
         }
-        .padding(Workbench.tilePadding).frame(maxWidth: .infinity, alignment: .leading)
-        .background(Workbench.attention.opacity(0.09), in: RoundedRectangle(cornerRadius: Workbench.tileRadius))
+        .workbenchCard()
     }
 }
 

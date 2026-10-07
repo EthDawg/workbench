@@ -78,9 +78,14 @@ struct SnapWorkspaceView: View {
             }
             if let notice = model.notice {
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Text(notice).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    // A recoverable problem can go to the Workbench team with its typed code (#296).
-                    if let code = model.failureCode { ReportProblemButton(origin: BugReportOrigin(surface: .snap, errorCode: code)) }
+                    // A recoverable problem is the kit's note, so Report a problem… never sits beside
+                    // what looks like information; a plain outcome stays secondary.
+                    if let code = model.failureCode {
+                        WorkbenchNote(notice)
+                        ReportProblemButton(origin: BugReportOrigin(surface: .snap, errorCode: code))
+                    } else {
+                        Text(notice).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    }
                 }
             }
             if model.visibleItems.isEmpty {

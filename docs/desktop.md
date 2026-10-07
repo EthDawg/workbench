@@ -43,7 +43,7 @@ Every page uses the same few parts, so a page built by any person or agent looks
 
 **Cards without a title.** `.workbenchCard(outlined:)`: the tile's padding, surface and hairline for a page's own card; `outlined` marks the row a door revealed. `WorkbenchTile` is built on it.
 
-**Notes.** `WorkbenchNote(text, tone:)`: a sentence about a problem or a state, in primary words that wrap and can be selected, with the tone on the symbol only. Problems and cautions use the triangle.
+**Notes.** `WorkbenchNote(text, tone:)`: a sentence about a problem or a state, in primary words that wrap and can be selected, with the tone on the symbol only. Problems and cautions use the triangle. A problem with actions (Dictate's and Meetings' banners, the dictionary conflict, Snap's access card, the report composer's problem) is a `workbenchCard()` holding the note with its buttons beside or beneath it; there is no tinted banner, so a problem looks the same on every page. StageKit, which cannot see this kit, keeps internal twins (`WorkbenchLinkStyle`, `PersonaNote`, `PhoneLinkStatus.tone`).
 
 **Status.** `WorkbenchStatusBadge(text, tone:)`: a symbol and a few words on one line, with the circle symbols. Done is the accent; attention is orange; neutral is secondary. Orange only asks for attention; red is for recording and removal.
 
@@ -114,10 +114,10 @@ Each page moves to the kit in its own small PR, rendered in the surface gallery,
 | Snap | Literal padding to tokens; empty state to `WorkbenchEmptyState` with Region as the one prominent capture | Done in the Screen pages PR: cards aligned at the top, one access card shared with Snap & Talk, notes not orange text |
 | Snap & Talk | Empty state to `WorkbenchEmptyState` with New session… prominent; header's extra bottom padding removed | Done in the Screen pages PR: capture strip on the page column, Transcription stopped instead of Needs attention, Cancel confirms after 10 s; pointer pass owed |
 | Draw (StageKit) | StageKit cannot see the page tokens: move them into the shared `Workbench` namespace, then use `WorkbenchPageHeader` and the kit's card, badge and prominent action | Cards, one name per tool (Pointer, Board), text styles and the Timer word set done in the Screen pages PR with StageKit's own hairline; the token move is still next |
-| Present | Owned by #276 / #285 | After #285 lands |
+| Present | Owned by #276 / #285 | Done in the Present PR; at release its links took the accent, a phone failure the kit’s triangle in orange (on the page, the help sheet and Home’s live row), and the frame overlay lost its own prominent button so Present stays the one. Hand and logo notes, the scene notice and the empty states are still to move |
 | Persona | Frozen beyond kit tokens (mac-foundation §1) | Tokens and defects done in the Saved pages PR: one first-run empty state, groups hidden until something is saved, one Done |
 | History | Row radius to the kit; one prominent Hand off… in the selection footer | Done in the Saved pages PR (rows, one date, Transcript review); pointer pass owed |
-| Library | Resources and Packs empty states and radii to the kit; From iPhone retires with #286 | Resources and Packs done in the Saved pages PR; From iPhone after #286 |
+| Library | Resources and Packs empty states and radii to the kit; From iPhone retires with #286 | Resources and Packs done in the Saved pages PR; From iPhone removed with #286, its route opening Resources |
 | Settings | Every section is the same stack of kit cards at one width (`Workbench.settingsWidth`): General's subjects each a card, Models' two views and Connections carded, Keyboard's list and detail in one card with its summary in the header; Keyboard lists what is on first in Your keys' order, then Off · N; Workbench's accent, not system blue | Done in the chrome PR (stacked on the first); login approval in the first |
 
 ## Working on a page

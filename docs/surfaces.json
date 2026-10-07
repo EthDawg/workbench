@@ -204,15 +204,6 @@
     "belongsTo": "app"
   },
   {
-    "id": "LocalVoice.BugReportView.BugReportView.Label.runtime-edb465624291",
-    "surface": "report a problem window",
-    "label": null,
-    "expression": "note",
-    "note": "Report a problem window (#296): acts only on the report being written or a frozen report's receipt; it opens no page and starts no capability. A quiet line after an action that worked, such as Save a copy. Runtime label from note; no rendered text assumed.",
-    "kind": "status",
-    "belongsTo": "app"
-  },
-  {
     "id": "LocalVoice.BugReportView.BugReportView.TextField.your-email-address",
     "surface": "report a problem window",
     "label": "Your email address",
@@ -2496,7 +2487,7 @@
     "surface": "Present menu",
     "label": null,
     "expression": "step . title",
-    "note": "Quality (#276): the phone status’s one next step from PhoneLink (Show and the source’s name, Choose screen…, Reconnect or Open Camera settings), the same step the Present page and the stage controls offer. Open Camera settings only opens System Settings; nothing is changed for the person.",
+    "note": "Quality (#276): the phone status’s one next step from PhoneLink (Show and the source’s name, Choose screen…, Reconnect or Camera Settings…), the same step the Present page and the stage controls offer. Camera Settings… only opens System Settings; nothing is changed for the person.",
     "kind": "action",
     "belongsTo": "present"
   },
@@ -2917,13 +2908,13 @@
     "note": "Option of Persona: releases the camera at once and keeps the bubble's place for Show camera again. The same words as Hide elsewhere in Persona."
   },
   {
-    "id": "StageKit.PersonaCamera.PersonaCameraPanel.Button.open-camera-settings",
+    "id": "StageKit.PersonaCamera.PersonaCameraPanel.Button.camera-settings",
     "surface": "Persona live camera",
-    "label": "Open Camera settings",
+    "label": "Camera Settings…",
     "kind": "action",
     "belongsTo": "persona",
     "aliasOf": "persona",
-    "note": "The same refused-access recovery the profile camera offers, beside the explanation."
+    "note": "The same refused-access recovery the profile camera offers, beside the explanation. Named Camera Settings… like Microphone Settings…, and like Present’s step for the same refusal."
   },
   {
     "id": "StageKit.PersonaCamera.PersonaCameraPanel.Button.show-camera-again",
@@ -3303,13 +3294,13 @@
     "note": "Quality: the existing local file choice stays reachable while the camera starts or fails. It stops camera capture before opening the file picker."
   },
   {
-    "id": "StageKit.ProfileCamera.ProfileCameraView.Button.open-camera-settings",
+    "id": "StageKit.ProfileCamera.ProfileCameraView.Button.camera-settings",
     "surface": "local profile",
-    "label": "Open Camera settings",
+    "label": "Camera Settings…",
     "kind": "action",
     "belongsTo": "persona",
     "aliasOf": "persona",
-    "note": "Quality: moved the existing Camera settings recovery beside the denied-access explanation."
+    "note": "Quality: moved the existing Camera settings recovery beside the denied-access explanation. Named Camera Settings… like Microphone Settings…, and like Present’s step for the same refusal."
   },
   {
     "id": "StageKit.ProfileCamera.ProfileCameraView.Button.take-photo",

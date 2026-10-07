@@ -183,7 +183,7 @@ struct MeetingWorkspaceView: View {
                             Button { model.dismissError() } label: { Image(systemName: "xmark").frame(width: 24, height: 24).contentShape(Rectangle()) }
                                 .buttonStyle(.plain).accessibilityLabel("Dismiss meeting problem")
                         }
-                    }.padding(14).background(Workbench.attention.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
+                    }.workbenchCard()
                 }
                 if !model.isBusy, let kept = model.keptWithoutSpeech {
                     HStack(alignment: .top, spacing: 12) {

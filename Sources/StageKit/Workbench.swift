@@ -120,6 +120,15 @@ extension ButtonStyle where Self == WorkbenchLinkStyle {
     static var workbenchLink: WorkbenchLinkStyle { .init() }
 }
 
+extension PhoneLinkStatus {
+    /// A failure takes the page kit's triangle; otherwise the phase's own symbol.
+    var toneSymbol: String { tone == .attention ? "exclamationmark.triangle.fill" : symbol }
+    /// Orange only on a failure's symbol, the accent when live, secondary otherwise.
+    var toneColor: Color {
+        switch tone { case .done: return Workbench.accent; case .attention: return .orange; case .neutral: return .secondary }
+    }
+}
+
 final class WorkbenchSettings: ObservableObject {
     enum Appearance: String, CaseIterable { case system = "System", light = "Light", dark = "Dark" }
     static let shared = WorkbenchSettings()

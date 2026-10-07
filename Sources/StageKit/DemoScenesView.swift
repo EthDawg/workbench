@@ -309,20 +309,18 @@ struct DemoScenesView: View {
         }.fixedSize().accessibilityLabel("Present options")
     }
     #endif
-    /// What is true about the phone, inside the frame where it will appear.
+    /// What is true about the phone, inside the frame where it will appear. Words and a symbol
+    /// only: the status row below holds its one step, and Present is the page's one prominent action.
     private func phoneFrameStatus(scene: DemoScene, in size: CGSize) -> some View {
         let status = phoneLink.status
         let viewport = ViewportGeometry(scene: scene, size: size).screen
         return VStack(spacing: 6) {
             Image(systemName: status.symbol).font(.title2)
             Text(status.title).font(.caption.weight(.semibold)).multilineTextAlignment(.center)
-            if let step = status.step {
-                Button(step.title) { model.performPhoneStep(step) { choosingSource = true } }.controlSize(.small).buttonStyle(.borderedProminent)
-            }
         }.padding(10).frame(width: max(80, viewport.width - 12))
             .foregroundStyle(.white)
             .position(x: viewport.midX, y: size.height - viewport.midY)
-            .allowsHitTesting(status.step != nil)
+            .allowsHitTesting(false)
             .accessibilityHidden(true)
     }
     /// Which screen to show, only when the Mac offers more than one or the
