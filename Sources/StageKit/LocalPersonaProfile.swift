@@ -55,7 +55,7 @@ struct LocalPersonaProfileView: View {
     private var profile: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack {
-                Text("Your profile").font(.title2.weight(.semibold))
+                Text("My Profile").font(.title2.weight(.semibold))
                 Spacer()
                 // Done means one thing on every sheet: Return or Escape, as Transcript review has it.
                 Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
@@ -70,7 +70,7 @@ struct LocalPersonaProfileView: View {
                     .overlay(Circle().strokeBorder(Workbench.border))
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Me").font(.title3.weight(.semibold))
+                    Text("Your photo").font(.title3.weight(.semibold))
                     Text("Use your photo as a Persona when you present.")
                         .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     // Only once there is something saved.
@@ -81,21 +81,21 @@ struct LocalPersonaProfileView: View {
                 Button("Take photo…") {
                     notice = nil; camera.start()
                 }.disabled(library.isReadOnly)
-                    .help("Allow Camera access, then take a photo. It opens in a preview: Use photo saves it as your Me persona; Cancel keeps everything as it was.")
+                    .help("Allow Camera access, then take a photo. It opens in a preview: Use photo saves it as My Profile; Cancel keeps everything as it was.")
                 Button("Choose photo…") { choosePhoto() }.disabled(library.isReadOnly)
-                    .help("Choose a photo. It opens in a preview: Use photo saves it as your Me persona; Cancel keeps everything as it was.")
+                    .help("Choose a photo. It opens in a preview: Use photo saves it as My Profile; Cancel keeps everything as it was.")
                 if let persona {
                     Button("Edit appearance…") { replacement = nil; editors.open(.saved(persona)) }
                         .disabled(library.isReadOnly)
                 }
             }
             if persona == nil, let selected = library.selected {
-                Button("Use \(selected.name) as Me") {
+                Button("Use \(selected.name) as My Profile") {
                     if LocalPersonaProfile.choose(selected.id, in: library, defaults: defaults) { library.objectWillChange.send(); changed() }
                 }.buttonStyle(.borderless).foregroundStyle(Workbench.accent).disabled(library.isReadOnly)
             }
             if let persona {
-                Button("Open Me in Persona") {
+                Button("Open My Profile in Persona") {
                     library.prepareGroup(nil); library.selectedID = persona.id
                     dismiss(); openPersona()
                 }.buttonStyle(.borderless).foregroundStyle(Workbench.accent)
@@ -112,10 +112,10 @@ struct LocalPersonaProfileView: View {
     private func choosePhoto() {
         let panel = NSOpenPanel(); panel.allowedContentTypes = LogoImport.contentTypes
         panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
-        panel.message = "Choose a photo for your Me persona. You can review its appearance before saving."
+        panel.message = "Choose a photo for My Profile. You can review its appearance before saving."
         let completion: (NSApplication.ModalResponse) -> Void = { response in
             guard response == .OK, let url = panel.url else { return }
-            do { open(try library.portraitDraft(from: url, card: PersonaCardStyle(), name: "Me")) }
+            do { open(try library.portraitDraft(from: url, card: PersonaCardStyle(), name: "My Profile")) }
             catch { notice = error.localizedDescription }
         }
         if let window = NSApp.keyWindow { panel.beginSheetModal(for: window, completionHandler: completion) }
@@ -124,8 +124,8 @@ struct LocalPersonaProfileView: View {
     private func prepare(_ image: NSImage) {
         do {
             guard let data = image.tiffRepresentation else { throw PersonaError.unreadableImage }
-            let imported = LogoImport.Image(png: try LogoImport.normalizedPNG(data), name: "Me")
-            open(try PersonaPortraitDraft(imported, card: PersonaCardStyle(), name: "Me"))
+            let imported = LogoImport.Image(png: try LogoImport.normalizedPNG(data), name: "My Profile")
+            open(try PersonaPortraitDraft(imported, card: PersonaCardStyle(), name: "My Profile"))
         } catch { notice = error.localizedDescription }
     }
     private func open(_ draft: PersonaPortraitDraft) {

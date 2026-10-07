@@ -707,16 +707,16 @@ struct PersonaCameraPanel: View {
                 Text("Size \(Int((library.overlayWidth * 100).rounded()))%")
                     .font(.caption.monospacedDigit()).frame(width: 58, alignment: .leading)
                 Slider(value: Binding(get: { library.overlayWidth }, set: { if camera.visit == visit && library.cameraOwnsSlot { library.setOverlayWidth($0) } }), in: 0.06...0.40)
-                    .accessibilityLabel("Size of the camera bubble")
+                    .accessibilityLabel("Size of Live Camera")
                 Menu("Position") {
                     ForEach(FloatingControlAnchor.allCases, id: \.self) { anchor in
                         Button(anchor.title) { if camera.visit == visit && library.cameraOwnsSlot { library.setOverlayPosition(x: anchor.unitPoint.x, y: anchor.unitPoint.y) } }
                     }
-                }.fixedSize().accessibilityLabel("Position of the camera bubble")
+                }.fixedSize().accessibilityLabel("Position of Live Camera")
             }
             Toggle("Lock Live Camera · clicks pass through", isOn: Binding(
                 get: { library.overlayLocked }, set: { if camera.visit == visit && library.cameraOwnsSlot { library.setOverlayLocked($0) } }))
-                .accessibilityLabel("Lock the camera bubble so clicks pass through")
+                .accessibilityLabel("Lock Live Camera so clicks pass through")
         }
     }
 }

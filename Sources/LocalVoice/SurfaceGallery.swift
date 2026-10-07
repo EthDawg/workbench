@@ -3731,12 +3731,15 @@ private struct HistoryNativeAcceptanceView: View {
         chooser.openTool = { self.model.onShowEditor?($0.page) }
         let before = routes.count
         chooser.openTool(.persona)
-        // Nothing is live, but the camera is always one of Persona's choices, so the revealed pill
-        // offers the picker; its last choice is Camera (Ethan, 1 October).
+        // Nothing is live, but Live Camera is always one of Persona's choices, so the revealed pill
+        // offers the picker; My Profile, when a profile photo is set, and Live Camera lead it, before
+        // the cards (Ethan, 1 and 8 October).
         let personaChoices = plain.accessoryMenu(plain.accessory(plain.live)).items.map(\.title)
+        let sources = Array(personaChoices.prefix { $0 != "" })
         expect("Persona with no live copy", [
-            plain.accessory(plain.live) == .personaPicker ? nil : "Persona offers no picker, so the camera is not one click away",
-            personaChoices.last == "Camera" ? nil : "The Persona picker lists \(personaChoices), not the cards and then Camera",
+            plain.accessory(plain.live) == .personaPicker ? nil : "Persona offers no picker, so Live Camera is not one click away",
+            sources == ["Live Camera"] || sources == ["My Profile", "Live Camera"] ? nil
+                : "The Persona picker lists \(personaChoices), not My Profile and Live Camera before the cards",
             plain.accessoryDescription(plain.live) == "Choose Persona" ? nil : "The picker reads \(plain.accessoryDescription(plain.live) ?? "nothing")",
             Array(routes.dropFirst(before)) == ["personas"] ? nil : "The chooser's Open Persona route failed"])
         routes.removeAll()
@@ -3903,7 +3906,7 @@ private struct HistoryNativeAcceptanceView: View {
                  action("Persona workspace", "Live copy controls", "Appearance, size, lock, position, replace, update, visibility and explicit layout saving"),
                  action("Present workspace", "Live presentation", "Controls the running snapshot while saved scene preparation stays separate"),
                  action("Library", "Saved Prompts…", "Copies complete prompts through Library's copy owner, with no external insertion target"),
-                 action("Persona workspace", "Me…", "Opens the existing local profile editor without starting a camera")]
+                 action("Persona workspace", "My Profile…", "Opens the existing local profile editor without starting a camera")]
         for tool in WorkbenchControlTool.allCases {
             let options = "\(tool.title) · Options"
             switch tool {
