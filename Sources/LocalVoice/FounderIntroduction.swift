@@ -93,7 +93,6 @@ struct FounderIntroductionCard: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }.frame(maxWidth: .infinity, alignment: .leading)
-        }.padding(20)
-            .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 14))
+        }.workbenchCard()
     }
 }

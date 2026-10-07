@@ -21,9 +21,7 @@ private struct ToolbarSettingsControls: View {
         })).toggleStyle(.switch).controlSize(.mini)
             .help("Keep the toolbar's full row showing instead of resting as a handle.")
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { sectionFrames?("settings.toolbar.keepOpen", $0) }
-        LabeledContent("Position") {
-            Button("Position floating toolbar…") { model.showPanelPreview() }
-                .disabled(model.phase != .idle)
-        }
+        Button("Position floating toolbar…") { model.showPanelPreview() }
+            .disabled(model.phase != .idle)
     }
 }

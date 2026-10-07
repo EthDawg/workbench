@@ -335,41 +335,38 @@ struct WorkbenchHome: View {
                 // section ends them and restores the actions, as leaving the Keyboard page did.
                 ScrollView { KeyboardCoachView(model: keyboard) }
             case "models":
-                ScrollView { VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
+                settingsStack {
+                    // Each model view names its own job, so its card carries no second title.
                     ModelSettingsView(engine: model.engine, isBusy: model.phase != .idle || model.meetings.isBusy || readback.isRecording || readback.isCapturing || readback.hasPendingTranscriptions,
-                                      snapshot: model.recognition, onNotNow: { model.page = "home" }, onSnapshot: model.acceptRecognition)
-                    Divider()
-                    CleanupModelSettingsView(manager: model.cleanupModels, isBusy: model.phase != .idle || model.preparing)
-                }.padding(Workbench.pagePadding) }
+                                      snapshot: model.recognition, onNotNow: { model.page = "home" }, onSnapshot: model.acceptRecognition).workbenchCard()
+                    CleanupModelSettingsView(manager: model.cleanupModels, isBusy: model.phase != .idle || model.preparing).workbenchCard()
+                }
             case "connections":
-                ScrollView { VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
-                    SubscriptionSettingsView(jobs: model.handoffJobs)
-                    if model.photoHandoff.isConfigured {
-                        Divider()
-                        PhotoHandoffSettings(handoff: model.photoHandoff)
-                    }
-                }.padding(Workbench.pagePadding).frame(maxWidth: .infinity, alignment: .leading) }
+                settingsStack {
+                    SubscriptionSettingsView(jobs: model.handoffJobs).workbenchCard()
+                    if model.photoHandoff.isConfigured { PhotoHandoffSettings(handoff: model.photoHandoff).workbenchCard() }
+                }
             default:
-                // One grouped form, as System Settings lays out preferences: each setting a row,
-                // switches throughout, and what a setting does in its section's footer.
-                Form {
+                // The same cards as every other page, one per subject, with what each setting does
+                // beside it rather than only on hover.
+                settingsStack {
                     // Saved drawing settings that could not be read or saved, and login, belong to
                     // General: the menu-bar panel's Open Settings… leads to these words (#134).
-                    if let notice = stage.notice(on: .general) {
-                        Section { WorkbenchNote(notice) }
+                    if let notice = stage.notice(on: .general) { WorkbenchNote(notice).workbenchCard() }
+                    WorkbenchTile("Appearance", symbol: "circle.lefthalf.filled") {
+                        WorkbenchAppearancePicker().labelsHidden().fixedSize()
                     }
-                    Section { WorkbenchAppearancePicker() }
                     // The one floating-toolbar switch the panel, the Window menu and the toolbar's own
                     // Hide toolbar share (#134), with the toolbar's own choices beneath it.
-                    Section {
-                        Toggle("Floating toolbar", isOn: $model.floatingToolbarVisible).toggleStyle(.switch)
+                    // The switch is the card's heading: it keeps the one name its four doors share.
+                    VStack(alignment: .leading, spacing: 10) {
+                        Toggle("Floating toolbar", isOn: $model.floatingToolbarVisible).toggleStyle(.switch).font(Workbench.sectionTitle)
                             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { sectionFrames?("settings.toolbar.visibility", $0) }
-                        ToolbarSettingsView(model: model)
-                    } footer: {
+                        ToolbarSettingsView(model: model).padding(.leading, 18)
                         Text(WorkbenchHome.floatingToolbarHelp + " Drag the toolbar to move it, or choose a position here.")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                    Section {
+                            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    }.workbenchCard()
+                    WorkbenchTile("Startup", symbol: "power") {
                         // On means registered with macOS. macOS may still want the person to approve
                         // it in Login Items; then the switch stays on and says so (docs/desktop.md).
                         Toggle("Open Workbench at login", isOn: Binding(get: { loginEnabled || loginNeedsApproval }, set: { value in
@@ -378,6 +375,7 @@ struct WorkbenchHome: View {
                             catch { loginError = error.localizedDescription }
                             readLoginItem()
                         })).toggleStyle(.switch)
+                        Text("Workbench starts in the menu bar; its window opens when you need it.").font(.caption).foregroundStyle(.secondary)
                         if loginNeedsApproval {
                             HStack(spacing: 8) {
                                 WorkbenchNote("macOS needs your approval in System Settings › General › Login Items.", font: .caption)
@@ -386,15 +384,13 @@ struct WorkbenchHome: View {
                             }
                         }
                         if let loginError { WorkbenchNote(loginError, font: .caption) }
-                    } footer: {
-                        Text("Workbench starts in the menu bar; its window opens when you need it.").font(.caption).foregroundStyle(.secondary)
                     }
                     .onAppear(perform: readLoginItem)
                     .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in readLoginItem() }
-                    Section { WorkbenchUpdateSettings() } header: { Text("Updates") }
+                    WorkbenchTile("Updates", symbol: "arrow.down.circle") { WorkbenchUpdateSettings() }
                     // Each capability keeps its options on its own page: Meetings holds Detect Meetings
                     // & Calls, so General names only Dictate's door (#134).
-                    Section {
+                    WorkbenchTile("Dictate", symbol: WorkbenchHome.symbol(of: "dictate")) {
                         HStack(spacing: 12) {
                             // Opens Dictate on its options and focuses them (#134).
                             Button("Dictate settings…") { model.focusRequest = PageFocusRequest(target: .dictateOptions); model.page = "dictate" }
@@ -403,13 +399,12 @@ struct WorkbenchHome: View {
                                 Button("Show me a first dictation") { model.preferences.firstDictationGuide = .offered; model.page = "home" }
                             }
                         }
-                    } footer: {
                         Text("Delivery, text style, shortcut, activation and your dictionary."
                              + (Workbench.isPreview ? " Workbench and Workbench Preview keep separate libraries; your previous Voice and StageMark data remains in place." : ""))
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
-                    Section { FounderIntroductionCard(model: introduction, canDismiss: false) }
-                }.formStyle(.grouped).frame(maxWidth: 680, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
+                    FounderIntroductionCard(model: introduction, canDismiss: false)
+                }
             }
         }
     }
@@ -455,6 +450,16 @@ struct WorkbenchHome: View {
             sectionSwitcher(page, selection: selection) { model.page = $0 }
         }.padding([.horizontal, .top], Workbench.pagePadding)
     }
+    /// Every Settings section is the same scrolling stack of kit cards, capped at one width, so the
+    /// four sections read as one page (docs/desktop.md § Page kit).
+    private func settingsStack<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Workbench.sectionSpacing) { content() }
+                .frame(maxWidth: Workbench.settingsWidth, alignment: .leading)
+                .padding(Workbench.pagePadding).frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
     /// A section's one-line summary, in the page header above the switcher where every other page
     /// has its own; the section's view does not repeat it.
     static let sectionSummaries: [String: String] = [

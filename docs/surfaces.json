@@ -1774,11 +1774,12 @@
     "note": "The same updater action as the sidebar; native review is retained for exceptional releases."
   },
   {
-    "id": "LocalVoice.WorkbenchUpdates.WorkbenchUpdateSettings.Link.release-notes-and-downloads",
+    "id": "LocalVoice.WorkbenchUpdates.WorkbenchUpdateSettings.Button.release-notes-and-downloads",
     "surface": "settings page",
     "label": "Release notes and downloads",
     "kind": "action",
-    "belongsTo": "settings"
+    "belongsTo": "settings",
+    "note": "A Workbench-coloured link button rather than a system-blue Link (7 Oct 2026); same destination."
   },
   {
     "id": "LocalVoice.WorkbenchUpdates.WorkbenchUpdateSettings.Toggle.check-for-updates-automatically",

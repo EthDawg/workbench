@@ -118,7 +118,7 @@ Each page moves to the kit in its own small PR, rendered in the surface gallery,
 | Persona | Frozen beyond kit tokens (mac-foundation §1) | Tokens only |
 | History | Row radius to the kit; one prominent Hand off… in the selection footer | Later |
 | Library | Resources and Packs empty states and radii to the kit; From iPhone retires with #286 | After #286 |
-| Settings | General as one grouped form (switches throughout, Keep open beneath its switch, what each does in the footer); Keyboard lists what is on first in Your keys' order, then Off · N; Workbench's accent, not system blue | Done in the chrome PR (stacked on the first); login approval in the first |
+| Settings | Every section is the same stack of kit cards at one width (`Workbench.settingsWidth`): General's subjects each a card, Models' two views and Connections carded, Keyboard's list and detail in one card with its summary in the header; Keyboard lists what is on first in Your keys' order, then Off · N; Workbench's accent, not system blue | Done in the chrome PR (stacked on the first); login approval in the first |
 
 ## Working on a page
 

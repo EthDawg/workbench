@@ -260,7 +260,9 @@ struct WorkbenchUpdateSettings: View {
             Text("Build \(updates.build.number) · Source \(updates.build.revision.prefix(8))")
                 .font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
             if let summary = updates.releaseSummary { Text(summary).font(.callout).fixedSize(horizontal: false, vertical: true) }
-            Text(updates.status).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            if !updates.status.isEmpty {
+                Text(updates.status).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
             if updates.build.released {
                 Toggle("Check for updates automatically", isOn: Binding(get: { updates.automaticChecks }, set: updates.setAutomaticChecks)).toggleStyle(.switch)
                 Toggle("Download updates automatically", isOn: Binding(get: { updates.automaticDownloads }, set: updates.setAutomaticDownloads)).toggleStyle(.switch)
@@ -269,7 +271,8 @@ struct WorkbenchUpdateSettings: View {
             HStack {
                 Button(updates.buttonTitle) { updates.checkForUpdates() }.disabled(!updates.canCheck)
                 Button("Copy build details") { updates.copyDetails() }
-                Link("Release notes and downloads", destination: URL(string: "https://github.com/Ship-Work/workbench/releases")!)
+                Button("Release notes and downloads") { NSWorkspace.shared.open(URL(string: "https://github.com/Ship-Work/workbench/releases")!) }
+                    .buttonStyle(.workbenchLink)
             }
         }
     }

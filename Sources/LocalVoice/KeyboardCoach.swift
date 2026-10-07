@@ -340,7 +340,7 @@ struct KeyboardCoachView: View {
                             Text(selected.title).font(.title3.weight(.semibold))
                             Spacer()
                             Text(model.interaction == .recording ? "Press keys…" : selected.shortcut.label)
-                                .font(.system(size: 23, weight: .medium, design: .monospaced)).foregroundStyle(Workbench.accent)
+                                .font(.title3.monospacedDigit().weight(.medium)).foregroundStyle(.primary)
                         }
                         HStack {
                             Button(model.interaction == .recording ? "Cancel recording" : "Record shortcut") {
@@ -362,7 +362,7 @@ struct KeyboardCoachView: View {
                         }
                     }
                 }.frame(maxWidth: .infinity, alignment: .leading)
-            }.frame(minHeight: 230)
+            }.frame(minHeight: 230).workbenchCard()
             VirtualMacKeyboard(shortcut: selected?.shortcut, active: model.isInteracting, heldModifiers: model.heldModifiers, heldKey: model.heldKey)
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: model.isInteracting ? "hand.raised.fill" : "keyboard").foregroundStyle(Workbench.accent)
