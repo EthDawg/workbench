@@ -25,7 +25,7 @@ Home holds only what the app shows nowhere else in that form. Everything else is
 | First launch ever | Opens on Home. The Permissions panel is the setup; nothing is asked until the person presses Set up…. |
 | Launch at login (Settings › General › Open Workbench at login) | **Stays closed.** The menu-bar icon and toolbar are ready; the Dock, the panel's Open Workbench and ⌘0 open the window. If macOS does not mark the launch as a login launch, the window opens as before. A pack link always opens it. |
 | Any other launch (Finder, Spotlight, Dock, after an update) | Opens on Home. |
-| Dock click or Open Workbench while running | Comes forward on the page it was showing. |
+| Dock click, or Window › Open Workbench (⌘0), while running | Comes forward on the page it was showing. The menu-bar panel's Open Workbench opens Home, the overview, as its footer door always has. |
 | Close (⌘W) | Hides. Tools keep running from the menu bar and toolbar; the Dock icon stays. Quit (⌘Q) stops app-owned work after the existing quit checks. |
 | Minimize (⌘M) | Standard Mac minimise. |
 | Size and position | Restored from the last time, per edition (frame name `WorkbenchWindow`). Only the very first opening centres it. |
