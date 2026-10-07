@@ -159,7 +159,8 @@ public struct PhoneLinkStatus: Equatable {
     /// the next step is not already Reconnect: a phone on the bus, a choice to make.
     public var offersReconnect: Bool {
         switch phase {
-        case .phoneOnUSB, .chooseScreen, .waitingForRemembered, .screenFound, .accessDenied: return true
+        // Not for Camera access turned off: looking again cannot change a permission; Camera Settings… can.
+        case .phoneOnUSB, .chooseScreen, .waitingForRemembered, .screenFound: return true
         default: return false
         }
     }

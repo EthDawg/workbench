@@ -174,7 +174,7 @@ final class PhoneLinkTests {
         XCTAssertEqual(denied.phase, .accessDenied)
         XCTAssertEqual(denied.step, .openCameraSettings)
         XCTAssertTrue(denied.detail?.contains("System Settings") == true)
-        XCTAssertTrue(denied.offersReconnect, "Coming back from System Settings, Reconnect is the way to try again")
+        XCTAssertFalse(denied.offersReconnect, "While access is off, looking again changes nothing; returning from System Settings re-reads it by itself")
         let restricted = PhoneLink.status(signals { $0.sources = [screen]; $0.access = .restricted })
         XCTAssertEqual(restricted.phase, .accessRestricted)
         XCTAssertTrue(restricted.step == nil, "A policy restriction cannot be removed by the person's Camera toggle")
