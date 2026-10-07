@@ -599,7 +599,7 @@ final class SceneCanvasView: NSView {
     private var origin = CGPoint.zero
     private var initial: DemoScene?
     private var dragPreview: DemoScene?
-    init(previewLayer: AVCaptureVideoPreviewLayer) {
+    init(previewLayer: CALayer) {
         preview = DemoStageSurfaceView(previewLayer: previewLayer)
         super.init(frame: .zero)
         addSubview(preview); addSubview(handles)

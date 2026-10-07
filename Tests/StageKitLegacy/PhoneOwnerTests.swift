@@ -249,6 +249,17 @@ final class PhoneEndTests: PhoneOwnerFixture {
         XCTAssertEqual(hardware.read(capture) { $0.opened.count }, 3, "End's own reopening of the page does not undo End")
         scenes.presentPageOpened()
         XCTAssertTrue(waitUntil { hardware.read(capture) { $0.opened.count } == 4 }, "The person's next visit does")
+
+        // End's reopen can show no new page (the window was on another Space or already up), so
+        // nothing consumes its marker. It expires: reopening the window later is the person's visit.
+        scenes.endReopenWindow = 0.2
+        scenes.onOpen = {}
+        scenes.startDemo(mode: .windowed); scenes.endPresentation()
+        XCTAssertTrue(waitUntil { self.words(scenes).phase == .ended })
+        settle(0.5)
+        XCTAssertEqual(hardware.read(capture) { $0.opened.count }, 4, "End takes nothing back by itself")
+        scenes.presentPageOpened()
+        XCTAssertTrue(waitUntil { hardware.read(capture) { $0.opened.count } == 5 }, "Reopening the window on Present after End is a fresh visit")
     }
 }
 
@@ -396,13 +407,54 @@ final class PhoneCaptureTests: PhoneOwnerFixture {
         XCTAssertTrue(waitUntil { capture.sources == [self.phone] }, "A real change still is")
     }
 
-    /// If macOS refuses the phone's screen a second connection, the stage, which the audience
-    /// sees, is wired first and keeps it: stages come before pages, newest first within each.
+    /// Stages come before pages, newest first within each.
     func testTheStageIsWiredBeforeThePagesPreview() {
         XCTAssertEqual(PreviewSurface.insertionIndex(for: .page, among: []), 0)
         XCTAssertEqual(PreviewSurface.insertionIndex(for: .stage, among: [.page]), 0, "A stage goes before an older page")
         XCTAssertEqual(PreviewSurface.insertionIndex(for: .page, among: [.stage]), 1, "A newer page goes after a stage")
         XCTAssertEqual(PreviewSurface.insertionIndex(for: .page, among: [.stage, .page]), 1, "and before older pages")
         XCTAssertEqual(PreviewSurface.insertionIndex(for: .stage, among: [.stage, .page]), 0)
+    }
+
+    /// The picture is drawn from the frames the session receives (7 October 2026: preview-layer
+    /// connections stayed black on a real iPhone while frames arrived). Every frame of the
+    /// running session reaches the page's preview and the stage at once; End clears both, and a
+    /// frame that arrives after End is drawn on neither.
+    func testEveryFrameOfTheSessionIsDrawnOnThePageAndTheStage() throws {
+        let hardware = SyntheticCaptureHardware(available: [phone], access: .authorized)
+        let (scenes, root) = try makeScenes(hardware)
+        defer { scenes.shutdown(); try? FileManager.default.removeItem(at: root) }
+        let capture = scenes.capture
+        let page = capture.makePreviewLayer(for: .page), stage = capture.makePreviewLayer(for: .stage)
+        scenes.setPageVisible(true)
+        XCTAssertTrue(waitUntil { hardware.read(capture) { $0.opened.count } == 1 })
+        guard let output = hardware.read(capture, { $0.outputs.last }) else { XCTAssertTrue(false, "The session has a frame output"); return }
+        guard let buffer = sampleBuffer() else { XCTAssertTrue(false, "A synthetic frame"); return }
+        capture.queue.async { capture.deliver(buffer, from: output) }
+        XCTAssertTrue(waitUntil { capture.queue.sync { capture.drawnFrames } == [.page: 1, .stage: 1] }, "One frame is drawn on both surfaces")
+        XCTAssertTrue(waitUntil { self.words(scenes).phase == .live }, "and the phone is live")
+        withExtendedLifetime((page, stage)) {}
+
+        scenes.startDemo(mode: .windowed); scenes.endPresentation()
+        XCTAssertTrue(waitUntil { self.words(scenes).phase == .ended })
+        XCTAssertTrue(waitUntil { capture.queue.sync { capture.drawnFrames }.isEmpty }, "End clears every surface")
+        capture.queue.async { capture.deliver(buffer, from: output) }
+        settle()
+        XCTAssertTrue(capture.queue.sync { capture.drawnFrames }.isEmpty, "A frame after End is drawn nowhere")
+        withExtendedLifetime((page, stage)) {}
+    }
+
+    private func sampleBuffer() -> CMSampleBuffer? {
+        var pixels: CVPixelBuffer?
+        guard CVPixelBufferCreate(nil, 1320, 2868, kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange, nil, &pixels) == kCVReturnSuccess,
+              let pixels else { return nil }
+        var format: CMVideoFormatDescription?
+        guard CMVideoFormatDescriptionCreateForImageBuffer(allocator: nil, imageBuffer: pixels, formatDescriptionOut: &format) == noErr,
+              let format else { return nil }
+        var timing = CMSampleTimingInfo(duration: .invalid, presentationTimeStamp: CMClockGetTime(CMClockGetHostTimeClock()), decodeTimeStamp: .invalid)
+        var buffer: CMSampleBuffer?
+        guard CMSampleBufferCreateReadyWithImageBuffer(allocator: nil, imageBuffer: pixels, formatDescription: format,
+                                                       sampleTiming: &timing, sampleBufferOut: &buffer) == noErr else { return nil }
+        return buffer
     }
 }
