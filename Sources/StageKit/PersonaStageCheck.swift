@@ -233,6 +233,18 @@ public enum PersonaStageCheck {
             await wait(0.8)
             expect(camera.isLive, "Live Camera is showing its synthetic picture")
             try await examine("camera", name: "Live Camera", picture: PersonaStageCheck.blue)
+
+            // Back to the photo the way the pill does it, from its Choose Persona picker while
+            // Live Camera shows: the photo is My Profile, or the first card before that name.
+            let picker = library.makeToolbarPickerMenu()
+            receipt["pickerWithCamera"] = picker.items.map(\.title)
+            if let item = picker.items.first(where: { $0.title == "My Profile" }) ?? picker.items.first(where: { $0.title == "Persona 1" }),
+               let action = item.action {
+                NSApp.sendAction(action, to: item.target, from: item)
+                await wait(0.8)
+                expect(!camera.isActive && library.artworkVisible, "choosing the photo in the picker ends Live Camera and shows the photo")
+                try await examine("switch", name: "My Profile after Live Camera", picture: PersonaStageCheck.warm)
+            } else { expect(false, "the picker offers the photo while Live Camera shows (\(picker.items.map(\.title)))") }
             library.endCamera()
             await wait(0.3)
         }
