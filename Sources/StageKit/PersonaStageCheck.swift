@@ -208,6 +208,14 @@ public enum PersonaStageCheck {
         }
         func silence() { talking?.invalidate(); talking = nil }
 
+        /// Mid-switch, in the real windows: the outgoing picture is still whole at full opacity
+        /// while the incoming one is on screen with it, so the desktop never shows through.
+        func crossfade(_ name: String, outgoing: NSWindow?) {
+            let visible = NSApp.windows.filter { $0.title == "Workbench persona" && $0.isVisible }
+            receipt["crossfade " + name] = ["visibleWindows": visible.count, "outgoingAlpha": outgoing?.alphaValue ?? -1]
+            expect(outgoing?.isVisible == true && outgoing?.alphaValue == 1 && visible.count == 2,
+                   "\(name): mid-switch the outgoing picture stays whole under the incoming one (\(visible.count) windows, outgoing alpha \(outgoing?.alphaValue ?? -1))")
+        }
         /// The visible persona windows, largest first: the slot's card or bubble, never its handles.
         func personaWindow() -> NSWindow? {
             NSApp.windows.filter { $0.title == "Workbench persona" && $0.isVisible && $0.alphaValue > 0.5 }
@@ -245,8 +253,12 @@ public enum PersonaStageCheck {
             receipt["pickerWithCamera"] = picker.items.map(\.title)
             if let item = picker.items.first(where: { $0.title == "My Profile" }) ?? picker.items.first(where: { $0.title == "Persona 1" }),
                let action = item.action {
+                let bubble = personaWindow()
                 NSApp.sendAction(action, to: item.target, from: item)
+                await wait(0.05)
+                crossfade("Live Camera to My Profile", outgoing: bubble)
                 await wait(0.8)
+                expect(bubble?.isVisible == false, "the bubble goes once the photo covers it")
                 expect(!camera.isActive && library.artworkVisible, "choosing the photo in the picker ends Live Camera and shows the photo")
                 try await examine("switch", name: "My Profile after Live Camera", picture: PersonaStageCheck.warm)
             } else { expect(false, "the picker offers the photo while Live Camera shows (\(picker.items.map(\.title)))") }
@@ -256,8 +268,12 @@ public enum PersonaStageCheck {
             let back = library.makeToolbarPickerMenu()
             receipt["pickerWithPhoto"] = back.items.map(\.title)
             if let item = back.items.first(where: { $0.title == "Live Camera" || $0.title == "Camera" }), let action = item.action {
+                let card = personaWindow()
                 NSApp.sendAction(action, to: item.target, from: item)
+                await wait(0.05)
+                crossfade("My Profile to Live Camera", outgoing: card)
                 await wait(0.8)
+                expect(card?.isVisible == false, "the photo goes once the bubble covers it")
                 expect(camera.isLive && !library.artworkVisible, "choosing Live Camera in the picker shows the bubble in the photo's stead")
                 if let photoFrame, let bubbleFrame = personaWindow()?.frame {
                     let moved = hypot(bubbleFrame.midX - photoFrame.midX, bubbleFrame.midY - photoFrame.midY)
