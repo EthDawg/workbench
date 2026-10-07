@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Embeddable next to speech recognition settings. Model management never opts a
@@ -60,9 +61,9 @@ struct CleanupModelSettingsView: View {
                 Text("Ollama must already be installed and running. Downloads use the internet and disk space, and keep going if you leave this page; Cancel stops one. Load checks the draft model; Save applies it to future Natural captures. A failed or meaning-changing edit falls back to Light, and the original is retained.")
                     .font(.caption).foregroundStyle(.secondary)
                 HStack {
-                    Link("Get Ollama", destination: URL(string: "https://ollama.com/download/mac")!)
-                    Link("Browse models", destination: URL(string: "https://ollama.com/library")!)
-                    Link("Disable Ollama Cloud", destination: URL(string: "https://docs.ollama.com/faq#how-do-i-disable-ollama-cloud-features")!)
+                    Button("Get Ollama") { NSWorkspace.shared.open(URL(string: "https://ollama.com/download/mac")!) }.buttonStyle(.workbenchLink)
+                    Button("Browse models") { NSWorkspace.shared.open(URL(string: "https://ollama.com/library")!) }.buttonStyle(.workbenchLink)
+                    Button("Disable Ollama Cloud") { NSWorkspace.shared.open(URL(string: "https://docs.ollama.com/faq#how-do-i-disable-ollama-cloud-features")!) }.buttonStyle(.workbenchLink)
                 }.font(.caption)
                 Text("Workbench connects only to loopback and refuses cloud model metadata. You control the local server; enable Ollama’s local-only mode for a stronger boundary.")
                     .font(.caption).foregroundStyle(.secondary)

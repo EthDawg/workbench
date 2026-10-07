@@ -150,7 +150,7 @@ struct MeetingWorkspaceView: View {
                     }
                     HStack(spacing: 8) {
                         Label(engineName, systemImage: "waveform").font(.caption).foregroundStyle(.secondary)
-                        Button("Models…", action: openModels).buttonStyle(.link).font(.caption)
+                        Button("Models…", action: openModels).buttonStyle(.workbenchLink).font(.caption)
                             .help("Choose the speech model in Settings › Models")
                     }
                 }.workbenchCard()

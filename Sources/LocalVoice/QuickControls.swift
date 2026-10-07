@@ -32,7 +32,7 @@ struct ShortcutControl: View {
         VStack(alignment: .leading, spacing: 5) {
             HStack {
                 if showsTitle { Text(title); Spacer() }
-                if model.editingShortcut == id { Button("Cancel") { model.onCancelShortcut?() }.buttonStyle(.link) }
+                if model.editingShortcut == id { Button("Cancel") { model.onCancelShortcut?() }.buttonStyle(.workbenchLink) }
                 ShortcutKeycap(model: model, id: id, title: title)
                 if !showsTitle { Spacer() }
             }

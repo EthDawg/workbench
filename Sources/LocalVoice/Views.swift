@@ -211,12 +211,12 @@ struct ContentView: View {
                         WaveBars(level: model.voiceSession.phase == .paused || model.voiceSession.phase == .reconnecting ? 0 : model.level).frame(width: 96, height: 28)
                         Text(time(model.elapsed)).monospacedDigit()
                         if model.voiceSession.phase == .paused {
-                            Button("Resume") { Task { await model.resume() } }.buttonStyle(.link)
+                            Button("Resume") { Task { await model.resume() } }.buttonStyle(.workbenchLink)
                         } else {
-                            Button("Pause") { Task { await model.pause() } }.buttonStyle(.link)
+                            Button("Pause") { Task { await model.pause() } }.buttonStyle(.workbenchLink)
                                 .disabled(model.voiceSession.phase == .reconnecting)
                         }
-                        Button("Cancel") { model.cancelRecording() }.buttonStyle(.link).help("Stop and discard this recording")
+                        Button("Cancel") { model.cancelRecording() }.buttonStyle(.workbenchLink).help("Stop and discard this recording")
                     }.font(.caption)
                 } else if model.phase == .requesting {
                     Text("Allow access in the macOS prompt, or cancel.").font(.caption).foregroundStyle(.secondary)
@@ -237,7 +237,7 @@ struct ContentView: View {
                 VStack(alignment: .trailing, spacing: 4) {
                     Text(deliverySummary).font(.caption).foregroundStyle(.secondary)
                     if model.preferences.delivery == .paste && !model.accessibilityGranted {
-                        Button("Set up automatic paste…") { model.requestAccessibility() }.font(.caption).buttonStyle(.link)
+                        Button("Set up automatic paste…") { model.requestAccessibility() }.font(.caption).buttonStyle(.workbenchLink)
                     }
                 }
             }
@@ -252,7 +252,7 @@ struct ContentView: View {
                 HStack(spacing: 8) {
                     Label("\(model.modelMessage) · \(model.preferences.cleanup.rawValue) text style", systemImage: "waveform")
                         .font(.caption).foregroundStyle(.secondary)
-                    Button("Models…") { model.page = "models" }.buttonStyle(.link).font(.caption)
+                    Button("Models…") { model.page = "models" }.buttonStyle(.workbenchLink).font(.caption)
                         .help("Choose the speech and writing models in Settings › Models")
                 }
                 // The writing model's download, or why it stopped, beside the models it concerns (#134).
@@ -261,7 +261,7 @@ struct ContentView: View {
                 }
             }
         } else if model.phase == .idle {
-            Button("Models…") { model.page = "models" }.buttonStyle(.link).font(.caption)
+            Button("Models…") { model.page = "models" }.buttonStyle(.workbenchLink).font(.caption)
         }
     }
 
