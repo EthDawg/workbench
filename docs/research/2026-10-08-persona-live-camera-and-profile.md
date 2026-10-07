@@ -69,7 +69,18 @@ PASS Live Camera after My Profile: a voice raises the dots into bars in the real
 PASS Hide Live Camera closes the ring's microphone
 ```
 
-With either source showing, the pill's picker opens with `My Profile, Live Camera`. At rest the dots are deliberately quiet: 34% opacity, per [the decided look](../personas.md#react-to-my-voice). Real speech raises them into bars.
+With either source showing, the pill's picker opens with `My Profile, Live Camera`.
+
+After the review fixes, at `93c664b` (build `20261007213122`), the check passes all 26 checks and fails none. The four new ones probe each switch 50 ms in: the outgoing window is still on screen at full opacity beside the incoming one, and it goes once covered.
+
+```
+PASS Live Camera to My Profile: mid-switch the outgoing picture stays whole under the incoming one (2 windows, outgoing alpha 1.0)
+PASS the bubble goes once the photo covers it
+PASS My Profile to Live Camera: mid-switch the outgoing picture stays whole under the incoming one (2 windows, outgoing alpha 1.0)
+PASS the photo goes once the bubble covers it
+```
+
+Each read-back is also saved over a light and a dark desktop. At rest the dots are deliberately quiet: 34% opacity, per [the decided look](../personas.md#react-to-my-voice). Real speech raises them into bars.
 
 ## Apple research (checked 8 October 2026)
 
