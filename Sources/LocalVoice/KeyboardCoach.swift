@@ -143,6 +143,25 @@ final class KeyboardCoachModel: ObservableObject {
     private var eventMonitor: Any?
     private var leaveObservers: [NSObjectProtocol] = []
     private var suspended = false
+    /// Shortcuts practised to three complete presses, wherever the practice ran, so Home's Your
+    /// keys can suggest the next ones (docs/desktop.md § Home). Only the app keeps them: checks
+    /// and galleries leave `recordPractised` unset and write nothing.
+    @Published private(set) var practised: Set<String> = []
+    private var recordPractised: ((Set<String>) -> Void)?
+    static let practisedKey = "workbench.keys.practised.v2"
+    /// A practice is kept for its shortcut and the exact keys it was done on.
+    nonisolated static func practiceRecord(_ id: String, _ shortcut: VoiceShortcut) -> String { "\(id)@\(shortcut.keyCode)/\(shortcut.modifiers)" }
+    func restorePractised(_ ids: [String], record: @escaping (Set<String>) -> Void) {
+        practised = Set(ids); recordPractised = record
+    }
+    /// A shortcut pressed for real counts as learned, as practice does: someone who already uses
+    /// ⌥V every day is never told to learn it. Saved only when something new is learned.
+    func recordUse(_ id: String) {
+        guard let entry = entries.first(where: { $0.id == id }), entry.shortcut.enabled else { return }
+        let record = Self.practiceRecord(id, entry.shortcut)
+        guard !practised.contains(record) else { return }
+        practised.insert(record); recordPractised?(practised)
+    }
 
     /// update must leave the previous preference intact on error. It must not resume global
     /// hotkeys: suspend(false) owns that operation after editing or practice has stopped.
@@ -230,6 +249,18 @@ final class KeyboardCoachModel: ObservableObject {
 
     /// Turning off a shortcut that is already off changes nothing, so it
     /// saves and confirms nothing.
+    /// Puts a suggested combination on one shortcut, through the same conflict check, macOS
+    /// registration probe and owner save as recording one. Returns whether it was kept.
+    @discardableResult
+    func assign(_ id: String, _ candidate: VoiceShortcut) -> Bool {
+        guard entries.contains(where: { $0.id == id }) else { return false }
+        stopInteraction(); selectedID = id; practice = nil
+        suspended = true; suspend(true)
+        let kept = save(candidate)
+        stopInteraction()
+        return kept
+    }
+
     func disableSelected() {
         guard var candidate = selected?.shortcut, candidate.enabled else { return }
         stopInteraction(); suspended = true; suspend(true)
@@ -255,6 +286,7 @@ final class KeyboardCoachModel: ObservableObject {
             if event.type == .keyDown { practice?.keyDown(shortcut.keyCode, modifiers: shortcut.modifiers, isRepeat: event.isARepeat) }
             else { practice?.keyUp(shortcut.keyCode) }
             if practice?.isComplete == true {
+                if let selected { practised.insert(Self.practiceRecord(selected.id, selected.shortcut)); recordPractised?(practised) }
                 stopInteraction(); message = "Three complete presses. Ready to use anywhere."
                 confirm(.practiceComplete)
             }
@@ -298,8 +330,7 @@ struct KeyboardCoachView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
-            // Settings' title and switcher name this section, so it opens on its summary (#134).
-            Text("One set of shortcuts for speaking, drawing and presenting.").foregroundStyle(.secondary)
+            // The page header carries this section's summary, above the switcher (WorkbenchHome.sectionSummaries).
             HStack(alignment: .top, spacing: 20) {
                 actionList.frame(width: 230, height: 230)
                 Divider().frame(height: 230)

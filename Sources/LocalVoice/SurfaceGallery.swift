@@ -522,6 +522,10 @@ private struct HistoryNativeAcceptanceView: View {
     }
 
     func render(to output: URL) throws -> SurfaceGallery.Pass {
+        // Fixed answers for Home's Permissions panel and the source tree's sample deck, so every
+        // Home render is the same on every Mac and nothing asks this Mac's privacy settings.
+        MacPermissionReader.current = Self.permissions(allAllowed: false)
+        SampleDeck.directoryOverride = Self.sampleDirectory
         if ProcessInfo.processInfo.environment["WORKBENCH_SNAPTALK_GALLERY_ONLY"] == "1" {
             return SurfaceGallery.Pass(theme: theme, panels: [], toolbar: [], host: [], pickers: [], pickerHost: [],
                 pages: [.init(route: "readback", title: "Snap & Talk", fallsThrough: false,
@@ -543,6 +547,7 @@ private struct HistoryNativeAcceptanceView: View {
         }
         if SurfaceGallery.desktopOnly { return try renderDesktopOnly(to: output) }
         if ProcessInfo.processInfo.environment["WORKBENCH_HOME_GALLERY_ONLY"] == "1" { return try renderHomeOnly(to: output) }
+        if ProcessInfo.processInfo.environment["WORKBENCH_SAMPLE_SCREENS_GALLERY_ONLY"] == "1" { return try renderSampleScreens(to: output) }
         if ProcessInfo.processInfo.environment["WORKBENCH_TOOLBAR_GALLERY_ONLY"] == "1" {
             let (shots, host) = try renderToolbarHost(to: output)
             return SurfaceGallery.Pass(theme: theme, panels: [], toolbar: shots, host: host, pickers: [], pickerHost: [],
@@ -585,7 +590,7 @@ private struct HistoryNativeAcceptanceView: View {
         // Home's first-dictation states come before History's, which add Hand off tasks to recent work.
         if let home = pages.firstIndex(where: { $0.route == "home" }) {
             pages[home].shots += try renderHomeStates(to: output) + renderHomeChrome(to: output)
-                + [try renderHomeLargerText(to: output), try renderHomeSavedPhotos(to: output)]
+                + [try renderHomeLargerText(to: output)]
         }
         let review = try checkHomeReview(to: output)
         if let history = pages.firstIndex(where: { $0.route == "history" }) {
@@ -1020,10 +1025,9 @@ private struct HistoryNativeAcceptanceView: View {
         guard model.historyDoor == nil, model.transcript == draft, model.historyLibrary.selected == selection else {
             throw VoiceError.message("Drawing Home changed History's door, the Dictate draft or the selection.")
         }
-        // The same door the row's title uses, for an older transcript.
+        // The same door a meeting's Review uses on Home, for an older transcript.
         let older = SurfacePass.history[2]
-        guard let door = HomeRecentWork.review(for: .transcript(older)) else { throw VoiceError.message("A recent transcript had no review.") }
-        model.openHistory(door)
+        model.openHistory(HomeMeetings.review(older.id))
         guard model.page == "history", model.historyDoor?.transcript == older.id, model.historyDoor?.filter == .all else {
             throw VoiceError.message("A recent transcript did not open History on it.")
         }
@@ -1032,7 +1036,7 @@ private struct HistoryNativeAcceptanceView: View {
             throw VoiceError.message("Opening a recent transcript changed the Dictate draft or the selection, or History kept the door.")
         }
         let shot = try save(history, id: "state-from-home", title: "History, showing a transcript Home opened, \(Int(size.width)) × \(Int(size.height)) pt",
-                            detail: "Home's Recent work opened the oldest synthetic transcript: History shows All, scrolled to it and outlined; the selected transcript stays selected.",
+                            detail: "Home's Review door opened the oldest synthetic transcript: History shows All, scrolled to it and outlined; the selected transcript stays selected.",
                             file: "page-history-state-from-home-\(theme).png", to: output)
         model.phase = .idle
         model.openTranscript(older)
@@ -1110,10 +1114,7 @@ private struct HistoryNativeAcceptanceView: View {
                 window.contentViewController = nil; window.close()
             }
             settle(root)
-            guard let door = HomeRecentWork.review(for: .transcript(item)) else {
-                throw VoiceError.message("The long saved transcript has no History review door.")
-            }
-            model.openHistory(door)
+            model.openHistory(HomeMeetings.review(item.id))
             let deadline = Date().addingTimeInterval(4)
             repeat { settle(root, seconds: 0.1) }
             while (window.attachedSheet == nil || frames.values["history.transcript-review.text"] == nil) && Date() < deadline
@@ -1174,7 +1175,7 @@ private struct HistoryNativeAcceptanceView: View {
         let scale: CGFloat = 1.35, size = NSSize(width: SurfaceGallery.sizes[1].size.width - 216, height: SurfaceGallery.sizes[1].size.height)
         model.page = "home"
         let page = WorkbenchHomePage(model: model, stage: stage, readback: readback, snap: snap, introduction: FounderIntroductionModel(),
-                                     jobs: model.handoffJobs, photos: model.photoHandoff, meetings: model.meetings)
+                                     jobs: model.handoffJobs, meetings: model.meetings, keyboard: keyboard)
             .frame(width: size.width / scale, height: size.height / scale).scaleEffect(scale, anchor: .topLeading)
             .frame(width: size.width, height: size.height, alignment: .topLeading)
             .background(Workbench.background).tint(Workbench.accent).workbenchTheme()
@@ -1186,39 +1187,6 @@ private struct HistoryNativeAcceptanceView: View {
         return try save(try snapshot(host), id: "state-larger-text", title: "Home at 1.35 times the text size, minimum window's content column",
                         detail: "The page drawn 1.35 times larger in the same column: the title, tiles and recent rows wrap and grow, and nothing clips.",
                         file: "page-home-state-larger-text-\(theme).png", to: output)
-    }
-
-    /// Home with photos saved from iPhone days before the newest capture (#134 H1). They are
-    /// Library's, so Recent work stays History's five newest, and the quiet link under it gives
-    /// their count and the newest photo's stored date. The photos are a synthetic local library
-    /// in the pass's own folder, with no image files and no iCloud.
-    func renderHomeSavedPhotos(to output: URL) throws -> SurfaceGallery.Shot {
-        let folder = home.appendingPathComponent("Gallery Photos", isDirectory: true)
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let newestCapture = SurfacePass.history.map(\.date).max()!
-        func photo(daysBefore days: Double, _ title: String) -> [String: Any] {
-            ["id": UUID().uuidString, "title": title, "created": newestCapture.addingTimeInterval(-days * 86_400).timeIntervalSinceReferenceDate,
-             "sourceDevice": "iPhone", "disposition": "local", "digest": String(repeating: "a", count: 64), "byteCount": 1_000,
-             "width": 10, "height": 10, "hasOriginal": false]
-        }
-        let library: [String: Any] = ["version": 1, "photos": [photo(daysBefore: 5, "Whiteboard"), photo(daysBefore: 9, "Receipt")],
-                                      "enabled": false, "accounts": [Any](), "suppressed": [Any]()]
-        try JSONSerialization.data(withJSONObject: library).write(to: folder.appendingPathComponent("photos.json"))
-        let photos = PhotoHandoffModel(directory: folder, platform: "Mac", allowsCloudAccess: false)
-        guard photos.photos.count == 2 else { throw VoiceError.message("The synthetic iPhone photos did not load: \(photos.error ?? "none listed").") }
-        let size = NSSize(width: SurfaceGallery.sizes[1].size.width - 216, height: SurfaceGallery.sizes[1].size.height)
-        model.page = "home"
-        let page = WorkbenchHomePage(model: model, stage: stage, readback: readback, snap: snap, introduction: FounderIntroductionModel(),
-                                     jobs: model.handoffJobs, photos: photos, meetings: model.meetings)
-            .frame(width: size.width, height: size.height).tint(Workbench.accent).workbenchTheme()
-        let host = NSHostingView(rootView: page)
-        let window = offscreenWindow(size: size, styleMask: [.borderless])
-        window.contentView = host
-        defer { window.contentView = nil; window.close() }
-        settle(host, seconds: 1)
-        return try save(try snapshot(host), id: "state-saved-photos", title: "Home with photos saved from iPhone, minimum window's content column",
-                        detail: "Two synthetic photos saved 5 and 9 days before the newest capture: Recent work is still History's five newest, and the quiet link under it reads Saved from iPhone with the count and the newest photo's stored date.",
-                        file: "page-home-state-saved-photos-\(theme).png", to: output)
     }
 
     // MARK: Floating toolbar visibility
@@ -2046,7 +2014,6 @@ private struct HistoryNativeAcceptanceView: View {
     func renderHomeOnly(to output: URL) throws -> SurfaceGallery.Pass {
         try HomeJourneyChecks.run()
         try WorkbenchPageChecks.run()
-        try HomeRecentWorkChecks.run()
         let recovery = CaptureRecoveryStore(directory: Workbench.supportDirectory(component: "LocalVoice")
             .appendingPathComponent("CaptureRecovery", isDirectory: true))
         guard let pending = try recovery.load(), let audio = try recovery.audioURL(for: pending),
@@ -2079,7 +2046,7 @@ private struct HistoryNativeAcceptanceView: View {
             }
         }
         pages[homeIndex].shots += try renderHomeChrome(to: output) + renderHomeStates(to: output)
-            + [renderHomeLargerText(to: output), renderHomeSavedPhotos(to: output)]
+            + [renderHomeLargerText(to: output)]
         let review = try checkHomeReview(to: output)
         if let history = pages.firstIndex(where: { $0.route == "history" }) {
             pages[history].shots.append(review.shot)
@@ -2190,12 +2157,12 @@ private struct HistoryNativeAcceptanceView: View {
             model.preferences.firstDictationGuide = kept.guide
         }
         var shots: [SurfaceGallery.Shot] = []
-        func shot(_ id: String, _ title: String, _ detail: String, then change: (() -> Void)? = nil) throws {
+        func shot(_ id: String, _ title: String, _ detail: String, session: ReadbackModel? = nil, then change: (() -> Void)? = nil) throws {
             let window = offscreenWindow(size: size, styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView])
             window.titlebarAppearsTransparent = true; window.titleVisibility = .hidden
             defer { window.contentViewController = nil; window.close() }
             model.page = "home"
-            window.contentViewController = NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard, readback: readback, snap: snap))
+            window.contentViewController = NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard, readback: session ?? readback, snap: snap))
             window.setContentSize(size)
             let frame = window.contentView?.superview ?? window.contentView!
             settle(frame, seconds: 1)
@@ -2220,6 +2187,33 @@ private struct HistoryNativeAcceptanceView: View {
             model.phase = .recording; model.elapsed = 12
         }
         model.phase = phase; model.elapsed = 0
+        // The result tiles with a finished meeting, the Snaps and the sample deck, and the
+        // Permissions panel with something to allow; then with every check allowed.
+        let metadata = model.historyLibrary.metadata(for: Self.meeting.id)
+        model.history = [Self.meeting] + kept.history
+        model.historyLibrary.setMetadata(TranscriptMetadata(purpose: .meeting, person: "Sam Rivera", company: "Synthetic Orchard"), for: Self.meeting.id)
+        // Two older captures read as an earlier call and meeting, listed under the newest.
+        let earlier = [(kept.history[1].id, TranscriptMetadata(purpose: .call, person: "Avery Example")),
+                       (kept.history[2].id, TranscriptMetadata(purpose: .meeting, company: "Design critique"))]
+        let earlierKept = earlier.map { ($0.0, model.historyLibrary.metadata(for: $0.0)) }
+        for (id, details) in earlier { model.historyLibrary.setMetadata(details, for: id) }
+        defer {
+            model.historyLibrary.setMetadata(metadata, for: Self.meeting.id)
+            for (id, details) in earlierKept { model.historyLibrary.setMetadata(details, for: id) }
+        }
+        try shot("results", "Your meetings, the sample deck and permissions", "A finished meeting ready to copy above two earlier ones, the sample deck standing in before any deck of your own, and two approvals still to allow, each with what works without it.")
+        // A Snap & Talk session whose assistant left a deck in outputs/: Your decks shows it.
+        guard let session = sessionReadback.recentSessionURLs.first else { throw VoiceError.message("The synthetic Snap & Talk session is missing.") }
+        let outputs = session.appendingPathComponent("outputs", isDirectory: true), deck = outputs.appendingPathComponent("Synthetic walkthrough.pptx")
+        try FileManager.default.createDirectory(at: outputs, withIntermediateDirectories: true)
+        try Data("synthetic deck".utf8).write(to: deck)
+        defer { try? FileManager.default.removeItem(at: deck) }
+        MacPermissionReader.current = Self.permissions(allAllowed: true)
+        // The first three keys practised: Your keys moves on to the next three.
+        keyboard.restorePractised(keyboard.entries.filter { ["voice.1", "stage.pen", "voice.5"].contains($0.id) }
+            .map { KeyboardCoachModel.practiceRecord($0.id, $0.shortcut) }) { _ in }
+        defer { MacPermissionReader.current = Self.permissions(allAllowed: false); keyboard.restorePractised([]) { _ in } }
+        try shot("all-allowed", "Everything allowed, with a deck of your own", "Once every approval Workbench can check is allowed the panel folds to the foot of the right column; the newest session shows its first screen and its deck, and Your keys, with the first three practised, suggests the next three.", session: sessionReadback)
         return shots
     }
 
@@ -2506,6 +2500,21 @@ private struct HistoryNativeAcceptanceView: View {
         return shots
     }
 
+    /// Home's Permissions panel with fixed answers: the microphone allowed, automatic paste not
+    /// asked yet, Screen Recording off and the camera never asked; or every check allowed.
+    static func permissions(allAllowed: Bool) -> MacPermissionReader {
+        MacPermissionReader(microphone: { .authorized }, camera: { allAllowed ? .authorized : .notDetermined },
+                            accessibility: { allAllowed }, screenRecording: { allAllowed }, callAudioSupported: { true },
+                            screenRecordingAsked: { true })
+    }
+    /// The sample deck in this source tree, which the app bundle carries as Resources/Samples.
+    static let sampleDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        .deletingLastPathComponent().appendingPathComponent("Resources/Samples", isDirectory: true)
+    /// A finished meeting for Home's Last meeting tile, newer than every other synthetic capture.
+    static let meeting = Transcript(id: UUID(uuidString: "5D1C0A1E-0000-4000-8000-0000000000AA")!, date: Date(timeIntervalSince1970: 1_789_560_000),
+        text: "Maya will send the revised agenda before Thursday. Sam will confirm the room and check which slides need the new numbers. We agreed to move the launch review to Friday morning so QA can sign off first.",
+        seconds: 2_520, cleanupMethod: "Light cleanup")
+
     static let history: [Transcript] = [
         Transcript(id: UUID(uuidString: "5D1C0A1E-0000-4000-8000-000000000001")!, date: Date(timeIntervalSince1970: 1_789_546_320),
                    text: "Send Sam the revised agenda before the Thursday review and ask which slides need the new numbers.", seconds: 9, cleanupMethod: "Light cleanup"),
@@ -2513,6 +2522,71 @@ private struct HistoryNativeAcceptanceView: View {
                    text: "Book the quiet room for the design critique.", seconds: 4, cleanupMethod: "Light cleanup"),
         Transcript(id: UUID(uuidString: "5D1C0A1E-0000-4000-8000-000000000003")!, date: Date(timeIntervalSince1970: 1_789_378_200),
                    text: "The demo starts with the overview, then the workspace, then the finished deck.", seconds: 7, cleanupMethod: "Original")]
+
+    /// The screens the bundled sample deck shows in states the ordinary gallery does not draw: a
+    /// short Snap & Talk walkthrough made of real Workbench screens with spoken narration, and
+    /// Dictate with automatic paste set up. `bash scripts/samples/render.sh --app-screens DIR`
+    /// takes them from this pass's output (docs/desktop.md § Home).
+    func renderSampleScreens(to output: URL) throws -> SurfaceGallery.Pass {
+        let repository = Self.sampleDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let screens = repository.appendingPathComponent("scripts/samples/screens", isDirectory: true)
+        let steps: [(file: String, title: String, narration: String)] = [
+            ("dictate.png", "Talk, and it types where you are", "This is Dictate. I press Option V wherever I'm typing, say what I mean, and the words land right there. The same text waits in History."),
+            ("meetings.png", "Leave every call with the words", "Here's a call that's just finished. I started it once and left it. Copy transcript puts every word on my clipboard, ready for the follow-up."),
+            ("draw.png", "Mark it up mid-demo", "When I'm presenting I hold Option D, draw over whatever's on screen, then let go and carry on. Option X clears it."),
+            ("history.png", "Nothing gets lost", "Every dictation, meeting, Snap and result lands in History on this Mac, newest first, and I can search all of it.")]
+        let root = home.appendingPathComponent("Snap & Talk/Workbench walkthrough", isDirectory: true)
+        var manifest = try ReadbackStore.create(at: root, title: "Workbench walkthrough")
+        for (index, step) in steps.enumerated() {
+            let id = UUID(), directory = "items/\(id.uuidString.lowercased())"
+            try ReadbackStore.createPrivateDirectory(root.appendingPathComponent(directory))
+            let section = ReadbackSection(id: id, capturedAt: Date(timeIntervalSince1970: 1_789_546_320 + Double(index * 60)), displayName: "Built-in Display",
+                directory: directory, screenshot: directory + "/screen.png", audio: directory + "/narration.wav",
+                originalTranscript: directory + "/narration-original.txt", transcript: directory + "/narration.txt", status: .ready, failure: nil, deletedAt: nil)
+            try ReadbackStore.writePrivate(Data(contentsOf: screens.appendingPathComponent(step.file)), to: root.appendingPathComponent(section.screenshot))
+            for path in [section.originalTranscript!, section.transcript!] {
+                try ReadbackStore.writePrivate(Data(step.narration.utf8), to: root.appendingPathComponent(path))
+            }
+            let settings: [String: Any] = [AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: 16_000, AVNumberOfChannelsKey: 1,
+                                           AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false]
+            let audio = try AVAudioFile(forWriting: root.appendingPathComponent(section.audio!), settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
+            let buffer = AVAudioPCMBuffer(pcmFormat: audio.processingFormat, frameCapacity: 4_000)!
+            buffer.frameLength = 4_000
+            try audio.write(from: buffer)
+            manifest.sections.append(section)
+        }
+        try ReadbackStore.save(manifest, at: root)
+        let defaults = try SurfaceGallery.isolatedDefaults("SampleWalkthrough", home: home)
+        defaults.set([root.path], forKey: "readback.recentSessionPaths.v1")
+        let session = ReadbackModel(engine: model.engine, defaults: defaults,
+            captureDisplay: { throw ReadbackError.message("The gallery never captures the screen.") },
+            transcribeAudio: { _ in throw ReadbackError.message("The gallery never transcribes audio.") },
+            screenAccess: .fixed(true), microphoneAccess: { .authorized })
+        defer { session.shutdown() }
+        session.reviewSection(session.activeSections[1].id)
+        let size = NSSize(width: 1180, height: 800)
+        var shots: [SurfaceGallery.Shot] = []
+        let talkWindow = offscreenWindow(size: size, styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView])
+        talkWindow.titlebarAppearsTransparent = true; talkWindow.titleVisibility = .hidden
+        model.page = "readback"
+        talkWindow.contentViewController = NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard, readback: session, snap: snap))
+        talkWindow.setContentSize(size)
+        let (talk, _) = try renderPage("readback", in: talkWindow)
+        talkWindow.contentViewController = nil; talkWindow.close()
+        shots.append(try save(talk, id: "sample-walkthrough", title: "Snap & Talk, a four-screen walkthrough", detail: "Real Workbench screens with spoken narration, for the bundled sample deck.",
+                              file: "sample-snap-and-talk-\(theme).png", to: output))
+        // Dictate with automatic paste set up, as the sample's “types where you are” describes.
+        let kept = (granted: model.accessibilityGranted, delivery: model.preferences.delivery)
+        model.accessibilityGranted = true; model.preferences.delivery = .paste
+        defer { model.accessibilityGranted = kept.granted; model.preferences.delivery = kept.delivery }
+        let dictateWindow = homeWindow(size: size)
+        let (dictate, _) = try renderPage("dictate", in: dictateWindow)
+        dictateWindow.contentViewController = nil; dictateWindow.close()
+        shots.append(try save(dictate, id: "sample-dictate", title: "Dictate with automatic paste set up", detail: "For the bundled sample deck.",
+                              file: "sample-dictate-\(theme).png", to: output))
+        return SurfaceGallery.Pass(theme: theme, panels: [], toolbar: [], host: [], pickers: [], pickerHost: [],
+            pages: [.init(route: "readback", title: "Sample deck screens", fallsThrough: false, shots: shots)], entries: [], menus: [], placement: [])
+    }
 
     /// A three-section Snap & Talk session in the temporary home, opened only as a recent session.
     static func makeSession(in home: URL, count: Int = 3) throws -> URL {
@@ -3793,16 +3867,28 @@ private struct HistoryNativeAcceptanceView: View {
             E(surface: "Section switcher", label: WorkbenchHome.name(of: $0.page) + " › " + $0.title, leads: "Page: \($0.id)", route: $0.id, ran: true)
         }
         list += [page("Home sidebar", "Update button, when an update is waiting", "settings")]
-        // Home opens four workspaces. Capturing begins only from the chosen workspace.
-        list += [page(home, "Start here · Dictate", "dictate"), page(home, "Start here · Meetings", "meeting"),
-                 page(home, "Start here · Snap & Talk", "readback"), page(home, "Start here · Present", "present"),
-                 action(home, "Me · Your profile", "Opens local photo and Persona preparation"),
+        // Home shows results and this Mac's permissions; each door sits beside what it acts on.
+        list += [action(home, "Me · Your profile", "Opens local photo and Persona preparation"),
+                 action(home, "Your meetings · Copy transcript", "Copies the newest meeting's complete current text"),
+                 E(surface: home, label: "Your meetings · Review transcript, or an earlier meeting", leads: "Page: history, showing that transcript", route: "history"),
+                 action(home, "Your meetings · Prepare follow-up…", "Opens the reviewed follow-up handoff for that transcript"),
+                 E(surface: home, label: "Your meetings · Open follow-up, once one was made", leads: "Page: history, revealing that task", route: "history"),
+                 page(home, "Your meetings · Open Meetings", "meeting"),
+                 action(home, "Your decks · Open deck", "Opens the newest deck file in its app"),
+                 page(home, "Your decks · Open in Snap & Talk, or an earlier session", "readback"),
+                 action(home, "Your decks · the newest session's first screen", "Opens its read-only preview"),
+                 action(home, "Your decks · Show in Finder", "Reveals the deck or session folder"),
+                 action(home, "Your decks · the sample deck's cover", "Opens its slides' read-only preview"),
+                 action(home, "Sample deck · Open, or Sample deck in the header", "Shows the bundled sample deck in Quick Look"),
+                 page(home, "Sample deck · Make your own, or Open Snap & Talk", "readback"),
+                 action(home, "Your keys · Practice, from a key or the list", "Runs the Keyboard coach's three-press practice for that shortcut in the tile"),
+                 action(home, "Your keys · Change…, from a key", "Records new keys through the Keyboard coach's conflict check"),
+                 action(home, "Your keys · Put Snap on ⌥G, while Snap has no key", "Assigns a free left-hand Option key through the same check"),
+                 page(home, "Your keys · Open Keyboard…", "shortcuts"),
+                 action(home, "Permissions · Done for now, or Show details", "Folds or opens the panel; saved"),
+                 action(home, "Permissions · Set up…, for an approval macOS has not asked about", "Shows macOS's request for that one approval"),
+                 action(home, "Permissions · Open Settings…, for an approval that is off or managed", "Opens Privacy & Security at that approval"),
                  action("Home sidebar", "Expand or collapse sidebar · Control-Command-S", "Keeps the chosen sidebar width"),
-                 E(surface: home, label: "Recent work · a transcript's title", leads: "Page: history, showing that transcript", route: "history"),
-                 E(surface: home, label: "Recent work · a result's title", leads: "Page: history, revealing that task", route: "history"),
-                 action(home, "Recent work · a Snap's thumbnail and title", "Opens its read-only preview"),
-                 page(home, "Open History", "history"),
-                 page(home, "Saved from iPhone, when photos are in Library", "photos"),
                  action(home, "Show me a first dictation, after Skip for now", "Shows the first-dictation guide again"),
                  page(home, "Models…, while speech is not ready", "models"),
                  E(surface: "Settings page", label: "Dictate settings…", leads: "Page: dictate, with its settings sheet open", route: "dictate"),

@@ -27,7 +27,7 @@ resources.mkdir()
 shutil.copy2(binary, macos / 'WorkbenchUsabilityQA')
 for bundle in (project / '.build/debug').glob('*.bundle'):
     shutil.copytree(bundle, resources / bundle.name)
-for name in ['SceneBackdrops', 'AmbientScenes', 'PersonaPortraits']:
+for name in ['SceneBackdrops', 'AmbientScenes', 'PersonaPortraits', 'Samples']:
     shutil.copytree(project / 'Resources' / name, resources / name)
 shutil.copy2(project / 'scripts/AppIcon.icns', resources / 'AppIcon.icns')
 with (project / 'scripts/Info.plist').open('rb') as stream:

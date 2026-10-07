@@ -48,7 +48,7 @@ Sources: [iPhone dictation](https://support.apple.com/en-gb/guide/iphone/iph2c06
 
 ### Desktop journey rules
 
-- Home greets you, shows your Me photo and opens Dictate, Meetings, Snap & Talk or Present without starting an operation. Current work comes first and keeps independent jobs reachable; Recent work opens exact History items without changing the current draft or shared selection. Me profile editing opens from Home’s Me photo or Persona’s Me…. Library owns Saved Prompts and exact Copy; opening it never infers an external insertion target.
+- Home greets you and shows your Me photo, then current work first, keeping independent jobs reachable, then your meetings, your Snap & Talk decks, this Mac's permissions and the keys worth learning ([the window contract](desktop.md#home)). Nothing on it starts an operation by being opened; a meeting's Review transcript opens that exact History item without changing the current draft or shared selection. Me profile editing opens from Home’s Me photo or Persona’s Me…. Library owns Saved Prompts and exact Copy; opening it never infers an external insertion target.
 - Voice, Screen and Saved label sidebar groups. Meetings is directly visible. Settings stays pinned; Timer remains with Draw and its existing quick controls.
 - Each workspace puts content and its main transport first. Dictate settings holds delivery, text style, activation and dictionary. The recognition source remains visible before recording.
 - Meetings proceeds from source and optional microphone to explicit Start, Stop & transcribe, then Review transcript in History. Microphone only is a valid complete source choice. Failed/cancelled processing retains recovery; a deleted result cannot leave a success link behind.

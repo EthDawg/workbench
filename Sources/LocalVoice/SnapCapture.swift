@@ -20,8 +20,15 @@ struct ScreenCaptureAccess {
     var request: () -> Bool
     /// Opens System Settings at Screen Recording. It changes nothing by itself; checks open nothing.
     var openSettings: () -> Void = {}
-    static let system = ScreenCaptureAccess(isGranted: { CGPreflightScreenCaptureAccess() }, request: { CGRequestScreenCaptureAccess() },
-                                            openSettings: { NSWorkspace.shared.open(settingsURL) })
+    static let system = ScreenCaptureAccess(isGranted: { CGPreflightScreenCaptureAccess() }, request: {
+        // Every request goes through here (Snap, Snap & Talk and Home's Permissions), so Home
+        // knows macOS has asked and offers Settings rather than a second request it will not show.
+        UserDefaults.standard.set(true, forKey: requestedKey)
+        return CGRequestScreenCaptureAccess()
+    }, openSettings: { NSWorkspace.shared.open(settingsURL) })
+    static let requestedKey = "workbench.permissions.screenRecordingAsked.v1"
+    /// Whether this edition has ever asked macOS for Screen Recording.
+    static var wasRequested: Bool { UserDefaults.standard.bool(forKey: requestedKey) }
     static func fixed(_ granted: Bool) -> Self { .init(isGranted: { granted }, request: { granted }) }
     /// System Settings → Privacy & Security → Screen Recording.
     static let settingsURL = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!

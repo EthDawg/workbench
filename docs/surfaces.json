@@ -1634,23 +1634,6 @@
     "note": "Option: the first dictation on Home copies your words (#134 W9)."
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.copy.2",
-    "surface": "window home",
-    "label": "Copy",
-    "kind": "action",
-    "belongsTo": "dictate",
-    "note": "Option: Copy beside a recent transcript in Home's Recent work, the same copy and receipt as History's (#134 H1)."
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.copy.3",
-    "surface": "window home",
-    "label": "Copy",
-    "kind": "action",
-    "belongsTo": "snap",
-    "note": "Existing contextual \"Copy\" label inside snap; shared wording, not a separate capability. Copies a recent Snap from Home's Recent work (#134 H1).",
-    "aliasOf": "snap"
-  },
-  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.done",
     "surface": "window home",
     "label": "Done",
@@ -1700,14 +1683,6 @@
     "note": "Quality: was Speech settings; the door names the Settings section it opens, Models (Fit rule 6; 1 Oct)."
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.open-history",
-    "surface": "window home",
-    "label": "Open History",
-    "kind": "action",
-    "belongsTo": "history",
-    "note": "Quality: All history becomes Open History below Home's Recent work, the five newest History entries (#134 H1). It opens History on All."
-  },
-  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.open-in-history",
     "surface": "window home",
     "label": "Open in History",
@@ -1732,15 +1707,6 @@
     "note": "Quality: the live strip's Persona action (was Button.hide-persona), with its label and click now from the shared Persona action: Hide persona, Hide personas, or Show personas for a hidden prepared set, as the toolbar and panel read (#134).",
     "kind": "action",
     "belongsTo": "persona"
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.runtime-d81c55f49c5b",
-    "surface": "window home",
-    "label": null,
-    "expression": "saved",
-    "kind": "action",
-    "belongsTo": "library",
-    "note": "Runtime label from HomeRecentWork.savedFromIPhone: Saved from iPhone with the photo count and the newest photo's stored date, a quiet link to Library › From iPhone (#134 H1). Photos are Library's, so they are not Recent work, and nothing calls them new."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.set-up-automatic-paste",
@@ -1799,57 +1765,12 @@
     "note": "Option: Current work's action for a running Hand off task, the same Stop task as History's running strip (#134 H1)."
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.CapturePreviewButton.view-snap",
-    "surface": "window home",
-    "label": "View Snap",
-    "kind": "action",
-    "belongsTo": "snap",
-    "note": "Quality: a recent Snap's thumbnail and title open its read-only preview, where editing stays an explicit action (#134 H1). Was View latest Snap."
-  },
-  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.NativeControlMenu.timer",
     "surface": "window home",
     "label": "Timer",
     "kind": "action",
     "belongsTo": "timer",
     "note": "Option: live strip action, the one way to end what is running from Home (#134 W9). Reuses the Timer menu (Pause, Stop, Reset)."
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.workspaceCard.dictate",
-    "surface": "window home",
-    "label": "Dictate",
-    "page": "dictate",
-    "kind": "capability",
-    "belongsTo": "dictate",
-    "note": "Opens the prepared workspace only; never starts capture, playback, processing or a new session. Desktop cohesion requested 30 September 2026."
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.workspaceCard.meetings",
-    "surface": "window home",
-    "label": "Meetings",
-    "page": "meeting",
-    "kind": "workflow",
-    "belongsTo": "dictate",
-    "note": "Opens the prepared workspace only; never starts capture, playback, processing or a new session. Desktop cohesion requested 30 September 2026."
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.workspaceCard.present",
-    "surface": "window home",
-    "label": "Present",
-    "page": "present",
-    "kind": "action",
-    "belongsTo": "present",
-    "aliasOf": "present",
-    "note": "Foundation A (#279): compact Home route to existing Present preparation. Navigation starts nothing; Snap remains in the sidebar and toolbar."
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.workspaceCard.snap-talk",
-    "surface": "window home",
-    "label": "Snap & Talk",
-    "page": "readback",
-    "kind": "workflow",
-    "belongsTo": "snapAndTalk",
-    "note": "Opens the prepared workspace only; never starts capture, playback, processing or a new session. Desktop cohesion requested 30 September 2026."
   },
   {
     "id": "LocalVoice.WorkbenchQuickPanel.PanelRecoveryRow.Button.runtime-27f7b4321a3d",
@@ -5463,6 +5384,239 @@
     "aliasOf": "LocalVoice.FounderIntroduction.FounderIntroductionCard.Button.not-now"
   },
   {
+    "id": "LocalVoice.HomePermissions.HomePermissionsPanel.Button.runtime-90b2ee8a5505",
+    "surface": "window home",
+    "label": null,
+    "expression": "action . title",
+    "kind": "setting",
+    "belongsTo": "app",
+    "note": "Ethan 7 Oct 2026 (docs/desktop.md decisions): a permission row's Allow… shows macOS's request for that one approval through the owner its tool already uses; Open Settings… opens Privacy & Security at that approval. Nothing is requested by looking, and no tool waits on it."
+  },
+  {
+    "id": "LocalVoice.HomePermissions.HomePermissionsPanel.Button.show-details",
+    "surface": "window home",
+    "label": "Show details",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Quality: shows each approval when the panel is folded; local to the panel (docs/desktop.md § Home)."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeMeetingTile.Button.copy-transcript",
+    "surface": "window home",
+    "label": "Copy transcript",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "aliasOf": "dictate",
+    "note": "Option: Copy transcript on Home's Last meeting copies the saved meeting's complete current text through the same owner as Meetings' Copy transcript (MeetingTranscriptCopy); same words, same result (Fit rule 6)."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeMeetingTile.Button.open-meetings",
+    "surface": "window home",
+    "label": "Open Meetings",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Option: a door to Meetings from the Last meeting tile while a meeting records or finishes; it starts nothing."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeMeetingTile.Button.open-meetings.2",
+    "surface": "window home",
+    "label": "Open Meetings",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Option: the empty Last meeting tile's one next step; opening Meetings starts nothing (Start stays explicit)."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeMeetingTile.Button.prepare-follow-up",
+    "surface": "window home",
+    "label": "Prepare follow-up…",
+    "kind": "action",
+    "belongsTo": "history",
+    "aliasOf": "history",
+    "note": "Option: the same reviewed follow-up handoff that Meetings' Prepare follow-up… opens for that transcript; nothing is sent until the review (Fit rule 6)."
+  },
+  {
+    "id": "LocalVoice.HomePermissions.HomePermissionsPanel.Button.runtime-fe289c1404ed",
+    "surface": "window home",
+    "label": null,
+    "expression": "snapshot . isComplete ? \"Hide details\" : \"Done for now\"",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Quality: the Permissions panel's fold, Done for now (saved) or Hide details once all is allowed; something turning off opens it again (docs/desktop.md § Home)."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeDecksTile.Button.make-your-own",
+    "surface": "window home",
+    "label": "Make your own",
+    "kind": "action",
+    "belongsTo": "snapAndTalk",
+    "note": "Option: beside the sample deck, opens Snap & Talk; nothing starts until New session."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeDecksTile.Button.open",
+    "surface": "window home",
+    "label": "Open",
+    "kind": "action",
+    "belongsTo": "snapAndTalk",
+    "note": "Ethan 7 Oct 2026: shows the bundled sample deck, a tour of Workbench, in Quick Look; read-only, never in History."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeDecksTile.Button.open-deck",
+    "surface": "window home",
+    "label": "Open deck",
+    "kind": "action",
+    "belongsTo": "snapAndTalk",
+    "note": "Option: opens the newest deck file a session's assistant left in outputs/, in its own app (docs/desktop.md § Your decks)."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeDecksTile.Button.open-in-snap-talk",
+    "surface": "window home",
+    "label": "Open in Snap & Talk",
+    "kind": "action",
+    "belongsTo": "snapAndTalk",
+    "note": "Option: opens that session in Snap & Talk through the same switch as Sessions…, so busy and unsaved-edit admission applies; nothing records."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeDecksTile.Button.open-snap-talk",
+    "surface": "window home",
+    "label": "Open Snap & Talk",
+    "kind": "action",
+    "belongsTo": "snapAndTalk",
+    "note": "Option: the empty Your decks tile's one next step, when no sample deck ships; opening Snap & Talk starts nothing."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeDecksTile.Button.runtime-0e33a436af9f",
+    "surface": "window home",
+    "label": null,
+    "expression": "deck . title",
+    "kind": "action",
+    "belongsTo": "snapAndTalk",
+    "note": "Option: an earlier session's one line (its title) opens it in Snap & Talk through the same switch as Sessions…."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeDecksTile.Button.sample-deck",
+    "surface": "window home",
+    "label": "Sample deck",
+    "kind": "action",
+    "belongsTo": "snapAndTalk",
+    "note": "Option: once the person has a deck, the sample deck stays one link away in the tile header; Quick Look only."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeDecksTile.Button.show-in-finder",
+    "surface": "window home",
+    "label": "Show in Finder",
+    "kind": "action",
+    "belongsTo": "snapAndTalk",
+    "note": "Option: reveals the newest deck file, or the session folder when there is none."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeDecksTile.CapturePreviewButton.runtime-391cae7adcdf",
+    "surface": "window home",
+    "label": null,
+    "expression": "\"View the first screen of \" + deck . title",
+    "kind": "action",
+    "belongsTo": "snapAndTalk",
+    "note": "Quality: a session's first screen opens as a read-only picture (Fit rule 3)."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeDecksTile.CapturePreviewButton.view-the-sample-deck-s-slides",
+    "surface": "window home",
+    "label": "View the sample deck's slides",
+    "kind": "action",
+    "belongsTo": "snapAndTalk",
+    "note": "Quality: the sample deck's cover opens its slides as read-only pictures (Fit rule 3)."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeKeysTile.Button.cancel",
+    "surface": "window home",
+    "label": "Cancel",
+    "kind": "action",
+    "belongsTo": "settings",
+    "aliasOf": "settings",
+    "note": "Option: cancels recording new keys started from Your keys, keeping the old ones; the Grammar's Cancel (discards), shared with other Cancel buttons by meaning, owned by the Keyboard coach."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeKeysTile.Button.change",
+    "surface": "window home",
+    "label": "Change…",
+    "kind": "setting",
+    "belongsTo": "settings",
+    "note": "Ethan 7 Oct 2026 (Your keys: discover, set, muscle memory): Change… on a key records new keys through the Keyboard coach, its conflict check and macOS registration probe, as Settings › Keyboard does."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeKeysTile.Button.open-keyboard",
+    "surface": "window home",
+    "label": "Open Keyboard…",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Option: Your keys' door to Settings › Keyboard, by that page's name."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeKeysTile.Button.practice",
+    "surface": "window home",
+    "label": "Practice",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Option: Practice from a key's popover runs the Keyboard coach's three-press practice in the tile; disabled while anything records."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeKeysTile.Button.practice.2",
+    "surface": "window home",
+    "label": "Practice",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Option: Practice beside one of the next three keys to learn; the same coach practice."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeKeysTile.Button.runtime-25fed8e0d267",
+    "surface": "window home",
+    "label": null,
+    "expression": "\"Put \\(HomeKeys.name(entry)) on \\(shortcut.label)\"",
+    "kind": "setting",
+    "belongsTo": "settings",
+    "note": "Ethan 7 Oct 2026: Put Snap on ⌥G (or the next free left-hand key, never ⌥E) assigns a key to a core tool that ships without one, through the Keyboard coach's conflict check and registration probe."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeKeysTile.Button.stop-practice",
+    "surface": "window home",
+    "label": "Stop practice",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Option: stops a practice started from Your keys; the Keyboard coach's own stop."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeMeetingTile.Button.open-follow-up",
+    "surface": "window home",
+    "label": "Open follow-up",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Option: once a follow-up was made from the newest meeting, opens that task in History, where Copy result copies it."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeMeetingTile.Button.review-transcript",
+    "surface": "window home",
+    "label": "Review transcript",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Option: Review transcript opens that exact transcript in History, as Meetings' Review transcript does; nothing is selected or loaded into Dictate."
+  },
+  {
+    "id": "LocalVoice.HomeTiles.HomeMeetingTile.Button.runtime-fec7ab1d0f54",
+    "surface": "window home",
+    "label": null,
+    "expression": "meeting . heading",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Option: an earlier meeting's one line (its heading) opens that transcript in History."
+  },
+  {
+    "id": "LocalVoice.main.AppDelegate.addItem.minimize",
+    "surface": "app menu bar",
+    "label": "Minimize",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Quality: the standard Mac Window › Minimize (⌘M) for the Workbench window; it ends nothing."
+  },
+  {
     "id": "LocalVoice.ModelSettingsView.ModelSettingsView.DisclosureGroup.details",
     "surface": "settings page",
     "label": "Details",
@@ -5470,5 +5624,13 @@
     "belongsTo": "settings",
     "aliasOf": "LocalVoice.DemoLibraryView.DemoLibraryView.DisclosureGroup.details",
     "note": "Quality (#15): contextual speech-model failure detail under the useful recovery message; no separate settings place or setup gate."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Button.open-login-items",
+    "surface": "settings page",
+    "label": "Open Login Items…",
+    "kind": "setting",
+    "belongsTo": "settings",
+    "note": "Quality: Open Workbench at login could register but stay off until approved in System Settings › General › Login Items; the switch now says so and opens that list (docs/desktop.md)."
   }
 ]
