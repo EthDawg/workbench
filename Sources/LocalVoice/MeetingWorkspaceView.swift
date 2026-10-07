@@ -158,8 +158,7 @@ struct MeetingWorkspaceView: View {
 
                 if let problem = model.problem ?? (model.isBusy ? nil : model.admission.captureProblem) {
                     HStack(alignment: .top, spacing: 10) {
-                        Image(systemName: "exclamationmark.triangle.fill").font(.callout).foregroundStyle(.orange).accessibilityHidden(true)
-                        Text(problem.message).font(.callout).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                        WorkbenchNote(problem.message)
                         Spacer()
                         VStack(alignment: .trailing, spacing: 8) {
                             if problem.opensMicrophoneSettings {
@@ -184,7 +183,7 @@ struct MeetingWorkspaceView: View {
                             Button { model.dismissError() } label: { Image(systemName: "xmark").frame(width: 24, height: 24).contentShape(Rectangle()) }
                                 .buttonStyle(.plain).accessibilityLabel("Dismiss meeting problem")
                         }
-                    }.padding(14).background(Color.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
+                    }.padding(14).background(Workbench.attention.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
                 }
                 if !model.isBusy, let kept = model.keptWithoutSpeech {
                     HStack(alignment: .top, spacing: 12) {

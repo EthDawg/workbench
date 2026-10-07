@@ -47,7 +47,7 @@ struct LiveVoiceSourcesView: View {
                     .font(.caption).foregroundStyle(.secondary)
             } icon: {
                 Image(systemName: source.source == .microphone ? "mic" : "speaker.wave.2")
-                    .foregroundStyle(source.health == .unavailable ? Color.orange : Workbench.accent)
+                    .foregroundStyle(source.health == .unavailable ? Workbench.attention : Workbench.accent)
             }.help(source.message ?? source.name).accessibilityElement(children: .combine)
         }
     }

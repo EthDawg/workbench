@@ -42,8 +42,7 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
             if let error = bannerError {
                 HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: "exclamationmark.triangle.fill").font(.callout).foregroundStyle(.orange).accessibilityHidden(true)
-                    Text(error).font(.callout).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                    WorkbenchNote(error)
                     Spacer()
                     // The fix is in System Settings, so the page opens it beside the microphone refusal
                     // itself. The Mac's microphone setting says nothing about which problem this is.
@@ -53,7 +52,7 @@ struct ContentView: View {
                     }
                     Button { model.dismissError() } label: { Image(systemName: "xmark").frame(width: 24, height: 24).contentShape(Rectangle()) }
                         .buttonStyle(.plain).accessibilityLabel("Dismiss error")
-                }.padding(14).background(Color.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
+                }.padding(14).background(Workbench.attention.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
             }
             Group {
                 switch model.page {
@@ -545,7 +544,10 @@ struct DictionaryView: View {
             }.textFieldStyle(.roundedBorder).controlSize(.large).workbenchCard()
             ForEach(CorrectionRule.conflicts(in: model.replacements), id: \.[0].id) { rules in conflict(rules) }
             if model.replacements.isEmpty {
-                Text("No corrections yet. Add a name or phrase above when you need one.").font(.callout).foregroundStyle(.secondary)
+                // The form above is the one action, so the empty state names what a correction does.
+                WorkbenchEmptyState(symbol: "character.book.closed", title: "No corrections yet",
+                                    detail: "A correction writes your spelling whenever dictation hears a name or phrase. Add one above.") { EmptyView() }
+                    .workbenchCard()
             } else {
                 // One card holding the list, a row per correction, as a native grouped list reads.
                 ScrollView {
@@ -601,13 +603,10 @@ struct DictionaryView: View {
     private func conflict(_ rules: [Replacement]) -> some View {
         let spellings = rules.map(\.written).reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
         return VStack(alignment: .leading, spacing: 10) {
-            Label {
-                Text(spellings.count > 1
-                     ? "“\(rules[0].heard)” has \(rules.count) rules. Dictation writes “\(CorrectionRule.currentOutput(for: rules[0].heard, in: model.replacements))”."
-                     : "“\(rules[0].heard)” is saved \(rules.count) times.")
-            } icon: {
-                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Workbench.attention).accessibilityHidden(true)
-            }.font(.body.weight(.medium))
+            WorkbenchNote(spellings.count > 1
+                          ? "“\(rules[0].heard)” has \(rules.count) rules. Dictation writes “\(CorrectionRule.currentOutput(for: rules[0].heard, in: model.replacements))”."
+                          : "“\(rules[0].heard)” is saved \(rules.count) times.",
+                          font: .body.weight(.medium), selectable: false)
             Text("Keep one spelling. Only this phrase’s other rules are removed.")
                 .font(.callout).foregroundStyle(.secondary)
             HStack(spacing: 8) {
@@ -621,7 +620,7 @@ struct DictionaryView: View {
             }
         }
         .padding(Workbench.tilePadding).frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: Workbench.tileRadius))
+        .background(Workbench.attention.opacity(0.09), in: RoundedRectangle(cornerRadius: Workbench.tileRadius))
     }
 }
 
