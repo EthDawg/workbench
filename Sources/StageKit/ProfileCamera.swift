@@ -229,6 +229,9 @@ final class ProfileCameraSession: NSObject, ProfileCameraCapturing, AVCaptureVid
                 session.startRunning()
                 guard accepts(token) else { stopSession(); return }
                 if !session.isRunning { fail(.failedToStart); return }
+                // A session preset may choose its own format as it starts: with Centre Stage on,
+                // keep one that can frame you.
+                Self.conform(device)
                 emit(.features(ProfileCameraFeatures(centerStage: device.formats.contains { $0.isCenterStageSupported })))
             } catch { fail(.failedToStart) }
         }

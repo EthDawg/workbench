@@ -249,8 +249,9 @@ final class PersonaLiveCamera: ObservableObject {
     private let list: () -> PersonaCameraList
     private let effects: PersonaCameraEffects
     private var centerStageWatch: AnyObject?
-    /// The next bubble fades in over a card it replaces.
-    private var fadesIn = false
+    /// The card the next bubble replaces in its place, read when the first frame arrives, and
+    /// the bubble's own placement then, so a place chosen for the camera meanwhile wins.
+    private var replacing: (card: () -> PersonaOverlayState?, placement: PersonaOverlayState)?
     private var capture: ProfileCameraCapturing?
     private var panel: PersonaCameraDisplaying?
     private var request = UUID()
@@ -325,16 +326,11 @@ final class PersonaLiveCamera: ObservableObject {
     /// Start camera, the one door to the hardware. `deviceID` is an explicit
     /// choice from the list; without it the system's usual camera is used. A
     /// camera another owner holds is reported instead of taken.
-    /// `replacing` is the placement of a card on screen now: the bubble takes its place and
-    /// size, keeps its own lock, and fades in over it when the first frame arrives.
-    func start(deviceID: String? = nil, replacing card: PersonaOverlayState? = nil) {
+    /// `replacing` reads the placement of a card on screen: when the first frame arrives, the
+    /// bubble takes that card's place and size, keeps its own lock, and fades in over it.
+    func start(deviceID: String? = nil, replacing card: (() -> PersonaOverlayState?)? = nil) {
         release()
-        if let card, !isLive {
-            var next = placement
-            next.x = card.x; next.y = card.y; next.width = card.width; next.screenID = card.screenID
-            if let valid = try? next.validated() { placement = valid }
-        }
-        fadesIn = card != nil
+        replacing = isLive ? nil : card.map { ($0, placement) }
         features = ProfileCameraFeatures()
         let token = request
         visit = UUID()
@@ -395,16 +391,18 @@ final class PersonaLiveCamera: ObservableObject {
     func end(handingOff: Bool = false) {
         guard isActive else { return }
         if handingOff, isLive, let leaving = panel {
-            // Drop this visit's late events and deadlines, but keep the device until covered.
+            // Drop this visit's late events and deadlines, but keep its session running under
+            // the bubble until covered. The session leaves with the bubble, so a quick switch
+            // back opens a fresh one and never stops this picture early.
             request = UUID(); disarmDeadline()
             panel = nil
+            let session = capture
+            capture = nil
             visit = UUID()
-            let ended = visit, capture = self.capture
             move(to: .off)
-            leaving.stepAside { [weak self] in
+            leaving.stepAside {
                 leaving.releaseLive(); leaving.shutdown()
-                guard let self, self.visit == ended, self.state == .off else { return }
-                capture?.stop()
+                session?.stop()
             }
             return
         }
@@ -454,6 +452,8 @@ final class PersonaLiveCamera: ObservableObject {
         centerStageWatch = effects.observeCenterStage { [weak self] in
             guard let self else { return }
             self.centerStageOn = self.effects.centerStageEnabled()
+            // Turned on in the menu bar's Video menu: the running camera moves to a format that can frame you.
+            if self.centerStageOn { self.capture?.conformToCenterStage() }
             self.onChange?()
         }
     }
@@ -534,8 +534,17 @@ final class PersonaLiveCamera: ObservableObject {
         // The circle is the edge the ring and the handles follow.
         let preview = capture.previewLayer
         preview.videoGravity = .resizeAspectFill
-        let fade = fadesIn
-        fadesIn = false
+        // Replacing a card still on screen: its place now, unless the camera's own place was
+        // chosen while it started, and a fade in over it.
+        let card = replacing?.card()
+        let ownPlaceChosen = replacing.map { $0.placement != placement } ?? false
+        replacing = nil
+        if let card, !ownPlaceChosen {
+            var next = placement
+            next.x = card.x; next.y = card.y; next.width = card.width; next.screenID = card.screenID
+            if let valid = try? next.validated() { placement = valid }
+        }
+        let fade = card != nil
         guard let kept = panel?.showLive(layer: preview, aspect: CGSize(width: 1, height: 1),
                                         outline: PersonaCircleRenderer.outline, name: Self.bubbleName,
                                         help: Self.bubbleHelp(locked: placement.locked), state: placement, animated: fade) else { return }
