@@ -3739,7 +3739,8 @@ private struct HistoryNativeAcceptanceView: View {
         let sources = Array(personaChoices.prefix { $0 != "" })
         expect("Persona with no live copy", [
             plain.accessory(plain.live) == .personaPicker ? nil : "Persona offers no picker, so Live Camera is not one click away",
-            sources == ["Live Camera"] || sources == ["My Profile", "Live Camera"] ? nil
+            // My Profile is always first: My Profile… opens the profile editor until a photo is saved.
+            sources == ["My Profile…", "Live Camera"] || sources == ["My Profile", "Live Camera"] ? nil
                 : "The Persona picker lists \(personaChoices), not My Profile and Live Camera before the cards",
             plain.accessoryDescription(plain.live) == "Choose Persona" ? nil : "The picker reads \(plain.accessoryDescription(plain.live) ?? "nothing")",
             Array(routes.dropFirst(before)) == ["personas"] ? nil : "The chooser's Open Persona route failed"])
