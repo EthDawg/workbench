@@ -55,8 +55,8 @@ struct ReadbackView: View {
                             .foregroundStyle(engine.needsAttention ? Workbench.attention : Color.secondary)
                     }
                         .font(.caption).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
-                    if engine.needsAttention { Button("Retry model", action: onRetryModel).buttonStyle(.link).font(.caption) }
-                    Button("Models…", action: onOpenModels).buttonStyle(.link).font(.caption)
+                    if engine.needsAttention { Button("Retry model", action: onRetryModel).buttonStyle(.workbenchLink).font(.caption) }
+                    Button("Models…", action: onOpenModels).buttonStyle(.workbenchLink).font(.caption)
                         .help("Choose the speech model in Settings › Models")
                 }
                 if engine.needsAttention {

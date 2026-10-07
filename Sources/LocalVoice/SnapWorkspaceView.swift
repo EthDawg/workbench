@@ -160,7 +160,7 @@ struct SnapWorkspaceView: View {
             if !missing.isEmpty || !archived.isEmpty {
                 Text("Other selected evidence stays selected. Use Update in History to change a saved selection.").font(.caption2).foregroundStyle(.secondary)
             }
-            if let selectionProblem { Text(selectionProblem).foregroundStyle(.red).font(.caption) }
+            if let selectionProblem { WorkbenchNote(selectionProblem, font: .caption) }
             // A kept draft disables the selection's actions; say why and where to resolve it.
             if model.draft != nil, !selectedIDs.isEmpty {
                 Text("Save or discard the unfinished Snap, using Review above, to use these.").font(.caption).foregroundStyle(.secondary)
