@@ -621,6 +621,8 @@ public final class PhoneLinkMonitor: ObservableObject {
             last = status; onChange(status.title + (status.detail.map { " — " + $0 } ?? ""))
         }
         monitor.setActive(true)
+        let probe = PhoneFrameProbe()
+        capture.queue.sync { capture.frameProbe = { probe.take($0) } }
         let started = Date()
         capture.start()
         let deadline = started.addingTimeInterval(seconds)
@@ -635,8 +637,8 @@ public final class PhoneLinkMonitor: ObservableObject {
             }
         }
         subscription.cancel()
-        let frames = firstFrame.map { String(format: "Frames: first after %.1f s, %d×%d", $0, Int(size.width), Int(size.height)) }
-            ?? "Frames: none within \(Int(seconds)) s"
+        let frames = (firstFrame.map { String(format: "Frames: first after %.1f s, %d×%d", $0, Int(size.width), Int(size.height)) }
+            ?? "Frames: none within \(Int(seconds)) s") + "\n" + probe.summary
         let final = (signals: monitor.signals, status: monitor.sharedStatus, report: monitor.diagnostic(build: build) + "\n" + frames, firstFrame: firstFrame, size: size)
         monitor.setActive(false)
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in capture.stop { continuation.resume() } }
@@ -676,5 +678,56 @@ public final class PhoneLinkMonitor: ObservableObject {
         let final = (signals: monitor.signals, status: monitor.sharedStatus, report: monitor.diagnostic(build: build))
         monitor.setActive(false)
         return final
+    }
+}
+
+
+/// What the headless receipt learns from the frames themselves: how many arrived, their pixel
+/// format and how bright one is, so a black picture can be told apart from a black feed. It
+/// keeps no image unless WORKBENCH_PHONE_FRAME_PNG names a file for one local diagnostic frame.
+final class PhoneFrameProbe {
+    private let lock = NSLock()
+    private var count = 0
+    private var described: String?
+    func take(_ sampleBuffer: CMSampleBuffer) {
+        lock.lock(); count += 1; let first = described == nil; lock.unlock()
+        guard first, let pixels = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        let text = Self.describe(pixels)
+        if let path = ProcessInfo.processInfo.environment["WORKBENCH_PHONE_FRAME_PNG"], !path.isEmpty {
+            let image = CIImage(cvPixelBuffer: pixels)
+            if let cg = CIContext().createCGImage(image, from: image.extent) {
+                let rep = NSBitmapImageRep(cgImage: cg)
+                try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+            }
+        }
+        lock.lock(); described = text; lock.unlock()
+    }
+    var summary: String {
+        lock.lock(); defer { lock.unlock() }
+        return "Frame content: \(count) frames accepted" + (described.map { "; first: " + $0 } ?? "")
+    }
+    private static func describe(_ pixels: CVPixelBuffer) -> String {
+        let format = CVPixelBufferGetPixelFormatType(pixels)
+        let fourCC = String(bytes: [24, 16, 8, 0].map { UInt8((format >> $0) & 0xFF) }, encoding: .ascii) ?? "\(format)"
+        CVPixelBufferLockBaseAddress(pixels, .readOnly); defer { CVPixelBufferUnlockBaseAddress(pixels, .readOnly) }
+        let planar = CVPixelBufferIsPlanar(pixels)
+        let width = planar ? CVPixelBufferGetWidthOfPlane(pixels, 0) : CVPixelBufferGetWidth(pixels)
+        let height = planar ? CVPixelBufferGetHeightOfPlane(pixels, 0) : CVPixelBufferGetHeight(pixels)
+        let row = planar ? CVPixelBufferGetBytesPerRowOfPlane(pixels, 0) : CVPixelBufferGetBytesPerRow(pixels)
+        guard let base = planar ? CVPixelBufferGetBaseAddressOfPlane(pixels, 0) : CVPixelBufferGetBaseAddress(pixels) else {
+            return "\(fourCC), \(width)×\(height), no readable pixels"
+        }
+        let bytes = base.assumingMemoryBound(to: UInt8.self)
+        let step = planar ? 1 : 4
+        var total = 0, samples = 0, bright = 0
+        for y in stride(from: 0, to: height, by: max(1, height / 64)) {
+            for x in stride(from: 0, to: width, by: max(1, width / 64)) {
+                let value = Int(bytes[y * row + x * step + (planar ? 0 : 1)])
+                total += value; samples += 1; if value > 40 { bright += 1 }
+            }
+        }
+        let mean = samples > 0 ? total / samples : 0
+        let surface = CVPixelBufferGetIOSurface(pixels) != nil ? "IOSurface" : "no IOSurface"
+        return "\(fourCC), \(width)×\(height), \(surface), mean \(mean)/255, \(samples > 0 ? bright * 100 / samples : 0)% bright samples"
     }
 }

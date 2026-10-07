@@ -136,6 +136,8 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     /// new for a while, so a surface that opens later (Present pressed on a still Home Screen)
     /// draws this at once instead of opening black. Cleared whenever the session stops.
     private var lastDrawn: CMSampleBuffer?
+    /// The headless phone receipt reads accepted frames here (on the capture queue); the app never sets it.
+    var frameProbe: ((CMSampleBuffer) -> Void)?
     /// Every capture change runs here. Checks reach it to deliver a synthetic frame as AVFoundation would.
     let queue = DispatchQueue(label: "StageMark.device-preview", qos: .userInitiated)
     private let hardware: CaptureHardware
@@ -439,7 +441,7 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     func deliver(_ sampleBuffer: CMSampleBuffer, from output: AVCaptureOutput) {
         guard let description = CMSampleBufferGetFormatDescription(sampleBuffer) else { return }
         let size = CMVideoFormatDescriptionGetDimensions(description)
-        if frameArrived(CGSize(width: Int(size.width), height: Int(size.height)), from: output) { draw(sampleBuffer) }
+        if frameArrived(CGSize(width: Int(size.width), height: Int(size.height)), from: output) { frameProbe?(sampleBuffer); draw(sampleBuffer) }
     }
     /// One frame from `output`, on the capture queue, where AVFoundation delivers it. Only the
     /// current session's output, in the current generation, while the capture runs, can make
