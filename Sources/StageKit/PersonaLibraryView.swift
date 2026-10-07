@@ -128,8 +128,10 @@ struct PersonaLibraryView: View {
                 if mode == .sheet || preparingPresentation {
                     // Done means one thing on every sheet: Return, and Escape below. Choosing a persona
                     // for a scene gives Return to Use in scene instead, so it never closes empty-handed.
+                    // Arranging overlays has label fields and its own Save layout, so there Return stays
+                    // in the field and only Escape is Done.
                     Button("Done") { leavePreparation(dismissLibrary: mode == .sheet) }
-                        .keyboardShortcut(onChoose == nil ? .defaultAction : nil)
+                        .keyboardShortcut(onChoose == nil && !preparingPresentation ? .defaultAction : nil)
                 }
             }
             if !preparingPresentation {

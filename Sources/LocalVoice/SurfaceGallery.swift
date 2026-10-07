@@ -2001,6 +2001,11 @@ private struct HistoryNativeAcceptanceView: View {
         for (item, id) in [(prompt, "prompt"), (link, "link"), (document, "file"), (missing, "missing")] {
             library.selection = item.id; try shot(id, "Selected \(id)")
         }
+        // A prompt longer than the detail column: Edit… and Remove stay in the card.
+        let longPrompt = DemoResource(title: "Long prompt", product: "Planning", persona: "Facilitator",
+            content: String(repeating: "Summarise the decisions, open questions and next steps for the whole team. ", count: 30), favorite: false)
+        guard library.save(longPrompt) else { throw VoiceError.message("Could not save the long prompt fixture.") }
+        library.selection = longPrompt.id; try shot("long", "Long prompt")
         library.selection = nil; try shot("no-selection", "No selection")
         library.favoritesOnly = true; try shot("favourites", "Favourite resources")
         library.query = "no matching synthetic resource"; try shot("no-match", "No matching resources")

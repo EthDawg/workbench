@@ -657,7 +657,9 @@ struct WorkbenchHomePage: View {
     /// Active or paused work. Retained dictation audio belongs on Dictate,
     /// where Retry, the saved files and explicit Discard stay together; it is not current work.
     private var hasCurrentWork: Bool {
-        dictationLive || model.preparing
+        // Preparing speech counts only where the card shows it: the first-dictation guide
+        // shows the download itself, and a card holding only its title would be empty.
+        dictationLive || (model.preparing && !model.ready && !journey.showsGuide)
             || readback.isRecording || readback.hasPendingTranscriptions || stage.isDrawing || stage.isPresenting
             || personaControl.isCurrentWork || stage.hasTimerSession || meetings.isBusy || jobs.isBusy
     }

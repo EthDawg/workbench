@@ -279,12 +279,26 @@ struct HomeDecksTile: View {
     @ObservedObject var model: AppModel
     @ObservedObject var readback: ReadbackModel
     let sample: SampleDeck?
-    @State private var decks: [HomeDeck] = []
+    @State private var decks: [HomeDeck]
+    /// Whether the sessions have been read for this list; until then the tile shows neither the
+    /// sample nor "No decks yet", which would flash before the person's own deck.
+    @State private var loaded: Bool
     @State private var quickLook = DemoQuickLookPresenter()
     @State private var problem: String?
     /// Bumped whenever Workbench comes back to the front, which is when an assistant has just
     /// written a deck in another app: the sessions are read again then.
     @State private var returns = 0
+    /// The last sessions read and the list they came from, so coming back to Home shows the
+    /// person's decks at once; a different list of sessions reads afresh.
+    @MainActor private static var lastRead: (roots: [String], decks: [HomeDeck])?
+
+    init(model: AppModel, readback: ReadbackModel, sample: SampleDeck?) {
+        self.model = model; self.readback = readback; self.sample = sample
+        let roots = readback.recentSessionURLs.map(\.path)
+        let cached = Self.lastRead.flatMap { $0.roots == roots ? $0.decks : nil }
+        _decks = State(initialValue: cached ?? [])
+        _loaded = State(initialValue: cached != nil)
+    }
 
     var body: some View {
         WorkbenchTile("Your decks", symbol: WorkbenchHome.symbol(of: "readback"), accessory: {
@@ -300,6 +314,8 @@ struct HomeDecksTile: View {
                     Divider()
                     VStack(alignment: .leading, spacing: 0) { ForEach(decks.dropFirst()) { earlier($0) } }
                 }
+            } else if !loaded {
+                Color.clear.frame(height: 1)
             } else if let sample {
                 sampleDeck(sample)
             } else {
@@ -314,7 +330,9 @@ struct HomeDecksTile: View {
         }
         .task(id: readback.recentSessionURLs.map(\.path) + [readback.manifest?.updatedAt.description ?? "", "\(returns)"]) {
             let roots = readback.recentSessionURLs
-            decks = await Task.detached(priority: .utility) { HomeDeck.read(roots) }.value
+            let read = await Task.detached(priority: .utility) { HomeDeck.read(roots) }.value
+            decks = read; loaded = true
+            Self.lastRead = (roots.map(\.path), read)
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in returns &+= 1 }
         .accessibilityIdentifier("home.decks")

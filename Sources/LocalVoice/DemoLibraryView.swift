@@ -271,12 +271,13 @@ struct DemoLibraryView: View {
                         Text(summary).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
                     }
                 }
-                // As tall as the text, up to a cap, so the actions follow the words.
+                // As tall as the text, up to a cap, so the actions follow the words; it gives way in a
+                // short window, so Edit… and Remove below never fall out of the card.
                 ScrollView {
                     Text(item.content).font(Workbench.bodyText).lineSpacing(4).textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
-                }.frame(height: min(max(contentHeight, 18), 360))
+                }.frame(minHeight: min(max(contentHeight, 18), 60), maxHeight: min(max(contentHeight, 18), 360))
                 HStack {
                     primaryActionButton(item)
                     if item.kind == .link { Button("Copy link") { library.copy(item) } }
