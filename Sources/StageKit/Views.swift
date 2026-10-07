@@ -141,10 +141,10 @@ struct ControlCenter: View {
                 Text("Share your entire display in Zoom, Teams or Meet so your audience sees the ink.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }.surface()
-            // Named as Draw's own tabs name them: Pointer and Boards (Names rule).
+            // Named as the quick controls and the shortcut list name them: Pointer and Whiteboard (Names rule).
             HStack(alignment: .top, spacing: 10) {
                 utilityButton("Pointer", detail: app.pointerEnabled ? "Pointer is on" : "Show where you point", symbol: "cursorarrow.rays", active: app.pointerEnabled) { app.perform(.pointer) }
-                utilityButton("Board", detail: "Explain an idea", symbol: "rectangle") { app.perform(.whiteboard) }
+                utilityButton("Whiteboard", detail: "Explain an idea", symbol: "rectangle") { app.perform(.whiteboard) }
                 utilityButton("Timer", detail: "Keep the room on time", symbol: "timer") { app.perform(.timer) }
             }
         }
@@ -351,7 +351,11 @@ struct ControlCenter: View {
     private func pageIntro(_ title: String, _ detail: String) -> some View {
         VStack(alignment: .leading, spacing: 9) {
             if !app.embedded { Text(title).font(.largeTitle.weight(.semibold)).tracking(-0.7) }
+            // Embedded, the segmented control names the section on screen, so VoiceOver reads the
+            // section's name with its detail as the heading it would otherwise lose.
             Text(detail).font(.body).foregroundStyle(.secondary)
+                .accessibilityLabel(app.embedded ? "\(title). \(detail)" : detail)
+                .accessibilityAddTraits(app.embedded ? .isHeader : [])
         }
     }
     private func sliderRow(_ title: String, value: Binding<Double>, range: ClosedRange<Double>, suffix: String) -> some View {

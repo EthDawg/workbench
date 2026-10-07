@@ -262,11 +262,14 @@ struct CaptureAccessCard<Actions: View>: View {
     let detail: String
     var reopenHint: String?
     var footnote: String?
+    /// Attention for what is off; neutral for a permission not asked yet or a request in progress,
+    /// so orange means off here as it does in Home's Permissions.
+    var tone: WorkbenchTone = .attention
     @ViewBuilder var actions: () -> Actions
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             // A problem reads the same on every page: the kit's note, triangle and primary words.
-            WorkbenchNote(title, font: .callout.weight(.semibold))
+            WorkbenchNote(title, tone: tone, font: .callout.weight(.semibold))
             Text(detail).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             HStack { actions() }.padding(.top, 2)
             if let reopenHint {

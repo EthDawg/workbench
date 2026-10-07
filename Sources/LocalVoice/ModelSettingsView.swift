@@ -74,10 +74,9 @@ struct ModelSettingsView: View {
                         .buttonStyle(.borderedProminent)
                         .disabled(isBusy || applying || !loaded)
                     if draft == active && draft.provider == .parakeet && !current.canTranscribe {
-                        // Retrying saved files means something only after they failed to prepare.
-                        if current.failure != nil {
-                            Button("Retry saved files") { Task { await prepareCached() } }.disabled(isBusy || applying)
-                        }
+                        // The contract's way back to files already on this Mac, without downloading: after a
+                        // failure, and after Cancel setup, which leaves no failure to show.
+                        Button("Retry saved files") { Task { await prepareCached() } }.disabled(isBusy || applying)
                         if let onNotNow { Button("Not now", action: onNotNow) }
                     }
                 }

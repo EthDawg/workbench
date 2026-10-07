@@ -339,7 +339,7 @@ struct HomeDecksTile: View {
                     Label("Deck ready" + (deck.deckDate.map { " · " + HomeMeetingTile.stamp($0) } ?? ""), systemImage: "checkmark.circle.fill")
                         .font(.caption).foregroundStyle(Workbench.accent).help(file.lastPathComponent)
                 } else {
-                    Text("No deck yet. Use Hand off… in Snap & Talk to build it.")
+                    Text("No deck yet. Use Hand off in Snap & Talk to build it.")
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }.frame(maxWidth: .infinity, alignment: .leading)

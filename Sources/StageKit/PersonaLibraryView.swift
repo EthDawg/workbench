@@ -126,8 +126,10 @@ struct PersonaLibraryView: View {
                         .menuStyle(.borderlessButton).fixedSize().disabled(library.isReadOnly)
                 }
                 if mode == .sheet || preparingPresentation {
-                    // Done means one thing on every sheet: Return, and Escape below.
-                    Button("Done") { leavePreparation(dismissLibrary: mode == .sheet) }.keyboardShortcut(.defaultAction)
+                    // Done means one thing on every sheet: Return, and Escape below. Choosing a persona
+                    // for a scene gives Return to Use in scene instead, so it never closes empty-handed.
+                    Button("Done") { leavePreparation(dismissLibrary: mode == .sheet) }
+                        .keyboardShortcut(onChoose == nil ? .defaultAction : nil)
                 }
             }
             if !preparingPresentation {
@@ -208,6 +210,7 @@ struct PersonaLibraryView: View {
                                 HStack {
                                     if let onChoose {
                                         Button("Use in scene") { onChoose(selected); dismiss() }
+                                            .keyboardShortcut(.defaultAction)
                                             .disabled(library.renderedImage(for: selected) == nil)
                                     }
                                 }

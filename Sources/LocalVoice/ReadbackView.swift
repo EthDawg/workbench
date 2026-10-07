@@ -252,9 +252,9 @@ struct ReadbackView: View {
                 Text(time(elapsed)).monospacedDigit().foregroundStyle(.secondary)
                 NarrationLevel(level: capturePresentation == nil ? model.recordingLevel : 0.55)
                 Spacer(minLength: 8)
-                // Stop keeps; Cancel discards, so a long narration asks first (Escape too).
+                // Stop keeps; Cancel discards, so a long narration asks first. No Escape: one stray key
+                // would throw away a short take.
                 Button("Cancel") { if elapsed > 10 { confirmCancelNarration = true } else { model.cancelNarration() } }
-                    .keyboardShortcut(.cancelAction)
                     .help("Discard this narration. The screenshot stays.")
                 Button("Stop narration") { model.stopNarration() }.buttonStyle(.borderedProminent)
                     .accessibilityIdentifier("readback.stop")
@@ -303,7 +303,8 @@ struct ReadbackView: View {
             CaptureAccessCard(title: accessTitle,
                               detail: accessDetail,
                               reopenHint: model.suggestsReopenForScreenAccess && !model.screenPermissionGranted ? ScreenCaptureAccess.reopenHint : nil,
-                              footnote: model.screenPermissionGranted ? nil : "Allow Workbench under Privacy & Security › Screen Recording. macOS may ask you to quit and reopen Workbench afterwards. If your organisation manages this Mac, it may keep screen capture off.") {
+                              footnote: model.screenPermissionGranted ? nil : "Allow Workbench under Privacy & Security › Screen Recording. macOS may ask you to quit and reopen Workbench afterwards. If your organisation manages this Mac, it may keep screen capture off.",
+                              tone: accessTone) {
                 if !model.screenPermissionGranted || model.microphonePermission == .notDetermined {
                     Button("Request capture access") { Task { await model.requestCaptureAccess() } }
                         .disabled(model.isRequestingCaptureAccess)
@@ -328,6 +329,10 @@ struct ReadbackView: View {
         }
     }
 
+    /// Nothing is off yet while macOS is asking or the microphone was never asked.
+    private var accessTone: WorkbenchTone {
+        model.isRequestingCaptureAccess || (model.screenPermissionGranted && model.microphonePermission == .notDetermined) ? .neutral : .attention
+    }
     private var accessTitle: String {
         if model.isRequestingCaptureAccess { return "Finish the request in macOS" }
         if !model.screenPermissionGranted { return "Screen Recording is off for Workbench" }
