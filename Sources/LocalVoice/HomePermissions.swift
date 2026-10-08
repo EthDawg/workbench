@@ -1,7 +1,6 @@
 import SwiftUI
 import AppKit
 import AVFoundation
-import Carbon
 import CoreGraphics
 import Darwin.membership
 
@@ -73,6 +72,13 @@ enum MacPermission: String, CaseIterable, Identifiable {
     var asksForAdministrator: Bool { self == .accessibility || self == .screenRecording }
     /// The lists that have a + button, for an entry a reset or a − removed.
     var listHasAddButton: Bool { asksForAdministrator }
+    /// Where the switch is in Privacy & Security, in macOS's words. Call audio has no list of its
+    /// own name: from macOS 15 it sits inside Screen & System Audio Recording.
+    var settingsPath: String {
+        guard self == .callAudio else { return "Privacy & Security › \(name)" }
+        if #available(macOS 15, *) { return "Privacy & Security › Screen & System Audio Recording › System Audio Recording Only" }
+        return "Privacy & Security"
+    }
 }
 
 /// Only the distinctions macOS actually reports, plus the one fact about this account that
@@ -93,8 +99,11 @@ enum MacPermissionState: Equatable {
     case needsAdministrator(listed: Bool)
     /// Restricted: an organisation or Screen Time controls it.
     case managed
-    /// No passive check exists; macOS asks the first time the feature runs.
+    /// Call audio, which has no passive check: unknown until Meetings next records a call.
     case checkedOnUse
+    /// Call audio as Meetings found it on its last call: real sound from the app, or macOS's
+    /// refusal. Evidence from then, not a reading now.
+    case lastCall(allowed: Bool)
     /// This Mac cannot provide it at all.
     case unsupported(String)
 }
@@ -123,9 +132,6 @@ struct MacPermissionRow: Equatable, Identifiable {
     let state: MacPermissionState
     /// Whether this account is an administrator; nil when macOS couldn't say.
     var administrator: Bool? = true
-    /// Allowed earlier in this run and now off: macOS lets a running app keep the microphone or
-    /// camera until it quits, when the person chose Later in its sheet.
-    var keptUntilQuit = false
     /// Why the last automatic paste didn't land, while Accessibility reads Allowed.
     var pasteProblem: String? = nil
     var id: MacPermission { permission }
@@ -138,18 +144,20 @@ struct MacPermissionRow: Equatable, Identifiable {
         case .notAllowed: return "Off"
         case .needsAdministrator: return permission == .accessibility ? "Needs an administrator" : "May need an administrator"
         case .managed: return "Managed"
-        case .checkedOnUse: return "Asked on first call"
+        case .checkedOnUse: return "Checked on your next call"
+        case .lastCall(let allowed): return allowed ? "Allowed on your last call" : "Off on your last call"
         case .unsupported(let reason): return reason
         }
     }
     /// Orange only when an approval is off and the person can turn it on, which is when a tool
     /// that needs it would fail. Not asked yet, not set up and needing an administrator are plain
-    /// information: the tool asks when first used, or someone else has to switch it on.
+    /// information: the tool asks when first used, or someone else has to switch it on. Green only
+    /// for what macOS reports allowed now.
     var tone: WorkbenchTone {
         switch state {
-        case .allowed: return pasteProblem == nil ? .done : .neutral
-        case .notAllowed: return .attention
-        case .notAsked, .notSetUp, .needsAdministrator, .managed, .checkedOnUse, .unsupported: return .neutral
+        case .allowed: return .done
+        case .notAllowed, .lastCall(allowed: false): return .attention
+        case .notAsked, .notSetUp, .needsAdministrator, .managed, .checkedOnUse, .lastCall(allowed: true), .unsupported: return .neutral
         }
     }
     var action: Action? {
@@ -158,42 +166,40 @@ struct MacPermissionRow: Equatable, Identifiable {
         // macOS's request is what puts Workbench in the list an administrator will switch on.
         case .needsAdministrator(let listed): return listed ? .openSettings : .request
         // A restricted approval can still be read in Settings; there is nothing to request.
-        case .notAllowed, .managed: return .openSettings
-        case .allowed: return .change
-        // Call audio's list is empty until Meetings first records a call, and a refusal there is
-        // explained, with its own Settings door, on Meetings itself.
-        case .unsupported, .checkedOnUse: return nil
+        case .notAllowed, .managed, .lastCall(allowed: false): return .openSettings
+        case .allowed, .lastCall(allowed: true): return .change
+        // Someone who updated Workbench may already have been asked about call audio, so its
+        // switch is one quiet click away even before Meetings knows.
+        case .checkedOnUse: return .openSettings
+        case .unsupported: return nil
         }
     }
+    /// Whether the button is a quiet link: nothing needs doing, but the switch is there.
+    var actionIsQuiet: Bool { action == .change || state == .checkedOnUse }
     /// The lines under the purpose, only where the person needs them: what works meanwhile, why
     /// it is managed or needs someone else, and how to bring back an entry missing from the list.
     var details: [String] {
+        let reopen = "If it’s already on there, quit and reopen \(Self.appName)."
         switch state {
         case .allowed:
             return [pasteProblem].compactMap { $0 }
-        case .unsupported:
+        case .unsupported, .notAsked, .notSetUp, .lastCall:
             return [permission.withoutIt]
         case .managed:
             return ["Your organisation or Screen Time sets this. " + permission.withoutIt]
         case .checkedOnUse:
-            return ["macOS asks the first time Meetings records a call. " + permission.withoutIt]
-        case .needsAdministrator:
-            // Accessibility says it in full; Screen Recording, its neighbour, only hedges.
-            return [permission == .accessibility
-                        ? "macOS asks for an administrator’s name and password to turn this on. Ask your IT team, or anyone with an admin account on this Mac; Copy permission details tells them what to allow."
-                        : "macOS may ask for an administrator’s name and password to turn this on.",
-                    permission.withoutIt]
-        case .notAsked, .notSetUp:
-            return [permission.withoutIt]
+            return ["Meetings learns this when it records a call. " + permission.withoutIt]
+        case .needsAdministrator(let listed):
+            guard permission == .accessibility else {
+                return ["Switching this on may need an administrator’s name and password.", permission.withoutIt]
+            }
+            return ["Switching this on needs an administrator’s name and password. Ask your IT team, or anyone with an admin account on this Mac; Copy permission details tells IT how."]
+                + (listed ? [reopen] : []) + [permission.withoutIt]
         case .notAllowed:
             var lines = [permission.withoutIt]
-            if keptUntilQuit { lines.insert("Workbench can still use it until it quits.", at: 0) }
-            if administrator == false, !permission.asksForAdministrator, permission != .callAudio {
-                lines.append("macOS may ask for an administrator’s name and password to change it.")
-            }
             if permission.listHasAddButton { lines.append("If \(Self.appName) isn’t in the list, click + and choose it.") }
             // A switch already on that macOS doesn't report yet: a stale entry, or the macOS 27 cache.
-            if permission == .accessibility { lines.append("If it’s already on there, quit and reopen \(Self.appName).") }
+            if permission == .accessibility { lines.append(reopen) }
             return lines
         }
     }
@@ -210,15 +216,21 @@ struct MacPermissionRow: Equatable, Identifiable {
         guard let action else { return nil }
         switch action {
         case .request: return "Shows macOS’s request for \(permission.name)."
-        case .openSettings: return "Opens Privacy & Security › \(permission.name) in System Settings."
+        case .openSettings:
+            if permission.asksForAdministrator { return "Asks macOS to list \(Self.appName), then opens \(permission.settingsPath) in System Settings." }
+            return "Opens \(permission.settingsPath) in System Settings."
         case .change:
-            var help = "Opens Privacy & Security › \(permission.name), where you can turn it off."
+            var help = "Opens \(permission.settingsPath), where its switch is."
             switch permission {
-            case .microphone, .camera, .callAudio: help += " macOS may let Workbench keep it until it quits."
-            case .screenRecording: help += " macOS applies the change when Workbench reopens."
+            case .microphone, .camera, .callAudio: help += " macOS may let \(Self.appName) keep it until it quits."
+            case .screenRecording: help += " macOS applies a change when \(Self.appName) reopens."
             case .accessibility: break
             }
-            return help + " If your organisation approved it, it may not be listed there."
+            if permission.asksForAdministrator {
+                help += " If your organisation approved it, it may not be listed there."
+                if administrator == false { help += " Switching it off also needs an administrator." }
+            }
+            return help
         }
     }
     static let reopenAfterAllowing = "Once it’s on, quit and reopen \(appName)."
@@ -228,58 +240,61 @@ struct MacPermissionRow: Equatable, Identifiable {
             ?? (Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String).flatMap { $0 == "LocalVoice" ? nil : $0 }
             ?? "Workbench"
     }
-    /// Where macOS lists call audio once it has asked, for the row's help: its own list from macOS 15.
-    static var callAudioList: String {
-        if #available(macOS 15, *) { return "Once asked, macOS lists it in Privacy & Security › Screen & System Audio Recording › System Audio Recording Only." }
-        return "Once asked, macOS lists it in Privacy & Security."
-    }
 }
 
 /// The panel's whole state. Its summary names what it can know, never a count over rows it
-/// cannot check: “2 off”, “1 needs an administrator”, “2 to set up” or, only when true, “All
-/// allowed”.
+/// cannot check: “2 off”, “Needs an administrator”, “2 to set up”, “All set” or, only when
+/// call audio doesn't apply, “All allowed”.
 struct MacPermissionSnapshot: Equatable {
     var rows: [MacPermissionRow]
+    /// A few words for the summary and folded line when the last automatic paste didn't land.
+    var pasteNote: String?
     init(_ states: [MacPermission: MacPermissionState], administrator: Bool? = true,
-         allowedEarlier: Set<MacPermission> = [], pasteProblem: String? = nil) {
+         pasteProblem: String? = nil, pasteNote: String? = nil) {
         rows = MacPermission.allCases.compactMap { permission in
             states[permission].map { state in
                 MacPermissionRow(permission: permission, state: state, administrator: administrator,
-                                 keptUntilQuit: state == .notAllowed && allowedEarlier.contains(permission)
-                                     && [.microphone, .camera].contains(permission),
                                  pasteProblem: permission == .accessibility && state == .allowed ? pasteProblem : nil)
             }
         }
+        self.pasteNote = rows.contains { $0.pasteProblem != nil } ? (pasteNote ?? "Last paste only copied") : nil
     }
     private func count(_ matches: (MacPermissionState) -> Bool) -> Int { rows.filter { matches($0.state) }.count }
-    var offCount: Int { count { $0 == .notAllowed } }
-    var administratorCount: Int { count { if case .needsAdministrator = $0 { return true } else { return false } } }
+    var offCount: Int { count { $0 == .notAllowed || $0 == .lastCall(allowed: false) } }
     var toSetUpCount: Int { count { $0 == .notAsked || $0 == .notSetUp } }
     /// What is off now; Done for now remembers it, so only something newly off opens the panel.
-    var offPermissions: Set<MacPermission> { Set(rows.filter { $0.state == .notAllowed }.map(\.permission)) }
+    var offPermissions: Set<MacPermission> {
+        Set(rows.filter { $0.state == .notAllowed || $0.state == .lastCall(allowed: false) }.map(\.permission))
+    }
     var allowedPermissions: Set<MacPermission> { Set(rows.filter { $0.state == .allowed }.map(\.permission)) }
     /// Something a tool needs is off, and the person can turn it on.
     var needsAttention: Bool { offCount > 0 }
-    /// Every approval that can be checked is allowed. Managed or needing an administrator keeps
-    /// this false.
+    /// Every approval that can be checked now is allowed. Managed or needing an administrator
+    /// keeps this false; call audio, known only from a call, doesn't.
     var isComplete: Bool {
         !rows.contains {
             switch $0.state {
-            case .allowed, .checkedOnUse, .unsupported: return false
+            case .allowed, .checkedOnUse, .lastCall(allowed: true), .unsupported: return false
             default: return true
             }
         }
     }
-    /// Call audio is still to be asked, so a complete panel says All set rather than All allowed.
-    private var callAudioPending: Bool { rows.contains { $0.permission == .callAudio && $0.state == .checkedOnUse } }
+    /// Call audio applies to this Mac, so a complete panel says All set: nobody can check it now.
+    private var callAudioApplies: Bool {
+        rows.contains { if $0.permission == .callAudio, case .unsupported = $0.state { return false }; return $0.permission == .callAudio }
+    }
     var summary: String {
         if offCount > 0 { return "\(offCount) off" }
-        if administratorCount > 0 { return administratorCount == 1 ? "1 needs an administrator" : "\(administratorCount) need an administrator" }
-        if isComplete { return callAudioPending ? "All set" : "All allowed" }
+        let administrator = rows.filter { if case .needsAdministrator = $0.state { return true } else { return false } }
+        if !administrator.isEmpty {
+            return administrator.contains { $0.permission == .accessibility } ? "Needs an administrator" : "May need an administrator"
+        }
+        if let pasteNote { return pasteNote }
+        if isComplete { return callAudioApplies ? "All set" : "All allowed" }
         if toSetUpCount > 0 { return "\(toSetUpCount) to set up" }
         return "\(count { $0 == .managed }) managed"
     }
-    var tone: WorkbenchTone { needsAttention ? .attention : isComplete ? .done : .neutral }
+    var tone: WorkbenchTone { needsAttention ? .attention : isComplete && pasteNote == nil ? .done : .neutral }
     /// Before Done for now, the panel shows every row until everything is allowed. After it, it
     /// stays one line until something turns off that was not off when the person folded it, so
     /// an approval only IT can change, or one the person chose to leave off, never nags.
@@ -287,46 +302,50 @@ struct MacPermissionSnapshot: Equatable {
         guard dismissed else { return !isComplete }
         return !offPermissions.subtracting(offWhenDismissed).isEmpty
     }
-    /// The folded panel's one line: what is allowed and, by name, what is not.
+    /// The folded panel's one line: each row's status by name, in the rows' order, and the last
+    /// paste if it didn't land.
     var foldedLine: String {
+        var parts: [String]
         if isComplete {
-            return callAudioPending ? "All set. macOS asks about call audio the first time you record a call."
-                                    : "Everything Workbench uses on this Mac is allowed."
+            parts = [callAudioApplies ? "All set. Meetings checks call audio when it records a call." : "Everything Workbench uses on this Mac is allowed."]
+        } else {
+            var groups: [(status: String, names: [String])] = []
+            for row in rows {
+                if case .unsupported = row.state { continue }
+                if let index = groups.firstIndex(where: { $0.status == row.status }) { groups[index].names.append(row.permission.name) }
+                else { groups.append((row.status, [row.permission.name])) }
+            }
+            parts = groups.map { "\($0.status): \(ListFormatter.localizedString(byJoining: $0.names))." }
         }
-        func names(_ matches: (MacPermissionRow) -> Bool) -> String? {
-            let names = rows.filter(matches).map(\.permission.name)
-            return names.isEmpty ? nil : ListFormatter.localizedString(byJoining: names)
-        }
-        var parts = ["Each tool asks when it first needs something.",
-                     "Allowed: " + (names { $0.state == .allowed } ?? "none yet") + "."]
-        if let off = names({ $0.state == .notAllowed }) { parts.append("Off: \(off).") }
-        if let admin = names({ if case .needsAdministrator = $0.state { return true } else { return false } }) {
-            parts.append("Needs an administrator: \(admin).")
-        }
+        if let pasteNote { parts.append(pasteNote + ".") }
         return parts.joined(separator: " ")
     }
 }
 
-/// What Meetings learned the last time it started call audio. macOS has no passive check for it,
-/// so this is the only way the panel can know a refusal. Written only by Meetings.
+/// What Meetings found the last time it recorded a call's audio: real sound from the app, or
+/// macOS's refusal. macOS has no passive check for call audio, and a refused tap delivers silence
+/// rather than an error, so a start alone proves nothing. Written by Meetings; Home forgets it
+/// when it opens the switch, because the person may be about to change it.
 enum CallAudioRecord: String {
     case allowed, refused
     static let key = "workbench.permissions.callAudio.v1"
     static var saved: CallAudioRecord? { UserDefaults.standard.string(forKey: key).flatMap(Self.init) }
-    static func save(_ record: CallAudioRecord) { UserDefaults.standard.set(record.rawValue, forKey: key) }
+    static func forget() { UserDefaults.standard.removeObject(forKey: key) }
 }
 
 /// Facts about the person's account that macOS reports without asking anything.
 enum MacAccount {
     /// Membership of the admin group (gid 80), nested directory groups included, which is what
     /// macOS checks before it lets someone change a Mac-wide approval. Nil if macOS can't say.
-    /// Read once per run: membership rarely changes, and a directory lookup shouldn't run on every redraw.
-    static let administrator: Bool? = isAdministrator()
+    /// Read each time (about 0.2 ms), so a temporary-admin tool is seen without relaunching.
+    static var administrator: Bool? { isAdministrator() }
     /// The one sentence every surface uses for who can switch on automatic paste.
     static var automaticPasteApproval: String {
-        administrator == false
-            ? "On this account, macOS asks for an administrator’s name and password to turn it on; ask your IT team, or anyone with an admin account on this Mac."
-            : "On a work Mac, IT may need to allow it."
+        switch administrator {
+        case false?: return "On this account, switching Accessibility on needs an administrator’s name and password; ask your IT team, or anyone with an admin account on this Mac."
+        case true?: return "macOS asks for your Mac’s password to switch Accessibility on."
+        case nil: return "On a work Mac, IT may need to allow Accessibility."
+        }
     }
     static func isAdministrator() -> Bool? {
         var user = [UInt8](repeating: 0, count: 16), group = [UInt8](repeating: 0, count: 16), member: Int32 = 0
@@ -348,6 +367,9 @@ struct MacPermissionReader {
     var screenRecordingAsked: () -> Bool
     var callAudio: () -> CallAudioRecord? = { nil }
     var administrator: () -> Bool? = { true }
+    /// Accessibility and Screen Recording seen allowed earlier in this run: switched off since,
+    /// they read Off, not Not set up, even without Workbench's record of asking.
+    var allowedEarlier: () -> Set<MacPermission> = { [] }
 
     static let live = MacPermissionReader(
         microphone: { AVCaptureDevice.authorizationStatus(for: .audio) },
@@ -357,11 +379,11 @@ struct MacPermissionReader {
         callAudioSupported: { if #available(macOS 14.2, *) { return true } else { return false } },
         screenRecordingAsked: { ScreenCaptureAccess.wasRequested },
         callAudio: { CallAudioRecord.saved },
-        administrator: { MacAccount.administrator })
+        administrator: { MacAccount.administrator },
+        allowedEarlier: { allowedThisRun })
     /// The surface gallery's fixed answers replace this; the app always reads macOS.
     static var current = live
-    /// Approvals seen allowed during this run, so one switched off meanwhile can say Workbench
-    /// keeps it until it quits.
+    /// What Home has seen allowed in this run; only Home's live reads add to it.
     static var allowedThisRun: Set<MacPermission> = []
 
     nonisolated static func state(_ status: AVAuthorizationStatus) -> MacPermissionState {
@@ -381,28 +403,22 @@ struct MacPermissionReader {
         return asked ? .notAllowed : .notSetUp
     }
 
+    nonisolated static func state(callAudio record: CallAudioRecord?, supported: Bool) -> MacPermissionState {
+        guard supported else { return .unsupported("Needs macOS 14.2 or later") }
+        return record.map { .lastCall(allowed: $0 == .allowed) } ?? .checkedOnUse
+    }
+
     /// `accessibilityAsked` comes from Dictate's own saved preference, the one its Set up
-    /// automatic paste… already keeps. `pasteProblem` is why the last automatic paste didn't land.
-    func snapshot(accessibilityAsked: Bool, pasteProblem: String? = nil) -> MacPermissionSnapshot {
-        let administrator = administrator()
-        let callAudio: MacPermissionState
-        if !callAudioSupported() { callAudio = .unsupported("Needs macOS 14.2 or later") }
-        else {
-            switch self.callAudio() {
-            case .allowed: callAudio = .allowed
-            case .refused: callAudio = .notAllowed
-            case nil: callAudio = .checkedOnUse
-            }
-        }
-        let snapshot = MacPermissionSnapshot([
+    /// automatic paste… already keeps. `paste` is why the last automatic paste didn't land.
+    func snapshot(accessibilityAsked: Bool, paste: AutomaticPasteProblem? = nil) -> MacPermissionSnapshot {
+        let administrator = administrator(), earlier = allowedEarlier()
+        return MacPermissionSnapshot([
             .microphone: Self.state(microphone()),
-            .accessibility: Self.state(granted: accessibility(), asked: accessibilityAsked, administrator: administrator),
-            .screenRecording: Self.state(granted: screenRecording(), asked: screenRecordingAsked(), administrator: administrator),
+            .accessibility: Self.state(granted: accessibility(), asked: accessibilityAsked || earlier.contains(.accessibility), administrator: administrator),
+            .screenRecording: Self.state(granted: screenRecording(), asked: screenRecordingAsked() || earlier.contains(.screenRecording), administrator: administrator),
             .camera: Self.state(camera()),
-            .callAudio: callAudio,
-        ], administrator: administrator, allowedEarlier: Self.allowedThisRun, pasteProblem: pasteProblem)
-        Self.allowedThisRun.formUnion(snapshot.allowedPermissions)
-        return snapshot
+            .callAudio: Self.state(callAudio: callAudio(), supported: callAudioSupported()),
+        ], administrator: administrator, pasteProblem: paste?.line, pasteNote: paste?.note)
     }
 }
 
@@ -432,7 +448,7 @@ enum MacPermissionStep: Equatable {
 
 /// Copy permission details: one plain text for an IT team, and for a problem report from a Mac
 /// nobody else can see. It names what to allow by macOS version, this edition's identity, and
-/// what this Mac reports. It holds no words, files or names of what the person worked on.
+/// what this Mac reports. It holds no words or files; it names the app the last paste went to.
 struct MacPermissionDetails {
     struct Facts: Equatable {
         var appName = "Workbench", bundleID = "com.ethdawg.workbench", version = "", build = ""
@@ -446,27 +462,33 @@ struct MacPermissionDetails {
 
     static func text(_ snapshot: MacPermissionSnapshot, _ facts: Facts) -> String {
         func yesNo(_ value: Bool?) -> String { value.map { $0 ? "yes" : "no" } ?? "unknown" }
+        let callAudio: String
+        switch facts.callAudio {
+        case .allowed?: callAudio = "sound heard on the last call"
+        case .refused?: callAudio = "refused on the last call"
+        case nil: callAudio = "not known yet"
+        }
         var lines = ["\(facts.appName) \(facts.version) (\(facts.build)): permission details", "",
             "For IT: what to allow",
-            "• Accessibility (automatic paste). macOS 14–26: PPPC Accessibility = Allow and PostEvent = Allow. macOS 27: App Settings › Privacy › PermissionDefaults, Accessibility = Allow.",
+            "• Accessibility (automatic paste). macOS 14–26: PPPC Accessibility = Allow and PostEvent = Allow. macOS 27: keep that PPPC profile (Apple says its Accessibility grant still applies, with a notice); supervised Macs can also use App Settings › Privacy › PermissionDefaults, which the person accepts once.",
             "• Screen & System Audio Recording (Snap). A profile can't switch it on. PPPC ScreenCapture = AllowStandardUserToSetSystemService lets a standard user switch it on.",
-            "• Microphone and Camera. The person allows them when macOS asks (PPPC can only deny them). macOS 27: PermissionDefaults can allow them.",
+            "• Microphone and Camera. The person allows them when macOS asks (PPPC can only deny them). On supervised macOS 27 Macs, PermissionDefaults can suggest Allow.",
             "• Call audio (System Audio Recording Only). macOS asks the first time Meetings records a call. No profile key exists.",
-            "Profiles go through MDM on the device channel; one installed by hand does nothing.",
+            "PPPC profiles go through MDM on the device channel; one installed by hand grants nothing.",
             "Identifier: \(facts.bundleID)", "Team ID: \(facts.teamID)"]
         if let requirement = facts.codeRequirement { lines.append("Code requirement: \(requirement)") }
-        lines += ["Ready-made profile and table: \(itPage)", "", "This Mac",
+        lines += ["Ready-made profiles and a table: \(itPage)", "", "This Mac",
             "\(facts.macOS) · administrator: \(yesNo(facts.administrator)) · MDM enrolled: \(yesNo(facts.enrolled)) · installed in \(facts.installedIn)"]
         lines.append(snapshot.rows.map { "\($0.permission.name): \($0.status)" }.joined(separator: " · "))
-        lines.append("Post Event: \(yesNo(facts.postEvent)) · asked from Workbench: Accessibility \(yesNo(facts.accessibilityAsked)), Screen Recording \(yesNo(facts.screenRecordingAsked)) · call audio record: \(facts.callAudio?.rawValue ?? "none")")
+        lines.append("Post Event (as read since Workbench opened): \(yesNo(facts.postEvent)) · asked from Workbench: Accessibility \(yesNo(facts.accessibilityAsked)), Screen Recording \(yesNo(facts.screenRecordingAsked)) · call audio: \(callAudio)")
         lines.append("Delivery: \(facts.delivery) · keyboard layout \(facts.keyboardLayout), ⌘V key \(facts.pasteKeyCode.map(String.init) ?? "none")")
-        lines.append("Last automatic paste problem: \(facts.lastPasteProblem ?? "none this run")")
+        lines.append("Last automatic paste: \(facts.lastPasteProblem ?? "no problem this run")")
         return lines.joined(separator: "\n")
     }
 
     /// This edition and this Mac, read without asking anything. MDM enrolment comes from
     /// `profiles status`, which needs no administrator; it is skipped if it doesn't answer in 2 s.
-    @MainActor static func liveFacts(accessibilityAsked: Bool, delivery: String, lastPasteProblem: String?) async -> Facts {
+    @MainActor static func liveFacts(accessibilityAsked: Bool, delivery: String, paste: AutomaticPasteProblem?) async -> Facts {
         let info = Bundle.main.infoDictionary ?? [:]
         let bundle = Bundle.main.bundleURL.path
         var facts = Facts(appName: MacPermissionRow.appName, bundleID: Bundle.main.bundleIdentifier ?? "unknown",
@@ -484,9 +506,10 @@ struct MacPermissionDetails {
         facts.screenRecordingAsked = ScreenCaptureAccess.wasRequested
         facts.callAudio = CallAudioRecord.saved
         facts.delivery = delivery
-        facts.keyboardLayout = PasteKey.currentLayoutID() ?? "unknown"
-        facts.pasteKeyCode = PasteKey.current().map(Int.init)
-        facts.lastPasteProblem = lastPasteProblem
+        // The layout the last paste used, when there was one: this app's own input source may differ.
+        facts.keyboardLayout = paste?.layout ?? PasteKey.currentLayoutID() ?? "unknown"
+        facts.pasteKeyCode = paste.map { $0.pasteKey.map(Int.init) } ?? PasteKey.current().map(Int.init)
+        facts.lastPasteProblem = paste?.summary
         facts.enrolled = await enrolled()
         return facts
     }
@@ -520,45 +543,6 @@ struct MacPermissionDetails {
     }
 }
 
-/// The key that types “v” while ⌘ is held in the current keyboard layout, so automatic paste
-/// sends ⌘V on Dvorak, Dvorak Right-Handed, Turkish F and every other layout, not the US key
-/// position. Only the key code is chosen: setting the event's text stops AppKit's Paste menu
-/// item firing, and the receiving app translates the key with its own layout.
-enum PasteKey {
-    /// The US “V”, used when a layout's data can't be read.
-    static let fallback: CGKeyCode = 9
-
-    /// Nil when the layout has no key that types “v” with ⌘ (Turkmen): paste can't start, so the
-    /// words are copied, never sent as some other shortcut.
-    static func current() -> CGKeyCode? {
-        guard let source = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue() else { return fallback }
-        return keyCode(in: source)
-    }
-    static func currentLayoutID() -> String? {
-        guard let source = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue(),
-              let id = TISGetInputSourceProperty(source, kTISPropertyInputSourceID) else { return nil }
-        return Unmanaged<CFString>.fromOpaque(id).takeUnretainedValue() as String
-    }
-    /// Reads the layout's own data; it never selects or changes an input source.
-    static func keyCode(in source: TISInputSource) -> CGKeyCode? {
-        guard let property = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else { return fallback }
-        let data = Unmanaged<CFData>.fromOpaque(property).takeUnretainedValue()
-        guard let bytes = CFDataGetBytePtr(data) else { return fallback }
-        let layout = UnsafeRawPointer(bytes).assumingMemoryBound(to: UCKeyboardLayout.self)
-        // Key equivalents match the characters typed with ⌘ held, which is how Dvorak – QWERTY ⌘
-        // switches to QWERTY for shortcuts. The US position wins a tie, so nothing changes there.
-        if typed(layout, fallback) == "v" { return fallback }
-        return (0..<128).lazy.map { CGKeyCode($0) }.first { typed(layout, $0) == "v" }
-    }
-    private static func typed(_ layout: UnsafePointer<UCKeyboardLayout>, _ key: CGKeyCode) -> String? {
-        var dead: UInt32 = 0, length = 0
-        var characters = [UniChar](repeating: 0, count: 4)
-        let status = UCKeyTranslate(layout, key, UInt16(kUCKeyActionDown), UInt32(cmdKey >> 8) & 0xFF, UInt32(LMGetKbdType()),
-                                    OptionBits(kUCKeyTranslateNoDeadKeysMask), &dead, characters.count, &length, &characters)
-        return status == noErr && length > 0 ? String(utf16CodeUnits: characters, count: length).lowercased() : nil
-    }
-}
-
 /// The panel. Home owns its snapshot and rereads macOS when Home appears and whenever Workbench
 /// comes back to the front, which is when someone returns from System Settings.
 struct HomePermissionsPanel: View {
@@ -581,7 +565,7 @@ struct HomePermissionsPanel: View {
                 .accessibilityIdentifier("home.permissions.summary")
         }) {
             if expanded {
-                Text("What Workbench can use on this Mac. Nothing is asked until you press Set up…, each row says what still works without it, and Change… turns one off.")
+                Text("What Workbench can use on this Mac, and what still works without each. Nothing is asked until you press Set up…; Change… opens a switch in System Settings.")
                     .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(snapshot.rows) { row in
@@ -601,7 +585,7 @@ struct HomePermissionsPanel: View {
                     .accessibilityIdentifier("home.permissions.fold")
                     Button(copiedDetails ? "Copied" : "Copy permission details") { copyDetails() }
                         .buttonStyle(.workbenchLink).font(.callout)
-                        .help("Copies what Workbench needs and what this Mac reports, for your IT team or a problem report. It holds none of your words or files.")
+                        .help("Copies what Workbench needs and what this Mac reports, for your IT team. It holds none of your words or files.")
                         .accessibilityIdentifier("home.permissions.copyDetails")
                 }
             } else {
@@ -631,10 +615,9 @@ struct HomePermissionsPanel: View {
                     Text(line).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }.frame(maxWidth: .infinity, alignment: .leading)
-                .help(row.permission == .callAudio ? MacPermissionRow.callAudioList : "")
             if let action = row.action {
                 Button(action.title) { perform(action, for: row.permission) }
-                .modifier(PermissionActionStyle(quiet: action == .change))
+                .modifier(PermissionActionStyle(quiet: row.actionIsQuiet))
                 .fixedSize()
                 .help(row.actionHelp ?? "")
                 .accessibilityLabel("\(action.title.replacingOccurrences(of: "…", with: "")) \(row.permission.name)")
@@ -650,7 +633,7 @@ struct HomePermissionsPanel: View {
     /// doesn't turn orange while macOS's own request is still on screen.
     private func perform(_ action: MacPermissionRow.Action, for permission: MacPermission) {
         problem = nil
-        let unavailable = { problem = "System Settings could not be opened. Open Privacy & Security › \(permission.name) there."; refresh() }
+        let unavailable = { problem = "System Settings could not be opened. Open \(permission.settingsPath) there."; refresh() }
         switch MacPermissionStep.of(action, for: permission) {
         case .requestMicrophone:
             Task { _ = await model.requestMicrophoneAuthorization(); model.refreshMicrophoneAuthorization(); refresh() }
@@ -662,11 +645,13 @@ struct HomePermissionsPanel: View {
             var asked: Bool? = ScreenCaptureAccess.wasRequested ? true : nil
             if AccessibilitySetup.screenRecording.run(asked: &asked, unavailable: unavailable) == .approved { refresh() }
         case .openSettings(let url):
+            // Call audio's last answer may be about to change, so it reads unknown until the next call.
+            if permission == .callAudio { CallAudioRecord.forget(); refresh() }
             if !NSWorkspace.shared.open(url) { unavailable() }
         }
     }
 
-    /// Change… is quiet: an allowed approval needs nothing, but can always be changed.
+    /// Change…, and call audio's switch before Meetings knows, are quiet: nothing needs doing.
     private struct PermissionActionStyle: ViewModifier {
         let quiet: Bool
         func body(content: Content) -> some View {
@@ -677,9 +662,9 @@ struct HomePermissionsPanel: View {
     private func copyDetails() {
         let snapshot = snapshot
         let asked = model.preferences.accessibilityRequested == true
-        let delivery = model.preferences.delivery.rawValue, last = model.lastPasteProblem?.summary
+        let delivery = model.preferences.delivery.rawValue, paste = model.lastPasteProblem
         Task {
-            let facts = await MacPermissionDetails.liveFacts(accessibilityAsked: asked, delivery: delivery, lastPasteProblem: last)
+            let facts = await MacPermissionDetails.liveFacts(accessibilityAsked: asked, delivery: delivery, paste: paste)
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(MacPermissionDetails.text(snapshot, facts), forType: .string)
             copiedDetails = true

@@ -372,44 +372,56 @@ final class TextDelivery {
 }
 
 /// Why an automatic paste didn't land, for Home's Accessibility row and Copy permission details.
-/// Only causes outside the person's control: a field they changed, or a delivery they stopped,
-/// is not a problem with automatic paste. Kept for this run only; nothing is saved.
+/// Only causes outside the person's control, and only from the ⌘V route: live dictation writes
+/// through Accessibility and ends when the person moves on, which is not a failed paste. Kept for
+/// this run only; nothing is saved.
 struct AutomaticPasteProblem: Equatable {
     var failure: TextDelivery.FailureKind
     var app: String?
     var date: Date
-    /// macOS's Post Event answer, read only after a paste went unconfirmed. It may reflect access
-    /// as of launch, so it shapes this hint and never gates a paste.
-    var postEventRefused = false
+    /// The layout and ⌘V key this paste used, read when it happened.
+    var layout: String?
+    var pasteKey: CGKeyCode?
 
-    init?(_ outcome: TextDelivery.Outcome, date: Date = Date(), postEventAllowed: () -> Bool = { CGPreflightPostEventAccess() }) {
+    init?(_ outcome: TextDelivery.Outcome, date: Date = Date(),
+          layout: String? = PasteKey.currentLayoutID(), pasteKey: CGKeyCode? = PasteKey.current()) {
         guard !outcome.wasPasted, let failure = outcome.failure,
               [.fieldUnreadable, .pasteUnavailable, .pasteUnconfirmed].contains(failure) else { return nil }
         self.failure = failure; app = outcome.destinationName; self.date = date
-        postEventRefused = failure == .pasteUnconfirmed && !postEventAllowed()
+        self.layout = layout; self.pasteKey = pasteKey
     }
-    /// The row's line while Accessibility reads Allowed.
+    /// The row's line while Accessibility reads Allowed: what happened, and what to do.
     var line: String {
-        let into = app.map { "The last automatic paste, into \($0)," } ?? "The last automatic paste"
+        let into = app.map { "Your last dictation into \($0)" } ?? "Your last dictation"
         switch failure {
-        case .fieldUnreadable: return "\(into) only copied: Workbench couldn’t read the text field there. Some web apps and remote desktops hide it."
-        case .pasteUnavailable: return "\(into) only copied: macOS didn’t let Workbench send ⌘V."
+        case .fieldUnreadable:
+            return "\(into) was copied, not pasted: Workbench couldn’t find a text field there. If you were typing in one, that app may not show it to Workbench."
+        case .pasteUnavailable where pasteKey == nil:
+            return "\(into) was copied, not pasted: this keyboard layout has no ⌘V key. Use Edit › Paste."
+        case .pasteUnavailable:
+            return "\(into) was copied, not pasted: the paste couldn’t start. Paste with ⌘V."
         default:
-            return postEventRefused
-                ? "\(into) was sent, but macOS didn’t let Workbench press ⌘V. Switch Workbench off and on in Accessibility, or ask IT to allow Post Event."
-                : "\(into) was sent, but Workbench couldn’t confirm it landed."
+            return "\(into) was sent, but Workbench couldn’t see it arrive. If it isn’t there, paste with ⌘V."
         }
     }
-    /// For Copy permission details: the kind, the app and when, never the words.
+    /// A few words for the panel's summary and folded line.
+    var note: String { failure == .pasteUnconfirmed ? "Last paste unconfirmed" : "Last paste only copied" }
+    /// For Copy permission details: what happened, the app and when, never the words.
     var summary: String {
-        "\(failure.rawValue) in \(app ?? "an app") at \(date.formatted(date: .omitted, time: .shortened))"
+        let what: String
+        switch failure {
+        case .fieldUnreadable: what = "copied, no text field found"
+        case .pasteUnavailable: what = pasteKey == nil ? "copied, no ⌘V key in the layout" : "copied, paste couldn’t start"
+        default: what = "sent, not confirmed"
+        }
+        return "\(what), in \(app ?? "an app") at \(date.formatted(date: .omitted, time: .shortened))"
     }
     /// A result that was only copied because Accessibility isn't allowed says why the first time
-    /// in a run, so automatic paste reads as a permission someone can set up, then never again:
-    /// no repeated setup banner (mac-foundation.md § Accessibility unavailable for Dictate).
+    /// in a run, so automatic paste reads as a permission, then never again: no repeated setup
+    /// banner (mac-foundation.md § Accessibility unavailable for Dictate).
     static func approvalReason(for outcome: TextDelivery.Outcome, alreadyExplained: Bool) -> String? {
         guard !alreadyExplained, outcome.failure == .accessibilityUnavailable else { return nil }
         return approvalReason
     }
-    static let approvalReason = "Paste with ⌘V. Automatic paste needs Accessibility; set it up in Home › Permissions."
+    static let approvalReason = "Paste with ⌘V. Automatic paste needs Accessibility: see Home › Permissions."
 }

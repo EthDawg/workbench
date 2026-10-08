@@ -643,11 +643,12 @@ struct WorkbenchHomePage: View {
     }
     private func readSnapshot() -> MacPermissionSnapshot {
         MacPermissionReader.current.snapshot(accessibilityAsked: model.preferences.accessibilityRequested == true,
-                                             pasteProblem: model.lastPasteProblem?.line)
+                                             paste: model.lastPasteProblem)
     }
     private func readPermissions() {
         let snapshot = readSnapshot()
         permissions = snapshot
+        MacPermissionReader.allowedThisRun.formUnion(snapshot.allowedPermissions.intersection([.accessibility, .screenRecording]))
         // Something that came back on leaves the record, so turning it off again reopens the panel.
         let stillOff = offWhenDismissed.wrappedValue.intersection(snapshot.offPermissions)
         if stillOff != offWhenDismissed.wrappedValue { offWhenDismissed.wrappedValue = stillOff }

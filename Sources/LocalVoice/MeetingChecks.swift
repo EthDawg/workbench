@@ -639,11 +639,12 @@ enum MeetingChecks {
             history = TranscriptHistory.adding(transcript, to: history)
         }
         try expect(defaults.string(forKey: CallAudioRecord.key) == nil, "no call-audio record before Meetings starts app audio")
+        capture.level = 0.2
         await model.start()
         let firstRecording = model.recordingIdentity
         try expect(firstRecording != nil, "the live recording has an operation identity")
         try expect(defaults.string(forKey: CallAudioRecord.key) == CallAudioRecord.allowed.rawValue,
-                   "app audio that starts records call audio as allowed for Home's Permissions")
+                   "app audio with real sound records call audio as allowed for Home's Permissions")
         try expect(model.isRecording && model.isBusy && factories == 1 && permissions == 0 && recognition == 0,
                    "explicit app-only Start records without microphone access or concurrent recognition")
         model.selectAudioSource(nil)
@@ -726,6 +727,21 @@ enum MeetingChecks {
                    && defaults.string(forKey: CallAudioRecord.key) == CallAudioRecord.refused.rawValue,
                    "a call-audio refusal is recorded, so Home's Permissions stops saying it will be asked")
         await refusedModel.prepareForShutdown()
+        // A refused tap delivers silence, not an error, and a microphone-only recording says
+        // nothing about call audio: neither writes a record.
+        for (silentApp, level) in [(true, Float(0)), (false, Float(0.2))] {
+            defaults.removeObject(forKey: CallAudioRecord.key)
+            let quiet = CaptureFixture(); quiet.level = level
+            let quietModel = MeetingModel(directory: root.appendingPathComponent(silentApp ? "silent-app" : "mic-only"), defaults: defaults,
+                                          processSource: source, transcribe: { _ in "unused" },
+                                          microphonePermission: { true }, captureFactory: { quiet })
+            quietModel.selectedAppID = silentApp ? 789 : nil; quietModel.includeMicrophone = !silentApp
+            await quietModel.start()
+            try expect(quietModel.isRecording && defaults.string(forKey: CallAudioRecord.key) == nil,
+                       silentApp ? "silent app audio records nothing, because a refused tap is silent too"
+                                 : "a microphone-only recording records nothing about call audio")
+            await quietModel.cancel(); await quietModel.prepareForShutdown()
+        }
 
         let startGate = Gate<Bool>(), delayedCapture = CaptureFixture()
         delayedCapture.startGate = startGate
@@ -1220,6 +1236,8 @@ enum MeetingChecks {
         var startGate: Gate<Bool>?
         /// Thrown by start, as Core Audio's own refusal would be.
         var startError: Error?
+        /// One chunk of this level reaches onAudio from the recorded source: 0 is a refused tap's silence.
+        var level: Float?
         var stopping = false
         var recorded = false
         var finished = 0
@@ -1235,6 +1253,7 @@ enum MeetingChecks {
             guard !stopping else { throw CancellationError() }
             let session = request.tracksDirectory.deletingLastPathComponent()
             let source: MeetingTrackSource = request.includeMicrophone ? .local : .remote
+            if let level { request.onAudio?(MeetingAudioChunk(source: source, samples: [Float](repeating: level, count: 160), sampleRate: 16_000, startSeconds: 0)) }
             let track = try await MeetingChecks.audio(source: source, seconds: 1, rate: 16_000, value: 0.2, offset: 0, session: session)
             report = MeetingCaptureReport(tracks: [track], seconds: 1)
             recorded = true

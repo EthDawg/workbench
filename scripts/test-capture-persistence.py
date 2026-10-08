@@ -195,6 +195,7 @@ struct CaptureSettings {
         var destinationName: String? = nil
         var failure: FailureKind? = nil
         var pasteWasAttempted = false
+        var reason: String? = nil
     }
     /// What the next delivery reports: copied, pasted, or an undelivered outcome.
     static var nextOutcome = Outcome()
@@ -362,6 +363,8 @@ struct FixtureVoicePreferences { var capture = CaptureMode.hold; var dictationSh
     func staleCommit(_ invocation: UUID, url: URL) throws -> Bool {
         try commitRecognizedCapture(raw: "stale", text: "Stale result", seconds: 1, method: "Fixture", ownedAudio: url, invocation: invocation) != nil
     }
+    /// Home's view of automatic paste has its own checks (HomeJourneyChecks); here it passes the outcome through.
+    func noteAutomaticPaste(_ outcome: TextDelivery.Outcome, viaPaste: Bool) -> TextDelivery.Outcome { outcome }
     __METHODS__
 }
 

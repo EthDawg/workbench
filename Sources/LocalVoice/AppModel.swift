@@ -674,6 +674,7 @@ final class AppModel: NSObject, ObservableObject {
                     try Task.checkCancellation()
                     guard transcriptionID == invocation else { return }
                     let outcome: TextDelivery.Outcome
+                    var pasted = false
                     if let owned = liveDictation {
                         outcome = owned.finish(result, restoreClipboard: settings.preferences.restoreClipboard)
                         liveDictation = nil
@@ -691,9 +692,10 @@ final class AppModel: NSObject, ObservableObject {
                         }
                     } else {
                         outcome = await TextDelivery.deliver(result, target: destination, mode: delivery, restoreClipboard: settings.preferences.restoreClipboard, fit: insertionContext)
+                        pasted = true
                     }
                     guard transcriptionID == invocation else { return }
-                    let delivered = noteAutomaticPaste(outcome)
+                    let delivered = noteAutomaticPaste(outcome, viaPaste: pasted)
                     status = outcome.message
                     clipboardReceipt.record(outcome: delivered, wordCount: TextRules.wordCount(result))
                     undelivered.note(outcome, text: result, from: .transcript(captureID), in: deliveryRecords)
@@ -976,10 +978,13 @@ final class AppModel: NSObject, ObservableObject {
     }
     func refreshPermissions() { accessibilityGranted = AXIsProcessTrusted() }
     /// Keeps Home's view of automatic paste current, and says once per run why a result was only
-    /// copied when Accessibility isn't allowed.
-    private func noteAutomaticPaste(_ outcome: TextDelivery.Outcome) -> TextDelivery.Outcome {
-        if outcome.wasPasted { lastPasteProblem = nil }
-        else if let problem = AutomaticPasteProblem(outcome) { lastPasteProblem = problem }
+    /// copied when Accessibility isn't allowed. Only the ⌘V route counts: live dictation neither
+    /// records nor clears a paste problem.
+    private func noteAutomaticPaste(_ outcome: TextDelivery.Outcome, viaPaste: Bool) -> TextDelivery.Outcome {
+        if viaPaste {
+            if outcome.wasPasted { lastPasteProblem = nil }
+            else if let problem = AutomaticPasteProblem(outcome) { lastPasteProblem = problem }
+        }
         guard let reason = AutomaticPasteProblem.approvalReason(for: outcome, alreadyExplained: explainedApproval) else { return outcome }
         explainedApproval = true
         var explained = outcome; explained.reason = reason

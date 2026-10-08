@@ -8,11 +8,11 @@ On the Mac, **Home › Permissions › Copy permission details** copies the same
 
 | Approval (System Settings name) | What Workbench uses it for | Can a standard account switch it on? | macOS 14–26 profile | macOS 27 |
 | --- | --- | --- | --- | --- |
-| Accessibility | Automatic paste: reads the focused text field and confirms the paste | No. macOS asks for an administrator's name and password. No PPPC option changes this | PPPC `Accessibility` = Allow | App Settings `Privacy.PermissionDefaults` Accessibility = Allow (supervised). A PPPC grant still applies, but the person sees a notification and can turn it off |
+| Accessibility | Automatic paste: reads the focused text field and confirms the paste | No. macOS asks for an administrator's name and password. No PPPC option changes this | PPPC `Accessibility` = Allow | Keep the PPPC profile, with PostEvent (Apple says the grant applies with a notification; test it). Supervised Macs can also suggest Allow with App Settings `Privacy.PermissionDefaults` |
 | Post Event (listed under Accessibility) | Automatic paste: sends ⌘V to the app being typed in | As Accessibility | PPPC `PostEvent` = Allow | As macOS 14–26 |
 | Screen & System Audio Recording | Snap and Snap & Talk | Only if the profile lets standard users. Otherwise macOS asks for an administrator | PPPC `ScreenCapture` = AllowStandardUserToSetSystemService. A profile can't switch it on | As macOS 14–26 |
-| Microphone | Dictate, Meetings, Snap & Talk | Yes, in macOS's request the first time. Changing it later in Settings may ask for an administrator | PPPC can only Deny | `PermissionDefaults` Microphone = Allow |
-| Camera | Present (iPhone over USB), Persona, profile photo | As Microphone | PPPC can only Deny | `PermissionDefaults` Camera = Allow |
+| Microphone | Dictate, Meetings, Snap & Talk | Yes, in macOS's request the first time. Changing it later in Settings may ask for an administrator | PPPC can only Deny | Supervised Macs: `PermissionDefaults` Microphone = Allow suggests it; the person accepts once |
+| Camera | Present (iPhone over USB), Persona, profile photo | As Microphone | PPPC can only Deny | Supervised Macs: `PermissionDefaults` Camera = Allow suggests it; the person accepts once |
 | System Audio Recording Only (call audio) | Meetings hears the other side of a call | Yes, in macOS's request the first time Meetings records a call | No key exists | No key exists |
 | Desktop folder (optional) | Import Desktop screenshots only | Yes, in macOS's request | PPPC `SystemPolicyDesktopFolder` = Allow (optional) | — |
 
@@ -23,9 +23,9 @@ Without Accessibility, dictation still works: the words are copied and the perso
 ## Profiles
 
 - [`Workbench-PPPC.mobileconfig`](Workbench-PPPC.mobileconfig) is for macOS 14–26. It sets Accessibility and PostEvent to Allow, ScreenCapture to AllowStandardUserToSetSystemService, and the Desktop folder to Allow (optional). It covers both editions. Delete the `com.ethdawg.workbench.preview` entries if you deploy only Workbench.
-- [`Workbench-AppSettings-Privacy.macOS27.json`](Workbench-AppSettings-Privacy.macOS27.json) is the macOS 27 declarative `com.apple.configuration.app.settings` payload: Accessibility, Microphone and Camera set to Allow. Replace the `OrganizationJustification` text with your own.
+- [`Workbench-AppSettings-Privacy.macOS27.json`](Workbench-AppSettings-Privacy.macOS27.json) is the macOS 27 declarative `com.apple.configuration.app.settings` payload for supervised Macs: it suggests Allow for Accessibility, Microphone and Camera, and the person accepts once. macOS skips a permission it has already asked about, so on a Mac where Workbench already asked it may change nothing. Replace the `OrganizationJustification` text with your own.
 
-Deliver either one through your MDM on the **device channel**. macOS ignores a privacy payload that someone double-clicks or installs by hand. Apple requires user-approved MDM, and its deployment guide also says supervision. Replace the `PayloadIdentifier`, `PayloadOrganization` and `PayloadUUID` values if your MDM doesn't regenerate them.
+Deliver the PPPC profile through your MDM on the **device channel**; a copy installed by hand grants nothing. Apple requires user-approved MDM, and its deployment guide also says supervision. Deliver the App Settings declaration on the **user channel**, where Apple scopes its Privacy settings. Replace the `PayloadIdentifier`, `PayloadOrganization` and `PayloadUUID` values if your MDM doesn't regenerate them.
 
 ## Identity
 
@@ -44,8 +44,8 @@ It pins the bundle ID, Apple's Developer ID chain and the team, so it survives u
 
 ## Worth knowing
 
-- On macOS 14–26, approvals a profile grants don't appear in Privacy & Security's lists. Check them in System Settings, in the device-management profile's details.
-- macOS 27 and Accessibility profiles: Apple's 27.0 reference says a PPPC Accessibility grant still applies, with a notification, and the person can turn it off. During the 27 betas Apple DTS said the ability was removed, and testers saw the grant ignored unless PostEvent was also in the payload. Test on a macOS 27 Mac before relying on it, and keep PostEvent in the profile; the declarative replacement has no PostEvent key. On an unsupervised macOS 27 Mac there is no MDM route to pre-allow Accessibility.
+- On macOS 14–26.1, approvals a profile grants don't appear in Privacy & Security's lists; from 26.2 they may. The device-management profile's details in System Settings always list them.
+- macOS 27 and Accessibility profiles: Apple's 27.0 reference says a PPPC Accessibility grant still applies, with a notification, and the person can turn it off. During the 27 betas Apple DTS said the ability was removed, and testers saw the grant ignored unless PostEvent was also in the payload. Test on a macOS 27 Mac before relying on it, and keep PostEvent in the profile; the declarative replacement has no PostEvent key. On an unsupervised macOS 27 Mac, the PPPC profile is the only route.
 - Check that your MDM supports the macOS 27 `com.apple.configuration.app.settings` declaration before relying on it. Vendor support hasn't been confirmed here. Microsoft Intune's Settings catalog configures PPPC natively.
 - Updates: Workbench updates itself with Sparkle. A copy in `/Applications` that a standard account updates needs an administrator for each update, so deploy updates through your MDM there. A copy in the person's own `~/Applications` updates without one.
 - `WorkbenchBrowserHost`, the Chrome helper inside the app, needs no privacy entry.

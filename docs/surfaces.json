@@ -5427,7 +5427,7 @@
     "expression": "copiedDetails ? \"Copied\" : \"Copy permission details\"",
     "kind": "action",
     "belongsTo": "app",
-    "note": "Quality (8 Oct 2026, work-Mac permissions): copies what Workbench needs by macOS version (PPPC and macOS 27 App Settings), this edition's identity and what this Mac reports, for an IT team or a problem report; no words, files or names. Local to the panel (docs/desktop.md § Home)."
+    "note": "Quality (8 Oct 2026, work-Mac permissions): copies what Workbench needs by macOS version (PPPC and macOS 27 App Settings), this edition's identity and what this Mac reports, for an IT team; no words or files, only the app the last paste went to. Local to the panel (docs/desktop.md § Home)."
   },
   {
     "id": "LocalVoice.HomeTiles.HomeDecksTile.Button.make-your-own",

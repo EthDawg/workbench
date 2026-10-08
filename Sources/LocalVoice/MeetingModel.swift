@@ -349,14 +349,16 @@ final class MeetingModel: ObservableObject {
             refreshAdmission()
             if let issue = admission.captureProblem { throw issue }
             let input = liveVoice?.input
+            // macOS has no passive check for call audio, and a refused tap delivers silence, so
+            // Home's Permissions learns it is allowed only from the app's first real sound.
+            let evidence = app != nil ? CallAudioEvidence(defaults) : nil
             try await recorder.start(MeetingCaptureRequest(tracksDirectory: session.appendingPathComponent(MeetingStore.tracksDirectory),
                 app: app, includeMicrophone: microphone, onAudio: { audio in
+                    if audio.source != .local { evidence?.hear(audio.samples) }
                     input?.append(LiveVoiceAudio(source: audio.source == .local ? .microphone : .app,
                         samples: audio.samples, sampleRate: audio.sampleRate, start: audio.startSeconds))
                 }))
             try check(token)
-            // macOS has no passive check for call audio, so Home's Permissions learns it here.
-            if app != nil { defaults.set(CallAudioRecord.allowed.rawValue, forKey: CallAudioRecord.key) }
             notice = "Recording. Your original audio is being saved."
             voiceSession.phase = .listening
             phase(recording: true)
@@ -763,5 +765,22 @@ final class MeetingModel: ObservableObject {
         shuttingDown = true; activeCapture?.requestStop()
         detectionTask?.cancel(); watcher?.cancel()
         Task { await prepareForShutdown() }
+    }
+}
+
+/// Writes call audio's record once, from the first app samples that carry sound. A refused tap
+/// delivers silence rather than an error, so silence proves nothing either way and writes nothing.
+final class CallAudioEvidence: @unchecked Sendable {
+    private let lock = NSLock()
+    private var heard = false
+    private let defaults: UserDefaults
+    init(_ defaults: UserDefaults) { self.defaults = defaults }
+    func hear(_ samples: [Float]) {
+        lock.lock(); let done = heard; lock.unlock()
+        guard !done, samples.contains(where: { $0 != 0 }) else { return }
+        lock.lock(); defer { lock.unlock() }
+        guard !heard else { return }
+        heard = true
+        defaults.set(CallAudioRecord.allowed.rawValue, forKey: CallAudioRecord.key)
     }
 }

@@ -642,6 +642,7 @@ final class MeetingProcessTap: @unchecked Sendable {
         let aggregated = AudioHardwareCreateAggregateDevice(aggregate as CFDictionary, &device)
         guard aggregated == noErr, device != kAudioObjectUnknown else {
             unwind()
+            if aggregated == kAudioDevicePermissionsError { throw Self.startProblem(status: aggregated) }
             throw MeetingError.message("Workbench could not prepare its private capture device (CoreAudio error \(aggregated)).")
         }
         self.format = format
@@ -670,6 +671,7 @@ final class MeetingProcessTap: @unchecked Sendable {
         guard started == noErr else {
             AudioDeviceDestroyIOProcID(aggregateID, procID)
             ioProcID = nil
+            if started == kAudioDevicePermissionsError { throw Self.startProblem(status: started) }
             throw MeetingError.message("Workbench could not start the app's audio capture (CoreAudio error \(started)).")
         }
     }

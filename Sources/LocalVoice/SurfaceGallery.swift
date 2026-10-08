@@ -3858,7 +3858,7 @@ private struct HistoryNativeAcceptanceView: View {
         let panel = quickPanel(readback)
         var listings = [SurfaceGallery.Listing(title: "Dictate · Options (native menu, listed from its source so Set up automatic paste… never runs)", lines:
             ["Delivery"] + DeliveryMode.allCases.map { "  " + $0.rawValue }
-            + ["Copies for ⌘V until automatic paste is approved (while Paste automatically waits for Accessibility approval)", "  Set up automatic paste…"]
+            + ["Copies for ⌘V until Accessibility is allowed (while Paste automatically waits for Accessibility)", "  Set up automatic paste…"]
             + ["Text style"] + CleanupStyle.allCases.map { "  " + $0.rawValue }
             + ["---", "History… → history, on Transcripts", "Meetings… → meeting", "Open Dictate… → dictate"])]
         for tool in WorkbenchControlTool.allCases {
