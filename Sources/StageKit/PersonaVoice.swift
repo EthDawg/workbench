@@ -508,30 +508,32 @@ final class PersonaMicrophoneLevel: PersonaVoiceSource {
                 self.onFrames?(frames)
             }
         }
-        engine.prepare()
-        do { try engine.start() } catch {
-            input.removeTap(onBus: 0)
-            throw PersonaVoiceError.unavailable(error.localizedDescription)
-        }
-        self.engine = engine
-        running = true
-        deviceName = AVCaptureDevice.default(for: .audio)?.localizedName
         // A new headset or a lost device stops the engine silently. Restart on the new input,
         // or turn the ring off rather than freeze it at a stale level. The handler only schedules
         // that: the engine must not be torn down or released inside its own notification, which
-        // AVFAudio delivers from an internal queue and can deadlock on (AVAudioEngine.h).
-        let changed = ObjectIdentifier(engine)
-        configurationObserver = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil) { [weak self] _ in
-            DispatchQueue.main.async { self?.restart(after: changed) }
+        // AVFAudio delivers from an internal queue and can deadlock on (AVAudioEngine.h). It is
+        // registered before the engine starts, so a change during start is not missed.
+        let observer = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil) { [weak self, weak engine] _ in
+            DispatchQueue.main.async { if let engine { self?.restart(after: engine) } }
         }
+        engine.prepare()
+        do { try engine.start() } catch {
+            NotificationCenter.default.removeObserver(observer)
+            input.removeTap(onBus: 0)
+            throw PersonaVoiceError.unavailable(error.localizedDescription)
+        }
+        configurationObserver = observer
+        self.engine = engine
+        running = true
+        deviceName = AVCaptureDevice.default(for: .audio)?.localizedName
     }
 
     func stop() { halt(); deviceName = nil }
 
     /// On the main queue, after the notification has returned: a change from an engine that has
     /// since been replaced or stopped is ignored.
-    private func restart(after changed: ObjectIdentifier) {
-        guard running, let engine, ObjectIdentifier(engine) == changed else { return }
+    private func restart(after changed: AVAudioEngine) {
+        guard running, let engine, engine === changed else { return }
         halt()
         do { try start(); onDevice?(deviceName) }
         catch { deviceName = nil; onUnavailable?(error.localizedDescription) }
