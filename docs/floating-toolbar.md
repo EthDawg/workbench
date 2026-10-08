@@ -220,13 +220,15 @@ explicit persistent preference.
 Draw has Tools; Present has Prompts, plus View while a presentation is live. View
 contains only the current presentation’s applicable source, motion and window
 controls. End stays the primary/chooser action, and Apple handoffs stay in the
-connection guide. Persona always has Choose Persona, because the live camera is
-one of its sources beside the saved cards (1 October): the picker lists the cards
-(the shown or kept card's frozen candidates, or the saved cards when nothing is
-live) and then Camera. Choosing Camera is the explicit Start camera and the shown
-card stays up until the first frame; choosing a card ends a live camera and shows
-that card. Restricted camera access leaves Camera disabled. A running prepared set
-has Choose Set instead. Next Persona or Next set appears when more than one frozen
+connection guide. Persona always has Choose Persona, because My Profile and Live
+Camera are its two first-class sources beside the saved cards (8 October): the
+picker lists My Profile (My Profile… until a profile photo is saved, which opens the
+profile editor), Live Camera, then the cards (the shown or kept card's frozen
+candidates, or the saved cards when nothing is live; the profile photo is listed
+once, as My Profile). Choosing Live Camera is the explicit start and the shown card
+stays up until the first frame; choosing My Profile or a card ends Live Camera and
+fades in over the bubble in its place and size. Restricted camera access leaves
+Live Camera disabled. A running prepared set has Choose Set instead. Next Persona or Next set appears when more than one frozen
 choice exists and advances once without opening a menu; it never cycles into the
 camera. The picker uses frozen public labels and every choice checks again that
 Persona is as it was drawn. One-item sets have no inert Next. Failure preserves the

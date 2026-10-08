@@ -119,16 +119,25 @@ struct PersonaGroup: Codable, Identifiable, Equatable {
 
 /// Only these deliberately prepared candidates can appear in live controls.
 /// Reconciliation can remove candidates, but never adds or reorders them.
+/// The Persona page's My Profile button: show the photo, or end the Live Camera visit
+/// starting or failed beside it.
+enum PersonaProfileAction: Equatable { case show, endLiveCamera }
+
 struct PersonaLiveSelection: Equatable {
     let groupID: UUID?
+    /// A persona outside the group that joined it for this visit: My Profile shown while a
+    /// group without it is prepared. It goes first, as My Profile is first in every menu.
+    let guestID: UUID?
     private(set) var candidateIDs: [UUID]
     private(set) var currentID: UUID?
-    init(group: PersonaGroup, selectedID: UUID?) {
-        groupID = group.id; candidateIDs = group.personaIDs
+    init(group: PersonaGroup, selectedID: UUID?, guest: UUID? = nil) {
+        groupID = group.id
+        guestID = guest.flatMap { group.personaIDs.contains($0) ? nil : $0 }
+        candidateIDs = (guestID.map { [$0] } ?? []) + group.personaIDs
         currentID = selectedID.flatMap { candidateIDs.contains($0) ? $0 : nil }
     }
     init(personaIDs: [UUID], selectedID: UUID?) {
-        groupID = nil; candidateIDs = personaIDs
+        groupID = nil; guestID = nil; candidateIDs = personaIDs
         currentID = selectedID.flatMap { candidateIDs.contains($0) ? $0 : nil }
     }
     mutating func select(_ id: UUID) {
@@ -144,7 +153,7 @@ struct PersonaLiveSelection: Equatable {
         let allowed: Set<UUID>
         if let groupID {
             guard let group, group.id == groupID else { candidateIDs = []; currentID = nil; return }
-            allowed = Set(group.personaIDs).intersection(existingIDs)
+            allowed = Set(group.personaIDs + (guestID.map { [$0] } ?? [])).intersection(existingIDs)
         } else { allowed = existingIDs }
         candidateIDs.removeAll { !allowed.contains($0) }
         if let currentID, !candidateIDs.contains(currentID) { self.currentID = nil }
@@ -322,6 +331,11 @@ final class PersonaLibrary: NSObject, ObservableObject {
     /// The input the ring is listening to; nil whenever the microphone is closed.
     @Published private(set) var voiceDevice: String?
     @Published private(set) var voicePermissionPending = false
+    /// macOS refused the microphone when the switch needed it. The reason stays beside the
+    /// switch, with Microphone Settings…, until access changes: Show, Hide and other notices
+    /// never take it away, so the switch is never off without saying why.
+    @Published private(set) var voiceRefused = false
+    private var activation: NSObjectProtocol?
     var voiceAvailable: Bool { voiceAccess != nil }
     /// My Profile: the saved persona the local profile names. The host reads it from its own
     /// preference (`LocalPersonaProfile`), so this library keeps no second record of it.
@@ -332,6 +346,20 @@ final class PersonaLibrary: NSObject, ObservableObject {
     var profileID: UUID? { profilePersonaID?().flatMap { id in items.contains { $0.id == id } ? id : nil } }
     /// The one floating card shows My Profile now.
     var showsProfile: Bool { artworkVisible && session == nil && displayedID != nil && displayedID == profileID }
+    /// What the Persona page's My Profile button would do now: nil when it would change nothing
+    /// another button there does not, because the photo is up or Show again brings it back.
+    /// With the photo up beside a starting or failed Live Camera, it only ends that visit.
+    var profileAction: PersonaProfileAction? {
+        guard let profile = profileID, session == nil else { return nil }
+        guard displayedID == profile else { return .show }
+        if artworkVisible { return cameraOwnsSlot ? .endLiveCamera : nil }
+        return hasHiddenCard ? nil : .show
+    }
+    /// The name a heading gives a saved persona: the local profile reads My Profile, whatever
+    /// its saved name (earlier builds saved every profile as "Me"). Nothing is renamed on disk.
+    func headingName(for id: UUID?, name: String) -> String { id != nil && id == profileID ? "My Profile" : name }
+    /// A library row keeps the persona's own name; the profile's legacy default name reads My Profile.
+    func rowName(for id: UUID, name: String) -> String { id == profileID && name == "Me" ? "My Profile" : name }
     @Published private(set) var overlayLocked = false
     @Published private(set) var overlayWidth = 0.16
     var usesSharedControls = false { didSet { if usesSharedControls { hud?.hide() } } }
@@ -411,6 +439,13 @@ final class PersonaLibrary: NSObject, ObservableObject {
         // Live Camera draws the ring as a card does, in the same colour.
         self.camera.setVoiceColor(voiceColor)
         self.camera.setVoiceRing(voiceRing && voice != nil)
+        // Microphone access can change in System Settings, Home or Dictate while Workbench is
+        // away; coming back reads it again.
+        if voice != nil {
+            activation = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.recheckVoiceAccess() }
+            }
+        }
         imageCache.totalCostLimit = 128 * 1024 * 1024
         applyingArchive = true
         defer { applyingArchive = false }
@@ -1082,14 +1117,16 @@ final class PersonaLibrary: NSObject, ObservableObject {
     /// requested card: unrelated missing, large or numerous saved items cannot
     /// block it. It replaces any shown overlay only once it has decoded.
     /// `requested` shows that persona, such as My Profile, in place of the preparation
-    /// selection; outside the prepared group it brings all saved personas with it.
+    /// selection; outside the prepared group it joins the group for this visit, first, so
+    /// Next and Previous still go through the group and nothing else.
     private func showOverlayChecked(showing requested: UUID? = nil) throws {
         guard mayBeginInteraction?() != false else { throw PersonaSessionInteractionError.busy }
         // Showing saved artwork is an explicit source choice, so it ends a live
         // camera and says so. A failure below leaves the camera running.
         if hasHiddenCard, !cameraOwnsSlot { endOverlaySession() }
-        let group = activeGroup.flatMap { group in requested.map { group.personaIDs.contains($0) } ?? true ? group : nil }
-        let candidateIDs = group?.personaIDs ?? items.map(\.id)
+        let group = activeGroup
+        let guest = requested.flatMap { id in group.map { $0.personaIDs.contains(id) } == false ? id : nil }
+        let candidateIDs = group.map { (guest.map { [$0] } ?? []) + $0.personaIDs } ?? items.map(\.id)
         guard let initialID = (requested ?? selectedID).flatMap({ candidateIDs.contains($0) ? $0 : nil }) ?? candidateIDs.first
         else { throw PersonaError.unreadableImage }
         let byID = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
@@ -1100,7 +1137,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
         let image = try deck.image(for: initialID, shown: nil, reserved: cardDeck?.retainedBytes ?? 0,
                                    render: { renderedImage(for: $0) })
         endOverlaySession()
-        liveSelection = group.map { PersonaLiveSelection(group: $0, selectedID: initialID) }
+        liveSelection = group.map { PersonaLiveSelection(group: $0, selectedID: initialID, guest: guest) }
             ?? PersonaLiveSelection(personaIDs: candidateIDs, selectedID: initialID)
         cardDeck = deck; deck.didShow(initialID)
         shownCard = deck.sources[initialID].map { PersonaShownCard(copyID: UUID(), source: $0) }
@@ -1108,7 +1145,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
     }
     /// Puts the card on screen with its voice outline, edge and placement.
     /// Replacing Live Camera on screen, the card takes the bubble's place and size, keeps its
-    /// own lock, and fades in while the bubble fades out.
+    /// own lock, and fades in over the bubble, which stays whole until covered and then goes.
     private func present(_ image: NSImage) {
         if overlay == nil {
             overlay = PersonaOverlayController(persistentLockedHandle: true)
@@ -1165,11 +1202,12 @@ final class PersonaLibrary: NSObject, ObservableObject {
         clearLiveNotices()
         return .success(())
     }
-    /// My Profile: the profile photo as the one floating card. A shown card's deck keeps
-    /// the photo when it holds it, so Next and Previous carry on from it; otherwise the photo
-    /// starts a deck of the prepared group, or of all saved personas when the group lacks
-    /// it. It takes the slot's place, ends Live Camera with a crossfade and opens no camera.
-    /// A prepared set keeps the slot.
+    /// My Profile: the profile photo as the one floating card, as it is saved now, so a photo
+    /// retaken since the deck began shows the new one. A shown card's deck keeps the photo
+    /// when it holds it, so Next and Previous carry on from it; otherwise the photo starts a
+    /// deck of the prepared group, joining it first when the group lacks it, or of all saved
+    /// personas. It takes the slot's place, ends Live Camera with a crossfade and opens no
+    /// camera. A prepared set keeps the slot.
     @discardableResult func showProfile() -> Result<Void, Error> {
         guard let profile = profileID else {
             let error = PersonaProfileRefusal.noProfile
@@ -1180,8 +1218,14 @@ final class PersonaLibrary: NSObject, ObservableObject {
             notice = error.localizedDescription; cardFailure = notice
             return .failure(error)
         }
-        if shownCard != nil, liveSelection?.candidateIDs.contains(profile) == true {
-            if displayedID != profile {
+        if shownCard != nil, let deck = cardDeck, liveSelection?.candidateIDs.contains(profile) == true {
+            if displayedID == profile {
+                if shownCardHasNewerLook, case .failure(let error) = updateShownCard() { return .failure(error) }
+            } else {
+                if let frozen = deck.sources[profile]?.persona, let saved = newerSaved(than: frozen) {
+                    do { _ = try deck.refresh(saved, label: publicLabel(for: saved), shown: displayedID, render: { renderedImage(for: $0) }) }
+                    catch { reportCardFailure(error); return .failure(error) }
+                }
                 selectLivePersona(profile)
                 guard displayedID == profile else { return .failure(PersonaError.unreadableImage) }
             }
@@ -1200,6 +1244,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
         } catch { reportCardFailure(error); return .failure(error) }
     }
     func shutdown() {
+        if let activation { NotificationCenter.default.removeObserver(activation); self.activation = nil }
         camera.shutdown()
         endOverlaySession(); stopVoice(); overlay?.shutdown(); overlay = nil; hud?.shutdown(); hud = nil; imageCache.removeAllObjects()
     }
@@ -1376,8 +1421,14 @@ final class PersonaLibrary: NSObject, ObservableObject {
         if session != nil {
             frozen = sessionState.selectedInstance.flatMap { session?.source(of: $0.id)?.persona }
         } else { frozen = shownCard?.source.persona }
-        guard let frozen, let saved = items.first(where: { $0.id == frozen.id }) else { return false }
-        return frozen.image != saved.image || frozen.card != saved.card || frozen.effectiveAppearance != saved.effectiveAppearance
+        guard let frozen else { return false }
+        return newerSaved(than: frozen) != nil
+    }
+    /// The persona as it is saved now, when that differs from the look frozen into a deck.
+    private func newerSaved(than frozen: SavedPersona) -> SavedPersona? {
+        guard let saved = items.first(where: { $0.id == frozen.id }) else { return nil }
+        let newer = frozen.image != saved.image || frozen.card != saved.card || frozen.effectiveAppearance != saved.effectiveAppearance
+        return newer ? saved : nil
     }
     /// Update shown card: the shown copy shows its persona as it is saved now,
     /// keeping its size, place and lock. Only that copy changes, and a hidden card
@@ -1414,10 +1465,11 @@ final class PersonaLibrary: NSObject, ObservableObject {
     func setVoiceRing(_ enabled: Bool) {
         guard let access = voiceAccess else { return }
         if enabled && access.permission() == .denied {
-            rememberVoiceRing(false); notice = PersonaVoiceError.microphoneDenied.localizedDescription; return
+            rememberVoiceRing(false); voiceRefused = true
+            notice = PersonaVoiceError.microphoneDenied.localizedDescription; return
         }
         // Allowed since: the refusal and its door leave with the switch turning on.
-        if enabled, voiceRefusal != nil { notice = nil }
+        if enabled, voiceRefused { clearVoiceRefusal() }
         rememberVoiceRing(enabled)
         // The one place macOS is asked: switching it on, while preparing. Showing a card or
         // starting Live Camera never asks, so no prompt appears in front of an audience.
@@ -1435,17 +1487,43 @@ final class PersonaLibrary: NSObject, ObservableObject {
     private(set) lazy var voiceColourPicker = PersonaVoiceColourPicker(library: self)
     /// A short line under the switch and menu item while the ring is on.
     var voiceStatus: String? {
-        guard voiceRing, voiceAccess != nil else { return nil }
+        guard voiceRing, let access = voiceAccess else { return nil }
         if voicePermissionPending { return "Waiting for microphone access" }
-        if voiceAccess?.permission() == .undecided { return "Microphone not allowed yet · switch off and on to ask" }
+        switch access.permission() {
+        case .undecided: return "Microphone not allowed yet"
+        case .denied: return "Microphone access is off"
+        case .allowed: break
+        }
         if let voiceDevice { return "Listening · \(voiceDevice)" }
         return session == nil ? "Listens while a persona or Live Camera shows" : "Listens while the selected overlay shows"
     }
-    /// The microphone refusal while it is the notice: the switch stays off and the reason shows
-    /// beside it with Microphone Settings…, on the page and in the live menus (#134 Fit rule 2).
+    /// Allow Microphone…: shown beside the status while the switch is on and macOS has not
+    /// been asked, as after a permission reset. The presenter's click is the question.
+    var voiceNeedsAllowing: Bool { voiceRing && !voicePermissionPending && voiceAccess?.permission() == .undecided }
+    func allowMicrophone() {
+        guard voiceNeedsAllowing, let access = voiceAccess else { return }
+        requestVoicePermission(access)
+    }
+    /// The microphone refusal: the switch stays off and the reason shows beside it with
+    /// Microphone Settings…, on the page and in the live menus (#134 Fit rule 2).
     var voiceRefusal: String? {
-        guard voiceAccess != nil, let notice, notice == PersonaVoiceError.microphoneDenied.localizedDescription else { return nil }
-        return notice
+        guard voiceAccess != nil, voiceRefused else { return nil }
+        return PersonaVoiceError.microphoneDenied.localizedDescription
+    }
+    private func clearVoiceRefusal() {
+        voiceRefused = false
+        if notice == PersonaVoiceError.microphoneDenied.localizedDescription { notice = nil }
+    }
+    /// Reads microphone access again, on coming back to Workbench and when a live menu opens.
+    /// Allowed since a refusal, the switch comes back on, as the presenter asked; refused
+    /// while on, it turns off and says why.
+    func recheckVoiceAccess() {
+        guard let access = voiceAccess else { return }
+        if voiceRefused, access.permission() != .denied {
+            clearVoiceRefusal()
+            if access.permission() == .allowed { rememberVoiceRing(true); return }
+        }
+        updateVoice()
     }
     /// Microphone Settings…: opens Privacy & Security › Microphone, as Dictate's does.
     func openMicrophoneSettings() { voiceAccess?.openMicrophoneSettings() }
@@ -1454,7 +1532,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
     func replaceVoiceAccess(_ access: PersonaVoiceAccess?) -> PersonaVoiceAccess? {
         let previous = voiceAccess
         stopVoice(); voiceRing = false; voicePermissionPending = false
-        if notice == PersonaVoiceError.microphoneDenied.localizedDescription { notice = nil }
+        clearVoiceRefusal()
         voiceAccess = access
         return previous
     }
@@ -1529,7 +1607,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
     /// fault turns it off for now and keeps the saved choice, so it is on again next time.
     private func voiceUnavailable(_ reason: String, refused: Bool) {
         stopVoice()
-        if refused { rememberVoiceRing(false) } else { voiceRing = false; updateVoice() }
+        if refused { rememberVoiceRing(false); voiceRefused = true } else { voiceRing = false; updateVoice() }
         notice = reason
     }
 
@@ -1732,8 +1810,9 @@ final class PersonaLibrary: NSObject, ObservableObject {
     /// a Hide or Try Again left over from an earlier visit does nothing. Only
     /// public words appear: no device path, library name or file name.
     /// `sources` is Choose Persona, under the explanation; `voice` is React to my voice and its
-    /// colour. Grouped as the card's menu is, in its title case: what is showing and where it can
-    /// switch; its size, lock, place and camera; its effects; the voice ring; Hide and End.
+    /// colour. Grouped as the card's menu is, in its title case and order: what is showing and
+    /// where it can switch; its size, lock, place and camera; its effects; the voice ring; Hide
+    /// and End. Hidden, as a hidden card's: sources; Show Again; the voice ring; End.
     private func cameraItems(sources: NSMenuItem? = nil, voice: [NSMenuItem] = []) -> [NSMenuItem] {
         let visit = camera.visit
         func item(_ title: String, checked: Bool = false, enabled: Bool = true, run: @escaping (PersonaLibrary) -> Void) -> NSMenuItem {
@@ -1819,7 +1898,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
         // Hide and End share the last group.
         if case .live = camera.state, var last = groups.popLast() { last.append(end); groups.append(last) }
         else { groups.append([end]) }
-        return groups.filter { !$0.isEmpty }.enumerated().flatMap { index, group in (index == 0 ? [] : [NSMenuItem.separator()]) + group }
+        return NSMenuItem.grouped(groups)
     }
     /// Choose Persona as a submenu of the live menu: the pill's own choices.
     private func sourcesSubmenu() -> NSMenuItem {
@@ -1831,6 +1910,8 @@ final class PersonaLibrary: NSObject, ObservableObject {
     }
 
     func makeControlsMenu() -> NSMenu {
+        // Access may have changed elsewhere since the last look; the switch shows it as it is.
+        recheckVoiceAccess()
         let menu = NSMenu(title: "Persona Overlay"); menu.autoenablesItems = false
         let generation = overlayGeneration
         let groupID = sessionState.currentGroupID
@@ -1849,6 +1930,11 @@ final class PersonaLibrary: NSObject, ObservableObject {
                 guard let self, self.overlayGeneration == generation else { return }; self.setVoiceRing(!self.voiceRing)
             }
             if #available(macOS 14.4, *), let status = voiceStatus { item.subtitle = status }
+            if voiceNeedsAllowing {
+                return [item, StageMenuAction("Allow Microphone…") { [weak self] in
+                    guard let self, self.overlayGeneration == generation else { return }; self.allowMicrophone()
+                }]
+            }
             guard let refusal = voiceRefusal else { return [item] }
             return [item, StageMenuAction(refusal, enabled: false) {},
                     StageMenuAction("Microphone Settings…") { [weak self] in self?.openMicrophoneSettings() }]
@@ -1948,20 +2034,26 @@ final class PersonaLibrary: NSObject, ObservableObject {
             menu.addItem(action("Save Layout for Next Time", .saveLayout, enabled: state.canSaveLayout && state.hasUnsavedLayout))
             menu.addItem(action("End Overlays", .end))
         } else if overlayVisible, let current = displayedID {
-            // A Next, Previous or choice that could not show says why where it happened.
-            if let failure = cardFeedback { menu.addItem(StageMenuAction(failure, enabled: false) {}) }
-            cardChanges().forEach(menu.addItem)
+            // Grouped as Live Camera's menu is, in the same order: what is showing and where it
+            // can switch; its size, lock, place and look; the voice ring; Hide and End.
+            func unchanged(_ library: PersonaLibrary) -> Bool {
+                library.overlayGeneration == generation && library.displayedID == current && library.session == nil
+            }
+            // A Next, Previous or choice that could not show says why where it happened. Then
             // My Profile, Live Camera and the cards, as the pill's picker offers them.
-            menu.addItem(sourcesSubmenu())
+            var sources: [NSMenuItem] = cardFeedback.map { [StageMenuAction($0, enabled: false) {}] } ?? []
+            sources.append(sourcesSubmenu()); sources += cardChanges()
+            sources.forEach(menu.addItem)
+            menu.addItem(.separator())
             let size = NSMenuItem(); size.view = PersonaSizeMenuView(width: overlayWidth) { [weak self] width in
-                guard let self, self.overlayGeneration == generation, self.displayedID == current, self.session == nil else { return }; self.setOverlayWidth(width)
+                guard let self, unchanged(self) else { return }; self.setOverlayWidth(width)
             }; menu.addItem(size)
             menu.addItem(StageMenuAction("Lock Artwork · Clicks Pass Through", checked: overlayLocked) { [weak self] in
-                guard let self, self.overlayGeneration == generation, self.displayedID == current, self.session == nil else { return }; self.setOverlayLocked(!self.overlayLocked)
+                guard let self, unchanged(self) else { return }; self.setOverlayLocked(!self.overlayLocked)
             })
             menu.addSubmenu("Position Artwork", items: FloatingControlAnchor.allCases.map { anchor in
                 StageMenuAction(anchor.title) { [weak self] in
-                    guard let self, self.overlayGeneration == generation, self.displayedID == current, self.session == nil else { return }
+                    guard let self, unchanged(self) else { return }
                     self.setOverlayPosition(x: anchor.unitPoint.x, y: anchor.unitPoint.y)
                 }
             })
@@ -1974,20 +2066,23 @@ final class PersonaLibrary: NSObject, ObservableObject {
                     }
                 })
             }
-            voiceSwitch().forEach(menu.addItem); if let item = voiceColour() { menu.addItem(item) }
-            menu.addItem(endCard())
+            var voice = voiceSwitch(); if let item = voiceColour() { voice.append(item) }
+            // Hide names what is on screen, as Hide Live Camera does; Show Again brings it back.
+            let hide: () -> Void = { [weak self] in guard let self, unchanged(self) else { return }; self.hideArtwork() }
+            let hideItem = showsProfile ? StageMenuAction("Hide My Profile", run: hide) : StageMenuAction("Hide Persona", run: hide)
+            menu.addGroups([voice, [hideItem, endCard()]])
         } else {
             if let card = shownCard {
                 // A hidden card is kept: Show again brings back this card, not the selection.
-                if let failure = cardFeedback { menu.addItem(StageMenuAction(failure, enabled: false) {}) }
-                menu.addItem(StageMenuAction("Show Again") { [weak self] in
+                // The same groups and order as a hidden Live Camera's menu.
+                var sources: [NSMenuItem] = cardFeedback.map { [StageMenuAction($0, enabled: false) {}] } ?? []
+                sources.append(sourcesSubmenu()); sources += cardChanges()
+                let show = StageMenuAction("Show Again") { [weak self] in
                     guard let self, self.overlayGeneration == generation, self.shownCard?.copyID == card.copyID else { return }
                     self.showAgain()
-                })
-                menu.addItem(sourcesSubmenu())
-                cardChanges().forEach(menu.addItem)
-                voiceSwitch().forEach(menu.addItem); if let item = voiceColour() { menu.addItem(item) }
-                menu.addItem(endCard())
+                }
+                var voice = voiceSwitch(); if let item = voiceColour() { voice.append(item) }
+                menu.addGroups([sources, [show], voice, [endCard()]])
             } else {
                 menu.addItem(StageMenuAction("Show Selected Persona", enabled: !visibleItems.isEmpty) { [weak self] in
                     guard let self, self.overlayGeneration == generation else { return }; self.showOverlay()

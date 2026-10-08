@@ -2620,6 +2620,15 @@
     "note": "Renamed 8 Oct 2026 (Ethan: the two first-class Persona sources are Live Camera and My Profile). Option of Persona (Ethan, 1 Oct: the camera must be quick from the revealed pill). One list shared by the pill's Choose Persona and the live Persona menu: My Profile and Live Camera first, then the cards. Choosing it is the explicit start in the shown card's place and size; the card stays up until the first frame and the bubble fades in over it. Each choice revalidates the live state it was drawn for."
   },
   {
+    "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.allow-microphone",
+    "surface": "Persona menu",
+    "label": "Allow Microphone…",
+    "kind": "action",
+    "belongsTo": "persona",
+    "aliasOf": "persona",
+    "note": "Quality within React to my voice (QA review of #319, 8 Oct): with the switch on and macOS not yet asked, as after a permission reset, it asks once; replaces the old 'switch off and on to ask' status. The page shows the same button beside the status. Never shown otherwise, so nothing asks in front of an audience."
+  },
+  {
     "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.cancel-starting-live-camera",
     "surface": "Persona camera menu",
     "label": "Cancel Starting Live Camera",
@@ -2650,6 +2659,24 @@
     "label": "End Overlay",
     "kind": "action",
     "belongsTo": "persona"
+  },
+  {
+    "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.hide-my-profile",
+    "surface": "Persona menu",
+    "label": "Hide My Profile",
+    "kind": "action",
+    "belongsTo": "persona",
+    "aliasOf": "persona",
+    "note": "Quality within Persona (QA review of #319, 8 Oct): the shown card's menu has the camera menu's groups and order, ending in Hide and End. Hide names what is on screen, as Hide Live Camera does, and keeps the card for Show Again, as the pill's Hide does."
+  },
+  {
+    "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.hide-persona",
+    "surface": "Persona menu",
+    "label": "Hide Persona",
+    "kind": "action",
+    "belongsTo": "persona",
+    "aliasOf": "persona",
+    "note": "Quality within Persona (QA review of #319, 8 Oct): the same Hide for a card other than My Profile; keeps the card for Show Again, as the pill's Hide does."
   },
   {
     "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.hide-live-camera",
@@ -5644,7 +5671,7 @@
     "label": "My Profile",
     "kind": "action",
     "belongsTo": "persona",
-    "note": "Option of Persona (Ethan, 8 Oct 2026: My Profile and Live Camera are first-class and one click apart). Shows the local profile photo (the persona persona.me.id.v1 names) as the one floating card in the slot's place and size; from Live Camera it fades in while the bubble fades out and ends the camera. Listed only while a profile photo is saved; the photo is not listed again among the cards. Revalidates the live state it was drawn for."
+    "note": "Option of Persona (Ethan, 8 Oct 2026: My Profile and Live Camera are first-class and one click apart). Shows the local profile photo (the persona persona.me.id.v1 names) as the one floating card in the slot's place and size; from Live Camera it fades in over the bubble, which stays whole until covered, and ends the camera. Outside the prepared group it joins that group first for the visit, and a retaken photo shows as saved now. Listed only while a profile photo is saved; the photo is not listed again among the cards. Revalidates the live state it was drawn for."
   },
   {
     "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.my-profile.95e85d83",

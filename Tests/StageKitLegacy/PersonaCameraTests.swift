@@ -1255,9 +1255,16 @@ final class PersonaCameraTests {
             library.startCamera(); f.permissionRequests.last?(.authorized); f.capture.starts.last?.1(.frame)
             XCTAssertEqual(f.camera.state, .live)
             XCTAssertEqual(requests, 0, "Showing My Profile and starting Live Camera ask nothing")
-            XCTAssertTrue(library.voiceStatus?.contains("switch off and on") == true, "The status line says how to allow it")
-            library.setVoiceRing(false); library.setVoiceRing(true)
-            XCTAssertEqual(requests, 1, "Switching it on asks, once")
+            XCTAssertEqual(library.voiceStatus, "Microphone not allowed yet")
+            XCTAssertTrue(library.voiceNeedsAllowing, "Allow Microphone… is offered beside it")
+            let menu = library.makeControlsMenu()
+            XCTAssertEqual(requests, 0, "Opening the live menu asks nothing")
+            guard let at = titles(menu).firstIndex(of: "React to My Voice · Uses Microphone") else { XCTAssertTrue(false, "The switch is in the menu"); return }
+            XCTAssertEqual(titles(menu)[at + 1], "Allow Microphone…", "The door sits under the switch")
+            invoke(menu, "Allow Microphone…")
+            XCTAssertEqual(requests, 1, "Allow Microphone… asks, once")
+            library.allowMicrophone()
+            XCTAssertEqual(requests, 1, "Only one question at a time")
         }
     }
 
@@ -1330,6 +1337,195 @@ final class PersonaCameraTests {
             let hidden = f.library.makeControlsMenu().items.map { $0.isSeparatorItem ? "---" : $0.title }
             XCTAssertEqual(Array(hidden.dropFirst()), ["Choose Persona", "---", "Show Live Camera Again", "---", "End Live Camera"])
         }
+    }
+
+    // MARK: QA review of #319
+
+    /// Earlier builds saved every profile as "Me". Wherever the page heads the shown or
+    /// selected persona, the profile reads My Profile; its list row keeps its own name (a
+    /// chosen persona such as field-lead stays field-lead, tagged My Profile), except the old
+    /// default Me, which reads My Profile. Nothing is renamed on disk.
+    func testTheProfileReadsMyProfileAndNothingIsRenamed() throws {
+        try MainActor.assumeIsolated {
+            let f = Fixture(withArtwork: true); defer { f.cleanup() }
+            let url = f.root.appendingPathComponent("profile.png")
+            try Fixture.png().write(to: url)
+            let legacy = try f.library.addImage(url, name: "Me")
+            XCTAssertEqual(f.library.headingName(for: legacy.id, name: legacy.name), "Me", "Before it is the profile, it is an ordinary persona")
+            f.library.profilePersonaID = { legacy.id }
+            XCTAssertEqual(f.library.headingName(for: legacy.id, name: legacy.name), "My Profile")
+            XCTAssertEqual(f.library.rowName(for: legacy.id, name: legacy.name), "My Profile", "The old default name reads My Profile in the list")
+            let chosen = try XCTUnwrapPersona(f.saved)
+            f.library.profilePersonaID = { chosen.id }
+            XCTAssertEqual(f.library.headingName(for: chosen.id, name: chosen.name), "My Profile")
+            XCTAssertEqual(f.library.rowName(for: chosen.id, name: chosen.name), "Private Alpha", "A chosen persona keeps its own name in the list")
+            XCTAssertEqual(f.library.rowName(for: legacy.id, name: legacy.name), "Me", "No longer the profile, Me is only a name")
+            XCTAssertEqual(f.library.headingName(for: nil, name: "Persona 3"), "Persona 3")
+            XCTAssertEqual(f.library.items.first { $0.id == legacy.id }?.name, "Me", "Nothing is renamed on disk")
+        }
+    }
+
+    /// Take photo… → Use photo keeps the profile's identity with a new picture. My Profile
+    /// then shows that picture, from another card or with the old one still up, never the
+    /// one the shown card's deck froze earlier.
+    func testMyProfileShowsARetakenPhotoAsSavedNow() throws {
+        try MainActor.assumeIsolated {
+            let f = Fixture(withArtwork: true); defer { f.cleanup() }
+            let url = f.root.appendingPathComponent("profile.png")
+            try Fixture.png().write(to: url)
+            let profile = try f.library.addImage(url, name: "Profile photo")
+            f.library.profilePersonaID = { profile.id }
+            try f.library.showProfile().get()
+            invoke(f.library.makeToolbarPickerMenu(), "Site lead")
+            XCTAssertEqual(f.library.shownIdentity?.personaID, f.saved?.id)
+            let retaken = try f.library.replacePortrait(f.library.portraitDraft(from: url, card: PersonaCardStyle(), name: "My Profile"), replacing: profile)
+            XCTAssertTrue(retaken.image != profile.image && retaken.id == profile.id, "A retake keeps the identity and saves a new picture")
+
+            invoke(f.library.makeToolbarPickerMenu(), "My Profile")
+            XCTAssertEqual(f.library.shownIdentity?.personaID, profile.id)
+            XCTAssertFalse(f.library.shownCardHasNewerLook, "From another card, My Profile shows the retaken photo")
+
+            _ = try f.library.replacePortrait(f.library.portraitDraft(from: url, card: PersonaCardStyle(), name: "My Profile"), replacing: retaken)
+            XCTAssertTrue(f.library.shownCardHasNewerLook, "Retaken while it is up, the shown copy is the older one")
+            invoke(f.library.makeToolbarPickerMenu(), "My Profile")
+            XCTAssertFalse(f.library.shownCardHasNewerLook, "Chosen again, it is the photo as saved now")
+            XCTAssertTrue(f.library.artworkVisible && f.library.showsProfile)
+        }
+    }
+
+    /// My Profile chosen while a group without it is prepared joins that group, first, for
+    /// this visit: the picker and Next stay within the group and never reach other cards.
+    func testMyProfileJoinsAPreparedGroupWithoutWideningIt() throws {
+        try MainActor.assumeIsolated {
+            let f = Fixture(withArtwork: true); defer { f.cleanup() }
+            let url = f.root.appendingPathComponent("profile.png")
+            try Fixture.png().write(to: url)
+            let profile = try f.library.addImage(url, name: "Profile photo")
+            let outsider = try f.library.addImage(url, name: "Outsider", card: PersonaCardStyle(label: "Outsider"))
+            f.library.profilePersonaID = { profile.id }
+            let saved = try XCTUnwrapPersona(f.saved)
+            let group = try f.library.createGroup(name: "Private group", members: [saved.id])
+            f.library.prepareGroup(group)
+            try f.library.showProfile().get()
+            XCTAssertEqual(f.library.liveSelection?.groupID, group, "The prepared group stays the deck")
+            XCTAssertEqual(f.library.liveSelection?.candidateIDs, [profile.id, saved.id], "My Profile joins it first; nothing else does")
+            XCTAssertEqual(f.library.makeToolbarPickerMenu().items.map(\.title), ["My Profile", "Live Camera", "", "Site lead"])
+            var reached: [UUID] = []
+            for _ in 0..<3 { f.library.stepQuickPersona(1); reached += [f.library.shownIdentity?.personaID].compactMap { $0 } }
+            XCTAssertEqual(reached, [saved.id, profile.id, saved.id], "Next goes through My Profile and the group")
+            XCTAssertFalse(reached.contains(outsider.id))
+        }
+    }
+
+    /// With React to my voice saved on and the microphone refused, the switch is never off
+    /// without saying why: the status says so first, then showing turns it off with the reason
+    /// and Microphone Settings…, which Show, Hide and Show again keep. Allowed in System
+    /// Settings, coming back turns it on again, as asked; refused again, the live menu reads
+    /// it as it opens.
+    func testARefusedMicrophoneStaysExplainedAndComesBackWhenAllowed() throws {
+        try MainActor.assumeIsolated {
+            var permission = PersonaVoiceAccess.Permission.denied
+            var saved = true
+            let microphones = Box()
+            let access = PersonaVoiceAccess(permission: { permission }, requestPermission: { _ in },
+                                            makeSource: { let source = Microphone(); microphones.made.append(source); return source },
+                                            savedChoice: { saved }, saveChoice: { saved = $0 })
+            let f = Fixture(); defer { f.cleanup() }
+            let library = PersonaLibrary(root: f.root.appendingPathComponent("voice"), sessionHUDEnabled: false, voice: access, camera: f.camera)
+            library.usesSharedControls = true
+            defer { library.shutdown() }
+            let url = f.root.appendingPathComponent("profile.png")
+            try Fixture.png().write(to: url)
+            let profile = try library.addImage(url, name: "Profile photo")
+            library.profilePersonaID = { profile.id }
+            XCTAssertTrue(library.voiceRing)
+            XCTAssertEqual(library.voiceStatus, "Microphone access is off", "Before anything shows, the status says it is refused")
+
+            try library.showProfile().get()
+            XCTAssertFalse(library.voiceRing || saved, "Showing finds the refusal: the switch is off and saved off")
+            XCTAssertEqual(library.voiceRefusal, "Microphone access is off. Open System Settings › Privacy & Security › Microphone and allow Workbench.",
+                           "and the reason stays, though showing clears other notices")
+            library.hideOverlay(); library.showAgain()
+            XCTAssertTrue(library.voiceRefusal != nil, "Hide and Show again keep the reason")
+            XCTAssertTrue(titles(library.makeControlsMenu()).contains("Microphone Settings…"))
+
+            permission = .allowed
+            NotificationCenter.default.post(name: NSApplication.didBecomeActiveNotification, object: NSApp)
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+            XCTAssertTrue(library.voiceRefusal == nil, "Allowed in System Settings, the reason goes on coming back")
+            XCTAssertTrue(library.voiceRing && saved, "and the switch is on again, as the presenter asked")
+            XCTAssertTrue(microphones.running, "It listens: the photo is up")
+
+            permission = .denied
+            let menu = library.makeControlsMenu()
+            XCTAssertFalse(library.voiceRing || microphones.running, "Refused again: the live menu reads it as it opens")
+            XCTAssertTrue(titles(menu).contains("Microphone Settings…"), "and the menu that opened explains it")
+        }
+    }
+
+    /// The shown card's live menu has Live Camera's groups in the same order: what is showing
+    /// and where it can switch; size, lock, place and look; the voice ring; Hide and End.
+    /// Hidden, both menus offer sources, then Show Again, then End.
+    func testTheCardMenuHasTheCameraMenusGroupsAndOrder() throws {
+        try MainActor.assumeIsolated {
+            let f = Fixture(withArtwork: true); defer { f.cleanup() }
+            func rows() -> [String] { f.library.makeControlsMenu().items.map { $0.isSeparatorItem ? "---" : ($0.view != nil ? "Size" : $0.title) } }
+            try f.library.showOverlay().get()
+            XCTAssertEqual(rows(), ["Choose Persona", "---", "Size", "Lock Artwork · Clicks Pass Through", "Position Artwork", "Appearance",
+                                    "---", "Hide Persona", "End Overlay"])
+            invoke(f.library.makeControlsMenu(), "Hide Persona")
+            XCTAssertTrue(!f.library.artworkVisible && f.library.hasHiddenCard, "Hide keeps the card for Show Again")
+            XCTAssertEqual(rows(), ["Choose Persona", "---", "Show Again", "---", "End Overlay"])
+            invoke(f.library.makeControlsMenu(), "Show Again")
+            XCTAssertTrue(f.library.artworkVisible)
+
+            let url = f.root.appendingPathComponent("profile.png")
+            try Fixture.png().write(to: url)
+            let profile = try f.library.addImage(url, name: "Profile photo")
+            f.library.profilePersonaID = { profile.id }
+            try f.library.showProfile().get()
+            XCTAssertTrue(rows().contains("Hide My Profile") && !rows().contains("Hide Persona"), "Hide names what is on screen")
+
+            f.live()
+            f.library.hideCamera()
+            let camera = rows()
+            XCTAssertEqual(Array(camera.dropFirst()), ["Choose Persona", "---", "Show Live Camera Again", "---", "End Live Camera"],
+                           "A hidden Live Camera's menu: the same order")
+        }
+    }
+
+    /// The Persona page's My Profile button shows only when it changes what is on screen:
+    /// not while the photo is up, nor while Show again would bring the same photo back. Up
+    /// beside a Live Camera that is waiting, starting or has failed, it ends that visit and
+    /// says so.
+    func testThePagesMyProfileButtonOnlyChangesWhatIsOnScreen() throws {
+        try MainActor.assumeIsolated {
+            let f = Fixture(withArtwork: true); defer { f.cleanup() }
+            XCTAssertTrue(f.library.profileAction == nil, "No profile photo, no button")
+            let url = f.root.appendingPathComponent("profile.png")
+            try Fixture.png().write(to: url)
+            let profile = try f.library.addImage(url, name: "Profile photo")
+            f.library.profilePersonaID = { profile.id }
+            XCTAssertEqual(f.library.profileAction, .show, "Nothing is up")
+            invoke(f.library.makeToolbarPickerMenu(), "Site lead")
+            XCTAssertEqual(f.library.profileAction, .show, "Another card is up")
+            try f.library.showProfile().get()
+            XCTAssertTrue(f.library.profileAction == nil, "The photo is up")
+            f.library.startCamera()
+            XCTAssertEqual(f.library.profileAction, .endLiveCamera, "Beside Live Camera waiting for access, it ends that visit")
+            f.permissionRequests.last?(.authorized); f.capture.starts.last?.1(.frame)
+            XCTAssertEqual(f.camera.state, .live)
+            XCTAssertTrue(f.library.hasHiddenCard)
+            XCTAssertTrue(f.library.profileAction == nil, "Show again brings the same photo back, so there is no second Show")
+            f.library.endCamera()
+            invoke(f.library.makeToolbarPickerMenu(), "Site lead")
+            f.live()
+            XCTAssertEqual(f.library.profileAction, .show, "Live Camera over another card: My Profile changes the screen")
+        }
+    }
+    private func XCTUnwrapPersona(_ persona: SavedPersona?) throws -> SavedPersona {
+        guard let persona else { XCTAssertTrue(false, "Expected a saved persona"); throw PersonaError.unreadableImage }
+        return persona
     }
 
     /// Choosing My Profile while it is already up beside a Live Camera that is waiting for access,

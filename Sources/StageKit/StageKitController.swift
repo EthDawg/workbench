@@ -254,7 +254,7 @@ public final class StageKitController: ObservableObject {
         public let isSet: Bool
     }
     public var personaPicker: PersonaPicker? { coordinator.demoScenes.personas.toolbarPicker }
-    /// The cards Persona can show now, then Camera; a prepared set's sets.
+    /// My Profile and Live Camera, then the cards Persona can show now; a prepared set's sets.
     public func makePersonaPickerMenu() -> NSMenu { coordinator.demoScenes.personas.makeToolbarPickerMenu() }
     /// One live persona copy, named exactly: the one floating card, or one copy of
     /// a prepared set. Capture it when a control is drawn, so a later choice
