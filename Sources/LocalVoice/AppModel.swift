@@ -696,7 +696,7 @@ final class AppModel: NSObject, ObservableObject {
                     }
                     guard transcriptionID == invocation else { return }
                     let delivered = noteAutomaticPaste(outcome, viaPaste: pasted)
-                    status = outcome.message
+                    status = delivered.message
                     clipboardReceipt.record(outcome: delivered, wordCount: TextRules.wordCount(result))
                     undelivered.note(outcome, text: result, from: .transcript(captureID), in: deliveryRecords)
                 }
@@ -977,13 +977,21 @@ final class AppModel: NSObject, ObservableObject {
         accessibilityGranted = step == .approved || AXIsProcessTrusted()
     }
     func refreshPermissions() { accessibilityGranted = AXIsProcessTrusted() }
+    /// Someone changing Accessibility from Home starts automatic paste afresh.
+    func forgetPasteProblem() { lastPasteProblem = nil }
     /// Keeps Home's view of automatic paste current, and says once per run why a result was only
     /// copied when Accessibility isn't allowed. Only the ⌘V route counts: live dictation neither
     /// records nor clears a paste problem.
     private func noteAutomaticPaste(_ outcome: TextDelivery.Outcome, viaPaste: Bool) -> TextDelivery.Outcome {
+        var outcome = outcome
         if viaPaste {
             if outcome.wasPasted { lastPasteProblem = nil }
-            else if let problem = AutomaticPasteProblem(outcome) { lastPasteProblem = problem }
+            else if let problem = AutomaticPasteProblem(outcome) {
+                lastPasteProblem = problem
+                if problem.failure == .pasteUnavailable, problem.pasteKey == nil {
+                    outcome.message = "Copied. " + AutomaticPasteProblem.noPasteKey; outcome.reason = AutomaticPasteProblem.noPasteKey
+                }
+            }
         }
         guard let reason = AutomaticPasteProblem.approvalReason(for: outcome, alreadyExplained: explainedApproval) else { return outcome }
         explainedApproval = true

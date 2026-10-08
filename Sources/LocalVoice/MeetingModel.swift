@@ -92,6 +92,8 @@ final class MeetingModel: ObservableObject {
     private let microphoneStatus: () -> AVAuthorizationStatus
     private let readSpeechSnapshot: (() async -> RecognitionSnapshot)?
     private let captureFactory: () -> MeetingCapture
+    /// The running recording's evidence of call audio, finished when the recording ends.
+    private var callAudioEvidence: CallAudioEvidence?
     private let startupNoticeDelayNanoseconds: UInt64
     private var generation = UUID()
     var recordingIdentity: UUID? { isRecording ? generation : nil }
@@ -352,6 +354,7 @@ final class MeetingModel: ObservableObject {
             // macOS has no passive check for call audio, and a refused tap delivers silence, so
             // Home's Permissions learns it is allowed only from the app's first real sound.
             let evidence = app != nil ? CallAudioEvidence(defaults) : nil
+            callAudioEvidence = evidence
             try await recorder.start(MeetingCaptureRequest(tracksDirectory: session.appendingPathComponent(MeetingStore.tracksDirectory),
                 app: app, includeMicrophone: microphone, onAudio: { audio in
                     if audio.source != .local { evidence?.hear(audio.samples) }
@@ -454,6 +457,8 @@ final class MeetingModel: ObservableObject {
         let task = Task { [weak self] in
             guard let self else { return }
             let report = await capture.finish()
+            // A call with no sound from the app says nothing new, but an older Allowed may be stale.
+            self.callAudioEvidence?.finish(); self.callAudioEvidence = nil
             var checkpoint = process ? await self.liveVoice?.finish() : await self.liveVoice?.cancel()
             if let checkpoint { self.voiceSession.segments = LiveVoiceTurns.group(checkpoint.orderedSegments) }
             self.liveVoice = nil
@@ -773,6 +778,14 @@ final class MeetingModel: ObservableObject {
 final class CallAudioEvidence: @unchecked Sendable {
     private let lock = NSLock()
     private var heard = false
+    /// A recording that ended without hearing the app forgets an earlier Allowed, which a later
+    /// switch-off would otherwise leave standing; it never writes a refusal from silence.
+    func finish() {
+        lock.lock(); defer { lock.unlock() }
+        if !heard, defaults.string(forKey: CallAudioRecord.key) == CallAudioRecord.allowed.rawValue {
+            defaults.removeObject(forKey: CallAudioRecord.key)
+        }
+    }
     private let defaults: UserDefaults
     init(_ defaults: UserDefaults) { self.defaults = defaults }
     func hear(_ samples: [Float]) {

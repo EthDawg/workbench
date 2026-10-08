@@ -725,22 +725,25 @@ enum MeetingChecks {
         await refusedModel.start()
         try expect(!refusedModel.isRecording && refusedModel.problem?.opensAudioSettings == true
                    && defaults.string(forKey: CallAudioRecord.key) == CallAudioRecord.refused.rawValue,
-                   "a call-audio refusal is recorded, so Home's Permissions stops saying it will be asked")
+                   "a call-audio refusal is recorded, so Home's Permissions can say Off on your last call")
         await refusedModel.prepareForShutdown()
         // A refused tap delivers silence, not an error, and a microphone-only recording says
         // nothing about call audio: neither writes a record.
         for (silentApp, level) in [(true, Float(0)), (false, Float(0.2))] {
-            defaults.removeObject(forKey: CallAudioRecord.key)
+            defaults.set(CallAudioRecord.allowed.rawValue, forKey: CallAudioRecord.key)
             let quiet = CaptureFixture(); quiet.level = level
             let quietModel = MeetingModel(directory: root.appendingPathComponent(silentApp ? "silent-app" : "mic-only"), defaults: defaults,
                                           processSource: source, transcribe: { _ in "unused" },
                                           microphonePermission: { true }, captureFactory: { quiet })
             quietModel.selectedAppID = silentApp ? 789 : nil; quietModel.includeMicrophone = !silentApp
             await quietModel.start()
-            try expect(quietModel.isRecording && defaults.string(forKey: CallAudioRecord.key) == nil,
-                       silentApp ? "silent app audio records nothing, because a refused tap is silent too"
-                                 : "a microphone-only recording records nothing about call audio")
+            try expect(quietModel.isRecording && defaults.string(forKey: CallAudioRecord.key) == CallAudioRecord.allowed.rawValue,
+                       silentApp ? "silent app audio never writes a refusal, because a broken tap is silent too"
+                                 : "a microphone-only recording writes nothing about call audio")
             await quietModel.cancel(); await quietModel.prepareForShutdown()
+            try expect(defaults.string(forKey: CallAudioRecord.key) == (silentApp ? nil : CallAudioRecord.allowed.rawValue),
+                       silentApp ? "a call that ended without hearing the app forgets an earlier Allowed, which a switch-off may have made stale"
+                                 : "a microphone-only recording leaves call audio's record alone")
         }
 
         let startGate = Gate<Bool>(), delayedCapture = CaptureFixture()

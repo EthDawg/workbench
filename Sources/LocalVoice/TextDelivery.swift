@@ -57,6 +57,9 @@ final class TextDelivery {
         var pasteWasAttempted: Bool = false
         /// Replaces the copied detail once, where the person needs to learn why (`AutomaticPasteProblem.approvalReason`).
         var reason: String? = nil
+        /// An unreadable field had something focused that wasn't a usable, non-secure text field.
+        /// Nothing focused, or a password field, is not a problem with automatic paste.
+        var unusableFocus = false
     }
     enum ClipboardRestoration { case notAttempted, restored, failed }
     struct Target {
@@ -65,6 +68,8 @@ final class TextDelivery {
         var value: String?
         var selection: NSRange? = nil
         var opaqueEditor: OpaqueEditorDestination? = nil
+        /// Something was focused but it wasn't a usable text field (see `Outcome.unusableFocus`).
+        var unusableFocus = false
     }
     struct FieldState: Equatable {
         var value: String?
@@ -104,7 +109,15 @@ final class TextDelivery {
         let element = captureField(app.processIdentifier)
         let state = fieldState(element)
         return Target(app: app, element: element, value: state.value, selection: state.selection,
-                      opaqueEditor: element == nil ? OpaqueEditorDestination.capture(app: app) : nil)
+                      opaqueEditor: element == nil ? OpaqueEditorDestination.capture(app: app) : nil,
+                      unusableFocus: element == nil && unusableFocus(app.processIdentifier))
+    }
+    /// The app has something focused that isn't a password field, yet no text field was found:
+    /// a field it hides from Accessibility, rather than nothing to type into.
+    static func unusableFocus(_ pid: pid_t, accessibility: Accessibility? = nil) -> Bool {
+        let ax = accessibility ?? .live
+        guard ax.isTrusted(), let focused = element(ax.attribute(AccessibilityBridge.application(pid), kAXFocusedUIElementAttribute)) else { return false }
+        return ax.attribute(focused, kAXSubroleAttribute) as? String != kAXSecureTextFieldSubrole
     }
     static func captureField(_ pid: pid_t, accessibility: Accessibility? = nil) -> AXUIElement? {
         let ax = accessibility ?? .live
@@ -282,12 +295,16 @@ final class TextDelivery {
         // so it says what to do next rather than where to change a setting.
         guard mayPaste else { return outcome(copiedMessage, failure: .accessibilityUnavailable) }
         guard target.element != nil || target.opaqueEditor != nil else {
-            return outcome("Copied. " + copiedDetail(.fieldUnreadable), failure: .fieldUnreadable)
+            var unreadable = outcome("Copied. " + copiedDetail(.fieldUnreadable), failure: .fieldUnreadable)
+            unreadable.unusableFocus = target.unusableFocus
+            return unreadable
         }
         if let opaque = target.opaqueEditor, !opaque.active, !opaque.invalidated {
             // Saved Prompts never arm opaque dictation. Explain the actual
             // limitation instead of claiming the person changed the field.
-            return outcome("Copied. " + copiedDetail(.fieldUnreadable), failure: .fieldUnreadable)
+            var unreadable = outcome("Copied. " + copiedDetail(.fieldUnreadable), failure: .fieldUnreadable)
+            unreadable.unusableFocus = true
+            return unreadable
         }
         guard system.isEligible(target) else {
             return outcome("Copied. " + copiedDetail(.focusChanged), failure: .focusChanged)
@@ -386,7 +403,8 @@ struct AutomaticPasteProblem: Equatable {
     init?(_ outcome: TextDelivery.Outcome, date: Date = Date(),
           layout: String? = PasteKey.currentLayoutID(), pasteKey: CGKeyCode? = PasteKey.current()) {
         guard !outcome.wasPasted, let failure = outcome.failure,
-              [.fieldUnreadable, .pasteUnavailable, .pasteUnconfirmed].contains(failure) else { return nil }
+              [.fieldUnreadable, .pasteUnavailable, .pasteUnconfirmed].contains(failure),
+              failure != .fieldUnreadable || outcome.unusableFocus else { return nil }
         self.failure = failure; app = outcome.destinationName; self.date = date
         self.layout = layout; self.pasteKey = pasteKey
     }
@@ -397,7 +415,7 @@ struct AutomaticPasteProblem: Equatable {
         case .fieldUnreadable:
             return "\(into) was copied, not pasted: Workbench couldn’t find a text field there. If you were typing in one, that app may not show it to Workbench."
         case .pasteUnavailable where pasteKey == nil:
-            return "\(into) was copied, not pasted: this keyboard layout has no ⌘V key. Use Edit › Paste."
+            return "\(into) was copied, not pasted. " + Self.noPasteKey
         case .pasteUnavailable:
             return "\(into) was copied, not pasted: the paste couldn’t start. Paste with ⌘V."
         default:
@@ -411,7 +429,7 @@ struct AutomaticPasteProblem: Equatable {
         let what: String
         switch failure {
         case .fieldUnreadable: what = "copied, no text field found"
-        case .pasteUnavailable: what = pasteKey == nil ? "copied, no ⌘V key in the layout" : "copied, paste couldn’t start"
+        case .pasteUnavailable: what = pasteKey == nil ? "copied, no ⌘V key found in the layout" : "copied, paste couldn’t start"
         default: what = "sent, not confirmed"
         }
         return "\(what), in \(app ?? "an app") at \(date.formatted(date: .omitted, time: .shortened))"
@@ -424,4 +442,6 @@ struct AutomaticPasteProblem: Equatable {
         return approvalReason
     }
     static let approvalReason = "Paste with ⌘V. Automatic paste needs Accessibility: see Home › Permissions."
+    /// The receipt, the status line and the row say the same thing about a layout with no ⌘V key.
+    static let noPasteKey = "Workbench couldn’t find the ⌘V key in this keyboard layout. Use Edit › Paste."
 }

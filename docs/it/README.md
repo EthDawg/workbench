@@ -2,7 +2,7 @@
 
 What Workbench asks macOS for, who can switch each approval on, and the profiles that let a managed Mac use it without a help-desk ticket. Checked 8 October 2026 against Apple's PPPC schema (`com.apple.TCC.configuration-profile-policy`), Apple's Platform Deployment guide and macOS 26.5.1. The macOS 27 column comes from Apple's published App Settings schema and early reports. Nobody on the team has observed it on a macOS 27 Mac yet.
 
-On the Mac, **Home › Permissions › Copy permission details** copies the same list along with that Mac's own answers: its edition and code requirement, whether the account is an administrator, MDM enrolment, and each approval's status. Ask the person for it when something doesn't work.
+On the Mac, **Home › Permissions › Copy permission details** (press Show details first if the panel is folded) copies the same list along with that Mac's own answers: its edition and code requirement, whether the account is an administrator, MDM enrolment, and each approval's status. Ask the person for it when something doesn't work.
 
 ## Who can grant what
 
@@ -14,7 +14,7 @@ On the Mac, **Home › Permissions › Copy permission details** copies the same
 | Microphone | Dictate, Meetings, Snap & Talk | Yes, in macOS's request the first time. Changing it later in Settings may ask for an administrator | PPPC can only Deny | Supervised Macs: `PermissionDefaults` Microphone = Allow suggests it; the person accepts once |
 | Camera | Present (iPhone over USB), Persona, profile photo | As Microphone | PPPC can only Deny | Supervised Macs: `PermissionDefaults` Camera = Allow suggests it; the person accepts once |
 | System Audio Recording Only (call audio) | Meetings hears the other side of a call | Yes, in macOS's request the first time Meetings records a call | No key exists | No key exists |
-| Desktop folder (optional) | Import Desktop screenshots only | Yes, in macOS's request | PPPC `SystemPolicyDesktopFolder` = Allow (optional) | — |
+| Desktop folder (optional) | Import Desktop screenshots only | Yes, in macOS's request | PPPC `SystemPolicyDesktopFolder` = Allow (optional) | As macOS 14–26 |
 
 Workbench doesn't use Input Monitoring, Apple Events, Speech Recognition or Full Disk Access. Don't grant them for Workbench. Its shortcuts use Carbon hot keys, and its keyboard monitors already run under Accessibility.
 
@@ -22,7 +22,7 @@ Without Accessibility, dictation still works: the words are copied and the perso
 
 ## Profiles
 
-- [`Workbench-PPPC.mobileconfig`](Workbench-PPPC.mobileconfig) is for macOS 14–26. It sets Accessibility and PostEvent to Allow, ScreenCapture to AllowStandardUserToSetSystemService, and the Desktop folder to Allow (optional). It covers both editions. Delete the `com.ethdawg.workbench.preview` entries if you deploy only Workbench.
+- [`Workbench-PPPC.mobileconfig`](Workbench-PPPC.mobileconfig) is for macOS 14–26, and stays the route on macOS 27 (see below). It sets Accessibility and PostEvent to Allow, ScreenCapture to AllowStandardUserToSetSystemService, and the Desktop folder to Allow (optional). It covers both editions. Delete the `com.ethdawg.workbench.preview` entries if you deploy only Workbench.
 - [`Workbench-AppSettings-Privacy.macOS27.json`](Workbench-AppSettings-Privacy.macOS27.json) is the macOS 27 declarative `com.apple.configuration.app.settings` payload for supervised Macs: it suggests Allow for Accessibility, Microphone and Camera, and the person accepts once. macOS skips a permission it has already asked about, so on a Mac where Workbench already asked it may change nothing. Replace the `OrganizationJustification` text with your own.
 
 Deliver the PPPC profile through your MDM on the **device channel**; a copy installed by hand grants nothing. Apple requires user-approved MDM, and its deployment guide also says supervision. Deliver the App Settings declaration on the **user channel**, where Apple scopes its Privacy settings. Replace the `PayloadIdentifier`, `PayloadOrganization` and `PayloadUUID` values if your MDM doesn't regenerate them.

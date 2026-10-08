@@ -643,7 +643,7 @@ struct WorkbenchHomePage: View {
     }
     private func readSnapshot() -> MacPermissionSnapshot {
         MacPermissionReader.current.snapshot(accessibilityAsked: model.preferences.accessibilityRequested == true,
-                                             paste: model.lastPasteProblem)
+                                             paste: model.preferences.delivery == .paste ? model.lastPasteProblem : nil)
     }
     private func readPermissions() {
         let snapshot = readSnapshot()

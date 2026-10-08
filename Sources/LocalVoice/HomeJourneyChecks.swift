@@ -125,7 +125,8 @@ enum HomeJourneyChecks {
         try check(row(.callAudio, .lastCall(allowed: true)).status == "Allowed on your last call" && row(.callAudio, .lastCall(allowed: true)).tone == .neutral
                   && row(.callAudio, .lastCall(allowed: true)).action == .change
                   && row(.callAudio, .lastCall(allowed: false)).status == "Off on your last call" && row(.callAudio, .lastCall(allowed: false)).tone == .attention
-                  && row(.callAudio, .lastCall(allowed: false)).action == .openSettings,
+                  && row(.callAudio, .lastCall(allowed: false)).action == .openSettings
+                  && row(.callAudio, .lastCall(allowed: false)).details.contains { $0.contains("Meetings checks again") },
                   "a call's answer reads as evidence from that call, never green as if read now")
         try check(unknownCall.actionHelp?.contains("Privacy & Security") == true && !(unknownCall.actionHelp?.contains("› Call audio") ?? true),
                   "call audio's help names where macOS keeps it, never a list called Call audio")
@@ -184,6 +185,7 @@ enum HomeJourneyChecks {
         var noKey = unreadable; noKey.failure = .pasteUnavailable
         var changed = untrusted; changed.failure = .focusChanged
         var pasted = untrusted; pasted.failure = nil; pasted.wasPasted = true
+        unreadable.unusableFocus = true
         let noField = AutomaticPasteProblem(unreadable, layout: "us", pasteKey: 9)
         try check(noField?.line.contains("couldn’t find a text field") == true && noField?.line.contains("Finder") == true
                   && noField?.line.contains("web app") == false && noField?.summary.hasPrefix("copied, no text field found, in Finder") == true,
@@ -192,8 +194,8 @@ enum HomeJourneyChecks {
                   && AutomaticPasteProblem(unconfirmed, layout: "us", pasteKey: 9)?.line.contains("Post Event") == false
                   && AutomaticPasteProblem(unconfirmed, layout: "us", pasteKey: 9)?.note == "Last paste unconfirmed",
                   "an unconfirmed paste says only what Workbench saw, never a cause it can't prove")
-        try check(AutomaticPasteProblem(noKey, layout: "com.apple.keylayout.Turkmen", pasteKey: nil)?.line.contains("no ⌘V key") == true
-                  && AutomaticPasteProblem(noKey, layout: "us", pasteKey: 9)?.line.contains("no ⌘V key") == false,
+        try check(AutomaticPasteProblem(noKey, layout: "com.apple.keylayout.Turkmen", pasteKey: nil)?.line.contains(AutomaticPasteProblem.noPasteKey) == true
+                  && AutomaticPasteProblem(noKey, layout: "us", pasteKey: 9)?.line.contains("⌘V key") == false,
                   "a layout with no ⌘V key is named as the reason, not macOS")
         try check(AutomaticPasteProblem(changed) == nil && AutomaticPasteProblem(pasted) == nil
                   && AutomaticPasteProblem.approvalReason(for: unreadable, alreadyExplained: false) == nil,
@@ -275,7 +277,9 @@ enum HomeJourneyChecks {
         try check(copied.contains("PostEvent = Allow") && copied.contains("AllowStandardUserToSetSystemService") && copied.contains("macOS 27: keep that PPPC profile")
                   && copied.contains("supervised") && copied.contains("Identifier: com.ethdawg.workbench.preview") && copied.contains("Code requirement: identifier")
                   && copied.contains("administrator: no") && copied.contains("Accessibility: Needs an administrator")
-                  && copied.contains("Post Event (as read since Workbench opened): no") && copied.contains("call audio: refused on the last call")
+                  && copied.contains("Post Event: no") && copied.contains("quit and reopen Workbench, then copy again")
+                  && copied.contains("System Audio Recording Only. No profile key") && copied.contains("user channel")
+                  && copied.contains("call audio: refused on the last call")
                   && copied.contains("⌘V key 47") && copied.contains("no text field found, in Chrome")
                   && !copied.contains("pasteUnconfirmed") && !copied.contains("fieldUnreadable")
                   && copied.contains(MacPermissionDetails.itPage) && copied.count < 2_048,

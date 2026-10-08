@@ -183,6 +183,8 @@ struct MacPermissionRow: Equatable, Identifiable {
         switch state {
         case .allowed:
             return [pasteProblem].compactMap { $0 }
+        case .lastCall(allowed: false):
+            return [permission.withoutIt, "Changed it? Meetings checks again on your next call."]
         case .unsupported, .notAsked, .notSetUp, .lastCall:
             return [permission.withoutIt]
         case .managed:
@@ -470,19 +472,22 @@ struct MacPermissionDetails {
         }
         var lines = ["\(facts.appName) \(facts.version) (\(facts.build)): permission details", "",
             "For IT: what to allow",
-            "• Accessibility (automatic paste). macOS 14–26: PPPC Accessibility = Allow and PostEvent = Allow. macOS 27: keep that PPPC profile (Apple says its Accessibility grant still applies, with a notice); supervised Macs can also use App Settings › Privacy › PermissionDefaults, which the person accepts once.",
+            "• Accessibility (automatic paste). macOS 14–26: PPPC Accessibility = Allow and PostEvent = Allow. macOS 27: keep that PPPC profile (Apple says its Accessibility grant still applies, with a notice); supervised Macs can also use App Settings › Privacy › PermissionDefaults on the user channel, which the person accepts once and which doesn't apply to an approval macOS already asked about.",
             "• Screen & System Audio Recording (Snap). A profile can't switch it on. PPPC ScreenCapture = AllowStandardUserToSetSystemService lets a standard user switch it on.",
             "• Microphone and Camera. The person allows them when macOS asks (PPPC can only deny them). On supervised macOS 27 Macs, PermissionDefaults can suggest Allow.",
-            "• Call audio (System Audio Recording Only). macOS asks the first time Meetings records a call. No profile key exists.",
+            "• Call audio (System Audio Recording Only). macOS asks the first time Meetings records a call; after that it's in Privacy & Security › Screen & System Audio Recording › System Audio Recording Only. No profile key exists.",
             "PPPC profiles go through MDM on the device channel; one installed by hand grants nothing.",
             "Identifier: \(facts.bundleID)", "Team ID: \(facts.teamID)"]
         if let requirement = facts.codeRequirement { lines.append("Code requirement: \(requirement)") }
         lines += ["Ready-made profiles and a table: \(itPage)", "", "This Mac",
             "\(facts.macOS) · administrator: \(yesNo(facts.administrator)) · MDM enrolled: \(yesNo(facts.enrolled)) · installed in \(facts.installedIn)"]
         lines.append(snapshot.rows.map { "\($0.permission.name): \($0.status)" }.joined(separator: " · "))
-        lines.append("Post Event (as read since Workbench opened): \(yesNo(facts.postEvent)) · asked from Workbench: Accessibility \(yesNo(facts.accessibilityAsked)), Screen Recording \(yesNo(facts.screenRecordingAsked)) · call audio: \(callAudio)")
+        lines.append("Post Event: \(yesNo(facts.postEvent)) · asked from Workbench: Accessibility \(yesNo(facts.accessibilityAsked)), Screen Recording \(yesNo(facts.screenRecordingAsked)) · call audio: \(callAudio)")
         lines.append("Delivery: \(facts.delivery) · keyboard layout \(facts.keyboardLayout), ⌘V key \(facts.pasteKeyCode.map(String.init) ?? "none")")
         lines.append("Last automatic paste: \(facts.lastPasteProblem ?? "no problem this run")")
+        if facts.postEvent == false || snapshot.rows.contains(where: { $0.permission == .accessibility && $0.state != .allowed }) {
+            lines.append("These can show what they were when Workbench opened. After a change, quit and reopen Workbench, then copy again.")
+        }
         return lines.joined(separator: "\n")
     }
 
@@ -581,7 +586,7 @@ struct HomePermissionsPanel: View {
                         dismissed = true; offWhenDismissed = snapshot.offPermissions; showingDetails = false
                     }
                     .buttonStyle(.workbenchLink).font(.callout)
-                    .help(snapshot.isComplete ? "Fold the panel to one line." : "Fold the panel to one line. It opens again only if something else turns off; each tool still asks when it first needs something.")
+                    .help(snapshot.isComplete ? "Fold the panel to one line." : "Fold the panel to one line. It opens again only if something else turns off.")
                     .accessibilityIdentifier("home.permissions.fold")
                     Button(copiedDetails ? "Copied" : "Copy permission details") { copyDetails() }
                         .buttonStyle(.workbenchLink).font(.callout)
@@ -633,6 +638,8 @@ struct HomePermissionsPanel: View {
     /// doesn't turn orange while macOS's own request is still on screen.
     private func perform(_ action: MacPermissionRow.Action, for permission: MacPermission) {
         problem = nil
+        // A change to Accessibility starts automatic paste afresh.
+        if permission == .accessibility { model.forgetPasteProblem() }
         let unavailable = { problem = "System Settings could not be opened. Open \(permission.settingsPath) there."; refresh() }
         switch MacPermissionStep.of(action, for: permission) {
         case .requestMicrophone:
@@ -645,8 +652,9 @@ struct HomePermissionsPanel: View {
             var asked: Bool? = ScreenCaptureAccess.wasRequested ? true : nil
             if AccessibilitySetup.screenRecording.run(asked: &asked, unavailable: unavailable) == .approved { refresh() }
         case .openSettings(let url):
-            // Call audio's last answer may be about to change, so it reads unknown until the next call.
-            if permission == .callAudio { CallAudioRecord.forget(); refresh() }
+            // Change… on an allowed call audio may switch it off, so it reads unknown until the
+            // next call. A refusal stays, with its line, until Meetings hears otherwise.
+            if permission == .callAudio, action == .change { CallAudioRecord.forget(); refresh() }
             if !NSWorkspace.shared.open(url) { unavailable() }
         }
     }

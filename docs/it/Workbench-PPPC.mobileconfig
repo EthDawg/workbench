@@ -9,9 +9,9 @@
 
   Deliver it through your MDM to the DEVICE channel. It takes effect only when delivered by MDM; a
   copy installed by hand won't grant anything. Apple requires user-approved MDM, and Apple's
-  deployment guide also says supervision. On macOS 14-26 the approvals it grants don't appear in
-  Privacy & Security's lists; check them in System Settings under the device-management profile's
-  details.
+  deployment guide also says supervision. On macOS 14-26.1 the approvals it grants don't appear in
+  Privacy & Security's lists (from 26.2 they may); the device-management profile's details in System
+  Settings always list them.
 
   What this grants:
     Accessibility              Allow. Automatic paste reads the focused text field and confirms the paste.
@@ -26,7 +26,7 @@
     Microphone, Camera   In PPPC these keys can only Deny. Users allow them in macOS's own prompt
                          the first time they dictate or turn on a camera. A standard user normally
                          allows them there. On macOS 27 (supervised), the declarative App Settings Privacy
-                         PermissionDefaults can pre-set them instead.
+                         PermissionDefaults can suggest Allow instead; the person accepts it once.
     System audio         Meetings records the other side of a call through Core Audio process taps
                          (TCC service kTCCServiceAudioCapture). PPPC has no key for it, and macOS 26
                          does not accept it in a profile. The user allows it in macOS's prompt the
