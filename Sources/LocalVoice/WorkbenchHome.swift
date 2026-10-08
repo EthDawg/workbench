@@ -558,8 +558,10 @@ struct WorkbenchHomePage: View {
     /// Read once per visit: the deck that ships with Workbench, or nil in a build without it.
     @State private var sample: SampleDeck?
     @State private var permissions: MacPermissionSnapshot?
-    /// Done for now on the Permissions panel. Something turning off opens it again regardless.
+    /// Done for now on the Permissions panel, and what was off then: only something newly off
+    /// opens it again.
     @AppStorage("workbench.home.permissionsDone.v1") private var permissionsDismissed = false
+    @AppStorage("workbench.home.permissionsOffWhenDone.v1") private var permissionsOffWhenDismissed = ""
     /// Keeps the guide up after the first dictation lands, so where the words
     /// went is seen once; Done or leaving Home ends it.
     @State private var stayInGuide = false
@@ -618,6 +620,7 @@ struct WorkbenchHomePage: View {
         .onAppear { if journey.offersSkip { stayInGuide = true }; sample = SampleDeck.load(); readPermissions() }
         .onChange(of: model.microphoneAuthorization) { _ in readPermissions() }
         .onChange(of: model.accessibilityGranted) { _ in readPermissions() }
+        .onChange(of: model.lastPasteProblem) { _ in readPermissions() }
         // Returning from System Settings brings Workbench to the front: read again then.
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             model.refreshPermissions(); model.refreshMicrophoneAuthorization(); readPermissions()
@@ -631,21 +634,36 @@ struct WorkbenchHomePage: View {
     }
     private var journey: HomeJourney {
         HomeJourney(transcripts: model.history.count, guide: model.preferences.firstDictationGuide,
-                    hasCurrentWork: hasCurrentWork, stayInGuide: stayInGuide, permissionsFolded: !permissionsSnapshot.expanded(dismissed: permissionsDismissed))
+                    hasCurrentWork: hasCurrentWork, stayInGuide: stayInGuide,
+                    permissionsFolded: !permissionsSnapshot.expanded(dismissed: permissionsDismissed, offWhenDismissed: offWhenDismissed.wrappedValue))
     }
     /// The Permissions panel's passive reading; it never asks macOS anything.
     private var permissionsSnapshot: MacPermissionSnapshot {
-        permissions ?? MacPermissionReader.current.snapshot(accessibilityAsked: model.preferences.accessibilityRequested == true)
+        permissions ?? readSnapshot()
+    }
+    private func readSnapshot() -> MacPermissionSnapshot {
+        MacPermissionReader.current.snapshot(accessibilityAsked: model.preferences.accessibilityRequested == true,
+                                             paste: model.preferences.delivery == .paste ? model.lastPasteProblem : nil)
     }
     private func readPermissions() {
-        permissions = MacPermissionReader.current.snapshot(accessibilityAsked: model.preferences.accessibilityRequested == true)
+        let snapshot = readSnapshot()
+        permissions = snapshot
+        MacPermissionReader.allowedThisRun.formUnion(snapshot.allowedPermissions.intersection([.accessibility, .screenRecording]))
+        // Something that came back on leaves the record, so turning it off again reopens the panel.
+        let stillOff = offWhenDismissed.wrappedValue.intersection(snapshot.offPermissions)
+        if stillOff != offWhenDismissed.wrappedValue { offWhenDismissed.wrappedValue = stillOff }
+    }
+    private var offWhenDismissed: Binding<Set<MacPermission>> {
+        Binding(get: { Set(permissionsOffWhenDismissed.split(separator: ",").compactMap { MacPermission(rawValue: String($0)) }) },
+                set: { permissionsOffWhenDismissed = $0.map(\.rawValue).sorted().joined(separator: ",") })
     }
     @ViewBuilder private func section(_ section: HomeJourney.Section) -> some View {
         switch section {
         case .currentWork: currentWork
         case .guide: firstDictation
         case .firstResult: firstResult
-        case .permissions: HomePermissionsPanel(model: model, snapshot: permissionsSnapshot, dismissed: $permissionsDismissed, refresh: readPermissions)
+        case .permissions: HomePermissionsPanel(model: model, snapshot: permissionsSnapshot, dismissed: $permissionsDismissed,
+                                                offWhenDismissed: offWhenDismissed, refresh: readPermissions)
         case .meetings: HomeMeetingTile(model: model, library: model.historyLibrary, jobs: jobs, prepareFollowUp: prepareFollowUp)
         case .decks: HomeDecksTile(model: model, readback: readback, sample: sample)
         case .keys: HomeKeysTile(model: model, keyboard: keyboard, recording: model.phase != .idle || meetings.isBusy || readback.isRecording)
@@ -824,7 +842,7 @@ struct WorkbenchHomePage: View {
                         Button("Done") { stayInGuide = false }.buttonStyle(.workbenchLink)
                     }.controlSize(.large)
                     if model.preferences.delivery == .paste && !model.accessibilityGranted {
-                        Text("Automatic paste needs Accessibility approval. Until then, transcripts are copied for ⌘V. Your organisation may need to approve this.")
+                        Text("Automatic paste needs Accessibility. Until then, transcripts are copied for ⌘V. " + MacAccount.automaticPasteApproval)
                             .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
                     WorkbenchClipboardShelf(receipts: model.clipboardReceipt, unresolved: model.unresolvedDelivery,

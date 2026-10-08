@@ -386,7 +386,7 @@ struct WorkbenchControlContext {
             // The one readiness line: a setup's progress, or why it stopped, then where to act.
             if !model.ready { return model.modelMessage + (model.preparing ? "" : " · Settings › Models") }
             return model.preferences.cleanup.rawValue + " · " + (model.preferences.delivery == .clipboard ? "Copy text"
-                : model.accessibilityGranted ? "Paste in a Mac field" : "Copy for ⌘V until automatic paste is approved")
+                : model.accessibilityGranted ? "Paste in a Mac field" : "Copy for ⌘V until Accessibility is allowed")
         case .snap: return snap?.isBusy == true ? "Finish or cancel the current Snap first." : "Capture a region of the screen into Snap."
         case .snapAndTalk:
             if !state.enabled(tool) { return "Finish the current dictation, meeting or screen capture before capturing again." }

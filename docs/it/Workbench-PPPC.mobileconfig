@@ -1,0 +1,252 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Workbench: Privacy Preferences Policy Control (PPPC) profile for IT administrators.
+
+  Covers both editions, signed by Developer ID team GHVAAH9P5Z:
+    Workbench          com.ethdawg.workbench
+    Workbench Preview  com.ethdawg.workbench.preview   (testing edition; delete its entries if you only deploy Workbench)
+
+  Deliver it through your MDM to the DEVICE channel. It takes effect only when delivered by MDM; a
+  copy installed by hand won't grant anything. Apple requires user-approved MDM, and Apple's
+  deployment guide also says supervision. On macOS 14-26.1 the approvals it grants don't appear in
+  Privacy & Security's lists (from 26.2 they may); the device-management profile's details in System
+  Settings always list them.
+
+  What this grants:
+    Accessibility              Allow. Automatic paste reads the focused text field and confirms the paste.
+    PostEvent                  Allow. Automatic paste sends Command-V to the app you are typing in.
+    ScreenCapture              AllowStandardUserToSetSystemService. Snap and Snap & Talk. Apple does not
+                               let a profile switch this on. This value lets a standard (non-admin)
+                               user switch it on in System Settings without an administrator.
+    SystemPolicyDesktopFolder  Allow. "Import Desktop screenshots", and Snap & Talk sessions saved on the
+                               Desktop, which Workbench reopens by path. Optional: delete it and macOS
+                               asks the user the first time instead. A standard user can answer.
+    SystemPolicyDocumentsFolder Allow. Snap & Talk sessions saved in Documents, which Workbench reopens by
+                               path. Optional, as Desktop.
+
+  Deliberately left out:
+    Microphone, Camera   In PPPC these keys can only Deny. Users allow them in macOS's own prompt
+                         the first time they dictate or turn on a camera. A standard user normally
+                         allows them there. On macOS 27 (supervised), the declarative App Settings Privacy
+                         PermissionDefaults can suggest Allow instead; the person accepts it once.
+    System audio         Meetings records the other side of a call through Core Audio process taps
+                         (TCC service kTCCServiceAudioCapture). PPPC has no key for it, and macOS 26
+                         does not accept it in a profile. The user allows it in macOS's prompt the
+                         first time Meetings records a call.
+    ListenEvent          Workbench does not use Input Monitoring. Its keyboard monitors only run with
+                         Accessibility approval, which is covered above.
+    AppleEvents, SpeechRecognition, Full Disk Access   Not used.
+
+  macOS 26.2 deprecated granting Accessibility by profile. Apple's 27.0 reference says the grant still
+  applies on macOS 27, with a notification, and the user can turn it off. During the 27 betas, Apple
+  DTS said the ability is removed, and testers saw it ignored unless PostEvent was also in the payload.
+  Test on a macOS 27 Mac before relying on it, and keep PostEvent here: the declarative replacement
+  (com.apple.configuration.app.settings Privacy, supervised Macs only) has no PostEvent key. Check
+  that your MDM supports that declaration type before relying on it.
+
+  CodeRequirement values come from `codesign -dr -` on the shipping apps. They pin bundle ID, Apple's
+  Developer ID chain and team GHVAAH9P5Z, so they survive updates and certificate renewals. They do
+  not match ad hoc (locally built) copies.
+
+  Replace PayloadIdentifier / PayloadOrganization / PayloadUUID values with your own if your MDM does
+  not regenerate them.
+-->
+<plist version="1.0">
+<dict>
+	<key>PayloadContent</key>
+	<array>
+		<dict>
+			<key>PayloadDescription</key>
+			<string>Lets Workbench paste dictated text for you, and lets standard users allow Screen Recording for Snap.</string>
+			<key>PayloadDisplayName</key>
+			<string>Workbench privacy permissions</string>
+			<key>PayloadIdentifier</key>
+			<string>com.ethdawg.workbench.it.pppc.tcc</string>
+			<key>PayloadOrganization</key>
+			<string>REPLACE-WITH-YOUR-ORGANISATION</string>
+			<key>PayloadType</key>
+			<string>com.apple.TCC.configuration-profile-policy</string>
+			<key>PayloadUUID</key>
+			<string>D99B6E1C-F84D-4E6F-B134-273631BDE9B4</string>
+			<key>PayloadVersion</key>
+			<integer>1</integer>
+			<key>Services</key>
+			<dict>
+				<key>Accessibility</key>
+				<array>
+					<dict>
+						<key>Authorization</key>
+						<string>Allow</string>
+						<key>CodeRequirement</key>
+						<string>identifier "com.ethdawg.workbench" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = GHVAAH9P5Z</string>
+						<key>Comment</key>
+						<string>Automatic paste: read the focused field and confirm the paste.</string>
+						<key>Identifier</key>
+						<string>com.ethdawg.workbench</string>
+						<key>IdentifierType</key>
+						<string>bundleID</string>
+						<key>StaticCode</key>
+						<false/>
+					</dict>
+					<dict>
+						<key>Authorization</key>
+						<string>Allow</string>
+						<key>CodeRequirement</key>
+						<string>identifier "com.ethdawg.workbench.preview" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = GHVAAH9P5Z</string>
+						<key>Comment</key>
+						<string>Workbench Preview. Automatic paste: read the focused field and confirm the paste.</string>
+						<key>Identifier</key>
+						<string>com.ethdawg.workbench.preview</string>
+						<key>IdentifierType</key>
+						<string>bundleID</string>
+						<key>StaticCode</key>
+						<false/>
+					</dict>
+				</array>
+				<key>PostEvent</key>
+				<array>
+					<dict>
+						<key>Authorization</key>
+						<string>Allow</string>
+						<key>CodeRequirement</key>
+						<string>identifier "com.ethdawg.workbench" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = GHVAAH9P5Z</string>
+						<key>Comment</key>
+						<string>Automatic paste: send Command-V to the app the user is typing in.</string>
+						<key>Identifier</key>
+						<string>com.ethdawg.workbench</string>
+						<key>IdentifierType</key>
+						<string>bundleID</string>
+						<key>StaticCode</key>
+						<false/>
+					</dict>
+					<dict>
+						<key>Authorization</key>
+						<string>Allow</string>
+						<key>CodeRequirement</key>
+						<string>identifier "com.ethdawg.workbench.preview" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = GHVAAH9P5Z</string>
+						<key>Comment</key>
+						<string>Workbench Preview. Automatic paste: send Command-V to the app the user is typing in.</string>
+						<key>Identifier</key>
+						<string>com.ethdawg.workbench.preview</string>
+						<key>IdentifierType</key>
+						<string>bundleID</string>
+						<key>StaticCode</key>
+						<false/>
+					</dict>
+				</array>
+				<key>ScreenCapture</key>
+				<array>
+					<dict>
+						<key>Authorization</key>
+						<string>AllowStandardUserToSetSystemService</string>
+						<key>CodeRequirement</key>
+						<string>identifier "com.ethdawg.workbench" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = GHVAAH9P5Z</string>
+						<key>Comment</key>
+						<string>Snap and Snap and Talk. A profile cannot switch this on; this lets a standard user do it.</string>
+						<key>Identifier</key>
+						<string>com.ethdawg.workbench</string>
+						<key>IdentifierType</key>
+						<string>bundleID</string>
+						<key>StaticCode</key>
+						<false/>
+					</dict>
+					<dict>
+						<key>Authorization</key>
+						<string>AllowStandardUserToSetSystemService</string>
+						<key>CodeRequirement</key>
+						<string>identifier "com.ethdawg.workbench.preview" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = GHVAAH9P5Z</string>
+						<key>Comment</key>
+						<string>Workbench Preview. Snap and Snap and Talk. A profile cannot switch this on; this lets a standard user do it.</string>
+						<key>Identifier</key>
+						<string>com.ethdawg.workbench.preview</string>
+						<key>IdentifierType</key>
+						<string>bundleID</string>
+						<key>StaticCode</key>
+						<false/>
+					</dict>
+				</array>
+				<!-- Optional. Delete this key to let macOS ask the user on first use instead. -->
+				<key>SystemPolicyDesktopFolder</key>
+				<array>
+					<dict>
+						<key>Authorization</key>
+						<string>Allow</string>
+						<key>CodeRequirement</key>
+						<string>identifier "com.ethdawg.workbench" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = GHVAAH9P5Z</string>
+						<key>Comment</key>
+						<string>Import Desktop screenshots into Snap History, and reopen Snap &amp; Talk sessions saved on the Desktop.</string>
+						<key>Identifier</key>
+						<string>com.ethdawg.workbench</string>
+						<key>IdentifierType</key>
+						<string>bundleID</string>
+						<key>StaticCode</key>
+						<false/>
+					</dict>
+					<dict>
+						<key>Authorization</key>
+						<string>Allow</string>
+						<key>CodeRequirement</key>
+						<string>identifier "com.ethdawg.workbench.preview" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = GHVAAH9P5Z</string>
+						<key>Comment</key>
+						<string>Workbench Preview. Import Desktop screenshots into Snap History, and reopen Snap &amp; Talk sessions saved on the Desktop.</string>
+						<key>Identifier</key>
+						<string>com.ethdawg.workbench.preview</string>
+						<key>IdentifierType</key>
+						<string>bundleID</string>
+						<key>StaticCode</key>
+						<false/>
+					</dict>
+				</array>
+				<key>SystemPolicyDocumentsFolder</key>
+				<array>
+					<dict>
+						<key>Authorization</key>
+						<string>Allow</string>
+						<key>CodeRequirement</key>
+						<string>identifier "com.ethdawg.workbench" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = GHVAAH9P5Z</string>
+						<key>Comment</key>
+						<string>Reopen Snap &amp; Talk sessions saved in Documents.</string>
+						<key>Identifier</key>
+						<string>com.ethdawg.workbench</string>
+						<key>IdentifierType</key>
+						<string>bundleID</string>
+						<key>StaticCode</key>
+						<false/>
+					</dict>
+					<dict>
+						<key>Authorization</key>
+						<string>Allow</string>
+						<key>CodeRequirement</key>
+						<string>identifier "com.ethdawg.workbench.preview" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = GHVAAH9P5Z</string>
+						<key>Comment</key>
+						<string>Workbench Preview. Reopen Snap &amp; Talk sessions saved in Documents.</string>
+						<key>Identifier</key>
+						<string>com.ethdawg.workbench.preview</string>
+						<key>IdentifierType</key>
+						<string>bundleID</string>
+						<key>StaticCode</key>
+						<false/>
+					</dict>
+				</array>
+			</dict>
+		</dict>
+	</array>
+	<key>PayloadDescription</key>
+	<string>Privacy permissions for Workbench (com.ethdawg.workbench) and Workbench Preview (com.ethdawg.workbench.preview), Developer ID team GHVAAH9P5Z. Microphone, Camera and system audio are still allowed by the user in macOS's own prompts.</string>
+	<key>PayloadDisplayName</key>
+	<string>Workbench privacy permissions</string>
+	<key>PayloadIdentifier</key>
+	<string>com.ethdawg.workbench.it.pppc</string>
+	<key>PayloadOrganization</key>
+	<string>REPLACE-WITH-YOUR-ORGANISATION</string>
+	<key>PayloadScope</key>
+	<string>System</string>
+	<key>PayloadType</key>
+	<string>Configuration</string>
+	<key>PayloadUUID</key>
+	<string>D7364E24-83EC-4756-BF97-3DA4FB5D4E9F</string>
+	<key>PayloadVersion</key>
+	<integer>1</integer>
+</dict>
+</plist>

@@ -116,6 +116,28 @@ enum TextDeliveryChecks {
         try check(unreadable.failure == .fieldUnreadable && prepared == 0 && posted == 0
                   && receipts.receipt?.detail.contains("could not be read") == true && receipts.receipt?.title == "Copied",
                   "an unreadable field is its own reason, distinct from missing approval")
+        // Only something focused that isn't a usable field counts against automatic paste on Home:
+        // nothing focused, or a password field, is not a paste problem.
+        var hidden = field; hidden.unusableFocus = true; reset()
+        let hiddenOutcome = await TextDelivery.deliver("synthetic dictation", target: hidden, mode: .paste, restoreClipboard: true, system: system)
+        try check(!unreadable.unusableFocus && hiddenOutcome.unusableFocus && hiddenOutcome.failure == .fieldUnreadable
+                  && AutomaticPasteProblem(unreadable, layout: "us", pasteKey: 9) == nil
+                  && AutomaticPasteProblem(hiddenOutcome, layout: "us", pasteKey: 9)?.failure == .fieldUnreadable,
+                  "nothing focused is not a paste problem; a focused field the app doesn't show is")
+        var subrole: String? = nil, focusedPresent = true
+        let focusReader = TextDelivery.Accessibility(isTrusted: { true }, frontmostPID: { nil },
+            attribute: { _, key in
+                if key == kAXFocusedUIElementAttribute { return focusedPresent ? AccessibilityBridge.application(getpid()) : nil }
+                if key == kAXSubroleAttribute { return subrole as CFString? }
+                return nil
+            }, parameterized: { _, _, _ in nil }, setBoolean: { _, _, _ in false })
+        let plainFocus = TextDelivery.unusableFocus(getpid(), accessibility: focusReader)
+        subrole = kAXSecureTextFieldSubrole
+        let secureFocus = TextDelivery.unusableFocus(getpid(), accessibility: focusReader)
+        subrole = nil; focusedPresent = false
+        let noFocus = TextDelivery.unusableFocus(getpid(), accessibility: focusReader)
+        try check(plainFocus && !secureFocus && !noFocus,
+                  "capture marks an unusable focus only when something non-secure is focused")
         let element = TextDelivery.Target(app: .current, element: AccessibilityBridge.application(getpid()), value: "")
         eligible = false; reset()
         let changed = await TextDelivery.deliver("synthetic dictation", target: element, mode: .paste, restoreClipboard: true, system: system)

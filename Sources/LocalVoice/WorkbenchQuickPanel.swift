@@ -206,7 +206,7 @@ struct WorkbenchQuickPanel: View {
                 }
                 // The choice is kept while it waits for approval; say what happens until then.
                 if model.preferences.delivery == .paste && !model.accessibilityGranted {
-                    menu.addItem(.sectionHeader(title: "Copies for ⌘V until automatic paste is approved"))
+                    menu.addItem(.sectionHeader(title: "Copies for ⌘V until Accessibility is allowed"))
                     menu.addItem(ToolbarMenuAction("Set up automatic paste…") { model.onCloseMenu?(); model.requestAccessibility() })
                 }
                 menu.addItem(.sectionHeader(title: "Text style"))

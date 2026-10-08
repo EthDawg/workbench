@@ -23,9 +23,10 @@ final class TextDelivery {
         static var live: System {
             System(pasteboard: .general, isTrusted: { AXIsProcessTrusted() }, isEligible: { TextDelivery.eligible($0) },
                    preparePaste: { target in
-                       guard let source = CGEventSource(stateID: .privateState),
-                             let down = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: true),
-                             let up = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: false) else { return nil }
+                       // The key that types “v” with ⌘ in this layout, not always the US position (PasteKey).
+                       guard let key = PasteKey.current(), let source = CGEventSource(stateID: .privateState),
+                             let down = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: true),
+                             let up = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: false) else { return nil }
                        down.flags = .maskCommand; up.flags = .maskCommand
                        // Eligibility is checked immediately before posting. Addressing
                        // that process also prevents an intervening app switch from
@@ -54,6 +55,11 @@ final class TextDelivery {
         var destinationName: String?
         var failure: FailureKind? = nil
         var pasteWasAttempted: Bool = false
+        /// Replaces the copied detail once, where the person needs to learn why (`AutomaticPasteProblem.approvalReason`).
+        var reason: String? = nil
+        /// An unreadable field had something focused that wasn't a usable, non-secure text field.
+        /// Nothing focused, or a password field, is not a problem with automatic paste.
+        var unusableFocus = false
     }
     enum ClipboardRestoration { case notAttempted, restored, failed }
     struct Target {
@@ -62,6 +68,8 @@ final class TextDelivery {
         var value: String?
         var selection: NSRange? = nil
         var opaqueEditor: OpaqueEditorDestination? = nil
+        /// Something was focused but it wasn't a usable text field (see `Outcome.unusableFocus`).
+        var unusableFocus = false
     }
     struct FieldState: Equatable {
         var value: String?
@@ -101,7 +109,15 @@ final class TextDelivery {
         let element = captureField(app.processIdentifier)
         let state = fieldState(element)
         return Target(app: app, element: element, value: state.value, selection: state.selection,
-                      opaqueEditor: element == nil ? OpaqueEditorDestination.capture(app: app) : nil)
+                      opaqueEditor: element == nil ? OpaqueEditorDestination.capture(app: app) : nil,
+                      unusableFocus: element == nil && unusableFocus(app.processIdentifier))
+    }
+    /// The app has something focused that isn't a password field, yet no text field was found:
+    /// a field it hides from Accessibility, rather than nothing to type into.
+    static func unusableFocus(_ pid: pid_t, accessibility: Accessibility? = nil) -> Bool {
+        let ax = accessibility ?? .live
+        guard ax.isTrusted(), let focused = element(ax.attribute(AccessibilityBridge.application(pid), kAXFocusedUIElementAttribute)) else { return false }
+        return ax.attribute(focused, kAXSubroleAttribute) as? String != kAXSecureTextFieldSubrole
     }
     static func captureField(_ pid: pid_t, accessibility: Accessibility? = nil) -> AXUIElement? {
         let ax = accessibility ?? .live
@@ -279,12 +295,16 @@ final class TextDelivery {
         // so it says what to do next rather than where to change a setting.
         guard mayPaste else { return outcome(copiedMessage, failure: .accessibilityUnavailable) }
         guard target.element != nil || target.opaqueEditor != nil else {
-            return outcome("Copied. " + copiedDetail(.fieldUnreadable), failure: .fieldUnreadable)
+            var unreadable = outcome("Copied. " + copiedDetail(.fieldUnreadable), failure: .fieldUnreadable)
+            unreadable.unusableFocus = target.unusableFocus
+            return unreadable
         }
         if let opaque = target.opaqueEditor, !opaque.active, !opaque.invalidated {
             // Saved Prompts never arm opaque dictation. Explain the actual
             // limitation instead of claiming the person changed the field.
-            return outcome("Copied. " + copiedDetail(.fieldUnreadable), failure: .fieldUnreadable)
+            var unreadable = outcome("Copied. " + copiedDetail(.fieldUnreadable), failure: .fieldUnreadable)
+            unreadable.unusableFocus = true
+            return unreadable
         }
         guard system.isEligible(target) else {
             return outcome("Copied. " + copiedDetail(.focusChanged), failure: .focusChanged)
@@ -366,4 +386,70 @@ final class TextDelivery {
                        ? "Paste sent · insertion could not be confirmed. The transcript remains copied."
                        : "Paste sent · insertion could not be confirmed, and the clipboard has since changed.", failure: .pasteUnconfirmed)
     }
+}
+
+/// Why an automatic paste didn't land, for Home's Accessibility row and Copy permission details.
+/// Only causes outside the person's control, and only from the ⌘V route: live dictation writes
+/// through Accessibility and ends when the person moves on, which is not a failed paste. Kept for
+/// this run only; nothing is saved.
+struct AutomaticPasteProblem: Equatable {
+    var failure: TextDelivery.FailureKind
+    var app: String?
+    var date: Date
+    /// The layout and ⌘V key this paste used, read when it happened.
+    var layout: String?
+    var pasteKey: CGKeyCode?
+
+    init?(_ outcome: TextDelivery.Outcome, date: Date = Date(),
+          layout: String? = PasteKey.currentLayoutID(), pasteKey: CGKeyCode? = PasteKey.current()) {
+        guard !outcome.wasPasted, let failure = outcome.failure,
+              [.fieldUnreadable, .pasteUnavailable, .pasteUnconfirmed].contains(failure),
+              failure != .fieldUnreadable || outcome.unusableFocus else { return nil }
+        self.failure = failure; app = outcome.destinationName; self.date = date
+        self.layout = layout; self.pasteKey = pasteKey
+    }
+    /// The row's line while Accessibility reads Allowed: what happened, and what to do.
+    var line: String {
+        let into = app.map { "Your last dictation into \($0)" } ?? "Your last dictation"
+        switch failure {
+        case .fieldUnreadable:
+            return "\(into) was copied, not pasted: Workbench couldn’t find a text field there. If you were typing in one, that app may not show it to Workbench."
+        case .pasteUnavailable where pasteKey == nil:
+            return "\(into) was copied, not pasted. " + Self.noPasteKey
+        case .pasteUnavailable:
+            return "\(into) was copied, not pasted: the paste couldn’t start. Paste with ⌘V."
+        default:
+            return "\(into) was sent, but Workbench couldn’t see it arrive. If it isn’t there, paste with ⌘V."
+        }
+    }
+    /// A few words for the panel's summary and folded line, only where automatic paste itself
+    /// went wrong. A field Workbench couldn't find stays on the row: the frontmost app nearly
+    /// always has something focused (Finder's desktop, a page, a list), so it can't prove a fault.
+    var note: String? {
+        switch failure {
+        case .pasteUnconfirmed: return "Last paste unconfirmed"
+        case .pasteUnavailable: return "Last paste only copied"
+        default: return nil
+        }
+    }
+    /// For Copy permission details: what happened, the app and when, never the words.
+    var summary: String {
+        let what: String
+        switch failure {
+        case .fieldUnreadable: what = "copied, no text field found"
+        case .pasteUnavailable: what = pasteKey == nil ? "copied, no ⌘V key found in the layout" : "copied, paste couldn’t start"
+        default: what = "sent, not confirmed"
+        }
+        return "\(what), in \(app ?? "an app") at \(date.formatted(date: .omitted, time: .shortened))"
+    }
+    /// A result that was only copied because Accessibility isn't allowed says why the first time
+    /// in a run, so automatic paste reads as a permission, then never again: no repeated setup
+    /// banner (mac-foundation.md § Accessibility unavailable for Dictate).
+    static func approvalReason(for outcome: TextDelivery.Outcome, alreadyExplained: Bool) -> String? {
+        guard !alreadyExplained, outcome.failure == .accessibilityUnavailable else { return nil }
+        return approvalReason
+    }
+    static let approvalReason = "Paste with ⌘V. Automatic paste needs Accessibility: see Home › Permissions."
+    /// The receipt, the status line and the row say the same thing about a layout with no ⌘V key.
+    static let noPasteKey = "Workbench couldn’t find the ⌘V key in this keyboard layout. Use Edit › Paste."
 }

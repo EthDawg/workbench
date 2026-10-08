@@ -1,0 +1,23 @@
+{
+    "Type": "com.apple.configuration.app.settings",
+    "Identifier": "5C2825F8-AADB-4452-A451-050E789343A0",
+    "ServerToken": "workbench-privacy-defaults-1",
+    "Payload": {
+        "Privacy": {
+            "PermissionDefaults": {
+                "com.ethdawg.workbench {identifier \"com.ethdawg.workbench\" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] and certificate leaf[field.1.2.840.113635.100.6.1.13] and certificate leaf[subject.OU] = GHVAAH9P5Z}": {
+                    "OrganizationJustification": "REPLACE: Workbench types your dictation into the app you are using and records meetings you start.",
+                    "Accessibility": "Allow",
+                    "Microphone": "Allow",
+                    "Camera": "Allow"
+                },
+                "com.ethdawg.workbench.preview {identifier \"com.ethdawg.workbench.preview\" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] and certificate leaf[field.1.2.840.113635.100.6.1.13] and certificate leaf[subject.OU] = GHVAAH9P5Z}": {
+                    "OrganizationJustification": "REPLACE: Workbench Preview types your dictation into the app you are using and records meetings you start.",
+                    "Accessibility": "Allow",
+                    "Microphone": "Allow",
+                    "Camera": "Allow"
+                }
+            }
+        }
+    }
+}

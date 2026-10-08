@@ -2259,6 +2259,9 @@ private struct HistoryNativeAcceptanceView: View {
             for (id, details) in earlierKept { model.historyLibrary.setMetadata(details, for: id) }
         }
         try shot("results", "Your meetings, the sample deck and permissions", "A finished meeting ready to copy above two earlier ones, the sample deck standing in before any deck of your own, and two approvals still to allow, each with what works without it.")
+        MacPermissionReader.current = Self.workMacPermissions
+        try shot("work-mac", "Permissions on a work Mac", "A standard account: automatic paste and Screen Recording need an administrator, said without orange, with Copy permission details for IT; call audio that Meetings found refused reads Off with its Settings list.")
+        MacPermissionReader.current = Self.permissions(allAllowed: false)
         // A Snap & Talk session whose assistant left a deck in outputs/: Your decks shows it.
         guard let session = sessionReadback.recentSessionURLs.first else { throw VoiceError.message("The synthetic Snap & Talk session is missing.") }
         let outputs = session.appendingPathComponent("outputs", isDirectory: true), deck = outputs.appendingPathComponent("Synthetic walkthrough.pptx")
@@ -2583,12 +2586,17 @@ private struct HistoryNativeAcceptanceView: View {
     }
 
     /// Home's Permissions panel with fixed answers: the microphone allowed, automatic paste not
-    /// asked yet, Screen Recording off and the camera never asked; or every check allowed.
+    /// set up, Screen Recording off and the camera never asked; or every check allowed.
     static func permissions(allAllowed: Bool) -> MacPermissionReader {
         MacPermissionReader(microphone: { .authorized }, camera: { allAllowed ? .authorized : .notDetermined },
                             accessibility: { allAllowed }, screenRecording: { allAllowed }, callAudioSupported: { true },
-                            screenRecordingAsked: { true })
+                            screenRecordingAsked: { true }, callAudio: { nil }, administrator: { true })
     }
+    /// A work Mac on a standard account: automatic paste and Screen Recording need an
+    /// administrator, and Meetings recorded a call-audio refusal.
+    static var workMacPermissions: MacPermissionReader { MacPermissionReader(
+        microphone: { .authorized }, camera: { .authorized }, accessibility: { false }, screenRecording: { false },
+        callAudioSupported: { true }, screenRecordingAsked: { false }, callAudio: { .refused }, administrator: { false }) }
     /// The sample deck in this source tree, which the app bundle carries as Resources/Samples.
     static let sampleDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
         .deletingLastPathComponent().appendingPathComponent("Resources/Samples", isDirectory: true)
@@ -3850,7 +3858,7 @@ private struct HistoryNativeAcceptanceView: View {
         let panel = quickPanel(readback)
         var listings = [SurfaceGallery.Listing(title: "Dictate · Options (native menu, listed from its source so Set up automatic paste… never runs)", lines:
             ["Delivery"] + DeliveryMode.allCases.map { "  " + $0.rawValue }
-            + ["Copies for ⌘V until automatic paste is approved (while Paste automatically waits for Accessibility approval)", "  Set up automatic paste…"]
+            + ["Copies for ⌘V until Accessibility is allowed (while Paste automatically waits for Accessibility)", "  Set up automatic paste…"]
             + ["Text style"] + CleanupStyle.allCases.map { "  " + $0.rawValue }
             + ["---", "History… → history, on Transcripts", "Meetings… → meeting", "Open Dictate… → dictate"])]
         for tool in WorkbenchControlTool.allCases {
