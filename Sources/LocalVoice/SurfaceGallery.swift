@@ -3533,12 +3533,19 @@ private struct HistoryNativeAcceptanceView: View {
         if let sensor = host.window?.contentView.flatMap({ sensors($0).first }), let window = sensor.window {
             sensor.windowShows = { _ in true }; sensor.deliver = { $0() }
             let centre = window.convertPoint(toScreen: sensor.convert(NSPoint(x: sensor.bounds.midX, y: sensor.bounds.midY), to: nil))
-            sensor.pointer = { centre }; sensor.refresh(); settle(.resting)
+            // Each hold is read as the sensor reports it (this check delivers at once). A layout pass
+            // during the settle can rebuild the cue's view, whose new sensor reads the real pointer,
+            // which is elsewhere, so reading after the settle made this check fail at random.
+            sensor.pointer = { centre }; sensor.refresh()
+            let heldWhileOver = model.clipboardReceipt.lifetime?.holds.contains(.pointer) == true
+            settle(.resting)
             expect("A copied cue appearing under a stationary pointer holds its time", [
-                model.clipboardReceipt.lifetime?.holds.contains(.pointer) == true ? nil : "the actual cue missed the resting pointer"])
-            sensor.pointer = { NSPoint(x: centre.x + 10_000, y: centre.y + 10_000) }; sensor.refresh(); settle(.resting)
+                heldWhileOver ? nil : "the actual cue missed the resting pointer"])
+            sensor.pointer = { NSPoint(x: centre.x + 10_000, y: centre.y + 10_000) }; sensor.refresh()
+            let releasedAfterLeaving = model.clipboardReceipt.lifetime?.holds.contains(.pointer) == false
+            settle(.resting)
             expect("Leaving the copied cue releases its pointer hold", [
-                model.clipboardReceipt.lifetime?.holds.contains(.pointer) == false ? nil : "the pointer hold stayed after leaving"])
+                releasedAfterLeaving ? nil : "the pointer hold stayed after leaving"])
         } else { expect("The copied cue measures a stationary pointer", ["the production cue has no passive pointer sensor"]) }
         model.clipboardReceipt.holdHUD(false)
         model.clipboardReceipt.dismissHUD(); settle(.resting)
