@@ -203,7 +203,7 @@ final class ToolbarGalleryTests: XCTestCase {
         let hidden = ToolbarGallery.states.first { $0.name == "accessory-persona-hidden" }
         XCTAssertEqual(hidden?.accessory, .personaPicker, "a kept card is chosen again from the picker")
         XCTAssertNil(hidden?.quickControl, "Next waits until the card shows")
-        XCTAssertEqual(ToolbarGallery.states.first { $0.name == "accessory-persona-camera" }?.accessoryDescription, "Choose Persona · Camera")
+        XCTAssertEqual(ToolbarGallery.states.first { $0.name == "accessory-persona-camera" }?.accessoryDescription, "Choose Persona · Live Camera")
         XCTAssertTrue(ToolbarGallery.accessories.contains { $0.accessory == .personaPicker && $0.anchor.growsLeftward })
     }
 

@@ -35,7 +35,7 @@ Home holds only what the app shows nowhere else in that form. Everything else is
 
 Every page uses the same few parts, so a page built by any person or agent looks like the others. The tokens live in `WorkbenchPageStyle.swift`.
 
-**Header.** `WorkbenchPageHeader(route, summary:)`: the page's name from the page record, one sentence saying what the page is for, and at most two trailing secondary buttons that lead somewhere else (another place, or the tool's own options). Home's header is its greeting and Me photo.
+**Header.** `WorkbenchPageHeader(route, summary:)`: the page's name from the page record, one sentence saying what the page is for, and at most two trailing secondary buttons that lead somewhere else (another place, or the tool's own options). Home's header is its greeting and My Profile photo.
 
 **One primary action per phase.** `.borderedProminent` in the accent, beside the content it affects; Dictate's round microphone is the one hero control. Stop, End and Copy stay reachable before any optional setup.
 
@@ -62,7 +62,7 @@ Every page uses the same few parts, so a page built by any person or agent looks
 ## Home
 
 ```
-┌ greeting · Me ───────────────────────────────────────────────────────┐
+┌ greeting · My Profile ───────────────────────────────────────────────────────┐
 │ Current work (while something runs) · First dictation (until used)   │
 ├──────────────────────────────┬───────────────────────────────────────┤
 │ Your meetings                │ Permissions (while open)              │

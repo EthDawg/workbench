@@ -275,6 +275,14 @@ struct WorkbenchHome: View {
                 MetadataSuggestionView(review: suggestion, library: model.historyLibrary)
             }
             .sheet(isPresented: $showingProfile) { stage.localProfileView }
+            // Persona's My Profile… in a live menu, with no profile photo saved yet: the same editor.
+            .onChange(of: model.focusRequest) { _, _ in openRequestedProfile() }
+            .onAppear { openRequestedProfile() }
+    }
+    private func openRequestedProfile() {
+        guard model.focusRequest?.target == .profile else { return }
+        model.focusRequest = nil
+        keyboard.stopInteraction(); showingProfile = true
     }
     private var welcome: some View {
         WorkbenchHomePage(model: model, stage: stage, readback: readback, snap: snap, introduction: introduction,
@@ -590,10 +598,10 @@ struct WorkbenchHomePage: View {
                                 else { Image(systemName: "person.crop.circle").resizable().scaledToFit().foregroundStyle(.secondary).padding(5) }
                             }.frame(width: 38, height: 38).clipShape(Circle())
                                 .background(Workbench.surface, in: Circle())
-                            Text("Me").font(.caption)
+                            Text("My Profile").font(.caption)
                         }.padding(6)
-                    }.buttonStyle(WorkbenchNavigationStyle()).help("Your photo and Me persona")
-                        .accessibilityLabel("Your profile. Photo and Me persona").accessibilityIdentifier("home.profile")
+                    }.buttonStyle(WorkbenchNavigationStyle()).help("Your profile photo, to show as a Persona")
+                        .accessibilityLabel("My Profile. Your profile photo").accessibilityIdentifier("home.profile")
                 }.padding(.bottom, 8)
                 let layout = journey
                 ForEach(layout.above, id: \.self) { self.section($0) }

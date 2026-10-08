@@ -8,6 +8,8 @@ enum PersonaLibraryMode { case sheet, workspace }
 struct PersonaLibraryLaunchState {
     enum Request {
         case oneCard
+        /// My Profile: the profile photo as the floating card.
+        case profile
         /// The hidden floating card, as it was.
         case showAgain
         case prepared(groupIDs: [UUID], softReveal: Bool)
@@ -16,6 +18,7 @@ struct PersonaLibraryLaunchState {
         func perform(in library: PersonaLibrary) -> Result<Void, Error> {
             switch self {
             case .oneCard: return library.showOverlay()
+            case .profile: return library.showProfile()
             case .showAgain: return library.showAgain()
             case .prepared(let groupIDs, let softReveal):
                 return Result {
@@ -82,9 +85,9 @@ struct PersonaLibraryView: View {
     private var liveSourceControl: some View {
         Picker("Live source", selection: $source) {
             Text("Artwork").tag(PersonaLiveSource.artwork)
-            Text("Camera").tag(PersonaLiveSource.camera)
+            Text("Live Camera").tag(PersonaLiveSource.camera)
         }.pickerStyle(.segmented).fixedSize()
-            .help("Prepare saved artwork or a camera bubble. Choosing a source starts nothing.")
+            .help("Prepare saved artwork or Live Camera. Choosing a source starts nothing.")
     }
 
     private func content(availableWidth: CGFloat) -> some View {
@@ -103,13 +106,13 @@ struct PersonaLibraryView: View {
                     Text(preparingPresentation ? "Arrange overlays" : onChoose != nil ? "Choose persona" : mode == .workspace ? "Persona" : "Personas")
                         .font(mode == .workspace && !preparingPresentation ? .title.weight(.semibold) : .title2.bold()).accessibilityAddTraits(.isHeader)
                     if !preparingPresentation {
-                        Text(onChoose == nil ? "Show saved artwork or a live camera bubble over your apps." : "Choose a persona card to place in this scene.")
+                        Text(onChoose == nil ? "Show My Profile, saved artwork or Live Camera over your apps." : "Choose a persona card to place in this scene.")
                             .font(.body).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 Spacer()
                 if !preparingPresentation, mode == .workspace, let editProfile {
-                    Button("Me…", action: editProfile).help("Edit your photo and Me persona")
+                    Button("My Profile…", action: editProfile).help("Take or choose your profile photo")
                         .accessibilityIdentifier("persona.profile")
                 }
                 if !preparingPresentation {
@@ -158,7 +161,12 @@ struct PersonaLibraryView: View {
                             ForEach(library.visibleItems) { persona in
                                 HStack(spacing: 10) {
                                     thumbnail(persona, width: 52, height: 54)
-                                    Text(persona.name).lineLimit(2)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(library.rowName(for: persona.id, name: persona.name)).lineLimit(2)
+                                        if persona.id == library.profileID, library.rowName(for: persona.id, name: persona.name) != "My Profile" {
+                                            Text("My Profile").font(.caption).foregroundStyle(.secondary)
+                                        }
+                                    }
                                 }.padding(.vertical, 4).tag(persona.id)
                                     .contextMenu {
                                         Button("Rename library item…") { renaming = persona.id; name = persona.name }.disabled(library.isReadOnly)
@@ -194,8 +202,8 @@ struct PersonaLibraryView: View {
                                     thumbnail(selected, width: 265, height: 155).frame(maxWidth: .infinity)
                                 }
                                 // Selected is what you browse and prepare; Shown, above, is what is live.
-                                Text("Selected: " + selected.name).font(.headline).lineLimit(2)
-                                    .accessibilityLabel("Selected persona: " + selected.name)
+                                Text("Selected: " + library.headingName(for: selected.id, name: selected.name)).font(.headline).lineLimit(2)
+                                    .accessibilityLabel("Selected persona: " + library.headingName(for: selected.id, name: selected.name))
                                 // One quick choice; it is the look used the next time this persona is shown or placed.
                                 Picker("Appearance", selection: Binding(get: { selected.effectiveAppearance.shape },
                                                                         set: { library.setShape($0, for: selected.id) })) {
@@ -257,7 +265,7 @@ struct PersonaLibraryView: View {
                    onDraftChanged: { unsavedPresentationLayout = $0 })
             }
             // A refused microphone shows under React to my voice, where the switch was turned on.
-            if let notice = library.notice, library.voiceRefusal == nil {
+            if let notice = library.notice, notice != library.voiceRefusal {
                 Text(notice).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Text("Whole-screen sharing includes preparation and floating controls. Use a persona in a scene when sharing that presentation window.")
@@ -382,6 +390,17 @@ struct PersonaLibraryView: View {
                         .disabled(library.selected.flatMap { library.renderedImage(for: $0) } == nil)
                     Text("Separate from Present").font(.caption).foregroundStyle(.secondary)
                 }
+                // My Profile, one click from whatever card or Live Camera shows, in its place. It
+                // sits with the page's other Show actions, so it is there whichever source is prepared,
+                // and only when it changes what is on screen. With the photo already up beside a
+                // starting or failed Live Camera, it says what it does there: ends that visit.
+                if let action = library.profileAction {
+                    Button(action == .show ? "Show My Profile" : "End Live Camera") { requestLaunch(.profile) }
+                        .help(action == .endLiveCamera ? "Keeps your profile photo up and ends Live Camera"
+                              : library.cameraOwnsSlot && library.camera.isLive ? "Shows your profile photo in Live Camera’s place and ends Live Camera"
+                              : library.cameraOwnsSlot ? "Shows your profile photo and ends Live Camera"
+                              : "Shows your profile photo as the floating persona, in the shown card’s place")
+                }
             } else {
                 if library.sessionState.phase == .paused {
                     Button("Resume overlays") { requestLaunch(.resume) }.buttonStyle(.borderedProminent)
@@ -398,7 +417,14 @@ struct PersonaLibraryView: View {
                     Toggle("React to my voice", isOn: Binding(get: { library.voiceRing }, set: { library.setVoiceRing($0) }))
                         .toggleStyle(.switch).controlSize(.small)
                     if let status = library.voiceStatus {
-                        Text(status).font(.caption2).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Text(status).font(.caption2).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                            // Not asked yet, as after a permission reset: the click is the question.
+                            if library.voiceNeedsAllowing {
+                                Button("Allow Microphone…") { library.allowMicrophone() }.controlSize(.small)
+                                    .help("Ask macOS for microphone access for React to my voice")
+                            }
+                        }
                     }
                     // The switch stays off; the reason and its one fix sit beside it, as on Dictate
                     // and Meetings (#134 Fit rule 2). Only the microphone refusal gets this door.
@@ -471,10 +497,9 @@ struct PersonaLibraryView: View {
                 Text("Size, position and lock change this card only. Hide keeps it for Show again; End releases it. Your saved personas stay as they are." + (library.shortcutHint.map { " " + $0 } ?? ""))
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
-            .padding(12)
-            .background(Workbench.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+            .kitCard()
             .accessibilityElement(children: .contain)
-            .accessibilityLabel((shown.hidden ? "Hidden card: " : "Shown card: ") + shown.name)
+            .accessibilityLabel((shown.hidden ? "Hidden card: " : "Shown card: ") + library.headingName(for: shown.personaID, name: shown.name))
         }
     }
     private func shownName(_ shown: PersonaShownIdentity) -> some View {
@@ -485,8 +510,8 @@ struct PersonaLibraryView: View {
                 } else { Image(systemName: "photo.badge.exclamationmark").foregroundStyle(.secondary) }
             }.frame(width: 54, height: 54).opacity(shown.hidden ? 0.5 : 1).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text((shown.hidden ? "Hidden: " : "Shown: ") + shown.name).font(.headline).lineLimit(1)
-                    .accessibilityLabel((shown.hidden ? "Hidden persona: " : "Shown persona: ") + shown.name)
+                Text((shown.hidden ? "Hidden: " : "Shown: ") + library.headingName(for: shown.personaID, name: shown.name)).font(.headline).lineLimit(1)
+                    .accessibilityLabel((shown.hidden ? "Hidden persona: " : "Shown persona: ") + library.headingName(for: shown.personaID, name: shown.name))
                 Text(shown.place ?? (shown.hidden ? "Kept for Show again" : "Floating over your apps"))
                     .font(.caption).foregroundStyle(.secondary)
             }

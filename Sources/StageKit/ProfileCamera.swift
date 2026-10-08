@@ -27,6 +27,15 @@ enum ProfileCameraEvent {
     case sources([ProfileCameraSource], selected: String?)
     case frame
     case failed(ProfileCameraIssue)
+    /// What the camera now running can do, read once it has started.
+    case features(ProfileCameraFeatures)
+}
+
+/// What one running camera offers beyond its picture.
+struct ProfileCameraFeatures: Equatable {
+    /// Some format of this camera keeps people framed with Center Stage
+    /// (`AVCaptureDevice.Format.isCenterStageSupported`).
+    var centerStage = false
 }
 
 protocol ProfileCameraCapturing: AnyObject {
@@ -34,6 +43,9 @@ protocol ProfileCameraCapturing: AnyObject {
     func start(sourceID: String?, receive: @escaping @MainActor (ProfileCameraEvent) -> Void)
     func takePhoto(completion: @escaping @MainActor (Result<NSImage, ProfileCameraIssue>) -> Void)
     func stop()
+    /// Center Stage was turned on: a running camera whose format cannot frame people
+    /// moves to one that can. No default: every capture says what it does.
+    func conformToCenterStage()
 }
 
 /// Owns one explicit camera visit. Late permissions, frames, photos and deadlines cannot
@@ -103,6 +115,7 @@ final class ProfileCamera: ObservableObject {
             guard state == .starting || state == .live else { return }
             state = .live; armDeadline(5, token: token)
         case .failed(let issue): fail(issue)
+        case .features: break
         }
     }
     private func fail(_ issue: ProfileCameraIssue) {
@@ -144,6 +157,7 @@ final class ProfileCameraSession: NSObject, ProfileCameraCapturing, AVCaptureVid
     private let requestLock = NSLock()
     private var request = UUID()
     private var session: AVCaptureSession?
+    private var device: AVCaptureDevice?
     private var output: AVCaptureVideoDataOutput?
     private var frame: CVPixelBuffer?
     private var frameTime: TimeInterval = 0
@@ -210,9 +224,15 @@ final class ProfileCameraSession: NSObject, ProfileCameraCapturing, AVCaptureVid
                     }
                 })
                 guard accepts(token) else { stopSession(); return }
+                self.device = device
+                Self.conform(device)
                 session.startRunning()
                 guard accepts(token) else { stopSession(); return }
-                if !session.isRunning { fail(.failedToStart) }
+                if !session.isRunning { fail(.failedToStart); return }
+                // A session preset may choose its own format as it starts: with Centre Stage on,
+                // keep one that can frame you.
+                Self.conform(device)
+                emit(.features(ProfileCameraFeatures(centerStage: device.formats.contains { $0.isCenterStageSupported })))
             } catch { fail(.failedToStart) }
         }
     }
@@ -235,6 +255,21 @@ final class ProfileCameraSession: NSObject, ProfileCameraCapturing, AVCaptureVid
         _ = replaceRequest()
         queue.async { [self] in stopSession() }
     }
+    func conformToCenterStage() {
+        queue.async { [self] in if let device { Self.conform(device) } }
+    }
+    /// With Center Stage on, the app keeps a format that can frame people, as
+    /// `AVCaptureDevice.centerStageActive` asks of an app sharing control: the smallest
+    /// supporting format at least 1280 wide, else the largest. Nothing changes while it
+    /// is off or the current format already supports it.
+    private static func conform(_ device: AVCaptureDevice) {
+        guard AVCaptureDevice.isCenterStageEnabled, !device.activeFormat.isCenterStageSupported else { return }
+        func width(_ format: AVCaptureDevice.Format) -> Int32 { CMVideoFormatDescriptionGetDimensions(format.formatDescription).width }
+        let supported = device.formats.filter(\.isCenterStageSupported)
+        guard let chosen = supported.filter({ width($0) >= 1280 }).min(by: { width($0) < width($1) })
+                ?? supported.max(by: { width($0) < width($1) }) else { return }
+        do { try device.lockForConfiguration(); device.activeFormat = chosen; device.unlockForConfiguration() } catch {}
+    }
     private func replaceRequest() -> UUID {
         requestLock.lock(); defer { requestLock.unlock() }
         request = UUID(); return request
@@ -248,7 +283,7 @@ final class ProfileCameraSession: NSObject, ProfileCameraCapturing, AVCaptureVid
         observers.forEach(NotificationCenter.default.removeObserver); observers.removeAll()
         output?.setSampleBufferDelegate(nil, queue: nil)
         session?.stopRunning(); previewLayer.session = nil
-        session = nil; output = nil; frame = nil; frameTime = 0; lastEvent = 0
+        session = nil; device = nil; output = nil; frame = nil; frameTime = 0; lastEvent = 0
     }
     private func fail(_ issue: ProfileCameraIssue) {
         emit(.failed(issue)); stopSession()

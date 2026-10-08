@@ -3,6 +3,9 @@ import SwiftUI
 
 final class PersonaWorkspaceTests {
     private final class Display: PersonaSessionDisplaying {
+        func setVoiceRing(_ on: Bool) {}
+        func setVoiceColor(_ color: InkColor) {}
+        func showVoice(_ frames: [PersonaVoiceFrame]) {}
         var onPlacementChange: ((PersonaOverlayState) -> Void)?
         var onSelection: (() -> Void)?
         var frame: CGRect? = CGRect(x: 0, y: 0, width: 80, height: 120)

@@ -132,6 +132,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         stage = StageKitController(onOpenControls: { [weak self] in self?.navigate("annotate") }, onOpenScenes: { [weak self] in self?.navigate("present") }, reserving: preferences.enabledCombinations)
         stage.useSharedActivityControls()
         stage.onOpenPersonas = { [weak self] in self?.navigate("personas") }
+        // My Profile… in Persona's live menus, before a profile photo is saved: the profile editor.
+        stage.onEditProfile = { [weak self] in
+            self?.model.focusRequest = PageFocusRequest(target: .profile); self?.navigate("personas")
+        }
         stage.onViewImages = { images, selected in
             let collection = images.map { CaptureImagePreviewItem(title: $0.title, detail: $0.detail, source: .generated($0.id), render: $0.png) }
             if let index = images.firstIndex(where: { $0.id == selected }) {
@@ -852,6 +856,25 @@ func runCLI(_ args: [String]) async -> Int32 {
                 NSApp.finishLaunching()
             }
             print(try await PersonaVoiceNativeCheck.run(output: URL(fileURLWithPath: args[1]), speak: false))
+            print(WorkbenchBuild().details)
+        // The voice ring around My Profile and Live Camera as the window server draws it, read back
+        // through ScreenCaptureKit with a synthetic photo, camera picture and voice. Run it from the
+        // signed app (open -n -W -a … --args) so its Screen Recording permission applies.
+        case "--persona-check":
+            guard args.count == 2 else { throw VoiceError.message("Usage: --persona-check NEW_OUTPUT_FOLDER") }
+            await MainActor.run {
+                _ = NSApplication.shared
+                NSApp.setActivationPolicy(.accessory)
+                NSApp.finishLaunching()
+            }
+            let folder = URL(fileURLWithPath: args[1])
+            do {
+                print(try await PersonaStageCheck.run(output: folder))
+            } catch {
+                // The folder is the receipt for a run through the signed app, failures included.
+                try? (error.localizedDescription + "\n" + WorkbenchBuild().details).write(to: folder.appendingPathComponent("error.txt"), atomically: true, encoding: .utf8)
+                throw error
+            }
             print(WorkbenchBuild().details)
         case "--render-surfaces":
             guard args.count == 2 else { throw VoiceError.message("Usage: --render-surfaces OUTPUT_DIRECTORY") }
