@@ -1185,7 +1185,10 @@ final class PersonaCameraTests {
             RunLoop.current.run(until: Date().addingTimeInterval(PersonaOverlayController.stepAsideHold + 0.15))
             XCTAssertTrue(window.isVisible, "A cancelled step aside never hides it later")
             controller.hide(steppingAside: true)
-            RunLoop.current.run(until: Date().addingTimeInterval(PersonaOverlayController.stepAsideHold + 0.15))
+            // Wait for the hold and the fade rather than a fixed slice past them: a busy CI runner
+            // can fire the hold late and the fade's last tick later still.
+            let deadline = Date().addingTimeInterval(PersonaOverlayController.stepAsideHold + PersonaOverlayController.stepAsideFade + 2)
+            while window.isVisible && Date() < deadline { RunLoop.current.run(until: Date().addingTimeInterval(0.02)) }
             XCTAssertFalse(window.isVisible, "Covered, it goes")
             XCTAssertEqual(window.alphaValue, 1)
         }
