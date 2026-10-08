@@ -195,6 +195,29 @@ final class PersonaVoiceTests {
         XCTAssertTrue(library.voiceRefusal == nil, "Only the microphone refusal gets the System Settings door, never another problem")
     }
 
+    /// A microphone that cannot start when a persona is shown turns the ring off, and the reason
+    /// stays through that show, Hide and Show again, until the switch is turned on again: the
+    /// switch is never off without saying why.
+    func testAFaultFoundByAShowKeepsItsReason() throws {
+        let defaults = Choice(); defaults.saved = true
+        let microphones = Microphones(), displays = Displays()
+        let (root, library, _, _) = try fixture(microphones, defaults, displays)
+        defer { library.shutdown(); try? FileManager.default.removeItem(at: root) }
+        let reason = "React to my voice stopped: No microphone input is available."
+        microphones.failure = PersonaVoiceError.unavailable("No microphone input is available.")
+        XCTAssertTrue(library.voiceRing && microphones.made.isEmpty, "On, with nothing showing yet")
+        guard case .success = library.showOverlay() else { XCTAssertTrue(false, "The persona shows"); return }
+        XCTAssertFalse(library.voiceRing, "A microphone that cannot start turns it off")
+        XCTAssertEqual(library.notice, reason, "and the show that found the fault keeps its reason")
+        XCTAssertTrue(defaults.saved, "A fault keeps the saved choice")
+        library.hideOverlay(); _ = library.showAgain()
+        XCTAssertEqual(library.notice, reason, "Hide and Show again keep it")
+        microphones.failure = nil
+        library.setVoiceRing(true)
+        XCTAssertTrue(library.voiceRing && microphones.running.count == 1, "On again, it listens")
+        XCTAssertTrue(library.notice == nil, "and the reason leaves with the switch")
+    }
+
     /// The shown card's menu and the pill's Persona Options carry the refusal under the switch
     /// with Microphone Settings…, which opens Privacy & Security › Microphone; another problem
     /// and an allowed microphone leave the switch alone (#134 Fit rule 2, one word set).

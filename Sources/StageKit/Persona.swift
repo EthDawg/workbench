@@ -338,6 +338,9 @@ final class PersonaLibrary: NSObject, ObservableObject {
     /// The last fault that stopped the ring, while it is the notice; turning the switch on
     /// again takes it away, as it does a refusal.
     private var voiceFault: String?
+    /// What Next or Previous last said about Live Camera, while it is still the notice: it describes
+    /// the camera at that moment, so a change of the camera's state takes it away.
+    private var cameraCycleNotice: String?
     private var activation: NSObjectProtocol?
     var voiceAvailable: Bool { voiceAccess != nil }
     /// My Profile: the saved persona the local profile names. The host reads it from its own
@@ -356,7 +359,8 @@ final class PersonaLibrary: NSObject, ObservableObject {
         guard let profile = profileID, session == nil else { return nil }
         guard displayedID == profile else { return .show }
         if artworkVisible { return cameraOwnsSlot ? .endLiveCamera : nil }
-        return hasHiddenCard ? nil : .show
+        // Show again brings back the photo as it was frozen; retaken since, My Profile shows it as saved now.
+        return hasHiddenCard && !shownCardHasNewerLook ? nil : .show
     }
     /// The name a heading gives a saved persona: the local profile reads My Profile, whatever
     /// its saved name (earlier builds saved every profile as "Me"). Nothing is renamed on disk.
@@ -877,7 +881,9 @@ final class PersonaLibrary: NSObject, ObservableObject {
     /// Hide and Show start fresh: an earlier failure or informational notice
     /// leaves the panel. A library that cannot be saved keeps saying so.
     private func clearLiveNotices() {
-        if notice != readOnlyReason { notice = nil }
+        // A voice fault found by this very show keeps its reason until the switch turns on again,
+        // as a refusal does, so the switch is never off without saying why.
+        if notice != readOnlyReason && (voiceFault == nil || notice != voiceFault) { notice = nil }
         cardFailure = nil
     }
     func saveSessionLayout() throws {
@@ -961,7 +967,9 @@ final class PersonaLibrary: NSObject, ObservableObject {
         let copyShape = shownCard?.shape
         do { _ = try deck.image(for: id, shown: displayedID, shape: copyShape, render: { renderedImage(for: $0) }) }
         catch { reportCardFailure(error); return }
-        if !isReadOnly {
+        // My Profile joins a prepared group only for this visit, so it never becomes the group's
+        // selection: Show selected after End shows the group's own card, as the page names it.
+        if !isReadOnly, session.guestID != id {
             do { try commit(items, selection: id) }
             catch { notice = error.localizedDescription; return }
         }
@@ -1102,7 +1110,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
             case .live, .off: state = "Persona is showing Live Camera."
             }
             notice = state + " End Live Camera, then Next or Previous shows a saved card."
-            cardFailure = notice
+            cardFailure = notice; cameraCycleNotice = notice
             return
         }
         guard session == nil else {
@@ -1330,6 +1338,11 @@ final class PersonaLibrary: NSObject, ObservableObject {
     /// The camera's state changed: the one live slot follows it, the artwork it
     /// replaced is kept for Show again, and every door reads the new source.
     private func cameraChanged() {
+        // Next or Previous described the camera as it was; another notice raised since stays.
+        if let cycle = cameraCycleNotice {
+            cameraCycleNotice = nil
+            if notice == cycle && cardFailure == cycle { notice = nil; cardFailure = nil }
+        }
         if camera.isLive, artworkVisible {
             // The bubble is up, fading in over the card, which stays whole beneath it until it is
             // covered and is kept for Show again.
