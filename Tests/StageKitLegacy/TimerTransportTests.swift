@@ -293,7 +293,11 @@ final class TimerTransportTests {
                 XCTAssertFalse(timerVisible, "and opens no timer window")
                 let control = app.timerPositionPanel.window
                 XCTAssertEqual(control?.title, "Timer position")
-                XCTAssertTrue(control?.isVisible == true && control?.isKeyWindow == true, "The control takes the keyboard")
+                // macOS gives a window the keyboard only while its app is active. When the suite runs
+                // behind another app (a release run from a terminal or an assistant), require a
+                // visible control that can take the keyboard; when active, require that it has it.
+                XCTAssertTrue(control?.isVisible == true && (NSApp.isActive ? control?.isKeyWindow == true : control?.canBecomeKey == true),
+                              "The control takes the keyboard")
                 XCTAssertTrue(NSScreen.screens.contains { $0.visibleFrame.contains(control?.frame ?? .infinite) }, "and sits on a display: \(String(describing: control?.frame))")
                 app.timerPositionPanel.close()
                 XCTAssertFalse(stage.isTimerPositionControlShown, "Escape, a choice or a click elsewhere closes it")
