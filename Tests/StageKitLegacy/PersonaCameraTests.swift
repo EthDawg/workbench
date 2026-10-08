@@ -1551,6 +1551,81 @@ final class PersonaCameraTests {
         }
     }
 
+    /// What Next or Previous said about Live Camera describes the camera at that moment: the
+    /// camera going live, or hidden as the Mac sleeps, takes it away; another notice raised since
+    /// stays.
+    func testTheCycleNoticeFollowsTheCamera() throws {
+        try MainActor.assumeIsolated {
+            let f = Fixture(withArtwork: true); defer { f.cleanup() }
+            try f.library.showOverlay().get()
+            f.library.startCamera()
+            f.permissionRequests.last?(.authorized)
+            f.library.stepQuickPersona(1)
+            XCTAssertEqual(f.library.notice?.hasPrefix("Live Camera is starting."), true)
+            f.capture.starts.last?.1(.sources([ProfileCameraSource(id: "built-in", name: "Built-in camera")], selected: "built-in"))
+            XCTAssertEqual(f.library.notice?.hasPrefix("Live Camera is starting."), true, "Still starting: the sources arriving change nothing")
+            f.capture.starts.last?.1(.frame)
+            XCTAssertEqual(f.camera.state, .live)
+            XCTAssertTrue(f.library.notice == nil && f.library.cardFeedback == nil, "Live now: 'is starting' is gone")
+            f.library.stepQuickPersona(1)
+            XCTAssertEqual(f.library.notice?.hasPrefix("Persona is showing Live Camera."), true)
+            f.camera.hide(.asleep)
+            XCTAssertTrue(f.library.notice == nil || f.library.notice?.hasPrefix("Persona is showing") == false,
+                          "Hidden as the Mac sleeps: 'is showing' is gone")
+            f.library.showCameraAgain(); f.permissionRequests.last?(.authorized); f.capture.starts.last?.1(.frame)
+            f.library.stepQuickPersona(1)
+            let cycle = f.library.notice
+            f.library.notice = "Another notice"
+            f.camera.hide(.chosen)
+            XCTAssertEqual(f.library.notice, "Another notice", "A notice raised since stays")
+            XCTAssertTrue(cycle != nil)
+        }
+    }
+
+    /// My Profile joins a prepared group only for its visit, so it never becomes the group's
+    /// selection: after End, Show selected shows the group's own card, as the page names it.
+    func testMyProfileAsAGroupGuestNeverBecomesTheGroupsSelection() throws {
+        try MainActor.assumeIsolated {
+            let f = Fixture(withArtwork: true); defer { f.cleanup() }
+            let url = f.root.appendingPathComponent("profile.png")
+            try Fixture.png().write(to: url)
+            let profile = try f.library.addImage(url, name: "Profile photo")
+            f.library.profilePersonaID = { profile.id }
+            let saved = try XCTUnwrapPersona(f.saved)
+            let group = try f.library.createGroup(name: "Private group", members: [saved.id])
+            f.library.prepareGroup(group)
+            try f.library.showProfile().get()
+            invoke(f.library.makeToolbarPickerMenu(), "Site lead")
+            invoke(f.library.makeToolbarPickerMenu(), "My Profile")
+            XCTAssertEqual(f.library.shownIdentity?.personaID, profile.id, "My Profile is up")
+            XCTAssertEqual(f.library.selectedID, saved.id, "The group's selection stays inside the group")
+            f.library.endOverlaySession()
+            try f.library.showOverlay().get()
+            XCTAssertEqual(f.library.shownIdentity?.personaID, saved.id, "Show selected shows the card the page names")
+        }
+    }
+
+    /// While Live Camera holds the slot over a hidden My Profile that has since been retaken,
+    /// the page offers Show My Profile, which shows the photo as saved now; Show again would
+    /// bring back the old one.
+    func testARetakenProfileUnderLiveCameraIsOfferedAgain() throws {
+        try MainActor.assumeIsolated {
+            let f = Fixture(withArtwork: true); defer { f.cleanup() }
+            let url = f.root.appendingPathComponent("profile.png")
+            try Fixture.png().write(to: url)
+            let profile = try f.library.addImage(url, name: "Profile photo")
+            f.library.profilePersonaID = { profile.id }
+            try f.library.showProfile().get()
+            f.library.startCamera()
+            f.permissionRequests.last?(.authorized); f.capture.starts.last?.1(.frame)
+            XCTAssertTrue(f.library.hasHiddenCard && f.library.profileAction == nil, "Show again brings the same photo back")
+            _ = try f.library.replacePortrait(f.library.portraitDraft(from: url, card: PersonaCardStyle(), name: "My Profile"), replacing: profile)
+            XCTAssertEqual(f.library.profileAction, .show, "Retaken: My Profile is offered again")
+            try f.library.showProfile().get()
+            XCTAssertTrue(f.library.showsProfile && !f.library.shownCardHasNewerLook, "and it shows the photo as saved now")
+        }
+    }
+
     /// While Live Camera waits for access, starts or has failed, the card beside it keeps its
     /// ring, so the live menu keeps React to My Voice.
     func testTheVoiceSwitchStaysInTheMenuWhileLiveCameraIsNotShowing() throws {
