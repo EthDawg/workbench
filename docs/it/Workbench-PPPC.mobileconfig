@@ -19,8 +19,11 @@
     ScreenCapture              AllowStandardUserToSetSystemService. Snap and Snap & Talk. Apple does not
                                let a profile switch this on. This value lets a standard (non-admin)
                                user switch it on in System Settings without an administrator.
-    SystemPolicyDesktopFolder  Allow. Used only by "Import Desktop screenshots". Optional: delete it and
-                               macOS asks the user the first time instead. A standard user can answer.
+    SystemPolicyDesktopFolder  Allow. "Import Desktop screenshots", and Snap & Talk sessions saved on the
+                               Desktop, which Workbench reopens by path. Optional: delete it and macOS
+                               asks the user the first time instead. A standard user can answer.
+    SystemPolicyDocumentsFolder Allow. Snap & Talk sessions saved in Documents, which Workbench reopens by
+                               path. Optional, as Desktop.
 
   Deliberately left out:
     Microphone, Camera   In PPPC these keys can only Deny. Users allow them in macOS's own prompt
@@ -172,7 +175,7 @@
 						<key>CodeRequirement</key>
 						<string>identifier "com.ethdawg.workbench" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = GHVAAH9P5Z</string>
 						<key>Comment</key>
-						<string>Import Desktop screenshots into Snap History (moves the originals to the Trash).</string>
+						<string>Import Desktop screenshots into Snap History, and reopen Snap &amp; Talk sessions saved on the Desktop.</string>
 						<key>Identifier</key>
 						<string>com.ethdawg.workbench</string>
 						<key>IdentifierType</key>
@@ -186,7 +189,38 @@
 						<key>CodeRequirement</key>
 						<string>identifier "com.ethdawg.workbench.preview" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = GHVAAH9P5Z</string>
 						<key>Comment</key>
-						<string>Workbench Preview. Import Desktop screenshots into Snap History (moves the originals to the Trash).</string>
+						<string>Workbench Preview. Import Desktop screenshots into Snap History, and reopen Snap &amp; Talk sessions saved on the Desktop.</string>
+						<key>Identifier</key>
+						<string>com.ethdawg.workbench.preview</string>
+						<key>IdentifierType</key>
+						<string>bundleID</string>
+						<key>StaticCode</key>
+						<false/>
+					</dict>
+				</array>
+				<key>SystemPolicyDocumentsFolder</key>
+				<array>
+					<dict>
+						<key>Authorization</key>
+						<string>Allow</string>
+						<key>CodeRequirement</key>
+						<string>identifier "com.ethdawg.workbench" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = GHVAAH9P5Z</string>
+						<key>Comment</key>
+						<string>Reopen Snap &amp; Talk sessions saved in Documents.</string>
+						<key>Identifier</key>
+						<string>com.ethdawg.workbench</string>
+						<key>IdentifierType</key>
+						<string>bundleID</string>
+						<key>StaticCode</key>
+						<false/>
+					</dict>
+					<dict>
+						<key>Authorization</key>
+						<string>Allow</string>
+						<key>CodeRequirement</key>
+						<string>identifier "com.ethdawg.workbench.preview" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = GHVAAH9P5Z</string>
+						<key>Comment</key>
+						<string>Workbench Preview. Reopen Snap &amp; Talk sessions saved in Documents.</string>
 						<key>Identifier</key>
 						<string>com.ethdawg.workbench.preview</string>
 						<key>IdentifierType</key>
