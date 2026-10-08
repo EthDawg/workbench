@@ -338,9 +338,10 @@ final class PersonaLibrary: NSObject, ObservableObject {
     /// The last fault that stopped the ring, while it is the notice; turning the switch on
     /// again takes it away, as it does a refusal.
     private var voiceFault: String?
-    /// What Next or Previous last said about Live Camera, while it is still the notice: it describes
-    /// the camera at that moment, so a change of the camera's state takes it away.
-    private var cameraCycleNotice: String?
+    /// What Next or Previous last said about Live Camera and the camera state it described: a change
+    /// of that state takes it away, while the camera's other changes (sources, a drag, Centre Stage)
+    /// leave it.
+    private var cameraCycleNotice: (text: String, state: PersonaCameraState)?
     private var activation: NSObjectProtocol?
     var voiceAvailable: Bool { voiceAccess != nil }
     /// My Profile: the saved persona the local profile names. The host reads it from its own
@@ -1110,7 +1111,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
             case .live, .off: state = "Persona is showing Live Camera."
             }
             notice = state + " End Live Camera, then Next or Previous shows a saved card."
-            cardFailure = notice; cameraCycleNotice = notice
+            cardFailure = notice; cameraCycleNotice = notice.map { ($0, camera.state) }
             return
         }
         guard session == nil else {
@@ -1339,9 +1340,9 @@ final class PersonaLibrary: NSObject, ObservableObject {
     /// replaced is kept for Show again, and every door reads the new source.
     private func cameraChanged() {
         // Next or Previous described the camera as it was; another notice raised since stays.
-        if let cycle = cameraCycleNotice {
+        if let cycle = cameraCycleNotice, camera.state != cycle.state {
             cameraCycleNotice = nil
-            if notice == cycle && cardFailure == cycle { notice = nil; cardFailure = nil }
+            if notice == cycle.text && cardFailure == cycle.text { notice = nil; cardFailure = nil }
         }
         if camera.isLive, artworkVisible {
             // The bubble is up, fading in over the card, which stays whole beneath it until it is

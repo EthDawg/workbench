@@ -1559,9 +1559,12 @@ final class PersonaCameraTests {
             let f = Fixture(withArtwork: true); defer { f.cleanup() }
             try f.library.showOverlay().get()
             f.library.startCamera()
+            f.permissionRequests.last?(.authorized)
             f.library.stepQuickPersona(1)
             XCTAssertEqual(f.library.notice?.hasPrefix("Live Camera is starting."), true)
-            f.permissionRequests.last?(.authorized); f.capture.starts.last?.1(.frame)
+            f.capture.starts.last?.1(.sources([ProfileCameraSource(id: "built-in", name: "Built-in camera")], selected: "built-in"))
+            XCTAssertEqual(f.library.notice?.hasPrefix("Live Camera is starting."), true, "Still starting: the sources arriving change nothing")
+            f.capture.starts.last?.1(.frame)
             XCTAssertEqual(f.camera.state, .live)
             XCTAssertTrue(f.library.notice == nil && f.library.cardFeedback == nil, "Live now: 'is starting' is gone")
             f.library.stepQuickPersona(1)
