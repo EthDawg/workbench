@@ -124,6 +124,10 @@ final class PersonaOverlayController: NSWindowController, PersonaSessionDisplayi
     static let crossfade: TimeInterval = 0.2
     /// How long the outgoing picture stays: the fade and a frame or two more.
     static let stepAsideHold: TimeInterval = crossfade + 0.05
+    /// Then it fades out. Where the incoming picture covers it nothing changes; where it is
+    /// wider (a Card or Original shape beside the round Live Camera) its edges fade rather
+    /// than vanish in one frame.
+    static let stepAsideFade: TimeInterval = 0.13
     private func fadeIn() {
         NSAnimationContext.runAnimationGroup { context in
             context.duration = Self.crossfade
@@ -143,9 +147,17 @@ final class PersonaOverlayController: NSWindowController, PersonaSessionDisplayi
         let token = UUID()
         steppingAside = token
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.stepAsideHold) { [weak self] in
-            guard let self, self.steppingAside == token else { return }
-            self.steppingAside = nil
-            completion()
+            guard let self, self.steppingAside == token, let window = self.window else { return }
+            NSAnimationContext.runAnimationGroup({ context in
+                context.duration = Self.stepAsideFade
+                window.animator().alphaValue = 0
+            }, completionHandler: { [weak self] in
+                guard let self else { return }
+                // Shown again meanwhile: it stays, whole.
+                guard self.steppingAside == token else { self.window?.alphaValue = 1; return }
+                self.steppingAside = nil
+                completion()
+            })
         }
     }
     /// Whether it is staying whole under an incoming picture, for checks.
