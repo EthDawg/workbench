@@ -654,7 +654,7 @@ struct PersonaCameraPanel: View {
         }
         .kitCard()
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Live Camera · " + (camera.status.isEmpty ? "not started" : camera.status))
+        .accessibilityLabel("Live Camera · " + camera.phase)
     }
 
     /// One row that always keeps the next useful action reachable: Start, Cancel

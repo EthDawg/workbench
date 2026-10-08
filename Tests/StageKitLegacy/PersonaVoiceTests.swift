@@ -157,8 +157,10 @@ final class PersonaVoiceTests {
         library.setVoiceRing(true)
         XCTAssertEqual(microphones.requests.count, 1, "Only one question at a time")
         microphones.permission = .denied
+        defaults.saved = true // As if the switch had been saved on before this refusal.
         microphones.requests.removeFirst()(false)
         XCTAssertFalse(library.voiceRing, "A refusal turns it back off")
+        XCTAssertFalse(defaults.saved, "A refusal is remembered: the switch is saved off")
         // Dictate's words for the same refusal, and its door (#134 Fit rule 2).
         XCTAssertEqual(library.notice, "Microphone access is off. Open System Settings › Privacy & Security › Microphone and allow Workbench.")
         XCTAssertEqual(library.voiceRefusal, library.notice, "The refusal shows beside the switch with Microphone Settings…")

@@ -1176,6 +1176,9 @@ final class PersonaCameraTests {
             guard let window = controller.window else { XCTAssertTrue(false, "A window"); return }
             controller.hide(steppingAside: true)
             XCTAssertTrue(window.isVisible && window.alphaValue == 1 && controller.isSteppingAside, "Whole while the bubble fades in")
+            // Halfway through the incoming fade, with animation frames delivered, it is still whole.
+            RunLoop.current.run(until: Date().addingTimeInterval(PersonaOverlayController.crossfade / 2))
+            XCTAssertTrue(window.isVisible && window.alphaValue == 1 && controller.isSteppingAside, "Still whole halfway through the incoming fade")
             XCTAssertTrue(window.ignoresMouseEvents, "It no longer takes the pointer")
             _ = controller.show(image: image, name: "Card", state: state)
             XCTAssertTrue(window.isVisible && window.alphaValue == 1 && !controller.isSteppingAside, "Shown again, it stays whole")
