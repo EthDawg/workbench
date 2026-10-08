@@ -463,13 +463,17 @@ final class PersonaMicrophoneLevel: PersonaVoiceSource {
     /// Measurement only: called on the main thread before the frames each buffer made.
     var onTiming: ((PersonaVoiceTiming) -> Void)?
     private(set) var deviceName: String?
-    private let engine = AVAudioEngine()
+    /// A new engine for every start, as Meetings does: after a device change an engine keeps the
+    /// formats it was connected with, so a tap reinstalled on it can carry the old sample rate,
+    /// which AVFAudio refuses with an exception nothing can catch.
+    private var engine: AVAudioEngine?
     private var running = false
     private var configurationObserver: NSObjectProtocol?
 
     func start() throws {
         guard !running else { return }
         guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else { throw PersonaVoiceError.microphoneDenied }
+        let engine = AVAudioEngine()
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
         guard format.sampleRate > 0, format.channelCount > 0 else {
@@ -504,31 +508,44 @@ final class PersonaMicrophoneLevel: PersonaVoiceSource {
                 self.onFrames?(frames)
             }
         }
+        // A new headset or a lost device stops the engine silently. Restart on the new input,
+        // or turn the ring off rather than freeze it at a stale level. The handler only schedules
+        // that: the engine must not be torn down or released inside its own notification, which
+        // AVFAudio delivers from an internal queue and can deadlock on (AVAudioEngine.h). It is
+        // registered before the engine starts, so a change during start is not missed.
+        let observer = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil) { [weak self, weak engine] _ in
+            DispatchQueue.main.async { if let engine { self?.restart(after: engine) } }
+        }
         engine.prepare()
         do { try engine.start() } catch {
+            NotificationCenter.default.removeObserver(observer)
             input.removeTap(onBus: 0)
             throw PersonaVoiceError.unavailable(error.localizedDescription)
         }
+        configurationObserver = observer
+        self.engine = engine
         running = true
         deviceName = AVCaptureDevice.default(for: .audio)?.localizedName
-        // A new headset or a lost device stops the engine silently. Restart on the
-        // new input, or turn the ring off rather than freeze it at a stale level.
-        configurationObserver = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { [weak self] _ in
-            guard let self, self.running else { return }
-            self.halt()
-            do { try self.start(); self.onDevice?(self.deviceName) }
-            catch { self.deviceName = nil; self.onUnavailable?(error.localizedDescription) }
-        }
     }
 
     func stop() { halt(); deviceName = nil }
 
+    /// On the main queue, after the notification has returned: a change from an engine that has
+    /// since been replaced or stopped is ignored.
+    private func restart(after changed: AVAudioEngine) {
+        guard running, let engine, engine === changed else { return }
+        halt()
+        do { try start(); onDevice?(deviceName) }
+        catch { deviceName = nil; onUnavailable?(error.localizedDescription) }
+    }
+
     private func halt() {
         if let configurationObserver { NotificationCenter.default.removeObserver(configurationObserver) }
         configurationObserver = nil
-        guard running else { return }
+        guard running, let engine else { running = false; return }
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
+        self.engine = nil
         running = false
     }
 }
