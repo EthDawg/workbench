@@ -1290,6 +1290,7 @@ final class PersonaCameraTests {
             XCTAssertTrue(saved.isEmpty, "The saved choice stays on for next time")
             library.setVoiceRing(true)
             XCTAssertTrue(microphones.running, "Switching it on again listens again")
+            XCTAssertTrue(library.notice == nil, "and the fault's reason goes with it")
             XCTAssertEqual(saved, [true])
         }
     }
@@ -1521,6 +1522,54 @@ final class PersonaCameraTests {
             invoke(f.library.makeToolbarPickerMenu(), "Site lead")
             f.live()
             XCTAssertEqual(f.library.profileAction, .show, "Live Camera over another card: My Profile changes the screen")
+        }
+    }
+    /// Next and Previous never replace Live Camera, and the reason says what the camera is
+    /// doing now: starting, showing, hidden or stopped.
+    func testCyclingSaysWhatLiveCameraIsDoing() throws {
+        try MainActor.assumeIsolated {
+            let f = Fixture(withArtwork: true); defer { f.cleanup() }
+            let then = " End Live Camera, then Next or Previous shows a saved card."
+            try f.library.showOverlay().get()
+            f.library.startCamera()
+            f.library.stepQuickPersona(1)
+            XCTAssertEqual(f.library.notice, "Live Camera is starting." + then)
+            f.permissionRequests.last?(.authorized); f.capture.starts.last?.1(.frame)
+            f.library.stepQuickPersona(1)
+            XCTAssertEqual(f.library.notice, "Persona is showing Live Camera." + then)
+            f.library.hideCamera()
+            f.library.stepQuickPersona(-1)
+            XCTAssertEqual(f.library.notice, "Live Camera is hidden." + then)
+            f.library.showCameraAgain(); f.permissionRequests.last?(.authorized)
+            f.capture.starts.last?.1(.failed(.unavailable))
+            f.library.stepQuickPersona(1)
+            XCTAssertEqual(f.library.notice, "Live Camera stopped." + then)
+            XCTAssertTrue(f.library.cameraOwnsSlot, "Cycling changed nothing")
+        }
+    }
+
+    /// While Live Camera waits for access, starts or has failed, the card beside it keeps its
+    /// ring, so the live menu keeps React to My Voice.
+    func testTheVoiceSwitchStaysInTheMenuWhileLiveCameraIsNotShowing() throws {
+        try MainActor.assumeIsolated {
+            let access = PersonaVoiceAccess(permission: { .allowed }, requestPermission: { $0(true) },
+                                            makeSource: { Microphone() }, savedChoice: { true }, saveChoice: { _ in })
+            let f = Fixture(); defer { f.cleanup() }
+            let library = PersonaLibrary(root: f.root.appendingPathComponent("voice"), sessionHUDEnabled: false, voice: access, camera: f.camera)
+            library.usesSharedControls = true
+            defer { library.shutdown() }
+            let url = f.root.appendingPathComponent("card.png")
+            try Fixture.png().write(to: url)
+            _ = try library.addImage(url, name: "Card")
+            try library.showOverlay().get()
+            let voice = "React to My Voice · Uses Microphone"
+            library.startCamera()
+            XCTAssertTrue(titles(library.makeControlsMenu()).contains(voice), "Waiting for access")
+            f.permissionRequests.last?(.authorized)
+            XCTAssertTrue(titles(library.makeControlsMenu()).contains(voice), "Starting")
+            f.capture.starts.last?.1(.failed(.unavailable))
+            XCTAssertTrue(library.artworkVisible, "The card is still up")
+            XCTAssertTrue(titles(library.makeControlsMenu()).contains(voice), "Failed")
         }
     }
     private func XCTUnwrapPersona(_ persona: SavedPersona?) throws -> SavedPersona {

@@ -335,6 +335,9 @@ final class PersonaLibrary: NSObject, ObservableObject {
     /// switch, with Microphone Settings…, until access changes: Show, Hide and other notices
     /// never take it away, so the switch is never off without saying why.
     @Published private(set) var voiceRefused = false
+    /// The last fault that stopped the ring, while it is the notice; turning the switch on
+    /// again takes it away, as it does a refusal.
+    private var voiceFault: String?
     private var activation: NSObjectProtocol?
     var voiceAvailable: Bool { voiceAccess != nil }
     /// My Profile: the saved persona the local profile names. The host reads it from its own
@@ -1088,9 +1091,17 @@ final class PersonaLibrary: NSObject, ObservableObject {
     }
 
     func stepQuickPersona(_ offset: Int) {
-        // Cycling never replaces the live camera: it is not a source choice.
+        // Cycling never replaces the live camera: it is not a source choice. The notice says
+        // what the camera is doing now, which is not always showing.
         guard !cameraOwnsSlot else {
-            notice = "Persona is showing Live Camera. End Live Camera to show a saved card."
+            let state: String
+            switch camera.state {
+            case .permission, .starting: state = "Live Camera is starting."
+            case .hidden: state = "Live Camera is hidden."
+            case .failed: state = "Live Camera stopped."
+            case .live, .off: state = "Persona is showing Live Camera."
+            }
+            notice = state + " End Live Camera, then Next or Previous shows a saved card."
             cardFailure = notice
             return
         }
@@ -1468,8 +1479,10 @@ final class PersonaLibrary: NSObject, ObservableObject {
             rememberVoiceRing(false); voiceRefused = true
             notice = PersonaVoiceError.microphoneDenied.localizedDescription; return
         }
-        // Allowed since: the refusal and its door leave with the switch turning on.
+        // Allowed since: the refusal and its door leave with the switch turning on, and so does
+        // an earlier fault's reason.
         if enabled, voiceRefused { clearVoiceRefusal() }
+        if enabled, let fault = voiceFault { voiceFault = nil; if notice == fault { notice = nil } }
         rememberVoiceRing(enabled)
         // The one place macOS is asked: switching it on, while preparing. Showing a card or
         // starting Live Camera never asks, so no prompt appears in front of an audience.
@@ -1607,7 +1620,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
     /// fault turns it off for now and keeps the saved choice, so it is on again next time.
     private func voiceUnavailable(_ reason: String, refused: Bool) {
         stopVoice()
-        if refused { rememberVoiceRing(false); voiceRefused = true } else { voiceRing = false; updateVoice() }
+        if refused { rememberVoiceRing(false); voiceRefused = true } else { voiceRing = false; updateVoice(); voiceFault = reason }
         notice = reason
     }
 
@@ -1830,6 +1843,8 @@ final class PersonaLibrary: NSObject, ObservableObject {
                 guard let self, self.camera.visit == visit, self.cameraOwnsSlot else { return }
                 self.endCamera()
             }])
+            // The card still up beside it keeps its ring, so its switch stays reachable.
+            groups.append(voice)
         case .live:
             let size = NSMenuItem()
             size.view = PersonaSizeMenuView(width: camera.placement.width) { [weak self] width in
@@ -1890,6 +1905,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
                 guard let self, self.camera.visit == visit, self.cameraOwnsSlot else { return }
                 self.retryCamera()
             }]) }
+            groups.append(voice)
         }
         let end = StageMenuAction("End Live Camera") { [weak self] in
             guard let self, self.camera.visit == visit, self.cameraOwnsSlot else { return }
