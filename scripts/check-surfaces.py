@@ -127,6 +127,10 @@ ENTRY_POINTS = [
     ('StageKit/Persona.swift', 'PersonaLibrary.cameraItems', 'Persona camera menu', 'controls'),
     # The pill's one Persona picker offers the cards and the live camera beside them.
     ('StageKit/Persona.swift', 'PersonaLibrary.makeToolbarPickerMenu', 'floating toolbar Persona picker', 'controls'),
+    # Its choices, My Profile and Live Camera then the cards, are one list shared with the
+    # live Persona menu's Choose Persona (8 Oct).
+    ('StageKit/Persona.swift', 'PersonaLibrary.sourceChoices', 'Persona sources', 'controls'),
+    ('StageKit/Persona.swift', 'PersonaLibrary.sourcesSubmenu', 'Persona menu', 'controls'),
     ('StageKit/DemoPresentation.swift', 'LiveSettings', 'Present live window', 'controls'),
     # Position… in that menu opens the toolbar's placement control (#163).
     ('StageKit/FloatingPositionControl.swift', 'FloatingPositionControl', 'floating position control', 'controls'),

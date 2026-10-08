@@ -20,6 +20,20 @@ extension NSMenu {
         let parent = NSMenuItem(title: title, action: nil, keyEquivalent: "")
         parent.submenu = child; addItem(parent)
     }
+    /// Groups in order after what the menu already holds, each set apart by a separator;
+    /// empty groups leave no separator.
+    func addGroups(_ groups: [[NSMenuItem]]) {
+        let items = NSMenuItem.grouped(groups)
+        if !items.isEmpty, numberOfItems > 0, items.first?.isSeparatorItem == false { addItem(.separator()) }
+        items.forEach(addItem)
+    }
+}
+
+extension NSMenuItem {
+    /// Groups in order with a separator between each; empty groups leave no separator.
+    static func grouped(_ groups: [[NSMenuItem]]) -> [NSMenuItem] {
+        groups.filter { !$0.isEmpty }.enumerated().flatMap { index, group in (index == 0 ? [] : [NSMenuItem.separator()]) + group }
+    }
 }
 
 /// The same absolute 6–40% width contract used by the persona sizing controls.

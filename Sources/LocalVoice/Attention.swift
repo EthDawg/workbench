@@ -38,7 +38,11 @@ struct Attention: Equatable {
 /// A named door's request to show and focus one section of its page (#134). Each request is
 /// new, so it applies even when the page is already showing.
 struct PageFocusRequest: Equatable {
-    enum Target: Equatable { case dictateOptions }
+    enum Target: Equatable {
+        case dictateOptions
+        /// My Profile's editor, from Persona's My Profile… where no profile photo is saved yet.
+        case profile
+    }
     var id = UUID()
     var target: Target
 }

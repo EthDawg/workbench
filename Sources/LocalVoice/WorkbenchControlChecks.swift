@@ -462,8 +462,8 @@ enum WorkbenchControlChecks {
                 ("an active prepared set", { $0.overlays = true; $0.overlaySession = true }, .session, "Hide personas", .pauseOverlays),
                 ("one card", { $0.overlays = true }, .shown, "Hide persona", .hidePersona),
                 ("a camera waiting for its first frame", { $0.personaCamera = .starting }, .cameraStarting, "Cancel", .cancelPersonaCamera),
-                ("a live camera", { $0.personaCamera = .live }, .cameraShown, "Hide camera", .hidePersonaCamera),
-                ("a hidden camera", { $0.personaCamera = .hidden }, .cameraHidden, "Show camera again", .showPersonaCamera),
+                ("a live camera", { $0.personaCamera = .live }, .cameraShown, "Hide Live Camera", .hidePersonaCamera),
+                ("a hidden camera", { $0.personaCamera = .hidden }, .cameraHidden, "Show Live Camera again", .showPersonaCamera),
                 ("a stopped camera", { $0.personaCamera = .failed }, .cameraFailed, "Try again", .retryPersonaCamera),
                 ("an ended set", { _ in }, .none, "Show persona", .start(.persona))]
             for (context, setUp) in alongside {

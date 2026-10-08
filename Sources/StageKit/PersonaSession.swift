@@ -121,10 +121,9 @@ protocol PersonaSessionDisplaying: AnyObject {
     func reshape(image: NSImage, outline: PersonaArtworkOutline?, name: String, state: PersonaOverlayState) -> PersonaOverlayState
 }
 
+/// No do-nothing voice defaults here either: PersonaOverlayController satisfies both this and
+/// PersonaCameraDisplaying, and a default would let a changed signature drop the ring silently.
 extension PersonaSessionDisplaying {
-    func setVoiceRing(_ on: Bool) {}
-    func setVoiceColor(_ color: InkColor) {}
-    func showVoice(_ frames: [PersonaVoiceFrame]) {}
     func setOutline(_ outline: PersonaArtworkOutline?) {}
     func reshape(image: NSImage, outline: PersonaArtworkOutline?, name: String, state: PersonaOverlayState) -> PersonaOverlayState {
         configure(image: image, name: name, state: state); return state

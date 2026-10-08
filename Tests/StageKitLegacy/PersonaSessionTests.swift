@@ -4,6 +4,9 @@ import UniformTypeIdentifiers
 
 final class PersonaSessionTests {
     private final class Display: PersonaSessionDisplaying {
+        func setVoiceRing(_ on: Bool) {}
+        func setVoiceColor(_ color: InkColor) {}
+        func showVoice(_ frames: [PersonaVoiceFrame]) {}
         var onPlacementChange: ((PersonaOverlayState) -> Void)?
         var onSelection: (() -> Void)?
         var frame: CGRect? = CGRect(x: 16, y: 16, width: 120, height: 200)

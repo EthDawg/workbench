@@ -125,7 +125,7 @@ final class PersonaVoiceTests {
         library.endOverlaySession()
         XCTAssertTrue(microphones.running.isEmpty, "End stops the microphone")
         XCTAssertTrue(library.voiceRing, "Ending keeps the choice for next time")
-        XCTAssertEqual(library.voiceStatus, "Listens while a persona shows")
+        XCTAssertEqual(library.voiceStatus, "Listens while a persona or Live Camera shows")
 
         let reopened = PersonaLibrary(root: root, sessionPanelFactory: { Display() }, sessionHUDEnabled: false, voice: access(microphones, defaults))
         XCTAssertTrue(reopened.voiceRing, "The choice survives a restart")
@@ -157,8 +157,10 @@ final class PersonaVoiceTests {
         library.setVoiceRing(true)
         XCTAssertEqual(microphones.requests.count, 1, "Only one question at a time")
         microphones.permission = .denied
+        defaults.saved = true // As if the switch had been saved on before this refusal.
         microphones.requests.removeFirst()(false)
         XCTAssertFalse(library.voiceRing, "A refusal turns it back off")
+        XCTAssertFalse(defaults.saved, "A refusal is remembered: the switch is saved off")
         // Dictate's words for the same refusal, and its door (#134 Fit rule 2).
         XCTAssertEqual(library.notice, "Microphone access is off. Open System Settings › Privacy & Security › Microphone and allow Workbench.")
         XCTAssertEqual(library.voiceRefusal, library.notice, "The refusal shows beside the switch with Microphone Settings…")
@@ -226,11 +228,17 @@ final class PersonaVoiceTests {
         // The toolbar's picker shows cards, never the refusal; the panel row's notice opens the page.
         XCTAssertFalse(library.makeToolbarPickerMenu().items.contains { $0.title == door })
 
+        // Allowed in System Settings meanwhile: the menu reads access as it opens, so it opens
+        // with the switch back on, as the presenter asked, and the door gone.
         microphones.permission = .allowed
-        choose(switchTitle)
+        let allowed = library.makeControlsMenu()
         XCTAssertTrue(library.voiceRing, "Allowed again, the switch turns on")
+        XCTAssertEqual(allowed.items.first { $0.title == switchTitle }?.state, .on, "and the menu shows it on")
         XCTAssertTrue(library.voiceRefusal == nil)
-        XCTAssertFalse(titles().contains(door), "The door goes with the refusal")
+        XCTAssertFalse(allowed.items.contains { $0.title == door }, "The door goes with the refusal")
+        choose(switchTitle)
+        XCTAssertFalse(library.voiceRing, "The switch still turns it off")
+        XCTAssertFalse(titles().contains(door), "and an allowed microphone offers no door")
         XCTAssertEqual(microphones.settingsOpened, 1)
     }
 

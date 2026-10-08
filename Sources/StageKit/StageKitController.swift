@@ -32,6 +32,11 @@ public final class StageKitController: ObservableObject {
     }
     /// Opens the host’s independent Persona workspace. Scene selection keeps its own sheet.
     public var onOpenPersonas: (() -> Void)?
+    /// Opens the host's My Profile editor: Persona's live menus offer My Profile… there while no
+    /// profile photo is saved, so My Profile is always their first row.
+    public var onEditProfile: (() -> Void)? {
+        didSet { coordinator.demoScenes.personas.onEditProfile = onEditProfile }
+    }
     public var onViewImages: (([StageImagePreview], UUID) -> Void)? {
         didSet {
             coordinator.demoScenes.onViewImages = onViewImages
@@ -120,6 +125,12 @@ public final class StageKitController: ObservableObject {
         observe(coordinator)
     }
     private func observe(_ coordinator: AppCoordinator) {
+        // My Profile is the persona the local profile names, read from the same preference
+        // the profile editor writes, so the two never disagree.
+        let defaults = profileDefaults
+        coordinator.demoScenes.personas.profilePersonaID = {
+            defaults.string(forKey: LocalPersonaProfile.key).flatMap(UUID.init(uuidString:))
+        }
         coordinator.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &observations)
         coordinator.settings.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &observations)
         coordinator.demoScenes.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &observations)
@@ -171,6 +182,8 @@ public final class StageKitController: ObservableObject {
         if library.cameraOwnsSlot { return library.camera.status }
         if library.sessionState.phase == .paused { return "Hidden" }
         if library.sessionState.phase != .idle { return "\(library.sessionState.instances.filter(\.visible).count) Overlays" }
+        // The source on screen by name: My Profile, or Shown for another card.
+        if library.showsProfile { return "My Profile" }
         if library.overlayVisible { return "Shown" }
         // A hidden card is kept for Show again, like a paused set.
         return library.hasHiddenCard ? "Hidden" : ""
@@ -190,8 +203,8 @@ public final class StageKitController: ObservableObject {
         if library.cameraOwnsSlot {
             switch library.camera.state {
             case .permission, .starting: return "Cancel"
-            case .live: return "Hide camera"
-            case .hidden: return "Show camera again"
+            case .live: return "Hide Live Camera"
+            case .hidden: return "Show Live Camera again"
             case .failed: return "Try again"
             case .off: break
             }
@@ -200,7 +213,7 @@ public final class StageKitController: ObservableObject {
     }
     /// End names the source it releases.
     public var personaEndTitle: String {
-        coordinator.demoScenes.personas.cameraOwnsSlot ? "End camera" : "End Persona"
+        coordinator.demoScenes.personas.cameraOwnsSlot ? "End Live Camera" : "End Persona"
     }
     public func togglePersona() {
         if case .failure = coordinator.demoScenes.personas.togglePersonaVisibility() { showPersonas() }
@@ -241,7 +254,7 @@ public final class StageKitController: ObservableObject {
         public let isSet: Bool
     }
     public var personaPicker: PersonaPicker? { coordinator.demoScenes.personas.toolbarPicker }
-    /// The cards Persona can show now, then Camera; a prepared set's sets.
+    /// My Profile and Live Camera, then the cards Persona can show now; a prepared set's sets.
     public func makePersonaPickerMenu() -> NSMenu { coordinator.demoScenes.personas.makeToolbarPickerMenu() }
     /// One live persona copy, named exactly: the one floating card, or one copy of
     /// a prepared set. Capture it when a control is drawn, so a later choice

@@ -431,6 +431,7 @@ private struct HistoryNativeAcceptanceView: View {
         stage.onOpenControls = { [weak self] in self?.opened.append("annotate") }
         stage.onOpenScenes = { [weak self] in self?.opened.append("present") }
         stage.onOpenPersonas = { [weak self] in self?.opened.append("personas") }
+        stage.onEditProfile = { [weak self] in self?.opened.append("personas") }
         stage.onEditShortcuts = { [weak self] in self?.opened.append("shortcuts") }
     }
 
@@ -2053,7 +2054,7 @@ private struct HistoryNativeAcceptanceView: View {
                 let (rep, drawn) = try renderPage(route, in: window)
                 pass.pages[index].shots.append(try save(rep, id: name,
                     title: "\(name) window, \(Int(drawn.width)) × \(Int(drawn.height)) pt",
-                    detail: "Production page: Library owns Saved Prompts, Persona owns Me, and Present keeps scene preparation.",
+                    detail: "Production page: Library owns Saved Prompts, Persona owns My Profile and Live Camera, and Present keeps scene preparation.",
                     file: "page-\(route)-\(name)-\(theme).png", to: output))
             }
         }
@@ -3739,12 +3740,16 @@ private struct HistoryNativeAcceptanceView: View {
         chooser.openTool = { self.model.onShowEditor?($0.page) }
         let before = routes.count
         chooser.openTool(.persona)
-        // Nothing is live, but the camera is always one of Persona's choices, so the revealed pill
-        // offers the picker; its last choice is Camera (Ethan, 1 October).
+        // Nothing is live, but Live Camera is always one of Persona's choices, so the revealed pill
+        // offers the picker; My Profile, when a profile photo is set, and Live Camera lead it, before
+        // the cards (Ethan, 1 and 8 October).
         let personaChoices = plain.accessoryMenu(plain.accessory(plain.live)).items.map(\.title)
+        let sources = Array(personaChoices.prefix { $0 != "" })
         expect("Persona with no live copy", [
-            plain.accessory(plain.live) == .personaPicker ? nil : "Persona offers no picker, so the camera is not one click away",
-            personaChoices.last == "Camera" ? nil : "The Persona picker lists \(personaChoices), not the cards and then Camera",
+            plain.accessory(plain.live) == .personaPicker ? nil : "Persona offers no picker, so Live Camera is not one click away",
+            // My Profile is always first: My Profile… opens the profile editor until a photo is saved.
+            sources == ["My Profile…", "Live Camera"] || sources == ["My Profile", "Live Camera"] ? nil
+                : "The Persona picker lists \(personaChoices), not My Profile and Live Camera before the cards",
             plain.accessoryDescription(plain.live) == "Choose Persona" ? nil : "The picker reads \(plain.accessoryDescription(plain.live) ?? "nothing")",
             Array(routes.dropFirst(before)) == ["personas"] ? nil : "The chooser's Open Persona route failed"])
         routes.removeAll()
@@ -3911,7 +3916,7 @@ private struct HistoryNativeAcceptanceView: View {
                  action("Persona workspace", "Live copy controls", "Appearance, size, lock, position, replace, update, visibility and explicit layout saving"),
                  action("Present workspace", "Live presentation", "Controls the running snapshot while saved scene preparation stays separate"),
                  action("Library", "Saved Prompts…", "Copies complete prompts through Library's copy owner, with no external insertion target"),
-                 action("Persona workspace", "Me…", "Opens the existing local profile editor without starting a camera")]
+                 action("Persona workspace", "My Profile…", "Opens the existing local profile editor without starting a camera")]
         for tool in WorkbenchControlTool.allCases {
             let options = "\(tool.title) · Options"
             switch tool {
@@ -3960,7 +3965,7 @@ private struct HistoryNativeAcceptanceView: View {
         }
         list += [page("Home sidebar", "Update button, when an update is waiting", "settings")]
         // Home shows results and this Mac's permissions; each door sits beside what it acts on.
-        list += [action(home, "Me · Your profile", "Opens local photo and Persona preparation"),
+        list += [action(home, "My Profile · Your profile photo", "Opens local photo and Persona preparation"),
                  action(home, "Your meetings · Copy transcript", "Copies the newest meeting's complete current text"),
                  E(surface: home, label: "Your meetings · Review transcript, or an earlier meeting", leads: "Page: history, showing that transcript", route: "history"),
                  action(home, "Your meetings · Prepare follow-up…", "Opens the reviewed follow-up handoff for that transcript"),
