@@ -187,6 +187,11 @@ enum HomeJourneyChecks {
         var pasted = untrusted; pasted.failure = nil; pasted.wasPasted = true
         unreadable.unusableFocus = true
         let noField = AutomaticPasteProblem(unreadable, layout: "us", pasteKey: 9)
+        let finderSnapshot = MacPermissionSnapshot([.microphone: .allowed, .accessibility: .allowed, .screenRecording: .allowed, .camera: .allowed,
+                                                    .callAudio: .checkedOnUse], pasteProblem: noField?.line, pasteNote: noField?.note)
+        try check(noField?.note == nil && finderSnapshot.summary == "All set" && finderSnapshot.tone == .done && !finderSnapshot.foldedLine.contains("paste")
+                  && rowIn(finderSnapshot, .accessibility)?.details.isEmpty == false,
+                  "a field Workbench couldn't find stays on the row, never the badge: Finder's desktop or a page always has something focused")
         try check(noField?.line.contains("couldn’t find a text field") == true && noField?.line.contains("Finder") == true
                   && noField?.line.contains("web app") == false && noField?.summary.hasPrefix("copied, no text field found, in Finder") == true,
                   "an unreadable field says no text field was found there, without blaming a kind of app")

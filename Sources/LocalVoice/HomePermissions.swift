@@ -249,7 +249,7 @@ struct MacPermissionRow: Equatable, Identifiable {
 /// call audio doesn't apply, “All allowed”.
 struct MacPermissionSnapshot: Equatable {
     var rows: [MacPermissionRow]
-    /// A few words for the summary and folded line when the last automatic paste didn't land.
+    /// A few words for the summary and folded line when the last automatic paste itself failed.
     var pasteNote: String?
     init(_ states: [MacPermission: MacPermissionState], administrator: Bool? = true,
          pasteProblem: String? = nil, pasteNote: String? = nil) {
@@ -259,7 +259,7 @@ struct MacPermissionSnapshot: Equatable {
                                  pasteProblem: permission == .accessibility && state == .allowed ? pasteProblem : nil)
             }
         }
-        self.pasteNote = rows.contains { $0.pasteProblem != nil } ? (pasteNote ?? "Last paste only copied") : nil
+        self.pasteNote = rows.contains { $0.pasteProblem != nil } ? pasteNote : nil
     }
     private func count(_ matches: (MacPermissionState) -> Bool) -> Int { rows.filter { matches($0.state) }.count }
     var offCount: Int { count { $0 == .notAllowed || $0 == .lastCall(allowed: false) } }

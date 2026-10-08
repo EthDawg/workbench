@@ -456,9 +456,11 @@ final class MeetingModel: ObservableObject {
         voiceSession.phase = .finishing
         let task = Task { [weak self] in
             guard let self else { return }
+            // This recording's evidence, taken before the await so a later recording's can't be read.
+            let evidence = self.callAudioEvidence; self.callAudioEvidence = nil
             let report = await capture.finish()
             // A call with no sound from the app says nothing new, but an older Allowed may be stale.
-            self.callAudioEvidence?.finish(); self.callAudioEvidence = nil
+            evidence?.finish()
             var checkpoint = process ? await self.liveVoice?.finish() : await self.liveVoice?.cancel()
             if let checkpoint { self.voiceSession.segments = LiveVoiceTurns.group(checkpoint.orderedSegments) }
             self.liveVoice = nil

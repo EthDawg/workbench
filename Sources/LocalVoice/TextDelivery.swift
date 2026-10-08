@@ -422,8 +422,16 @@ struct AutomaticPasteProblem: Equatable {
             return "\(into) was sent, but Workbench couldn’t see it arrive. If it isn’t there, paste with ⌘V."
         }
     }
-    /// A few words for the panel's summary and folded line.
-    var note: String { failure == .pasteUnconfirmed ? "Last paste unconfirmed" : "Last paste only copied" }
+    /// A few words for the panel's summary and folded line, only where automatic paste itself
+    /// went wrong. A field Workbench couldn't find stays on the row: the frontmost app nearly
+    /// always has something focused (Finder's desktop, a page, a list), so it can't prove a fault.
+    var note: String? {
+        switch failure {
+        case .pasteUnconfirmed: return "Last paste unconfirmed"
+        case .pasteUnavailable: return "Last paste only copied"
+        default: return nil
+        }
+    }
     /// For Copy permission details: what happened, the app and when, never the words.
     var summary: String {
         let what: String
