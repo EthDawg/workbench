@@ -228,11 +228,17 @@ final class PersonaVoiceTests {
         // The toolbar's picker shows cards, never the refusal; the panel row's notice opens the page.
         XCTAssertFalse(library.makeToolbarPickerMenu().items.contains { $0.title == door })
 
+        // Allowed in System Settings meanwhile: the menu reads access as it opens, so it opens
+        // with the switch back on, as the presenter asked, and the door gone.
         microphones.permission = .allowed
-        choose(switchTitle)
+        let allowed = library.makeControlsMenu()
         XCTAssertTrue(library.voiceRing, "Allowed again, the switch turns on")
+        XCTAssertEqual(allowed.items.first { $0.title == switchTitle }?.state, .on, "and the menu shows it on")
         XCTAssertTrue(library.voiceRefusal == nil)
-        XCTAssertFalse(titles().contains(door), "The door goes with the refusal")
+        XCTAssertFalse(allowed.items.contains { $0.title == door }, "The door goes with the refusal")
+        choose(switchTitle)
+        XCTAssertFalse(library.voiceRing, "The switch still turns it off")
+        XCTAssertFalse(titles().contains(door), "and an allowed microphone offers no door")
         XCTAssertEqual(microphones.settingsOpened, 1)
     }
 
