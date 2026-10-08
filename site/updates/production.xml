@@ -6,6 +6,47 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>Workbench</title>
         <item>
+            <title>2.5.0</title>
+            <pubDate>Fri, 09 Oct 2026 09:22:33 +1100</pubDate>
+            <sparkle:version>20261008222126</sparkle:version>
+            <sparkle:shortVersionString>2.5.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h2>Workbench 2.5.0</h2>
+<p>A Home worth opening, your phone on a clean stage, and a way to tell us when something goes wrong.</p>
+<ul>
+<li><strong>Home shows what's yours.</strong> Your latest meetings with the follow-up you prepared, your Snap &amp; Talk decks (a sample deck shows until you build one), what this Mac lets Workbench use, and the keys worth learning next. Set up a permission from the same card, or change one in System Settings; Workbench asks only when you choose to. On a work Mac it says when an administrator has to switch something on, and Copy permission details gives your IT team what to allow.</li>
+<li><strong>Automatic paste, explained and on your layout.</strong> If automatic paste is off, the first copy says it needs Accessibility. Dictated words now paste with your keyboard layout's own ⌘V key, so Dvorak and Turkish F paste instead of sending another shortcut.</li>
+<li><strong>Learn your keys.</strong> Your keys shows your shortcuts on a keyboard and rings the next ones worth learning. Practice one, change it, or put Snap on ⌥G in one click. A key counts as learned once you've practised it or used it for real.</li>
+<li><strong>Present with your phone.</strong> Plug in your iPhone with a cable and it appears in the preview before you press Present. One line says what is happening and the one next step. If the phone doesn't appear, Can't see your phone? walks through the checks.</li>
+<li><strong>Report a problem.</strong> Choose Help › Report a Problem…, say what happened, and add a screenshot or a short voice note if it helps. The report goes privately to the Workbench team, and its receipt says when it was received. The same button sits beside a Dictate or Snap problem.</li>
+<li><strong>Every page, one way.</strong> Dictate, Meetings, Snap, Snap &amp; Talk, Draw, History, Library, Persona and Settings share one set of cards, notes and a single primary action. A problem looks the same on every page, with its fix beside it.</li>
+<li><strong>The Mac's own menus.</strong> Hide Others, Show All, Zoom, Bring All to Front and Redo are where you expect them, and ⌘M minimises the window. Workbench reopens where you left it, and opening at login keeps it in the menu bar.</li>
+</ul>
+<p>Also in this release:</p>
+<ul>
+<li><strong>History you can use again.</strong> Search saved work, review a transcript, and reuse it from the same place.</li>
+<li><strong>Meetings keep their words.</strong> Copy a finished transcript directly, and a recovered meeting keeps the text it had.</li>
+<li><strong>Dictation that fits.</strong> Words land with the spacing and capitals the insertion point needs, and names keep their capitals mid-sentence. Cancelling a paste leaves your transcript on the clipboard.</li>
+<li><strong>First speech setup you control.</strong> The model download is explicit and cancellable, and files already on this Mac are kept.</li>
+<li><strong>Library and Packs.</strong> Resources are easier to find, reuse and recover. Installed Packs work without setup.</li>
+<li><strong>Hand off without an assistant connected.</strong> Copy instructions carries the whole request, the selected text and the attachments to name, ready to paste into any assistant. Snap &amp; Talk names the app it actually opened.</li>
+<li><strong>Updates in one click</strong> from the sidebar, with a line about what's new.</li>
+<li><strong>Persona: your camera and your photo, one click apart.</strong> Choose Persona leads with <strong>My Profile</strong> and <strong>Live Camera</strong>, and switching fades one into the other in place. <strong>React to my voice</strong> rings both. Live Camera offers <strong>Centre Stage</strong> where the camera supports it and opens <strong>Video Effects…</strong>, with gesture reactions off, so a thumbs-up mid-demo fires nothing. Connecting headphones while the ring listens can no longer stop Workbench.</li>
+</ul>
+<p>What's gone or paused since 2.4.1:</p>
+<ul>
+<li><strong>Read is retired:</strong> its page, its voices and its Services menu item. Text you saved in Read is kept, word for word, in Library.</li>
+<li><strong>Switch to Browser Tab is paused.</strong> Saved links and browser settings are kept.</li>
+<li><strong>Present's gentle motion is retired,</strong> and a scene can no longer be set as your desktop picture. Restore desktop still puts back a picture Workbench applied earlier.</li>
+<li><strong>Library's From iPhone section and the photo handoff settings are gone;</strong> they never worked in the public app. Photos already saved on this Mac are untouched.</li>
+</ul>
+<p>When you're ready, update from Settings: Workbench updates in 2.4.1, or General › Updates from 2.5.0 on. Your saved work stays in this edition's library.</p>
+<p>First download: unzip Workbench, move it to Applications in your home folder, then open it there. When replacing an existing copy, quit it and use the same Applications folder.</p>
+]]></description>
+            <enclosure url="https://github.com/Ship-Work/workbench/releases/download/v2.5.0/Workbench.zip" length="75756934" type="application/octet-stream" sparkle:edSignature="UogfnJ1E/7UEj68BtVh1DNKgx6XFLEscci7qd/7sPVvUcuLErq0jwArhxxdFsjPIhwHtN4195Oqij1HT0fDdDQ=="/>
+        </item>
+        <item>
             <title>2.4.1</title>
             <pubDate>Tue, 06 Oct 2026 13:25:02 +1100</pubDate>
             <sparkle:version>20261005234010</sparkle:version>
@@ -49,29 +90,9 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
 ]]></description>
             <enclosure url="https://github.com/EthDawg/workbench/releases/download/v2.4.0/Workbench.zip" length="72207648" type="application/octet-stream" sparkle:edSignature="JHsM7mK+oDmVfQ4oOLs3hk043d1BkKu6Dh2tn4s+t2J4qmk8nXpkAWyX/UgRfOTAiRh37FgyYDfI/NsrK5pfBw=="/>
         </item>
-        <item>
-            <title>2.3.1</title>
-            <pubDate>Wed, 30 Sep 2026 15:48:25 +1000</pubDate>
-            <sparkle:version>20260930054504</sparkle:version>
-            <sparkle:shortVersionString>2.3.1</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description><![CDATA[<h2>Workbench 2.3.1</h2>
-<p>Open Workbench and pick up where you left off.</p>
-<ul>
-<li><strong>A clearer place to start.</strong> Home brings Dictate, Snap, Snap &amp; Talk and recent work together. Continue an explanation from its card, or collapse the sidebar for more room.</li>
-<li><strong>Make images say more.</strong> View and edit images in one resizable workspace. Add text, crop to a slide shape, move marks, rotate, undo, copy and export while keeping the original.</li>
-<li><strong>Capture from the toolbar.</strong> Choose Region, Window or Screen directly in Snap and a prepared Snap &amp; Talk session. The floating controls stay upright at screen edges, reveal clear icons and show shortcut hints.</li>
-<li><strong>Put yourself in the picture.</strong> Choose a photo for your local Me profile, adjust its appearance and use it as a Persona when you present. Your previous scene artwork stays intact.</li>
-</ul>
-<p>Choose Settings → Workbench updates when you’re ready. Your saved work stays in this edition’s library.</p>
-<p><strong>Image compatibility.</strong> Images saved with text or rotation use Snap format 2 and need this update or a newer release. The first promotion keeps the previous metadata as a backup; original and earlier rendered image files are preserved.</p>
-]]></description>
-            <enclosure url="https://github.com/EthDawg/workbench/releases/download/v2.3.1+20260930054504/Workbench.zip" length="71415995" type="application/octet-stream" sparkle:edSignature="3iglQYvA4delWp3CNE+/u7WwGayZNei4K/9diIg2NP1hjn/HqmR0SwHTQW8YgybuqnFEzNeXT2+c6BENLKzwAQ=="/>
-        </item>
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: ErLUUmDQykeShojBx8WnNYE9deIc2Tx9LZEFTpQpZWTMzuWxILBxNwbH6Pmdbj3XcwYbqJH3jrIMesD0JlYODg==
-length: 7885
+edSignature: or6ocCEg/9niXlToImhuf1tNs2ZjM80OvZiRgpl2X/5PfgfkTJnvdk8cohHrdwvY1Ezw38IBGYhWNu2SP+jPAA==
+length: 11506
 -->

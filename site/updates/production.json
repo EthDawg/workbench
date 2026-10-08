@@ -1,11 +1,11 @@
 {
   "channel": "production",
-  "version": "2.4.1",
-  "build": "20261005234010",
-  "tag": "v2.4.1",
-  "source": "5f209cab85fad6fef5c8337ff2a076bdeffbcd35",
-  "download_url": "https://github.com/Ship-Work/workbench/releases/download/v2.4.1/Workbench.zip",
-  "sha256": "f0df1e31da757458d359103ef1dca2c2feb52b5fa09460694282b8e1c71cb147",
+  "version": "2.5.0",
+  "build": "20261008222126",
+  "tag": "v2.5.0",
+  "source": "af19bdaf85461486164e0979a7d39ab18456cde8",
+  "download_url": "https://github.com/Ship-Work/workbench/releases/download/v2.5.0/Workbench.zip",
+  "sha256": "32b1eb2b15c570d745c81b6d0e021a25ceb318b16b647db5cf281cf8a9dcbc42",
   "feed_url": "https://workbench-mac.vercel.app/updates/production.xml",
-  "feed_sha256": "acb2d4d115e3d1e8112c8178d876b389da93a8180e7ab0e490775d9f7430a347"
+  "feed_sha256": "f509b10d7f9a58607f7c323dbed98e9116fe91e7a9a60d3932635b14afd3175e"
 }
